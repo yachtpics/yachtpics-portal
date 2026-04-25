@@ -114,8 +114,27 @@ export default function BrokerListingPage() {
 
   function guessCategory(filename: string): string {
     const name = filename.toLowerCase();
+    // Check exact category names first
     for (const cat of PHOTO_CATEGORIES) {
-      if (name.includes(cat.toLowerCase())) return cat;
+      if (name.includes(cat.toLowerCase().replace(" ", "_")) || name.includes(cat.toLowerCase())) return cat;
+    }
+    // Common aliases / alternate naming conventions
+    const aliases: Record<string, string> = {
+      exterior: "Starboard", profile: "Port", profiles: "Port",
+      front: "Bow", aft: "Stern", back: "Stern",
+      bridge: "Flybridge", fly: "Flybridge", flybridge: "Flybridge",
+      interior: "Salon", living: "Salon", main_salon: "Salon", mainsalon: "Salon",
+      kitchen: "Galley", dining: "Galley",
+      master: "Master Stateroom", master_cabin: "Master Stateroom",
+      guest: "Guest Stateroom", cabin: "Guest Stateroom",
+      bath: "Head", bathroom: "Head", toilet: "Head",
+      engine: "Engine Room", bilge: "Engine Room",
+      swim: "Swim Platform", platform: "Swim Platform",
+      wheel: "Helm", helm: "Helm", steering: "Helm",
+      cockpit: "Cockpit", deck: "Cockpit",
+    };
+    for (const [alias, cat] of Object.entries(aliases)) {
+      if (name.includes(alias)) return cat;
     }
     return "Other";
   }
@@ -209,6 +228,11 @@ export default function BrokerListingPage() {
   async function toggleVisibility(photoId: string, current: boolean) {
     await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
+  }
+
+  async function updateCategory(photoId: string, category: string) {
+    await supabase.from("photos").update({ category }).eq("id", photoId);
+    setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
   }
 
   const visiblePhotos = photos.filter(p => p.is_visible);
@@ -347,10 +371,20 @@ export default function BrokerListingPage() {
                 )}
 
                 <div className="p-2 bg-white">
-                  <p className="text-xs font-medium text-gray-700 truncate">
-                    {String(photos.indexOf(photo) + 1).padStart(2, "0")} · {photo.category ?? "Other"}
-                    {!photo.is_visible && <span className="text-gray-400"> · hidden</span>}
-                  </p>
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs font-medium text-gray-500 shrink-0">
+                      {String(photos.indexOf(photo) + 1).padStart(2, "0")} ·
+                    </span>
+                    <select
+                      value={photo.category ?? "Other"}
+                      onChange={(e) => { e.stopPropagation(); updateCategory(photo.id, e.target.value); }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
+                    >
+                      {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {!photo.is_visible && <span className="text-gray-400 text-xs shrink-0">· hidden</span>}
+                  </div>
                   {photo.filename && (
                     <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
                   )}
