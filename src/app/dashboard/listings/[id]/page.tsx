@@ -384,9 +384,9 @@ export default function BrokerListingPage() {
                   </div>
                 )}
 
-                {/* Hover actions (non-select mode) */}
+                {/* Hover actions — desktop only (overlay on hover) */}
                 {!selectMode && (
-                  <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
+                  <div className="hidden md:flex absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors items-center justify-center gap-2 opacity-0 hover:opacity-100">
                     {photo.url && (
                       <button
                         onClick={(e) => { e.stopPropagation(); downloadPhotos([photo]); }}
@@ -421,6 +421,25 @@ export default function BrokerListingPage() {
                   </div>
                   {photo.filename && (
                     <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
+                  )}
+                  {/* Mobile-only action buttons — always visible on touch devices */}
+                  {!selectMode && (
+                    <div className="flex md:hidden items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+                      {photo.url && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); downloadPhotos([photo]); }}
+                          className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
+                        >
+                          ⬇ Download
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); toggleVisibility(photo.id, photo.is_visible); }}
+                        className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
+                      >
+                        {photo.is_visible ? "Hide" : "Show"}
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>

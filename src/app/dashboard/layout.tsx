@@ -33,7 +33,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         plan={subscription?.status ?? "trialing"}
         trialEndsAt={subscription?.trial_ends_at ?? null}
       />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">
         {children}
       </main>
     </div>
