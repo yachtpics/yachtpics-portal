@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import JSZip from "jszip";
 
 const PHOTO_CATEGORIES = [
   "Bow", "Stern", "Port", "Starboard", "Helm", "Cockpit",
@@ -32,7 +33,11 @@ export default function BrokerListingPage() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState(0);
   const [message, setMessage] = useState("");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectMode, setSelectMode] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -115,34 +120,157 @@ export default function BrokerListingPage() {
     return "Other";
   }
 
+  function toggleSelect(photoId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(photoId) ? next.delete(photoId) : next.add(photoId);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(photos.filter(p => p.is_visible).map(p => p.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setSelectMode(false);
+  }
+
+  async function downloadPhotos(targets: Photo[]) {
+    if (targets.length === 0) return;
+    setDownloading(true);
+    setDownloadProgress(0);
+
+    const folderName = listing?.vessel_name ?? "photos";
+
+    // Single photo — direct download, no ZIP needed
+    if (targets.length === 1 && targets[0].url) {
+      const response = await fetch(targets[0].url);
+      const blob = await response.blob();
+      const ext = targets[0].filename?.split(".").pop() ?? "jpg";
+      const filename = `${targets[0].category ?? "photo"}.${ext}`;
+      triggerDownload(blob, filename);
+      setDownloading(false);
+      setDownloadProgress(0);
+      clearSelection();
+      return;
+    }
+
+    // Multiple photos — ZIP
+    const zip = new JSZip();
+    for (let i = 0; i < targets.length; i++) {
+      const photo = targets[i];
+      if (!photo.url) continue;
+      try {
+        const response = await fetch(photo.url);
+        const blob = await response.blob();
+        const ext = photo.filename?.split(".").pop() ?? "jpg";
+        const filename = `${String(i + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
+        zip.file(filename, blob);
+      } catch { /* skip */ }
+      setDownloadProgress(Math.round(((i + 1) / targets.length) * 100));
+    }
+
+    const zipBlob = await zip.generateAsync({ type: "blob" });
+    const zipName = `${folderName}-photos.zip`;
+
+    if ("showSaveFilePicker" in window) {
+      try {
+        const handle = await (window as any).showSaveFilePicker({
+          suggestedName: zipName,
+          types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
+        });
+        const writable = await handle.createWritable();
+        await writable.write(zipBlob);
+        await writable.close();
+        setDownloading(false);
+        setDownloadProgress(0);
+        clearSelection();
+        return;
+      } catch { /* cancelled — fall through */ }
+    }
+
+    triggerDownload(zipBlob, zipName);
+    setDownloading(false);
+    setDownloadProgress(0);
+    clearSelection();
+  }
+
+  function triggerDownload(blob: Blob, filename: string) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   async function toggleVisibility(photoId: string, current: boolean) {
     await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
   }
 
-  async function downloadPhoto(url: string, filename: string) {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.target = "_blank";
-    a.click();
-  }
+  const visiblePhotos = photos.filter(p => p.is_visible);
+  const selectedPhotos = photos.filter(p => selectedIds.has(p.id));
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading...</div>;
   if (!listing) return null;
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
-      <div className="mb-6 flex items-start justify-between">
+      {/* Header */}
+      <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
         <div>
           <Link href="/dashboard/listings" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← My Listings</Link>
           <h1 className="text-2xl font-bold text-gray-900 mt-1">{listing.vessel_name ?? "Untitled vessel"}</h1>
           <p className="text-gray-500 text-sm mt-0.5">{listing.location ?? ""}</p>
         </div>
-        <button onClick={() => fileInputRef.current?.click()}
-          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
-          + Add Photos
-        </button>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {photos.length > 0 && !selectMode && (
+            <>
+              <button
+                onClick={() => { setSelectMode(true); }}
+                className="bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+              >
+                Select
+              </button>
+              <button
+                onClick={() => downloadPhotos(visiblePhotos)}
+                disabled={downloading}
+                className="bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+              >
+                {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download All (${visiblePhotos.length})`}
+              </button>
+            </>
+          )}
+
+          {selectMode && (
+            <>
+              <button onClick={selectAll} className="text-sm text-[#c49a35] hover:text-[#b08c2a] font-medium transition-colors px-2">
+                Select all
+              </button>
+              <button onClick={clearSelection} className="text-sm text-gray-400 hover:text-gray-600 transition-colors px-2">
+                Cancel
+              </button>
+              {selectedIds.size > 0 && (
+                <button
+                  onClick={() => downloadPhotos(selectedPhotos)}
+                  disabled={downloading}
+                  className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                >
+                  {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download ${selectedIds.size} Photo${selectedIds.size !== 1 ? "s" : ""}`}
+                </button>
+              )}
+            </>
+          )}
+
+          <button onClick={() => fileInputRef.current?.click()}
+            className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+            + Add Photos
+          </button>
+        </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
       </div>
 
@@ -171,33 +299,59 @@ export default function BrokerListingPage() {
         </div>
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {photos.map((photo) => (
-            <div key={photo.id} className={`relative rounded-lg overflow-hidden border-2 transition-colors ${photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"}`}>
-              {photo.url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-32 object-cover" />
-              ) : (
-                <div className="w-full h-32 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
-              )}
-
-              <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
-                {photo.url && (
-                  <button onClick={() => downloadPhoto(photo.url!, photo.filename ?? "photo.jpg")}
-                    className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
-                    Download
-                  </button>
+          {photos.map((photo) => {
+            const isSelected = selectedIds.has(photo.id);
+            return (
+              <div
+                key={photo.id}
+                onClick={() => selectMode && toggleSelect(photo.id)}
+                className={`relative rounded-lg overflow-hidden border-2 transition-all ${
+                  isSelected ? "border-[#d4a843] shadow-md" :
+                  photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
+                } ${selectMode ? "cursor-pointer" : ""}`}
+              >
+                {photo.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-32 object-cover" />
+                ) : (
+                  <div className="w-full h-32 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
                 )}
-                <button onClick={() => toggleVisibility(photo.id, photo.is_visible)}
-                  className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
-                  {photo.is_visible ? "Hide" : "Show"}
-                </button>
-              </div>
 
-              <div className="p-1.5 bg-white">
-                <p className="text-xs text-gray-500 truncate">{photo.category ?? "Other"}{!photo.is_visible && " · hidden"}</p>
+                {/* Checkbox in select mode */}
+                {selectMode && (
+                  <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                    isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
+                  }`}>
+                    {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
+                  </div>
+                )}
+
+                {/* Hover actions (non-select mode) */}
+                {!selectMode && (
+                  <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
+                    {photo.url && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); downloadPhotos([photo]); }}
+                        className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
+                      >
+                        Download
+                      </button>
+                    )}
+                    <button
+                      onClick={(e) => { e.stopPropagation(); toggleVisibility(photo.id, photo.is_visible); }}
+                      className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
+                    >
+                      {photo.is_visible ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                )}
+
+                <div className="p-1.5 bg-white">
+                  <p className="text-xs text-gray-500 truncate">{photo.category ?? "Other"}{!photo.is_visible && " · hidden"}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
