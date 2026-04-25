@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import SlideshowViewer from "./SlideshowViewer";
 
+export const dynamic = "force-dynamic";
+
 export default async function PublicSlideshowPage({
   params,
 }: {
