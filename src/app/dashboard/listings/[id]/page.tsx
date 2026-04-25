@@ -45,6 +45,7 @@ export default function BrokerListingPage() {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxTouch, setLightboxTouch] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const tapStart = useRef<{x: number; y: number} | null>(null);
   useEffect(() => setMounted(true), []);
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -342,13 +343,15 @@ export default function BrokerListingPage() {
           </div>
 
           {/* Photo */}
-          <div className="flex-1 flex items-center justify-center relative px-12 overflow-hidden">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={photos[lightboxIndex].url!}
-              alt={photos[lightboxIndex].filename ?? ""}
-              className="max-h-full max-w-full object-contain"
-            />
+          <div className="flex-1 flex items-center justify-center relative px-10" style={{ minHeight: 0 }}>
+            {photos[lightboxIndex]?.url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={photos[lightboxIndex].url!}
+                alt={photos[lightboxIndex].filename ?? ""}
+                style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+              />
+            )}
             {lightboxIndex > 0 && (
               <button
                 onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
@@ -476,7 +479,17 @@ export default function BrokerListingPage() {
               <div
                 key={photo.id}
                 onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
-                onTouchEnd={(e) => { if (!selectMode) { e.preventDefault(); setLightboxIndex(photos.indexOf(photo)); } }}
+                onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+                onTouchEnd={(e) => {
+                  if (!tapStart.current) return;
+                  const dx = Math.abs(e.changedTouches[0].clientX - tapStart.current.x);
+                  const dy = Math.abs(e.changedTouches[0].clientY - tapStart.current.y);
+                  tapStart.current = null;
+                  if (dx < 8 && dy < 8) {
+                    e.preventDefault();
+                    selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo));
+                  }
+                }}
                 className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer touch-manipulation ${
                   isSelected ? "border-[#d4a843] shadow-md" :
                   photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
