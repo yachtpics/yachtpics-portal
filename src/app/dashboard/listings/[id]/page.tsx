@@ -314,10 +314,10 @@ export default function BrokerListingPage() {
       onDragOver={handlePageDragOver}
       onDrop={handlePageDrop}
     >
-      {/* Lightbox overlay — rendered in a portal so it escapes overflow:auto */}
+      {/* Lightbox — portal to document.body, all layout via inline styles to avoid Tailwind purging */}
       {mounted && lightboxIndex !== null && createPortal(
         <div
-          className="fixed inset-0 z-[9999] bg-black/95 flex flex-col"
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column" }}
           onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
           onTouchEnd={(e) => {
             if (lightboxTouch === null) return;
@@ -329,53 +329,49 @@ export default function BrokerListingPage() {
             setLightboxTouch(null);
           }}
         >
-          {/* Close + counter */}
-          <div className="flex items-center justify-between px-4 py-3 shrink-0">
-            <p className="text-gray-400 text-sm">
-              {photos[lightboxIndex]?.category ?? ""}{photos[lightboxIndex]?.category ? " · " : ""}{lightboxIndex + 1} / {photos.length}
-            </p>
+          {/* Header */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", flexShrink: 0 }}>
+            <span style={{ color: "#9ca3af", fontSize: 14 }}>
+              {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
+            </span>
             <button
               onClick={() => setLightboxIndex(null)}
-              className="text-gray-400 hover:text-white transition-colors text-2xl leading-none w-10 h-10 flex items-center justify-center"
+              style={{ color: "#9ca3af", fontSize: 28, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}
             >
               ×
             </button>
           </div>
 
-          {/* Photo */}
-          <div className="flex-1 flex items-center justify-center relative px-10" style={{ minHeight: 0 }}>
+          {/* Photo area — fills remaining height */}
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 48px" }}>
             {photos[lightboxIndex]?.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={photos[lightboxIndex].url!}
                 alt={photos[lightboxIndex].filename ?? ""}
-                style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain" }}
+                style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", display: "block" }}
               />
             )}
             {lightboxIndex > 0 && (
-              <button
-                onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
-                className="absolute left-2 bg-white/10 hover:bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
-              >
+              <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
+                style={{ position: "absolute", left: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ‹
               </button>
             )}
             {lightboxIndex < photos.length - 1 && (
-              <button
-                onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
-                className="absolute right-2 bg-white/10 hover:bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
-              >
+              <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
+                style={{ position: "absolute", right: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ›
               </button>
             )}
           </div>
 
           {/* Thumbnail strip */}
-          <div className="flex gap-2 px-4 py-3 overflow-x-auto shrink-0">
+          <div style={{ display: "flex", gap: 8, padding: "12px 16px", overflowX: "auto", flexShrink: 0 }}>
             {photos.map((p, i) => (
               <button key={p.id} onClick={() => setLightboxIndex(i)}
-                className={`shrink-0 rounded overflow-hidden transition-all ${i === lightboxIndex ? "ring-2 ring-[#d4a843] opacity-100" : "opacity-40 hover:opacity-70"}`}>
-                {p.url && <img src={p.url} alt="" className="w-14 h-9 object-cover" />}
+                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid #d4a843" : "none" }}>
+                {p.url && <img src={p.url} alt="" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />}
               </button>
             ))}
           </div>
