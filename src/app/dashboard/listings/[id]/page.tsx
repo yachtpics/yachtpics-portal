@@ -347,9 +347,12 @@ export default function BrokerListingPage() {
                 )}
 
                 <div className="p-2 bg-white">
-                  <p className="text-xs font-medium text-gray-700 truncate">{photo.category ?? "Other"}{!photo.is_visible && " · hidden"}</p>
+                  <p className="text-xs font-medium text-gray-700 truncate">
+                    {String(photos.indexOf(photo) + 1).padStart(2, "0")} · {photo.category ?? "Other"}
+                    {!photo.is_visible && <span className="text-gray-400"> · hidden</span>}
+                  </p>
                   {photo.filename && (
-                    <p className="text-xs text-gray-400 truncate mt-0.5">{photo.filename}</p>
+                    <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
                   )}
                 </div>
               </div>
