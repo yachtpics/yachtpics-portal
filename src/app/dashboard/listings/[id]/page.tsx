@@ -28,7 +28,9 @@ export default function BrokerListingPage() {
   const router = useRouter();
   const id = params.id as string;
 
-  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string } | null>(null);
+  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean } | null>(null);
+  const [slideshowCopied, setSlideshowCopied] = useState(false);
+  const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -73,7 +75,7 @@ export default function BrokerListingPage() {
     if (!user) return;
 
     const { data: l } = await supabase.from("listings")
-      .select("vessel_name, location, status")
+      .select("vessel_name, location, status, slideshow_slug, slideshow_published")
       .eq("id", id)
       .eq("broker_id", user.id)
       .single();
@@ -256,6 +258,29 @@ export default function BrokerListingPage() {
   async function updateCategory(photoId: string, category: string) {
     await supabase.from("photos").update({ category }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
+  }
+
+  async function publishSlideshow() {
+    setSlideshowWorking(true);
+    const slug = listing?.slideshow_slug ?? Math.random().toString(36).substring(2, 10);
+    await supabase.from("listings").update({ slideshow_slug: slug, slideshow_published: true }).eq("id", id);
+    setListing((prev) => prev ? { ...prev, slideshow_slug: slug, slideshow_published: true } : prev);
+    setSlideshowWorking(false);
+  }
+
+  async function unpublishSlideshow() {
+    setSlideshowWorking(true);
+    await supabase.from("listings").update({ slideshow_published: false }).eq("id", id);
+    setListing((prev) => prev ? { ...prev, slideshow_published: false } : prev);
+    setSlideshowWorking(false);
+  }
+
+  function copyLink() {
+    if (!listing?.slideshow_slug) return;
+    const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
+    navigator.clipboard.writeText(url);
+    setSlideshowCopied(true);
+    setTimeout(() => setSlideshowCopied(false), 2000);
   }
 
   const visiblePhotos = photos.filter(p => p.is_visible);
@@ -456,6 +481,116 @@ export default function BrokerListingPage() {
           </div>
         </div>
       )}
+
+      {/* Slideshow section */}
+      <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
+        <div className="flex items-start justify-between flex-wrap gap-4">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Client Slideshow</h2>
+            <p className="text-gray-500 text-sm mt-0.5">
+              Share a branded, full-screen photo presentation with your client.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {listing.slideshow_published && listing.slideshow_slug ? (
+              <>
+                <a
+                  href={`/s/${listing.slideshow_slug}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-[#c49a35] hover:text-[#b08c2a] font-medium transition-colors"
+                >
+                  Preview ↗
+                </a>
+                <button
+                  onClick={unpublishSlideshow}
+                  disabled={slideshowWorking}
+                  className="bg-white border border-gray-200 hover:border-red-300 text-gray-500 hover:text-red-500 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  Unpublish
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={publishSlideshow}
+                disabled={slideshowWorking || photos.filter(p => p.is_visible).length === 0}
+                className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              >
+                {slideshowWorking ? "Creating..." : "Create Slideshow"}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {listing.slideshow_published && listing.slideshow_slug && (
+          <>
+            {/* Link display */}
+            <div className="mt-4 bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-gray-500 truncate">
+                {typeof window !== "undefined" ? window.location.origin : ""}/s/{listing.slideshow_slug}
+              </p>
+              <span className="shrink-0 text-xs font-medium bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+                Live
+              </span>
+            </div>
+
+            {/* Share buttons */}
+            <div className="mt-3 flex flex-wrap gap-2">
+              {/* Native share — shows system sheet on mobile */}
+              {"share" in navigator && (
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
+                    navigator.share({
+                      title: listing.vessel_name ?? "Yacht Listing",
+                      text: `Check out this listing: ${listing.vessel_name ?? ""}`,
+                      url,
+                    }).catch(() => {});
+                  }}
+                  className="flex items-center gap-2 bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                  </svg>
+                  Share
+                </button>
+              )}
+
+              {/* Text / SMS */}
+              <a
+                href={`sms:?body=${encodeURIComponent(`${listing.vessel_name ?? "Yacht listing"} — view photos here: ${typeof window !== "undefined" ? window.location.origin : ""}/s/${listing.slideshow_slug}`)}`}
+                className="flex items-center gap-2 bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+                Text
+              </a>
+
+              {/* Email */}
+              <a
+                href={`mailto:?subject=${encodeURIComponent(`${listing.vessel_name ?? "Yacht"} — Photo Gallery`)}&body=${encodeURIComponent(`Please find the photo gallery for ${listing.vessel_name ?? "this vessel"} at the link below:\n\n${typeof window !== "undefined" ? window.location.origin : ""}/s/${listing.slideshow_slug}`)}`}
+                className="flex items-center gap-2 bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                </svg>
+                Email
+              </a>
+
+              <button
+                onClick={copyLink}
+                className="flex items-center gap-2 bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+                {slideshowCopied ? "✓ Copied!" : "Copy Link"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
