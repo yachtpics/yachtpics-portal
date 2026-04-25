@@ -314,7 +314,7 @@ export default function BrokerListingPage() {
       onDrop={handlePageDrop}
     >
       {/* Lightbox overlay — rendered in a portal so it escapes overflow:auto */}
-      {mounted && lightboxIndex !== null && photos[lightboxIndex]?.url && createPortal(
+      {mounted && lightboxIndex !== null && createPortal(
         <div
           className="fixed inset-0 z-[9999] bg-black/95 flex flex-col"
           onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
@@ -476,27 +476,22 @@ export default function BrokerListingPage() {
               <div
                 key={photo.id}
                 onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
-                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                onTouchEnd={(e) => { if (!selectMode) { e.preventDefault(); setLightboxIndex(photos.indexOf(photo)); } }}
+                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer touch-manipulation ${
                   isSelected ? "border-[#d4a843] shadow-md" :
                   photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
-                } ${selectMode ? "cursor-pointer" : ""}`}
+                }`}
               >
-                <button
-                  type="button"
-                  className="w-full block touch-manipulation"
-                  onClick={(e) => { e.stopPropagation(); selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo)); }}
-                >
-                  {photo.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={photo.url}
-                      alt={photo.filename ?? ""}
-                      className="w-full h-48 object-contain bg-gray-50"
-                    />
-                  ) : (
-                    <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
-                  )}
-                </button>
+                {photo.url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={photo.url}
+                    alt={photo.filename ?? ""}
+                    className="w-full h-48 object-contain bg-gray-50 pointer-events-none"
+                  />
+                ) : (
+                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs pointer-events-none">No preview</div>
+                )}
 
                 {/* Checkbox in select mode */}
                 {selectMode && (
