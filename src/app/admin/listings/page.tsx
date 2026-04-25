@@ -48,7 +48,8 @@ export default async function AdminListingsPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {listings.map((listing) => {
-                const broker = listing.profiles as { first_name: string | null; last_name: string | null } | null;
+                const brokerArr = listing.profiles as { first_name: string | null; last_name: string | null }[] | null;
+                const broker = Array.isArray(brokerArr) ? brokerArr[0] : brokerArr;
                 return (
                   <tr key={listing.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
