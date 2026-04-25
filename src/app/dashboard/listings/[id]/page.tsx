@@ -477,18 +477,22 @@ export default function BrokerListingPage() {
                   photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
                 } ${selectMode ? "cursor-pointer" : ""}`}
               >
-                {photo.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={photo.url}
-                    alt={photo.filename ?? ""}
-                    className="w-full h-48 object-contain bg-gray-50 touch-manipulation"
-                    onClick={(e) => { e.stopPropagation(); selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo)); }}
-                    style={{ WebkitTapHighlightColor: "transparent" }}
-                  />
-                ) : (
-                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
-                )}
+                <button
+                  type="button"
+                  className="w-full block touch-manipulation"
+                  onClick={(e) => { e.stopPropagation(); selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo)); }}
+                >
+                  {photo.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={photo.url}
+                      alt={photo.filename ?? ""}
+                      className="w-full h-48 object-contain bg-gray-50"
+                    />
+                  ) : (
+                    <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                  )}
+                </button>
 
                 {/* Checkbox in select mode */}
                 {selectMode && (
