@@ -41,6 +41,8 @@ export default function BrokerListingPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [lightboxTouch, setLightboxTouch] = useState<number | null>(null);
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -69,6 +71,17 @@ export default function BrokerListingPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (lightboxIndex === null) return;
+      if (e.key === "ArrowLeft") setLightboxIndex(i => i !== null ? Math.max(0, i - 1) : null);
+      if (e.key === "ArrowRight") setLightboxIndex(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
+      if (e.key === "Escape") setLightboxIndex(null);
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [lightboxIndex, photos.length]);
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
@@ -297,6 +310,72 @@ export default function BrokerListingPage() {
       onDragOver={handlePageDragOver}
       onDrop={handlePageDrop}
     >
+      {/* Lightbox overlay */}
+      {lightboxIndex !== null && photos[lightboxIndex]?.url && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex flex-col"
+          onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
+          onTouchEnd={(e) => {
+            if (lightboxTouch === null) return;
+            const diff = lightboxTouch - e.changedTouches[0].clientX;
+            if (Math.abs(diff) > 50) {
+              if (diff > 0) setLightboxIndex(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
+              else setLightboxIndex(i => i !== null ? Math.max(0, i - 1) : null);
+            }
+            setLightboxTouch(null);
+          }}
+        >
+          {/* Close + counter */}
+          <div className="flex items-center justify-between px-4 py-3 shrink-0">
+            <p className="text-gray-400 text-sm">
+              {photos[lightboxIndex]?.category ?? ""}{photos[lightboxIndex]?.category ? " · " : ""}{lightboxIndex + 1} / {photos.length}
+            </p>
+            <button
+              onClick={() => setLightboxIndex(null)}
+              className="text-gray-400 hover:text-white transition-colors text-2xl leading-none w-10 h-10 flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Photo */}
+          <div className="flex-1 flex items-center justify-center relative px-12 overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photos[lightboxIndex].url!}
+              alt={photos[lightboxIndex].filename ?? ""}
+              className="max-h-full max-w-full object-contain"
+            />
+            {lightboxIndex > 0 && (
+              <button
+                onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
+                className="absolute left-2 bg-white/10 hover:bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
+              >
+                ‹
+              </button>
+            )}
+            {lightboxIndex < photos.length - 1 && (
+              <button
+                onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
+                className="absolute right-2 bg-white/10 hover:bg-white/20 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
+              >
+                ›
+              </button>
+            )}
+          </div>
+
+          {/* Thumbnail strip */}
+          <div className="flex gap-2 px-4 py-3 overflow-x-auto shrink-0">
+            {photos.map((p, i) => (
+              <button key={p.id} onClick={() => setLightboxIndex(i)}
+                className={`shrink-0 rounded overflow-hidden transition-all ${i === lightboxIndex ? "ring-2 ring-[#d4a843] opacity-100" : "opacity-40 hover:opacity-70"}`}>
+                {p.url && <img src={p.url} alt="" className="w-14 h-9 object-cover" />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Full-page drop overlay */}
       {dragOver && (
         <div className="absolute inset-0 z-50 bg-amber-50/90 border-2 border-dashed border-[#d4a843] rounded-xl flex items-center justify-center pointer-events-none">
@@ -392,8 +471,8 @@ export default function BrokerListingPage() {
             return (
               <div
                 key={photo.id}
-                onClick={() => selectMode && toggleSelect(photo.id)}
-                className={`relative rounded-lg overflow-hidden border-2 transition-all ${
+                onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
+                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
                   isSelected ? "border-[#d4a843] shadow-md" :
                   photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
                 } ${selectMode ? "cursor-pointer" : ""}`}
