@@ -38,7 +38,30 @@ export default function BrokerListingPage() {
   const [message, setMessage] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+  const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Page-level drag detection — reliable across all child elements
+  function handlePageDragEnter(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current++;
+    if (dragCounter.current === 1) setDragOver(true);
+  }
+  function handlePageDragLeave(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current--;
+    if (dragCounter.current === 0) setDragOver(false);
+  }
+  function handlePageDragOver(e: React.DragEvent) {
+    e.preventDefault();
+  }
+  function handlePageDrop(e: React.DragEvent) {
+    e.preventDefault();
+    dragCounter.current = 0;
+    setDragOver(false);
+    handleFiles(e.dataTransfer.files);
+  }
 
   useEffect(() => {
     loadData();
@@ -242,7 +265,19 @@ export default function BrokerListingPage() {
   if (!listing) return null;
 
   return (
-    <div className="px-6 py-8 max-w-5xl mx-auto">
+    <div
+      className="px-6 py-8 max-w-5xl mx-auto relative"
+      onDragEnter={handlePageDragEnter}
+      onDragLeave={handlePageDragLeave}
+      onDragOver={handlePageDragOver}
+      onDrop={handlePageDrop}
+    >
+      {/* Full-page drop overlay */}
+      {dragOver && (
+        <div className="absolute inset-0 z-50 bg-amber-50/90 border-2 border-dashed border-[#d4a843] rounded-xl flex items-center justify-center pointer-events-none">
+          <p className="text-[#c49a35] text-lg font-semibold">Drop photos to upload</p>
+        </div>
+      )}
       {/* Header */}
       <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
         <div>
@@ -314,15 +349,14 @@ export default function BrokerListingPage() {
       {photos.length === 0 ? (
         <div
           onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
           className="border-2 border-dashed border-gray-200 rounded-xl p-16 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
         >
           <p className="text-gray-400 text-sm">No photos yet — drag here or click to upload</p>
           <p className="text-gray-300 text-xs mt-1">YachtPics professional photos will also appear here after your shoot</p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {photos.map((photo) => {
             const isSelected = selectedIds.has(photo.id);
             return (
@@ -392,6 +426,15 @@ export default function BrokerListingPage() {
               </div>
             );
           })}
+          </div>
+
+          {/* Drop zone strip */}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-3 border-2 border-dashed border-gray-200 rounded-xl py-4 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+          >
+            <p className="text-gray-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
+          </div>
         </div>
       )}
     </div>
