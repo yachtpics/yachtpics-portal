@@ -1,0 +1,63 @@
+import { createClient } from "@supabase/supabase-js";
+import { notFound } from "next/navigation";
+import SlideshowViewer from "./SlideshowViewer";
+
+export default async function PublicSlideshowPage({
+  params,
+}: {
+  params: { slug: string };
+}) {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { data: listing } = await supabase
+    .from("listings")
+    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id")
+    .eq("slideshow_slug", params.slug)
+    .eq("slideshow_published", true)
+    .single();
+
+  if (!listing) notFound();
+
+  const [{ data: profile }, { data: brokerDetails }, { data: photos }] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", listing.broker_id)
+        .single(),
+      supabase
+        .from("broker_details")
+        .select("brokerage_name, phone, website")
+        .eq("broker_id", listing.broker_id)
+        .single(),
+      supabase
+        .from("photos")
+        .select("id, storage_path, category, filename, display_order")
+        .eq("listing_id", listing.id)
+        .eq("is_visible", true)
+        .order("display_order"),
+    ]);
+
+  const withUrls = await Promise.all(
+    (photos ?? []).map(async (photo) => {
+      const { data } = await supabase.storage
+        .from("listing-photos")
+        .createSignedUrl(photo.storage_path, 7200);
+      return { ...photo, url: data?.signedUrl ?? null };
+    })
+  );
+
+  const broker = {
+    name:
+      [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
+      "Broker",
+    brokerage: brokerDetails?.brokerage_name ?? null,
+    phone: brokerDetails?.phone ?? null,
+    website: brokerDetails?.website ?? null,
+  };
+
+  return <SlideshowViewer listing={listing} broker={broker} photos={withUrls} />;
+}
