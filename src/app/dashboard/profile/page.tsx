@@ -56,6 +56,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   async function loadData() {
@@ -324,7 +325,7 @@ export default function ProfilePage() {
           </button>
         </div>
         <p className="text-gray-400 text-xs mt-2">
-          The assistant must already have an account with the role "assistant" on this platform.
+          The assistant must already have an account with the role &quot;assistant&quot; on this platform.
         </p>
       </section>
 
