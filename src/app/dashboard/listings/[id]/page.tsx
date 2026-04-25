@@ -307,7 +307,12 @@ export default function BrokerListingPage() {
       <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
         <div>
           <Link href="/dashboard/listings" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← My Listings</Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">{listing.vessel_name ?? "Untitled vessel"}</h1>
+          <div className="flex items-center gap-3 mt-1">
+            <h1 className="text-2xl font-bold text-gray-900">{listing.vessel_name ?? "Untitled vessel"}</h1>
+            <Link href={`/dashboard/listings/${id}/edit`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
+              Edit
+            </Link>
+          </div>
           <p className="text-gray-500 text-sm mt-0.5">{listing.location ?? ""}</p>
         </div>
 
