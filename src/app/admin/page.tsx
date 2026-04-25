@@ -63,8 +63,10 @@ export default async function AdminPage() {
         {recentShoots && recentShoots.length > 0 ? (
           <ul className="divide-y divide-gray-100">
             {recentShoots.map((shoot) => {
-              const broker = shoot.profiles as { first_name: string | null; last_name: string | null } | null;
-              const listing = shoot.listings as { vessel_name: string | null } | null;
+              const brokerArr = shoot.profiles as { first_name: string | null; last_name: string | null }[] | null;
+              const broker = Array.isArray(brokerArr) ? brokerArr[0] : brokerArr;
+              const listingArr = shoot.listings as { vessel_name: string | null }[] | null;
+              const listing = Array.isArray(listingArr) ? listingArr[0] : listingArr;
               const amount = shoot.amount_cents
                 ? `$${(shoot.amount_cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
                 : "—";
