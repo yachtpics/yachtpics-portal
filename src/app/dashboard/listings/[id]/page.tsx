@@ -370,9 +370,9 @@ export default function BrokerListingPage() {
               >
                 {photo.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-32 object-cover" />
+                  <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-40 object-contain bg-gray-50" />
                 ) : (
-                  <div className="w-full h-32 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                  <div className="w-full h-40 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
                 )}
 
                 {/* Checkbox in select mode */}
