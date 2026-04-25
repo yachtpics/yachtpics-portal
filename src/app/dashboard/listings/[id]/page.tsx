@@ -356,23 +356,23 @@ export default function BrokerListingPage() {
         </div>
       ) : (
         <div>
-          <div className="columns-2 sm:columns-3 md:columns-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {photos.map((photo) => {
             const isSelected = selectedIds.has(photo.id);
             return (
               <div
                 key={photo.id}
                 onClick={() => selectMode && toggleSelect(photo.id)}
-                className={`break-inside-avoid mb-3 relative rounded-lg overflow-hidden border-2 transition-all ${
+                className={`relative rounded-lg overflow-hidden border-2 transition-all ${
                   isSelected ? "border-[#d4a843] shadow-md" :
                   photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
                 } ${selectMode ? "cursor-pointer" : ""}`}
               >
                 {photo.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-auto block" />
+                  <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-48 object-contain bg-gray-50" />
                 ) : (
-                  <div className="w-full h-40 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
                 )}
 
                 {/* Checkbox in select mode */}
