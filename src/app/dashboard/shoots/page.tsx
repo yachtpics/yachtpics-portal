@@ -49,7 +49,8 @@ export default async function ShootsPage() {
                 const date = shoot.shoot_date
                   ? new Date(shoot.shoot_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                   : "—";
-                const vessel = (shoot.listings as { vessel_name: string | null } | null)?.vessel_name ?? "—";
+                const listingArr = shoot.listings as { vessel_name: string | null }[] | null;
+                const vessel = (Array.isArray(listingArr) ? listingArr[0] : listingArr)?.vessel_name ?? "—";
 
                 return (
                   <tr key={shoot.id} className="hover:bg-gray-50 transition-colors">
