@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -43,6 +44,8 @@ export default function BrokerListingPage() {
   const [dragOver, setDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxTouch, setLightboxTouch] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -310,10 +313,10 @@ export default function BrokerListingPage() {
       onDragOver={handlePageDragOver}
       onDrop={handlePageDrop}
     >
-      {/* Lightbox overlay */}
-      {lightboxIndex !== null && photos[lightboxIndex]?.url && (
+      {/* Lightbox overlay — rendered in a portal so it escapes overflow:auto */}
+      {mounted && lightboxIndex !== null && photos[lightboxIndex]?.url && createPortal(
         <div
-          className="fixed inset-0 z-50 bg-black/95 flex flex-col"
+          className="fixed inset-0 z-[9999] bg-black/95 flex flex-col"
           onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
           onTouchEnd={(e) => {
             if (lightboxTouch === null) return;
@@ -373,7 +376,8 @@ export default function BrokerListingPage() {
               </button>
             ))}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Full-page drop overlay */}
