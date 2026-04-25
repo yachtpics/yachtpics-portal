@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export default async function ListingsPage() {
   const supabase = await createClient();
@@ -24,6 +25,12 @@ export default async function ListingsPage() {
             View your photos, toggle visibility, and reorder your gallery.
           </p>
         </div>
+        <Link
+          href="/dashboard/listings/new"
+          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+        >
+          + New Listing
+        </Link>
       </div>
 
       {(!listings || listings.length === 0) ? (
@@ -85,7 +92,7 @@ function ListingRow({ listing }: { listing: {
   });
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-6 py-4 flex items-center justify-between hover:border-[#d4a843] transition-colors">
+    <Link href={`/dashboard/listings/${listing.id}`} className="bg-white border border-gray-200 rounded-xl px-6 py-4 flex items-center justify-between hover:border-[#d4a843] transition-colors">
       <div>
         <p className="text-sm font-semibold text-gray-900">
           {listing.vessel_name ?? "Untitled vessel"}
@@ -111,6 +118,6 @@ function ListingRow({ listing }: { listing: {
           {listing.status}
         </span>
       </div>
-    </div>
+    </Link>
   );
 }
