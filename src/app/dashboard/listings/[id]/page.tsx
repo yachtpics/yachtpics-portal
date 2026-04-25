@@ -30,6 +30,7 @@ export default function BrokerListingPage() {
   const id = params.id as string;
 
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean } | null>(null);
+  const [subStatus, setSubStatus] = useState<string | null>(null);
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -99,6 +100,12 @@ export default function BrokerListingPage() {
 
     if (!l) { router.push("/dashboard/listings"); return; }
     setListing(l);
+
+    const { data: sub } = await supabase.from("subscriptions")
+      .select("status")
+      .eq("broker_id", user.id)
+      .single();
+    setSubStatus(sub?.status ?? null);
 
     const { data: p } = await supabase.from("photos")
       .select("id, storage_path, filename, category, display_order, is_visible")
@@ -612,7 +619,7 @@ export default function BrokerListingPage() {
                   Unpublish
                 </button>
               </>
-            ) : (
+            ) : (subStatus === "active" || subStatus === "trialing") ? (
               <button
                 onClick={publishSlideshow}
                 disabled={slideshowWorking || photos.filter(p => p.is_visible).length === 0}
@@ -620,6 +627,13 @@ export default function BrokerListingPage() {
               >
                 {slideshowWorking ? "Creating..." : "Create Slideshow"}
               </button>
+            ) : (
+              <Link
+                href="/dashboard/billing"
+                className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              >
+                Upgrade to Unlock
+              </Link>
             )}
           </div>
         </div>
