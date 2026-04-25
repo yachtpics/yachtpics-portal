@@ -4,6 +4,7 @@ import { stripe } from "@/lib/stripe";
 import { PLANS } from "@/lib/plans";
 
 export async function POST(req: NextRequest) {
+  try {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -12,7 +13,7 @@ export async function POST(req: NextRequest) {
 
   // Validate priceId is one of ours
   const plan = PLANS.find((p) => p.priceId === priceId);
-  if (!plan) return NextResponse.json({ error: "Invalid plan" }, { status: 400 });
+  if (!plan) return NextResponse.json({ error: `Invalid plan. Received: ${priceId}` }, { status: 400 });
 
   // Get broker's profile for prefill
   const { data: profile } = await supabase
@@ -61,4 +62,8 @@ export async function POST(req: NextRequest) {
   });
 
   return NextResponse.json({ url: session.url });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
