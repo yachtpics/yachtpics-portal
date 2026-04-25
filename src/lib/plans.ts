@@ -5,7 +5,7 @@ export const PLANS = [
     name: "Starter",
     description: "1–5 active listings",
     price: 49,
-    priceId: "price_1TQCGOGRZYGqifroh3LNC0i8",
+    priceId: "price_1TQCVIK5G1w3hzIshZWGPHIV",
   },
   {
     id: "growth",
