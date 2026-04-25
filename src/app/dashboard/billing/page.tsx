@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { PLANS } from "@/lib/stripe";
+import { PLANS } from "@/lib/plans";
 
 type Subscription = {
   status: string | null;
@@ -50,9 +50,19 @@ export default function BillingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ priceId }),
       });
-      const { url, error } = await res.json();
-      if (error) { alert(error); return; }
-      window.location.href = url;
+      const text = await res.text();
+      let data: { url?: string; error?: string };
+      try {
+        data = JSON.parse(text);
+      } catch {
+        alert(`Unexpected response: ${text.slice(0, 200)}`);
+        return;
+      }
+      if (data.error) { alert(`Error: ${data.error}`); return; }
+      if (!data.url) { alert("No checkout URL returned"); return; }
+      window.location.href = data.url;
+    } catch (err) {
+      alert(`Request failed: ${String(err)}`);
     } finally {
       setCheckoutLoading(null);
     }
