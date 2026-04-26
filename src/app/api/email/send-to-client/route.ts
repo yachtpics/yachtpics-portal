@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { data: listing } = await supabaseAdmin
       .from("listings")
-      .select("id, vessel_name, location, broker_id, slideshow_slug, slideshow_published, profiles(first_name, last_name, brokerage, display_email)")
+      .select("id, vessel_name, broker_id, slideshow_slug, slideshow_published")
       .eq("id", listingId)
       .single();
 
@@ -29,7 +29,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const profile = listing.profiles as unknown as { first_name: string | null; last_name: string | null; brokerage: string | null; display_email: string | null } | null;
+    const { data: profile } = await supabaseAdmin
+      .from("profiles")
+      .select("first_name, last_name, brokerage, display_email")
+      .eq("id", user.id)
+      .single();
+
     const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : "Your broker";
     const brokerage = profile?.brokerage ?? "";
     const brokerEmail = profile?.display_email;
