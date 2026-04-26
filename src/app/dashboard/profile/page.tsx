@@ -88,20 +88,17 @@ export default function ProfilePage() {
   }
 
   async function uploadLogo(file: File) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
     setUploadingLogo(true);
-    const ext = file.name.split(".").pop();
-    const path = `${user.id}/logo.${ext}`;
-    const { error } = await supabase.storage.from("broker-logos").upload(path, file, { upsert: true });
-    if (!error) {
-      const { data } = supabase.storage.from("broker-logos").getPublicUrl(path);
-      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
-      await supabase.from("broker_details").update({ logo_url: publicUrl }).eq("id", user.id);
-      setLogoUrl(publicUrl);
-      setMessage({ type: "success", text: "Logo uploaded successfully." });
+    setMessage(null);
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/logo/upload", { method: "POST", body: formData });
+    const data = await res.json();
+    if (!res.ok) {
+      setMessage({ type: "error", text: data.error ?? "Upload failed. Please try again." });
     } else {
-      setMessage({ type: "error", text: "Logo upload failed. Please try again." });
+      setLogoUrl(data.url);
+      setMessage({ type: "success", text: "Logo uploaded successfully." });
     }
     setUploadingLogo(false);
   }
