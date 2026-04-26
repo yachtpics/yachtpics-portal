@@ -110,8 +110,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: `${brokerName} via YachtPics <hello@yachtpics.com>`,
-        reply_to: brokerEmail ?? undefined,
+        from: `${brokerName} <hello@yachtpics.com>`,
+        reply_to: brokerEmail ? [brokerEmail] : undefined,
         to: clientEmail,
         subject: `${vesselName} — from ${brokerName}`,
         html,
