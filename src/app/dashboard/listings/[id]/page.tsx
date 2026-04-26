@@ -50,6 +50,8 @@ export default function BrokerListingPage() {
   const [message, setMessage] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
+  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxTouch, setLightboxTouch] = useState<number | null>(null);
@@ -211,6 +213,40 @@ export default function BrokerListingPage() {
   function clearSelection() {
     setSelectedIds(new Set());
     setSelectMode(false);
+  }
+
+  async function deletePhoto(photoId: string, storagePath: string) {
+    await supabase.storage.from("listing-photos").remove([storagePath]);
+    await supabase.from("photos").delete().eq("id", photoId);
+    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+    setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
+  }
+
+  async function deleteSelected() {
+    if (selectedIds.size === 0) return;
+    setDeleting(true);
+    const toDelete = photos.filter((p) => selectedIds.has(p.id));
+    await Promise.all(toDelete.map((p) => supabase.storage.from("listing-photos").remove([p.storage_path])));
+    await Promise.all(toDelete.map((p) => supabase.from("photos").delete().eq("id", p.id)));
+    setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    setDeleting(false);
+    setMessage(`${toDelete.length} photo${toDelete.length !== 1 ? "s" : ""} deleted.`);
+    setTimeout(() => setMessage(""), 3000);
+  }
+
+  async function deleteAll() {
+    setDeleting(true);
+    setConfirmDeleteAll(false);
+    await Promise.all(photos.map((p) => supabase.storage.from("listing-photos").remove([p.storage_path])));
+    await supabase.from("photos").delete().eq("listing_id", id);
+    setPhotos([]);
+    setSelectedIds(new Set());
+    setSelectMode(false);
+    setDeleting(false);
+    setMessage("All photos deleted.");
+    setTimeout(() => setMessage(""), 3000);
   }
 
   async function downloadPhotos(targets: Photo[]) {
@@ -447,6 +483,12 @@ export default function BrokerListingPage() {
               >
                 {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download All (${visiblePhotos.length})`}
               </button>
+              <button
+                onClick={() => setConfirmDeleteAll(true)}
+                className="bg-white border border-gray-200 hover:border-red-300 text-red-500 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+              >
+                Delete All
+              </button>
             </>
           )}
 
@@ -459,13 +501,22 @@ export default function BrokerListingPage() {
                 Cancel
               </button>
               {selectedIds.size > 0 && (
-                <button
-                  onClick={() => downloadPhotos(selectedPhotos)}
-                  disabled={downloading}
-                  className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
-                >
-                  {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download ${selectedIds.size} Photo${selectedIds.size !== 1 ? "s" : ""}`}
-                </button>
+                <>
+                  <button
+                    onClick={() => downloadPhotos(selectedPhotos)}
+                    disabled={downloading}
+                    className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                  >
+                    {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download ${selectedIds.size}`}
+                  </button>
+                  <button
+                    onClick={deleteSelected}
+                    disabled={deleting}
+                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                  >
+                    {deleting ? "Deleting..." : `🗑 Delete ${selectedIds.size}`}
+                  </button>
+                </>
               )}
             </>
           )}
@@ -519,6 +570,7 @@ export default function BrokerListingPage() {
                 onDownload={() => downloadPhotos([photo])}
                 onToggleVisibility={() => toggleVisibility(photo.id, photo.is_visible)}
                 onUpdateCategory={(cat) => updateCategory(photo.id, cat)}
+                onDelete={() => deletePhoto(photo.id, photo.storage_path)}
               />
             );
           })}
@@ -532,6 +584,33 @@ export default function BrokerListingPage() {
             className="mt-3 border-2 border-dashed border-gray-200 rounded-xl py-4 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
           >
             <p className="text-gray-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
+          </div>
+        </div>
+      )}
+
+      {/* Delete All confirmation dialog */}
+      {confirmDeleteAll && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete all photos?</h3>
+            <p className="text-gray-500 text-sm mb-6">
+              This will permanently delete all {photos.length} photo{photos.length !== 1 ? "s" : ""}. This can&apos;t be undone.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setConfirmDeleteAll(false)}
+                className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium py-2.5 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteAll}
+                disabled={deleting}
+                className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
+              >
+                {deleting ? "Deleting..." : "Delete All"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -659,7 +738,7 @@ export default function BrokerListingPage() {
 // ─── Sortable photo card ───────────────────────────────────────────────────────
 function SortablePhotoCard({
   photo, index, isSelected, selectMode, downloading, tapStart,
-  onTap, onDownload, onToggleVisibility, onUpdateCategory,
+  onTap, onDownload, onToggleVisibility, onUpdateCategory, onDelete,
 }: {
   photo: { id: string; url: string | null; filename: string | null; category: string | null; is_visible: boolean };
   index: number;
@@ -671,6 +750,7 @@ function SortablePhotoCard({
   onDownload: () => void;
   onToggleVisibility: () => void;
   onUpdateCategory: (cat: string) => void;
+  onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const style = {
@@ -751,6 +831,10 @@ function SortablePhotoCard({
             className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
             {photo.is_visible ? "Hide" : "Show"}
           </button>
+          <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
+            Delete
+          </button>
         </div>
       )}
 
@@ -783,6 +867,10 @@ function SortablePhotoCard({
             <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
               className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
               {photo.is_visible ? "Hide" : "Show"}
+            </button>
+            <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+              className="flex-1 text-center text-xs font-medium text-red-500 py-1.5 rounded bg-red-50 hover:bg-red-100 transition-colors">
+              Delete
             </button>
           </div>
         )}
