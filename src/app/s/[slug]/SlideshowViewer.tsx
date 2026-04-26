@@ -226,12 +226,15 @@ export default function SlideshowViewer({ listing, broker, photos }: Props) {
       <div className="border-t border-[#1e3a5f] px-5 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={broker.logoUrl}
-              alt={broker.brokerage ?? broker.name}
-              className="h-9 w-auto object-contain shrink-0"
-            />
+            <div className="shrink-0 h-10 w-24 bg-white rounded flex items-center justify-center p-1.5 overflow-hidden">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={broker.logoUrl}
+                alt={broker.brokerage ?? broker.name}
+                className="max-h-full max-w-full object-contain"
+                onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = "none"; }}
+              />
+            </div>
           )}
           <div className="min-w-0">
             <p className="text-white text-sm font-semibold truncate">{broker.name}</p>
