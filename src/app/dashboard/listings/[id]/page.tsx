@@ -219,8 +219,11 @@ export default function BrokerListingPage() {
   async function deletePhoto(photoId: string, storagePath: string) {
     // Immediately remove from view to avoid "no preview" ghost
     setDeletingIds((prev) => new Set(Array.from(prev).concat(photoId)));
-    await supabase.storage.from("listing-photos").remove([storagePath]);
-    await supabase.from("photos").delete().eq("id", photoId);
+    await fetch("/api/photos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoId, storagePath }),
+    });
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
     setDeletingIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
