@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     const { data: profile } = await supabaseAdmin
       .from("profiles")
       .select("first_name, last_name, brokerage, display_email")
-      .eq("id", user.id)
+      .eq("id", listing.broker_id)
       .single();
 
     const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : "Your broker";
