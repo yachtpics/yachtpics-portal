@@ -130,7 +130,6 @@ export default function SignupPage() {
               onChange={(e) => setForm({ ...form, brokerage: e.target.value })}
               required
               className={inputClass}
-              placeholder="HMY Yacht Sales"
             />
           </div>
 
