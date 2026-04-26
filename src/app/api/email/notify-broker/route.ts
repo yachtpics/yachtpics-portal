@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
     const brokerEmail = profile?.display_email;
     const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : "there";
     const vesselName = listing.vessel_name ?? "your vessel";
-    const portalUrl = `https://yachtpics-portal.vercel.app/dashboard/listings/${listing.id}`;
+    const portalUrl = `https://portal.yachtpics.com/dashboard/listings/${listing.id}`;
 
     if (!brokerEmail) return NextResponse.json({ error: "Broker has no email on file" }, { status: 400 });
 
