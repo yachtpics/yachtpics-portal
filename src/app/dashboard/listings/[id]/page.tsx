@@ -61,6 +61,13 @@ export default function BrokerListingPage() {
   useEffect(() => setMounted(true), []);
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef = useRef<HTMLInputElement>(null);
+
+  // Documents
+  interface Document { id: string; storage_path: string; filename: string | null; created_at: string; }
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
 
   // Page-level drag detection — reliable across all child elements
   function handlePageDragEnter(e: React.DragEvent) {
@@ -129,7 +136,56 @@ export default function BrokerListingPage() {
     }));
 
     setPhotos(withUrls);
+
+    const { data: docs } = await supabase.from("documents")
+      .select("id, storage_path, filename, created_at")
+      .eq("listing_id", id)
+      .order("created_at");
+    setDocuments(docs ?? []);
+
     setLoading(false);
+  }
+
+  async function handleDocFiles(files: FileList | null) {
+    if (!files) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUploadingDoc(true);
+    const fileArr = Array.from(files).filter(f => f.type === "application/pdf");
+    for (const file of fileArr) {
+      const path = `${user.id}/${id}/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("listing-documents").upload(path, file, { upsert: false });
+      if (!error) {
+        const { data: newDoc } = await supabase.from("documents").insert({
+          listing_id: id,
+          storage_path: path,
+          filename: file.name,
+          uploaded_by: user.id,
+        }).select().single();
+        if (newDoc) setDocuments(prev => [...prev, newDoc as Document]);
+      }
+    }
+    setUploadingDoc(false);
+  }
+
+  async function deleteDocument(docId: string, storagePath: string) {
+    setDeletingDocIds(prev => new Set(Array.from(prev).concat(docId)));
+    await fetch("/api/documents/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ documentId: docId, storagePath }),
+    });
+    setDocuments(prev => prev.filter(d => d.id !== docId));
+    setDeletingDocIds(prev => { const next = new Set(prev); next.delete(docId); return next; });
+  }
+
+  async function downloadDocument(storagePath: string, filename: string | null) {
+    const { data } = await supabase.storage.from("listing-documents").createSignedUrl(storagePath, 60);
+    if (!data?.signedUrl) return;
+    const a = window.document.createElement("a");
+    a.href = data.signedUrl;
+    a.download = filename ?? "document.pdf";
+    a.click();
   }
 
   async function handleFiles(files: FileList | null) {
@@ -621,6 +677,59 @@ export default function BrokerListingPage() {
           </div>
         </div>
       )}
+
+      {/* Documents section */}
+      <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
+        <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Listing Documents</h2>
+            <p className="text-gray-500 text-sm mt-0.5">Upload PDF brochures or spec sheets for this listing.</p>
+          </div>
+          <button
+            onClick={() => docInputRef.current?.click()}
+            disabled={uploadingDoc}
+            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            {uploadingDoc ? "Uploading…" : "＋ Upload PDF"}
+          </button>
+          <input ref={docInputRef} type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => handleDocFiles(e.target.files)} />
+        </div>
+
+        {documents.length === 0 ? (
+          <div
+            onClick={() => docInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+          >
+            <p className="text-gray-400 text-sm">No documents yet — click to upload a PDF</p>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {documents.filter(d => !deletingDocIds.has(d.id)).map((doc) => (
+              <div key={doc.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
+                <span className="text-red-500 text-lg shrink-0">📄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-800 truncate">{doc.filename ?? "document.pdf"}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </div>
+                <button
+                  onClick={() => downloadDocument(doc.storage_path, doc.filename)}
+                  className="text-xs font-medium text-[#c49a35] hover:text-[#b08c2a] transition-colors shrink-0"
+                >
+                  Download
+                </button>
+                <button
+                  onClick={() => deleteDocument(doc.id, doc.storage_path)}
+                  className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors shrink-0"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Slideshow section */}
       <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
