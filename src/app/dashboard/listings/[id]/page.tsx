@@ -218,7 +218,7 @@ export default function BrokerListingPage() {
 
   async function deletePhoto(photoId: string, storagePath: string) {
     // Immediately remove from view to avoid "no preview" ghost
-    setDeletingIds((prev) => new Set([...prev, photoId]));
+    setDeletingIds((prev) => new Set(Array.from(prev).concat(photoId)));
     await supabase.storage.from("listing-photos").remove([storagePath]);
     await supabase.from("photos").delete().eq("id", photoId);
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
