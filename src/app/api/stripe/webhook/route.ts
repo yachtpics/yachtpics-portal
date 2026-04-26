@@ -28,7 +28,11 @@ export async function POST(req: NextRequest) {
 
     const priceId = subscription.items.data[0]?.price.id;
     const status = subscription.status; // active, trialing, past_due, canceled, etc.
-    const periodEnd = new Date(subscription.current_period_end * 1000).toISOString();
+    // current_period_end moved to items in newer Stripe API versions — handle both
+    const periodEndRaw = (subscription as any).current_period_end
+      ?? (subscription as any).items?.data?.[0]?.current_period_end
+      ?? null;
+    const periodEnd = periodEndRaw ? new Date(periodEndRaw * 1000).toISOString() : null;
 
     await supabase.from("subscriptions").upsert(
       {
