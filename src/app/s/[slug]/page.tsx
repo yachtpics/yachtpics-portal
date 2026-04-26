@@ -57,6 +57,8 @@ export default async function PublicSlideshowPage({
     })
   );
 
+  console.log("[slideshow] brokerDetails:", JSON.stringify(brokerDetails));
+
   const broker = {
     name:
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
