@@ -6,6 +6,14 @@ import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import JSZip from "jszip";
+import {
+  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext, rectSortingStrategy, arrayMove, useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 const PHOTO_CATEGORIES = [
   "Bow", "Stern", "Port", "Starboard", "Helm", "Cockpit",
@@ -310,6 +318,24 @@ export default function BrokerListingPage() {
   const visiblePhotos = photos.filter(p => p.is_visible);
   const selectedPhotos = photos.filter(p => selectedIds.has(p.id));
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
+  );
+
+  async function handleDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = photos.findIndex(p => p.id === active.id);
+    const newIndex = photos.findIndex(p => p.id === over.id);
+    const newPhotos = arrayMove(photos, oldIndex, newIndex);
+    setPhotos(newPhotos);
+    await Promise.all(
+      newPhotos.map((photo, idx) =>
+        supabase.from("photos").update({ display_order: idx }).eq("id", photo.id)
+      )
+    );
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading...</div>;
   if (!listing) return null;
 
@@ -475,111 +501,30 @@ export default function BrokerListingPage() {
         </div>
       ) : (
         <div>
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {photos.map((photo) => {
             const isSelected = selectedIds.has(photo.id);
             return (
-              <div
+              <SortablePhotoCard
                 key={photo.id}
-                onClick={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
-                onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
-                onTouchEnd={(e) => {
-                  if (!tapStart.current) return;
-                  const dx = Math.abs(e.changedTouches[0].clientX - tapStart.current.x);
-                  const dy = Math.abs(e.changedTouches[0].clientY - tapStart.current.y);
-                  tapStart.current = null;
-                  if (dx < 8 && dy < 8) {
-                    e.preventDefault();
-                    selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo));
-                  }
-                }}
-                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer touch-manipulation ${
-                  isSelected ? "border-[#d4a843] shadow-md" :
-                  photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
-                }`}
-              >
-                {photo.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={photo.url}
-                    alt={photo.filename ?? ""}
-                    className="w-full h-48 object-contain bg-gray-50 pointer-events-none"
-                  />
-                ) : (
-                  <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs pointer-events-none">No preview</div>
-                )}
-
-                {/* Checkbox in select mode */}
-                {selectMode && (
-                  <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                    isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
-                  }`}>
-                    {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
-                  </div>
-                )}
-
-                {/* Hover actions — desktop only (overlay on hover) */}
-                {!selectMode && (
-                  <div className="hidden md:flex absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors items-center justify-center gap-2 opacity-0 hover:opacity-100">
-                    {photo.url && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); downloadPhotos([photo]); }}
-                        className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
-                      >
-                        Download
-                      </button>
-                    )}
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleVisibility(photo.id, photo.is_visible); }}
-                      className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
-                    >
-                      {photo.is_visible ? "Hide" : "Show"}
-                    </button>
-                  </div>
-                )}
-
-                <div className="p-2 bg-white">
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs font-medium text-gray-500 shrink-0">
-                      {String(photos.indexOf(photo) + 1).padStart(2, "0")} ·
-                    </span>
-                    <select
-                      value={photo.category ?? "Other"}
-                      onChange={(e) => { e.stopPropagation(); updateCategory(photo.id, e.target.value); }}
-                      onClick={(e) => e.stopPropagation()}
-                      className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
-                    >
-                      {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    {!photo.is_visible && <span className="text-gray-400 text-xs shrink-0">· hidden</span>}
-                  </div>
-                  {photo.filename && (
-                    <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
-                  )}
-                  {/* Mobile-only action buttons — always visible on touch devices */}
-                  {!selectMode && (
-                    <div className="flex md:hidden items-center gap-2 mt-2 pt-2 border-t border-gray-100">
-                      {photo.url && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); downloadPhotos([photo]); }}
-                          className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
-                        >
-                          ⬇ Download
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => { e.stopPropagation(); toggleVisibility(photo.id, photo.is_visible); }}
-                        className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors"
-                      >
-                        {photo.is_visible ? "Hide" : "Show"}
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+                photo={photo}
+                index={photos.indexOf(photo)}
+                isSelected={isSelected}
+                selectMode={selectMode}
+                downloading={downloading}
+                tapStart={tapStart}
+                onTap={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
+                onDownload={() => downloadPhotos([photo])}
+                onToggleVisibility={() => toggleVisibility(photo.id, photo.is_visible)}
+                onUpdateCategory={(cat) => updateCategory(photo.id, cat)}
+              />
             );
           })}
           </div>
+          </SortableContext>
+          </DndContext>
 
           {/* Drop zone strip */}
           <div
@@ -705,6 +650,141 @@ export default function BrokerListingPage() {
               </button>
             </div>
           </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sortable photo card ───────────────────────────────────────────────────────
+function SortablePhotoCard({
+  photo, index, isSelected, selectMode, downloading, tapStart,
+  onTap, onDownload, onToggleVisibility, onUpdateCategory,
+}: {
+  photo: { id: string; url: string | null; filename: string | null; category: string | null; is_visible: boolean };
+  index: number;
+  isSelected: boolean;
+  selectMode: boolean;
+  downloading: boolean;
+  tapStart: React.MutableRefObject<{ x: number; y: number } | null>;
+  onTap: () => void;
+  onDownload: () => void;
+  onToggleVisibility: () => void;
+  onUpdateCategory: (cat: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 10 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`relative rounded-lg overflow-hidden border-2 transition-colors touch-manipulation ${
+        isSelected ? "border-[#d4a843] shadow-md" :
+        photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
+      }`}
+    >
+      {/* Drag handle — top-right grip */}
+      {!selectMode && (
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute top-1.5 right-1.5 z-10 bg-black/40 hover:bg-black/60 rounded p-1 cursor-grab active:cursor-grabbing touch-manipulation"
+          title="Drag to reorder"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+            <circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/>
+            <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
+            <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
+          </svg>
+        </div>
+      )}
+
+      {/* Photo */}
+      <div
+        onClick={onTap}
+        onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+        onTouchEnd={(e) => {
+          if (!tapStart.current) return;
+          const dx = Math.abs(e.changedTouches[0].clientX - tapStart.current.x);
+          const dy = Math.abs(e.changedTouches[0].clientY - tapStart.current.y);
+          tapStart.current = null;
+          if (dx < 8 && dy < 8) { e.preventDefault(); onTap(); }
+        }}
+        className="cursor-pointer"
+      >
+        {photo.url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-48 object-contain bg-gray-50 pointer-events-none" />
+        ) : (
+          <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs pointer-events-none">No preview</div>
+        )}
+      </div>
+
+      {/* Checkbox in select mode */}
+      {selectMode && (
+        <div
+          onClick={onTap}
+          className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
+            isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
+          }`}
+        >
+          {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
+        </div>
+      )}
+
+      {/* Hover actions — desktop only */}
+      {!selectMode && (
+        <div className="hidden md:flex absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors items-center justify-center gap-2 opacity-0 hover:opacity-100 pointer-events-none hover:pointer-events-auto">
+          {photo.url && (
+            <button onClick={(e) => { e.stopPropagation(); onDownload(); }}
+              className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
+              Download
+            </button>
+          )}
+          <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
+            className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
+            {photo.is_visible ? "Hide" : "Show"}
+          </button>
+        </div>
+      )}
+
+      {/* Caption row */}
+      <div className="p-2 bg-white">
+        <div className="flex items-center gap-1">
+          <span className="text-xs font-medium text-gray-500 shrink-0">{String(index + 1).padStart(2, "0")} ·</span>
+          <select
+            value={photo.category ?? "Other"}
+            onChange={(e) => { e.stopPropagation(); onUpdateCategory(e.target.value); }}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
+          >
+            {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          {!photo.is_visible && <span className="text-gray-400 text-xs shrink-0">· hidden</span>}
+        </div>
+        {photo.filename && (
+          <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
+        )}
+        {/* Mobile action buttons */}
+        {!selectMode && (
+          <div className="flex md:hidden items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+            {photo.url && (
+              <button onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
+                ⬇ Download
+              </button>
+            )}
+            <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
+              className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
+              {photo.is_visible ? "Hide" : "Show"}
+            </button>
+          </div>
         )}
       </div>
     </div>
