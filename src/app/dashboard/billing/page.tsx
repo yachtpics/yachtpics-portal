@@ -177,6 +177,18 @@ export default function BillingPage() {
         </div>
       )}
 
+      {/* Free vs paid explainer */}
+      <div className="mb-8 bg-[#050b14]/[0.03] border border-gray-200 rounded-xl px-5 py-4 flex gap-4">
+        <div className="shrink-0 text-[#d4a843] text-xl mt-0.5">⚓</div>
+        <div>
+          <p className="text-sm font-semibold text-gray-800">Photo downloads are always free</p>
+          <p className="text-sm text-gray-500 mt-1">
+            When YachtPics delivers your photos, you can view and download them at no cost — no subscription required.
+            A paid plan unlocks photo uploading and the slideshow builder, so you can organize your listing photos and share a branded presentation directly with clients.
+          </p>
+        </div>
+      </div>
+
       {/* Plan grid */}
       <div>
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-4">
