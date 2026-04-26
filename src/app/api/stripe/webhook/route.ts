@@ -45,17 +45,14 @@ export async function POST(req: NextRequest) {
       ?? null;
     const periodEnd = periodEndRaw ? new Date(periodEndRaw * 1000).toISOString() : null;
 
-    await supabase.from("subscriptions").upsert(
-      {
-        broker_id: userId,
+    await supabase.from("subscriptions")
+      .update({
         stripe_subscription_id: subscription.id,
         stripe_price_id: priceId,
         status,
         current_period_end: periodEnd,
-        plan: "paid",
-      },
-      { onConflict: "broker_id" }
-    );
+      })
+      .eq("broker_id", userId);
   }
 
   switch (event.type) {
@@ -74,7 +71,11 @@ export async function POST(req: NextRequest) {
     }
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
-      const userId = subscription.metadata?.supabase_user_id;
+      let userId = subscription.metadata?.supabase_user_id;
+      if (!userId && subscription.customer) {
+        const { data } = await supabase.from("subscriptions").select("broker_id").eq("stripe_customer_id", subscription.customer as string).single();
+        userId = data?.broker_id;
+      }
       if (userId) {
         await supabase.from("subscriptions").update({
           status: "canceled",
