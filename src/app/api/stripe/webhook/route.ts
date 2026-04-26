@@ -23,7 +23,18 @@ export async function POST(req: NextRequest) {
   );
 
   async function upsertSubscription(subscription: Stripe.Subscription) {
-    const userId = subscription.metadata?.supabase_user_id;
+    let userId = subscription.metadata?.supabase_user_id;
+
+    // Fallback: look up broker by stripe_customer_id if metadata is missing
+    if (!userId && subscription.customer) {
+      const { data } = await supabase
+        .from("subscriptions")
+        .select("broker_id")
+        .eq("stripe_customer_id", subscription.customer as string)
+        .single();
+      userId = data?.broker_id;
+    }
+
     if (!userId) return;
 
     const priceId = subscription.items.data[0]?.price.id;
