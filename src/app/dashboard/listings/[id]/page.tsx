@@ -52,6 +52,7 @@ export default function BrokerListingPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxTouch, setLightboxTouch] = useState<number | null>(null);
@@ -216,10 +217,13 @@ export default function BrokerListingPage() {
   }
 
   async function deletePhoto(photoId: string, storagePath: string) {
+    // Immediately remove from view to avoid "no preview" ghost
+    setDeletingIds((prev) => new Set([...prev, photoId]));
     await supabase.storage.from("listing-photos").remove([storagePath]);
     await supabase.from("photos").delete().eq("id", photoId);
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
+    setDeletingIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
   }
 
   async function deleteSelected() {
@@ -555,7 +559,7 @@ export default function BrokerListingPage() {
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-          {photos.map((photo) => {
+          {photos.filter(p => !deletingIds.has(p.id)).map((photo) => {
             const isSelected = selectedIds.has(photo.id);
             return (
               <SortablePhotoCard
@@ -753,6 +757,7 @@ function SortablePhotoCard({
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -831,10 +836,23 @@ function SortablePhotoCard({
             className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
             {photo.is_visible ? "Hide" : "Show"}
           </button>
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-            className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
-            Delete
-          </button>
+          {confirmDelete ? (
+            <>
+              <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+                className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
+                Cancel
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded transition-colors">
+                Confirm
+              </button>
+            </>
+          ) : (
+            <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
+              Delete
+            </button>
+          )}
         </div>
       )}
 
@@ -857,7 +875,11 @@ function SortablePhotoCard({
         )}
         {/* Mobile action buttons */}
         {!selectMode && (
-          <div className="flex md:hidden items-center gap-2 mt-2 pt-2 border-t border-gray-100">
+          <div
+            className="flex md:hidden items-center gap-2 mt-2 pt-2 border-t border-gray-100"
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchEnd={(e) => e.stopPropagation()}
+          >
             {photo.url && (
               <button onClick={(e) => { e.stopPropagation(); onDownload(); }}
                 className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
@@ -868,10 +890,23 @@ function SortablePhotoCard({
               className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
               {photo.is_visible ? "Hide" : "Show"}
             </button>
-            <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-              className="flex-1 text-center text-xs font-medium text-red-500 py-1.5 rounded bg-red-50 hover:bg-red-100 transition-colors">
-              Delete
-            </button>
+            {confirmDelete ? (
+              <>
+                <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+                  className="flex-1 text-center text-xs font-medium text-gray-500 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
+                  Cancel
+                </button>
+                <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  className="flex-1 text-center text-xs font-bold text-white py-1.5 rounded bg-red-500 hover:bg-red-600 transition-colors">
+                  Confirm
+                </button>
+              </>
+            ) : (
+              <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                className="flex-1 text-center text-xs font-medium text-red-500 py-1.5 rounded bg-red-50 hover:bg-red-100 transition-colors">
+                Delete
+              </button>
+            )}
           </div>
         )}
       </div>

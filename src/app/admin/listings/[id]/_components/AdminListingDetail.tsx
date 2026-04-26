@@ -48,6 +48,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -369,12 +370,23 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
                       >
                         {photo.is_visible ? "Hide" : "Show"}
                       </button>
-                      <button
-                        onClick={() => deletePhoto(photo.id, photo.storage_path)}
-                        className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors"
-                      >
-                        Delete
-                      </button>
+                      {confirmDeleteId === photo.id ? (
+                        <>
+                          <button onClick={() => setConfirmDeleteId(null)}
+                            className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
+                            Cancel
+                          </button>
+                          <button onClick={() => { setConfirmDeleteId(null); deletePhoto(photo.id, photo.storage_path); }}
+                            className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded transition-colors">
+                            Confirm
+                          </button>
+                        </>
+                      ) : (
+                        <button onClick={() => setConfirmDeleteId(photo.id)}
+                          className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
+                          Delete
+                        </button>
+                      )}
                     </div>
                   )}
 
