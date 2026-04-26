@@ -39,18 +39,10 @@ export async function POST(req: NextRequest) {
 
     const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
 
-    // Try broker_id first (used by slideshow page), fall back to id
-    let { error: dbError } = await supabaseAdmin
+    const { error: dbError } = await supabaseAdmin
       .from("broker_details")
       .update({ logo_url: publicUrl })
-      .eq("broker_id", user.id);
-
-    if (dbError) {
-      ({ error: dbError } = await supabaseAdmin
-        .from("broker_details")
-        .update({ logo_url: publicUrl })
-        .eq("id", user.id));
-    }
+      .eq("id", user.id);
 
     if (dbError) {
       return NextResponse.json({ error: `DB update failed: ${dbError.message}` }, { status: 500 });

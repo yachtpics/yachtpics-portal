@@ -38,7 +38,7 @@ export default async function PublicSlideshowPage({
       supabase
         .from("broker_details")
         .select("brokerage_name, phone, website, logo_url")
-        .eq("broker_id", listing.broker_id)
+        .eq("id", listing.broker_id)
         .single(),
       supabase
         .from("photos")

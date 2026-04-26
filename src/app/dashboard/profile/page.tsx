@@ -71,7 +71,7 @@ export default function ProfilePage() {
 
     const { data: b } = await supabase.from("broker_details")
       .select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url")
-      .eq("broker_id", user.id).single();
+      .eq("id", user.id).single();
 
     const { data: a } = await supabase.from("broker_assistants")
       .select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)")
@@ -106,7 +106,7 @@ export default function ProfilePage() {
   async function removeLogo() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from("broker_details").update({ logo_url: null }).eq("broker_id", user.id);
+    await supabase.from("broker_details").update({ logo_url: null }).eq("id", user.id);
     setLogoUrl(null);
     setMessage({ type: "success", text: "Logo removed." });
   }
@@ -123,7 +123,7 @@ export default function ProfilePage() {
 
     const { error: e2 } = await supabase.from("broker_details")
       .update({ ...broker, updated_at: new Date().toISOString() })
-      .eq("broker_id", user.id);
+      .eq("id", user.id);
 
     if (e1 || e2) {
       setMessage({ type: "error", text: "Something went wrong. Please try again." });
