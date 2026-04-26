@@ -1,18 +1,20 @@
-import { NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export async function GET() {
-  const supabaseUser = await createServerClient();
-  const { data: { user } } = await supabaseUser.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Not logged in" }, { status: 401 });
+export async function GET(req: NextRequest) {
+  const email = req.nextUrl.searchParams.get("email");
+  if (!email) return NextResponse.json({ error: "Pass ?email=your@email.com" });
 
   const supabaseAdmin = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Try both columns so we can see which one finds the row
+  // Find user by email
+  const { data: { users } } = await supabaseAdmin.auth.admin.listUsers();
+  const user = users.find(u => u.email === email);
+  if (!user) return NextResponse.json({ error: "User not found" });
+
   const { data: byId } = await supabaseAdmin
     .from("broker_details")
     .select("id, broker_id, logo_url, brokerage_name")
