@@ -43,6 +43,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(listing.status);
   const [saving, setSaving] = useState(false);
+  const [notifying, setNotifying] = useState(false);
   const [message, setMessage] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,6 +111,25 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
   }
 
+  async function notifyBroker() {
+    setNotifying(true);
+    try {
+      const res = await fetch("/api/email/notify-broker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send");
+      setMessage(`Notification sent to ${broker?.display_email ?? brokerName}.`);
+    } catch (err) {
+      setMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setNotifying(false);
+      setTimeout(() => setMessage(""), 5000);
+    }
+  }
+
   async function updateStatus() {
     setSaving(true);
     await supabase.from("listings").update({ status }).eq("id", listing.id);
@@ -145,6 +165,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
             <option value="archived">Archived</option>
             <option value="sold">Sold</option>
           </select>
+          <button
+            onClick={notifyBroker}
+            disabled={notifying}
+            className="bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 transition-colors"
+          >
+            {notifying ? "Sending..." : "📧 Notify Broker"}
+          </button>
           <button
             onClick={updateStatus}
             disabled={saving}
@@ -211,30 +238,4 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
                 {/* Actions overlay */}
                 <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
                   <button
-                    onClick={() => toggleVisibility(photo.id, photo.is_visible)}
-                    className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
-                    title={photo.is_visible ? "Hide" : "Show"}
-                  >
-                    {photo.is_visible ? "Hide" : "Show"}
-                  </button>
-                  <button
-                    onClick={() => deletePhoto(photo.id, photo.storage_path)}
-                    className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-
-                {/* Category badge */}
-                <div className="p-1.5">
-                  <span className="text-xs text-gray-500">{photo.category ?? "Other"}</span>
-                  {!photo.is_visible && <span className="text-xs text-gray-400 ml-1">· hidden</span>}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+                    onClick={() => toggleVi
