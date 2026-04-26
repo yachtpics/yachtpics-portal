@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
     const { data: listing } = await supabaseAdmin
       .from("listings")
-      .select("id, vessel_name, location, broker_id, slideshow_slug, slideshow_published, profiles(first_name, last_name, brokerage)")
+      .select("id, vessel_name, location, broker_id, slideshow_slug, slideshow_published, profiles(first_name, last_name, brokerage, display_email)")
       .eq("id", listingId)
       .single();
 
@@ -29,9 +29,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const profile = listing.profiles as unknown as { first_name: string | null; last_name: string | null; brokerage: string | null } | null;
+    const profile = listing.profiles as unknown as { first_name: string | null; last_name: string | null; brokerage: string | null; display_email: string | null } | null;
     const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : "Your broker";
     const brokerage = profile?.brokerage ?? "";
+    const brokerEmail = profile?.display_email;
     const vesselName = listing.vessel_name ?? "this vessel";
     const slideshowUrl = listing.slideshow_published && listing.slideshow_slug
       ? `https://portal.yachtpics.com/s/${listing.slideshow_slug}`
@@ -109,7 +110,8 @@ export async function POST(req: NextRequest) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        from: "YachtPics <hello@yachtpics.com>",
+        from: `${brokerName} via YachtPics <hello@yachtpics.com>`,
+        reply_to: brokerEmail ?? undefined,
         to: clientEmail,
         subject: `${vesselName} — from ${brokerName}`,
         html,
