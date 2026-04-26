@@ -70,6 +70,15 @@ export default function BrokerListingPage() {
   const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
+  // Send to client
+  const [sendModal, setSendModal] = useState(false);
+  const [sendEmail, setSendEmail] = useState("");
+  const [sendMessage, setSendMessage] = useState("");
+  const [sendSlideshow, setSendSlideshow] = useState(true);
+  const [sendDocIds, setSendDocIds] = useState<Set<string>>(new Set());
+  const [sending, setSending] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState(false);
+
   // Page-level drag detection — reliable across all child elements
   function handlePageDragEnter(e: React.DragEvent) {
     e.preventDefault();
@@ -398,6 +407,32 @@ export default function BrokerListingPage() {
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
   }
 
+  async function sendToClient() {
+    if (!sendEmail) return;
+    setSending(true);
+    await fetch("/api/email/send-to-client", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        listingId: id,
+        clientEmail: sendEmail,
+        message: sendMessage,
+        includeSlideshow: sendSlideshow,
+        documentIds: Array.from(sendDocIds),
+      }),
+    });
+    setSending(false);
+    setSendSuccess(true);
+    setTimeout(() => {
+      setSendModal(false);
+      setSendSuccess(false);
+      setSendEmail("");
+      setSendMessage("");
+      setSendSlideshow(true);
+      setSendDocIds(new Set());
+    }, 2000);
+  }
+
   async function publishSlideshow() {
     setSlideshowWorking(true);
     const slug = listing?.slideshow_slug ?? Math.random().toString(36).substring(2, 10);
@@ -538,6 +573,14 @@ export default function BrokerListingPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {!selectMode && (
+            <button
+              onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendModal(true); }}
+              className="bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+            >
+              ✉ Send to Client
+            </button>
+          )}
           {photos.length > 0 && !selectMode && (
             <>
               <button
@@ -656,6 +699,123 @@ export default function BrokerListingPage() {
             <p className="text-gray-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
           </div>
         </div>
+      )}
+
+      {/* Send to Client modal */}
+      {sendModal && mounted && createPortal(
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Send to Client</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
+              </div>
+              <button onClick={() => setSendModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none transition-colors">✕</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+              {/* Client email */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Client Email <span className="text-red-400">*</span></label>
+                <input
+                  type="email"
+                  value={sendEmail}
+                  onChange={(e) => setSendEmail(e.target.value)}
+                  placeholder="client@example.com"
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors"
+                />
+              </div>
+
+              {/* Personal message */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Personal Message <span className="text-gray-400 font-normal">(optional)</span></label>
+                <textarea
+                  value={sendMessage}
+                  onChange={(e) => setSendMessage(e.target.value)}
+                  placeholder="Add a personal note to your client…"
+                  rows={3}
+                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors resize-none"
+                />
+              </div>
+
+              {/* What to include */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-2">Include in Email</label>
+                <div className="space-y-2">
+                  {/* Slideshow */}
+                  <label className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                    !listing.slideshow_published ? "opacity-40 cursor-not-allowed" : sendSlideshow ? "border-[#d4a843] bg-[#d4a843]/5" : "border-gray-200 hover:border-gray-300"
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={sendSlideshow}
+                      disabled={!listing.slideshow_published}
+                      onChange={(e) => setSendSlideshow(e.target.checked)}
+                      className="accent-[#d4a843] w-4 h-4 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-gray-800">Photo Slideshow</p>
+                      <p className="text-xs text-gray-400">{listing.slideshow_published ? "Published · clients can view online" : "Not published yet"}</p>
+                    </div>
+                  </label>
+
+                  {/* Documents */}
+                  {documents.length === 0 ? (
+                    <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 opacity-40">
+                      <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
+                      <p className="text-sm text-gray-500">No documents uploaded yet</p>
+                    </div>
+                  ) : (
+                    documents.map(doc => (
+                      <label key={doc.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                        sendDocIds.has(doc.id) ? "border-[#d4a843] bg-[#d4a843]/5" : "border-gray-200 hover:border-gray-300"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={sendDocIds.has(doc.id)}
+                          onChange={(e) => {
+                            setSendDocIds(prev => {
+                              const next = new Set(Array.from(prev));
+                              e.target.checked ? next.add(doc.id) : next.delete(doc.id);
+                              return next;
+                            });
+                          }}
+                          className="accent-[#d4a843] w-4 h-4 shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-800 truncate">📄 {doc.filename ?? "document.pdf"}</p>
+                          <p className="text-xs text-gray-400">PDF document</p>
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t border-gray-100 shrink-0">
+              {sendSuccess ? (
+                <div className="flex items-center justify-center gap-2 py-2.5 text-green-600 font-semibold text-sm">
+                  <span>✓</span> Email sent successfully
+                </div>
+              ) : (
+                <button
+                  onClick={sendToClient}
+                  disabled={sending || !sendEmail || (!sendSlideshow && sendDocIds.size === 0)}
+                  className="w-full bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-50 text-white text-sm font-semibold py-3 rounded-lg transition-colors"
+                >
+                  {sending ? "Sending…" : "Send Email"}
+                </button>
+              )}
+              {!sendSlideshow && sendDocIds.size === 0 && !sendSuccess && (
+                <p className="text-xs text-center text-gray-400 mt-2">Select at least one item to include</p>
+              )}
+            </div>
+          </div>
+        </div>,
+        window.document.body
       )}
 
       {/* PDF Viewer modal */}
