@@ -826,38 +826,6 @@ function SortablePhotoCard({
         </div>
       )}
 
-      {/* Hover actions — desktop only */}
-      {!selectMode && (
-        <div className="hidden md:flex absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors items-center justify-center gap-2 opacity-0 hover:opacity-100 pointer-events-none hover:pointer-events-auto">
-          {photo.url && (
-            <button onClick={(e) => { e.stopPropagation(); onDownload(); }}
-              className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
-              Download
-            </button>
-          )}
-          <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
-            className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
-            {photo.is_visible ? "Hide" : "Show"}
-          </button>
-          {confirmDelete ? (
-            <>
-              <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
-                Cancel
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded transition-colors">
-                Confirm
-              </button>
-            </>
-          ) : (
-            <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-              className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
-              Delete
-            </button>
-          )}
-        </div>
-      )}
 
       {/* Caption row */}
       <div className="p-2 bg-white">
@@ -876,10 +844,10 @@ function SortablePhotoCard({
         {photo.filename && (
           <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
         )}
-        {/* Mobile action buttons */}
+        {/* Action buttons */}
         {!selectMode && (
           <div
-            className="flex md:hidden items-center gap-2 mt-2 pt-2 border-t border-gray-100"
+            className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100"
             onTouchStart={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
