@@ -410,27 +410,38 @@ export default function BrokerListingPage() {
   async function sendToClient() {
     if (!sendEmail) return;
     setSending(true);
-    await fetch("/api/email/send-to-client", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        listingId: id,
-        clientEmail: sendEmail,
-        message: sendMessage,
-        includeSlideshow: sendSlideshow,
-        documentIds: Array.from(sendDocIds),
-      }),
-    });
-    setSending(false);
-    setSendSuccess(true);
-    setTimeout(() => {
-      setSendModal(false);
-      setSendSuccess(false);
-      setSendEmail("");
-      setSendMessage("");
-      setSendSlideshow(true);
-      setSendDocIds(new Set());
-    }, 2000);
+    try {
+      const res = await fetch("/api/email/send-to-client", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          listingId: id,
+          clientEmail: sendEmail,
+          message: sendMessage,
+          includeSlideshow: sendSlideshow,
+          documentIds: Array.from(sendDocIds),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        alert(`Failed to send: ${data.error ?? res.statusText}`);
+        setSending(false);
+        return;
+      }
+      setSendSuccess(true);
+      setTimeout(() => {
+        setSendModal(false);
+        setSendSuccess(false);
+        setSendEmail("");
+        setSendMessage("");
+        setSendSlideshow(true);
+        setSendDocIds(new Set());
+      }, 2000);
+    } catch (err) {
+      alert(`Error: ${String(err)}`);
+    } finally {
+      setSending(false);
+    }
   }
 
   async function publishSlideshow() {
