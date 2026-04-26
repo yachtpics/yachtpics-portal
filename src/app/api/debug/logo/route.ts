@@ -9,7 +9,7 @@ export async function GET() {
 
   const { data, error } = await supabaseAdmin
     .from("broker_details")
-    .select("id, broker_id, logo_url, brokerage_name");
+    .select("id, logo_url, brokerage_name");
 
   return NextResponse.json({ data, error });
 }
