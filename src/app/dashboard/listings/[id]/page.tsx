@@ -68,6 +68,7 @@ export default function BrokerListingPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
+  const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
   // Page-level drag detection — reliable across all child elements
   function handlePageDragEnter(e: React.DragEvent) {
@@ -186,6 +187,12 @@ export default function BrokerListingPage() {
     a.href = data.signedUrl;
     a.download = filename ?? "document.pdf";
     a.click();
+  }
+
+  async function openPdfViewer(storagePath: string, filename: string | null) {
+    const { data } = await supabase.storage.from("listing-documents").createSignedUrl(storagePath, 3600);
+    if (!data?.signedUrl) return;
+    setPdfViewer({ url: data.signedUrl, filename, storagePath });
   }
 
   async function handleFiles(files: FileList | null) {
@@ -651,6 +658,35 @@ export default function BrokerListingPage() {
         </div>
       )}
 
+      {/* PDF Viewer modal */}
+      {pdfViewer && mounted && createPortal(
+        <div className="fixed inset-0 z-50 bg-black/80 flex flex-col">
+          <div className="flex items-center justify-between bg-[#050b14] px-4 py-3 shrink-0">
+            <p className="text-white text-sm font-medium truncate max-w-xs">{pdfViewer.filename ?? "Document"}</p>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => downloadDocument(pdfViewer.storagePath, pdfViewer.filename)}
+                className="text-[#d4a843] hover:text-[#c49a35] text-sm font-medium transition-colors"
+              >
+                Download
+              </button>
+              <button
+                onClick={() => setPdfViewer(null)}
+                className="text-gray-400 hover:text-white text-sm font-medium transition-colors ml-2"
+              >
+                ✕ Close
+              </button>
+            </div>
+          </div>
+          <iframe
+            src={pdfViewer.url}
+            className="flex-1 w-full border-0"
+            title={pdfViewer.filename ?? "Document"}
+          />
+        </div>,
+        window.document.body
+      )}
+
       {/* Delete All confirmation dialog */}
       {confirmDeleteAll && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -714,8 +750,23 @@ export default function BrokerListingPage() {
                   </p>
                 </div>
                 <button
-                  onClick={() => downloadDocument(doc.storage_path, doc.filename)}
+                  onClick={() => openPdfViewer(doc.storage_path, doc.filename)}
                   className="text-xs font-medium text-[#c49a35] hover:text-[#b08c2a] transition-colors shrink-0"
+                >
+                  View
+                </button>
+                <button
+                  onClick={async () => {
+                    const { data } = await supabase.storage.from("listing-documents").createSignedUrl(doc.storage_path, 3600);
+                    if (data?.signedUrl) window.open(data.signedUrl, "_blank");
+                  }}
+                  className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+                >
+                  Open ↗
+                </button>
+                <button
+                  onClick={() => downloadDocument(doc.storage_path, doc.filename)}
+                  className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
                 >
                   Download
                 </button>
