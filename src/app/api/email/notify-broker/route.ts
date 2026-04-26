@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
     if (error || !listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
 
-    const profile = listing.profiles as { first_name: string | null; last_name: string | null; display_email: string | null } | null;
+    const profile = listing.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null;
     const brokerEmail = profile?.display_email;
     const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : "there";
     const vesselName = listing.vessel_name ?? "your vessel";
