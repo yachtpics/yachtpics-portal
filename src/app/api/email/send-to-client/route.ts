@@ -31,12 +31,20 @@ export async function POST(req: NextRequest) {
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
-      .select("first_name, last_name, brokerage, display_email")
+      .select("first_name, last_name, display_email")
       .eq("id", listing.broker_id)
       .single();
 
-    const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : "Your broker";
-    const brokerage = profile?.brokerage ?? "";
+    const { data: brokerDetails } = await supabaseAdmin
+      .from("broker_details")
+      .select("brokerage_name")
+      .eq("id", listing.broker_id)
+      .single();
+
+    const brokerName = profile?.first_name
+      ? `${profile.first_name} ${profile.last_name ?? ""}`.trim()
+      : profile?.display_email ?? "Your Broker";
+    const brokerage = brokerDetails?.brokerage_name ?? "";
     const brokerEmail = profile?.display_email;
     const vesselName = listing.vessel_name ?? "this vessel";
     const slideshowUrl = listing.slideshow_published && listing.slideshow_slug
