@@ -37,7 +37,7 @@ export default async function PublicSlideshowPage({
         .single(),
       supabase
         .from("broker_details")
-        .select("brokerage_name, phone, website")
+        .select("brokerage_name, phone, website, logo_url")
         .eq("broker_id", listing.broker_id)
         .single(),
       supabase
@@ -64,6 +64,7 @@ export default async function PublicSlideshowPage({
     brokerage: brokerDetails?.brokerage_name ?? null,
     phone: brokerDetails?.phone ?? null,
     website: brokerDetails?.website ?? null,
+    logoUrl: brokerDetails?.logo_url ?? null,
   };
 
   return <SlideshowViewer listing={listing} broker={broker} photos={withUrls} />;

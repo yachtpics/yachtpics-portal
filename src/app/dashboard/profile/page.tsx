@@ -53,6 +53,8 @@ export default function ProfilePage() {
 
   const [newLoginEmail, setNewLoginEmail] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -68,7 +70,7 @@ export default function ProfilePage() {
       .eq("id", user.id).single();
 
     const { data: b } = await supabase.from("broker_details")
-      .select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio")
+      .select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url")
       .eq("id", user.id).single();
 
     const { data: a } = await supabase.from("broker_assistants")
@@ -76,10 +78,40 @@ export default function ProfilePage() {
       .eq("broker_id", user.id);
 
     if (p) setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "" });
-    if (b) setBroker({ brokerage_name: b.brokerage_name ?? "", brokerage_address: b.brokerage_address ?? "", brokerage_city: b.brokerage_city ?? "", brokerage_state: b.brokerage_state ?? "", brokerage_zip: b.brokerage_zip ?? "", brokerage_website: b.brokerage_website ?? "", license_number: b.license_number ?? "", bio: b.bio ?? "" });
+    if (b) {
+      setBroker({ brokerage_name: b.brokerage_name ?? "", brokerage_address: b.brokerage_address ?? "", brokerage_city: b.brokerage_city ?? "", brokerage_state: b.brokerage_state ?? "", brokerage_zip: b.brokerage_zip ?? "", brokerage_website: b.brokerage_website ?? "", license_number: b.license_number ?? "", bio: b.bio ?? "" });
+      setLogoUrl(b.logo_url ?? null);
+    }
     if (a) setAssistants(a as unknown as Assistant[]);
 
     setLoading(false);
+  }
+
+  async function uploadLogo(file: File) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUploadingLogo(true);
+    const ext = file.name.split(".").pop();
+    const path = `${user.id}/logo.${ext}`;
+    const { error } = await supabase.storage.from("broker-logos").upload(path, file, { upsert: true });
+    if (!error) {
+      const { data } = supabase.storage.from("broker-logos").getPublicUrl(path);
+      const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+      await supabase.from("broker_details").update({ logo_url: publicUrl }).eq("id", user.id);
+      setLogoUrl(publicUrl);
+      setMessage({ type: "success", text: "Logo uploaded successfully." });
+    } else {
+      setMessage({ type: "error", text: "Logo upload failed. Please try again." });
+    }
+    setUploadingLogo(false);
+  }
+
+  async function removeLogo() {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("broker_details").update({ logo_url: null }).eq("id", user.id);
+    setLogoUrl(null);
+    setMessage({ type: "success", text: "Logo removed." });
   }
 
   async function saveProfile() {
@@ -214,6 +246,41 @@ export default function ProfilePage() {
           <div>
             <label className={labelClass}>Phone</label>
             <input className={inputClass} type="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} placeholder="(561) 555-0100" />
+          </div>
+        </div>
+      </section>
+
+      {/* Company Logo */}
+      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
+        <h2 className="font-semibold text-gray-900 mb-1">Company Logo</h2>
+        <p className="text-gray-500 text-sm mb-5">Displayed in the footer of your client slideshows.</p>
+        <div className="flex items-center gap-5 flex-wrap">
+          {logoUrl ? (
+            <div className="w-40 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logoUrl} alt="Company logo" className="max-w-full max-h-full object-contain" />
+            </div>
+          ) : (
+            <div className="w-40 h-20 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center">
+              <p className="text-gray-400 text-xs">No logo yet</p>
+            </div>
+          )}
+          <div className="flex flex-col gap-2">
+            <label className={`cursor-pointer inline-flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${uploadingLogo ? "opacity-50 pointer-events-none" : ""}`}>
+              {uploadingLogo ? "Uploading…" : logoUrl ? "Replace Logo" : "Upload Logo"}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/svg+xml,image/webp"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }}
+              />
+            </label>
+            {logoUrl && (
+              <button onClick={removeLogo} className="text-xs text-red-400 hover:text-red-600 transition-colors text-left">
+                Remove logo
+              </button>
+            )}
+            <p className="text-gray-400 text-xs">PNG, JPG, SVG or WebP. Max 2MB.</p>
           </div>
         </div>
       </section>

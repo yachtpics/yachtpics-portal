@@ -25,6 +25,7 @@ interface BrokerInfo {
   brokerage: string | null;
   phone: string | null;
   website: string | null;
+  logoUrl: string | null;
 }
 
 interface Props {
@@ -223,11 +224,21 @@ export default function SlideshowViewer({ listing, broker, photos }: Props) {
 
       {/* Broker footer */}
       <div className="border-t border-[#1e3a5f] px-5 py-4 flex items-center justify-between gap-4">
-        <div className="min-w-0">
-          <p className="text-white text-sm font-semibold truncate">{broker.name}</p>
-          {broker.brokerage && (
-            <p className="text-gray-400 text-xs mt-0.5 truncate">{broker.brokerage}</p>
+        <div className="flex items-center gap-3 min-w-0">
+          {broker.logoUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={broker.logoUrl}
+              alt={broker.brokerage ?? broker.name}
+              className="h-9 w-auto object-contain shrink-0"
+            />
           )}
+          <div className="min-w-0">
+            <p className="text-white text-sm font-semibold truncate">{broker.name}</p>
+            {broker.brokerage && (
+              <p className="text-gray-400 text-xs mt-0.5 truncate">{broker.brokerage}</p>
+            )}
+          </div>
         </div>
         <div className="text-right shrink-0">
           {broker.phone && (
