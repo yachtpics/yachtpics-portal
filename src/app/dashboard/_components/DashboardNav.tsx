@@ -105,3 +105,15 @@ export default function DashboardNav({ brokerName, plan, trialEndsAt }: Props) {
           )}
           <div className="px-2">
             <p className="text-white text-sm font-medium truncate">{brokerName}</p>
+            <button
+              onClick={handleSignOut}
+              className="text-gray-500 hover:text-gray-300 text-xs transition-colors mt-0.5"
+            >
+              Sign out
+            </button>
+          </div>
+        </div>
+      </aside>
+    </>
+  );
+}

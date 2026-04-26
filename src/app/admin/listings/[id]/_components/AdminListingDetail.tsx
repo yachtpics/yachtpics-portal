@@ -238,4 +238,30 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
                 {/* Actions overlay */}
                 <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
                   <button
-                    onClick={() => toggleVi
+                    onClick={() => toggleVisibility(photo.id, photo.is_visible)}
+                    className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
+                    title={photo.is_visible ? "Hide" : "Show"}
+                  >
+                    {photo.is_visible ? "Hide" : "Show"}
+                  </button>
+                  <button
+                    onClick={() => deletePhoto(photo.id, photo.storage_path)}
+                    className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors"
+                  >
+                    Delete
+                  </button>
+                </div>
+
+                {/* Category badge */}
+                <div className="p-1.5">
+                  <span className="text-xs text-gray-500">{photo.category ?? "Other"}</span>
+                  {!photo.is_visible && <span className="text-xs text-gray-400 ml-1">· hidden</span>}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
