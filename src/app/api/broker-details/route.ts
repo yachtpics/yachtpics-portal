@@ -10,11 +10,11 @@ export async function GET(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("broker_details")
-    .select("brokerage_name, phone, website, logo_url")
+    .select("*")
     .eq("id", brokerId)
     .maybeSingle();
 
-  return NextResponse.json(data ?? {});
+  return NextResponse.json({ data, error });
 }
