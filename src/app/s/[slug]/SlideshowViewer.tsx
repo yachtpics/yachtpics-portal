@@ -246,7 +246,7 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
       <div className="border-t border-[#1e3a5f] px-5 py-4 flex items-center justify-between gap-4">
 <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
-            <div className="shrink-0 h-10 w-24 bg-[#111827] rounded flex items-center justify-center p-1.5 overflow-hidden">
+            <div className="shrink-0 h-10 w-24 bg-white rounded flex items-center justify-center p-1.5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={broker.logoUrl}
