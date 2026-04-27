@@ -46,7 +46,7 @@ export default async function PublicSlideshowPage({
   // Separate query to avoid any caching of old broken query
   const { data: brokerDetails } = await supabase
     .from("broker_details")
-    .select("brokerage_name, phone, website, logo_url")
+    .select("brokerage_name, brokerage_website, logo_url")
     .eq("id", listing.broker_id)
     .maybeSingle();
 
