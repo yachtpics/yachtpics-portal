@@ -32,7 +32,7 @@ export default async function PublicSlideshowPage({
     await Promise.all([
       supabase
         .from("profiles")
-        .select("first_name, last_name")
+        .select("first_name, last_name, phone")
         .eq("id", listing.broker_id)
         .single(),
       supabase
@@ -64,8 +64,8 @@ export default async function PublicSlideshowPage({
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
       "Broker",
     brokerage: brokerDetails?.brokerage_name ?? null,
-    phone: brokerDetails?.phone ?? null,
-    website: brokerDetails?.website ?? null,
+    phone: (profile as any)?.phone ?? null,
+    website: brokerDetails?.brokerage_website ?? null,
     logoUrl: brokerDetails?.logo_url ?? null,
   };
 

@@ -47,13 +47,12 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
       .then((r) => r.json())
       .then((d) => {
         if (d && !d.error) {
-          setBroker({
-            name: initialBroker.name,
-            brokerage: d.brokerage_name ?? null,
-            phone: d.phone ?? null,
-            website: d.website ?? null,
-            logoUrl: d.logo_url ?? null,
-          });
+          setBroker((prev) => ({
+            ...prev,
+            brokerage: d.brokerage_name ?? prev.brokerage,
+            website: d.brokerage_website ?? prev.website,
+            logoUrl: d.logo_url ?? prev.logoUrl,
+          }));
         }
       })
       .catch(() => {});
@@ -245,8 +244,7 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
 
       {/* Broker footer */}
       <div className="border-t border-[#1e3a5f] px-5 py-4 flex items-center justify-between gap-4">
-        <p className="text-yellow-400 text-xs absolute bottom-16 left-2 z-50">id:{brokerId ?? "NONE"} logo:{broker.logoUrl ? "YES" : "NULL"}</p>
-        <div className="flex items-center gap-3 min-w-0">
+<div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
             <div className="shrink-0 h-10 w-24 bg-[#111827] rounded flex items-center justify-center p-1.5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
