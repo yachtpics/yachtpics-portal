@@ -28,16 +28,11 @@ export default async function PublicSlideshowPage({
 
   if (!listing) notFound();
 
-  const [{ data: profile }, { data: brokerDetails }, { data: photos }] =
+  const [{ data: profile }, { data: photos }] =
     await Promise.all([
       supabase
         .from("profiles")
         .select("first_name, last_name")
-        .eq("id", listing.broker_id)
-        .single(),
-      supabase
-        .from("broker_details")
-        .select("brokerage_name, phone, website, logo_url")
         .eq("id", listing.broker_id)
         .single(),
       supabase
@@ -47,6 +42,13 @@ export default async function PublicSlideshowPage({
         .eq("is_visible", true)
         .order("display_order"),
     ]);
+
+  // Separate query to avoid any caching of old broken query
+  const { data: brokerDetails } = await supabase
+    .from("broker_details")
+    .select("brokerage_name, phone, website, logo_url")
+    .eq("id", listing.broker_id)
+    .maybeSingle();
 
   const withUrls = await Promise.all(
     (photos ?? []).map(async (photo) => {
