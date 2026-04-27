@@ -278,6 +278,7 @@ export default function ProfilePage() {
               </button>
             )}
             <p className="text-gray-400 text-xs">PNG, JPG, SVG or WebP. Max 2MB.</p>
+            <p className="text-gray-400 text-xs">Best on a white or transparent background.</p>
           </div>
         </div>
       </section>
