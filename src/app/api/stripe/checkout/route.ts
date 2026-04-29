@@ -29,10 +29,10 @@ export async function POST(req: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    // Check if broker already has a Stripe customer ID
+    // Check if broker already has a Stripe customer ID and whether they've used a trial
     const { data: sub } = await serviceSupabase
       .from("subscriptions")
-      .select("stripe_customer_id")
+      .select("stripe_customer_id, trial_ends_at")
       .eq("broker_id", user.id)
       .single();
 
@@ -54,6 +54,11 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") ?? "https://yachtpics-portal.vercel.app";
 
+    // Only grant a trial if the broker has never had one.
+    // Passing undefined is identical to omitting the property in Stripe's SDK.
+    const hasUsedTrial = !!sub?.trial_ends_at;
+    const trialDays = hasUsedTrial ? undefined : 30;
+
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
       success_url: `${origin}/dashboard/billing?success=1`,
       cancel_url: `${origin}/dashboard/billing?cancelled=1`,
       subscription_data: {
-        trial_period_days: 30,
+        trial_period_days: trialDays,
         metadata: { supabase_user_id: user.id },
       },
       metadata: { supabase_user_id: user.id },
