@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 interface Photo {
   id: string;
@@ -38,6 +38,9 @@ interface Props {
 export default function SlideshowViewer({ listing, broker: initialBroker, photos, brokerId }: Props) {
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
+  const [outgoing, setOutgoing] = useState<number | null>(null);
+  const [incomingReady, setIncomingReady] = useState(true);
+  const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [broker, setBroker] = useState<BrokerInfo>(initialBroker);
 
@@ -59,8 +62,22 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [brokerId]);
 
-  const prev = useCallback(() => setCurrent((i) => Math.max(0, i - 1)), []);
-  const next = useCallback(() => setCurrent((i) => Math.min(photos.length - 1, i + 1)), [photos.length]);
+  const goTo = useCallback((idx: number) => {
+    if (idx === current || idx < 0 || idx >= photos.length) return;
+    if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
+    setOutgoing(current);
+    setIncomingReady(false);
+    setCurrent(idx);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setIncomingReady(true);
+      });
+    });
+    fadeTimerRef.current = setTimeout(() => setOutgoing(null), 600);
+  }, [current, photos.length]);
+
+  const prev = useCallback(() => goTo(current - 1), [goTo, current]);
+  const next = useCallback(() => goTo(current + 1), [goTo, current]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -144,14 +161,32 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
               setTouchStart(null);
             }}
           >
+            {/* Outgoing photo — stays visible while new photo fades in */}
+            {outgoing !== null && photos[outgoing]?.url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`out-${outgoing}`}
+                src={photos[outgoing].url!}
+                alt=""
+                className="absolute max-w-full object-contain px-16"
+                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 0 }}
+              />
+            )}
+
+            {/* Current photo — fades in over outgoing */}
             {photos[current]?.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                key={photos[current].id}
+                key={`in-${current}`}
                 src={photos[current].url!}
                 alt={photos[current].category ?? ""}
-                className="max-h-full max-w-full object-contain px-16"
-                style={{ maxHeight: "calc(100vh - 240px)" }}
+                className="absolute max-w-full object-contain px-16"
+                style={{
+                  maxHeight: "calc(100vh - 240px)",
+                  zIndex: 1,
+                  opacity: incomingReady ? 1 : 0,
+                  transition: "opacity 0.5s ease",
+                }}
               />
             )}
 
@@ -160,6 +195,7 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
               <button
                 onClick={prev}
                 className="absolute left-3 bg-black/40 hover:bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
+                style={{ zIndex: 2 }}
               >
                 ‹
               </button>
@@ -170,6 +206,7 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
               <button
                 onClick={next}
                 className="absolute right-3 bg-black/40 hover:bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
+                style={{ zIndex: 2 }}
               >
                 ›
               </button>
@@ -191,7 +228,7 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
             {photos.map((photo, i) => (
               <button
                 key={photo.id}
-                onClick={() => setCurrent(i)}
+                onClick={() => goTo(i)}
                 className={`shrink-0 rounded-md overflow-hidden transition-all ${
                   i === current
                     ? "ring-2 ring-[#d4a843] opacity-100"
@@ -244,7 +281,7 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
 
       {/* Broker footer */}
       <div className="border-t border-[#1e3a5f] px-5 py-4 flex items-center justify-between gap-4">
-<div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
             <div className="shrink-0 h-10 w-24 bg-white rounded flex items-center justify-center p-1.5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
