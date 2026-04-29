@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
+import HelpTip from "@/components/HelpTip";
 
 interface ProfileData {
   first_name: string;
@@ -32,58 +33,33 @@ interface Assistant {
 
 export default function ProfilePage() {
   const supabase = createClient();
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-
-  const [profile, setProfile] = useState<ProfileData>({
-    first_name: "", last_name: "", display_email: "", phone: "",
-  });
-
-  const [broker, setBroker] = useState<BrokerData>({
-    brokerage_name: "", brokerage_address: "", brokerage_city: "",
-    brokerage_state: "", brokerage_zip: "", brokerage_website: "",
-    license_number: "", bio: "",
-  });
-
+  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "" });
+  const [broker, setBroker] = useState<BrokerData>({ brokerage_name: "", brokerage_address: "", brokerage_city: "", brokerage_state: "", brokerage_zip: "", brokerage_website: "", license_number: "", bio: "" });
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviting, setInviting] = useState(false);
-
   const [newLoginEmail, setNewLoginEmail] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
-  useEffect(() => {
-    loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-    const { data: p } = await supabase.from("profiles")
-      .select("first_name, last_name, display_email, phone")
-      .eq("id", user.id).single();
-
-    const { data: b } = await supabase.from("broker_details")
-      .select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url")
-      .eq("id", user.id).single();
-
-    const { data: a } = await supabase.from("broker_assistants")
-      .select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)")
-      .eq("broker_id", user.id);
-
+    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone").eq("id", user.id).single();
+    const { data: b } = await supabase.from("broker_details").select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url").eq("id", user.id).single();
+    const { data: a } = await supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)").eq("broker_id", user.id);
     if (p) setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "" });
     if (b) {
       setBroker({ brokerage_name: b.brokerage_name ?? "", brokerage_address: b.brokerage_address ?? "", brokerage_city: b.brokerage_city ?? "", brokerage_state: b.brokerage_state ?? "", brokerage_zip: b.brokerage_zip ?? "", brokerage_website: b.brokerage_website ?? "", license_number: b.license_number ?? "", bio: b.bio ?? "" });
       setLogoUrl(b.logo_url ?? null);
     }
     if (a) setAssistants(a as unknown as Assistant[]);
-
     setLoading(false);
   }
 
@@ -94,12 +70,8 @@ export default function ProfilePage() {
     formData.append("file", file);
     const res = await fetch("/api/logo/upload", { method: "POST", body: formData });
     const data = await res.json();
-    if (!res.ok) {
-      setMessage({ type: "error", text: data.error ?? "Upload failed. Please try again." });
-    } else {
-      setLogoUrl(data.url);
-      setMessage({ type: "success", text: "Logo uploaded successfully." });
-    }
+    if (!res.ok) { setMessage({ type: "error", text: data.error ?? "Upload failed. Please try again." }); }
+    else { setLogoUrl(data.url); setMessage({ type: "success", text: "Logo uploaded successfully." }); }
     setUploadingLogo(false);
   }
 
@@ -116,20 +88,10 @@ export default function ProfilePage() {
     setMessage(null);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-    const { error: e1 } = await supabase.from("profiles")
-      .update({ ...profile, updated_at: new Date().toISOString() })
-      .eq("id", user.id);
-
-    const { error: e2 } = await supabase.from("broker_details")
-      .update({ ...broker, updated_at: new Date().toISOString() })
-      .eq("id", user.id);
-
-    if (e1 || e2) {
-      setMessage({ type: "error", text: "Something went wrong. Please try again." });
-    } else {
-      setMessage({ type: "success", text: "Profile saved successfully." });
-    }
+    const { error: e1 } = await supabase.from("profiles").update({ ...profile, updated_at: new Date().toISOString() }).eq("id", user.id);
+    const { error: e2 } = await supabase.from("broker_details").update({ ...broker, updated_at: new Date().toISOString() }).eq("id", user.id);
+    if (e1 || e2) { setMessage({ type: "error", text: "Something went wrong. Please try again." }); }
+    else { setMessage({ type: "success", text: "Profile saved successfully." }); }
     setSaving(false);
   }
 
@@ -138,22 +100,15 @@ export default function ProfilePage() {
     setChangingEmail(true);
     setMessage(null);
     const { error } = await supabase.auth.updateUser({ email: newLoginEmail });
-    if (error) {
-      setMessage({ type: "error", text: error.message });
-    } else {
-      setMessage({ type: "success", text: `Confirmation sent to ${newLoginEmail}. Check your inbox to complete the change.` });
-      setNewLoginEmail("");
-    }
+    if (error) { setMessage({ type: "error", text: error.message }); }
+    else { setMessage({ type: "success", text: `Confirmation sent to ${newLoginEmail}. Check your inbox to complete the change.` }); setNewLoginEmail(""); }
     setChangingEmail(false);
   }
 
   async function removeAssistant(assistantId: string) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    await supabase.from("broker_assistants")
-      .delete()
-      .eq("broker_id", user.id)
-      .eq("assistant_id", assistantId);
+    await supabase.from("broker_assistants").delete().eq("broker_id", user.id).eq("assistant_id", assistantId);
     setAssistants((prev) => prev.filter((a) => a.assistant_id !== assistantId));
   }
 
@@ -161,45 +116,17 @@ export default function ProfilePage() {
     if (!inviteEmail) return;
     setInviting(true);
     setMessage(null);
-    // For now, look up by display_email and link if found
-    const { data: found } = await supabase.from("profiles")
-      .select("id, first_name, last_name, display_email")
-      .eq("display_email", inviteEmail)
-      .eq("role", "assistant")
-      .single();
-
-    if (!found) {
-      setMessage({ type: "error", text: "No assistant account found with that email. They must sign up first." });
-      setInviting(false);
-      return;
-    }
-
+    const { data: found } = await supabase.from("profiles").select("id, first_name, last_name, display_email").eq("display_email", inviteEmail).eq("role", "assistant").single();
+    if (!found) { setMessage({ type: "error", text: "No assistant account found with that email. They must sign up first." }); setInviting(false); return; }
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-
-    const { error } = await supabase.from("broker_assistants")
-      .insert({ broker_id: user.id, assistant_id: found.id });
-
-    if (error && error.code !== "23505") {
-      setMessage({ type: "error", text: "Could not add assistant." });
-    } else {
-      setAssistants((prev) => [...prev, {
-        assistant_id: found.id,
-        profiles: { first_name: found.first_name, last_name: found.last_name, display_email: found.display_email }
-      }]);
-      setInviteEmail("");
-      setMessage({ type: "success", text: "Assistant linked to your account." });
-    }
+    const { error } = await supabase.from("broker_assistants").insert({ broker_id: user.id, assistant_id: found.id });
+    if (error && error.code !== "23505") { setMessage({ type: "error", text: "Could not add assistant." }); }
+    else { setAssistants((prev) => [...prev, { assistant_id: found.id, profiles: { first_name: found.first_name, last_name: found.last_name, display_email: found.display_email } }]); setInviteEmail(""); setMessage({ type: "success", text: "Assistant linked to your account." }); }
     setInviting(false);
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400 text-sm">Loading...</div>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-400 text-sm">Loading...</div></div>;
 
   const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
   const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
@@ -208,17 +135,11 @@ export default function ProfilePage() {
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-        <p className="text-gray-500 mt-1 text-sm">
-          Keep your contact and brokerage info up to date.
-        </p>
+        <p className="text-gray-500 mt-1 text-sm">Keep your contact and brokerage info up to date.</p>
       </div>
 
       {message && (
-        <div className={`mb-6 px-4 py-3 rounded-lg text-sm ${
-          message.type === "success"
-            ? "bg-green-50 border border-green-200 text-green-700"
-            : "bg-red-50 border border-red-200 text-red-600"
-        }`}>
+        <div className={`mb-6 px-4 py-3 rounded-lg text-sm ${message.type === "success" ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-600"}`}>
           {message.text}
         </div>
       )}
@@ -236,9 +157,12 @@ export default function ProfilePage() {
             <input className={inputClass} value={profile.last_name} onChange={(e) => setProfile({ ...profile, last_name: e.target.value })} placeholder="Smith" />
           </div>
           <div>
-            <label className={labelClass}>Contact Email</label>
+            <div className="flex items-center gap-1.5 mb-1.5">
+              <label className="text-gray-700 text-sm font-medium">Contact Email</label>
+              <HelpTip text="Shown to YachtPics and on client slideshows. Separate from your login email." detail="To change your login email, scroll to the bottom of this page." position="below" width={270} />
+            </div>
             <input className={inputClass} type="email" value={profile.display_email} onChange={(e) => setProfile({ ...profile, display_email: e.target.value })} placeholder="jane@brokerage.com" />
-            <p className="text-gray-400 text-xs mt-1">Displayed to YachtPics — not your login email.</p>
+            <p className="text-gray-400 text-xs mt-1">Displayed to YachtPics -- not your login email.</p>
           </div>
           <div>
             <label className={labelClass}>Phone</label>
@@ -249,7 +173,10 @@ export default function ProfilePage() {
 
       {/* Company Logo */}
       <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
-        <h2 className="font-semibold text-gray-900 mb-1">Company Logo</h2>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="font-semibold text-gray-900">Company Logo</h2>
+          <HelpTip text="Your logo appears in the footer of every client slideshow, on any device." detail="Best: PNG or SVG with transparent or white background. Max 2 MB." position="below" width={270} />
+        </div>
         <p className="text-gray-500 text-sm mb-5">Displayed in the footer of your client slideshows.</p>
         <div className="flex items-center gap-5 flex-wrap">
           {logoUrl ? (
@@ -264,19 +191,10 @@ export default function ProfilePage() {
           )}
           <div className="flex flex-col gap-2">
             <label className={`cursor-pointer inline-flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors ${uploadingLogo ? "opacity-50 pointer-events-none" : ""}`}>
-              {uploadingLogo ? "Uploading…" : logoUrl ? "Replace Logo" : "Upload Logo"}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/svg+xml,image/webp"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }}
-              />
+              {uploadingLogo ? "Uploading..." : logoUrl ? "Replace Logo" : "Upload Logo"}
+              <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
             </label>
-            {logoUrl && (
-              <button onClick={removeLogo} className="text-xs text-red-400 hover:text-red-600 transition-colors text-left">
-                Remove logo
-              </button>
-            )}
+            {logoUrl && <button onClick={removeLogo} className="text-xs text-red-400 hover:text-red-600 transition-colors text-left">Remove logo</button>}
             <p className="text-gray-400 text-xs">PNG, JPG, SVG or WebP. Max 2MB.</p>
             <p className="text-gray-400 text-xs">Best on a white or transparent background.</p>
           </div>
@@ -319,100 +237,58 @@ export default function ProfilePage() {
           </div>
           <div className="sm:col-span-2">
             <label className={labelClass}>Bio <span className="text-gray-400 font-normal">(optional)</span></label>
-            <textarea
-              className={`${inputClass} resize-none`}
-              rows={3}
-              value={broker.bio}
-              onChange={(e) => setBroker({ ...broker, bio: e.target.value })}
-              placeholder="A short bio shown on your client-facing slideshow pages..."
-            />
+            <textarea className={`${inputClass} resize-none`} rows={3} value={broker.bio} onChange={(e) => setBroker({ ...broker, bio: e.target.value })} placeholder="A short bio shown on your client-facing slideshow pages..." />
           </div>
         </div>
       </section>
 
-      {/* Save button */}
       <div className="flex justify-end mb-8">
-        <button
-          onClick={saveProfile}
-          disabled={saving}
-          className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
-        >
+        <button onClick={saveProfile} disabled={saving} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
           {saving ? "Saving..." : "Save Profile"}
         </button>
       </div>
 
       {/* Assistants */}
       <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
-        <h2 className="font-semibold text-gray-900 mb-1">Assistants</h2>
-        <p className="text-gray-500 text-sm mb-5">
-          Assistants can manage your listings and download photos on your behalf.
-        </p>
-
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="font-semibold text-gray-900">Assistants</h2>
+          <HelpTip text="Assistants can view listings and download photos on your behalf." detail="They cannot access billing or change your profile. They must first create their own account with the assistant role." position="above" width={280} />
+        </div>
+        <p className="text-gray-500 text-sm mb-5">Assistants can manage your listings and download photos on your behalf.</p>
         {assistants.length > 0 ? (
           <ul className="divide-y divide-gray-100 mb-4">
             {assistants.map((a) => (
               <li key={a.assistant_id} className="py-3 flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {a.profiles?.first_name
-                      ? `${a.profiles.first_name} ${a.profiles.last_name ?? ""}`.trim()
-                      : "Assistant"}
-                  </p>
+                  <p className="text-sm font-medium text-gray-900">{a.profiles?.first_name ? `${a.profiles.first_name} ${a.profiles.last_name ?? ""}`.trim() : "Assistant"}</p>
                   <p className="text-xs text-gray-400">{a.profiles?.display_email ?? ""}</p>
                 </div>
-                <button
-                  onClick={() => removeAssistant(a.assistant_id)}
-                  className="text-xs text-red-400 hover:text-red-600 transition-colors"
-                >
-                  Remove
-                </button>
+                <button onClick={() => removeAssistant(a.assistant_id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">Remove</button>
               </li>
             ))}
           </ul>
         ) : (
           <p className="text-sm text-gray-400 mb-4">No assistants linked yet.</p>
         )}
-
         <div className="flex gap-3">
-          <input
-            className={`${inputClass} flex-1`}
-            type="email"
-            value={inviteEmail}
-            onChange={(e) => setInviteEmail(e.target.value)}
-            placeholder="assistant@brokerage.com"
-          />
-          <button
-            onClick={inviteAssistant}
-            disabled={inviting || !inviteEmail}
-            className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap"
-          >
+          <input className={`${inputClass} flex-1`} type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="assistant@brokerage.com" />
+          <button onClick={inviteAssistant} disabled={inviting || !inviteEmail} className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap">
             {inviting ? "Adding..." : "Add Assistant"}
           </button>
         </div>
-        <p className="text-gray-400 text-xs mt-2">
-          The assistant must already have an account with the role &quot;assistant&quot; on this platform.
-        </p>
+        <p className="text-gray-400 text-xs mt-2">The assistant must already have an account with the role &quot;assistant&quot; on this platform.</p>
       </section>
 
       {/* Change login email */}
       <section className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="font-semibold text-gray-900 mb-1">Change Login Email</h2>
-        <p className="text-gray-500 text-sm mb-5">
-          Changing your login email will send a confirmation to the new address.
-        </p>
+        <div className="flex items-center gap-2 mb-1">
+          <h2 className="font-semibold text-gray-900">Change Login Email</h2>
+          <HelpTip text="Changes the email you use to sign in -- separate from your contact email shown to YachtPics." detail="A confirmation link goes to the new address. Your login will not change until you click it." position="above" width={280} />
+        </div>
+        <p className="text-gray-500 text-sm mb-5">Changing your login email will send a confirmation to the new address.</p>
         <div className="flex gap-3">
-          <input
-            className={`${inputClass} flex-1`}
-            type="email"
-            value={newLoginEmail}
-            onChange={(e) => setNewLoginEmail(e.target.value)}
-            placeholder="new@email.com"
-          />
-          <button
-            onClick={changeLoginEmail}
-            disabled={changingEmail || !newLoginEmail}
-            className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap"
-          >
+          <input className={`${inputClass} flex-1`} type="email" value={newLoginEmail} onChange={(e) => setNewLoginEmail(e.target.value)} placeholder="new@email.com" />
+          <button onClick={changeLoginEmail} disabled={changingEmail || !newLoginEmail} className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap">
             {changingEmail ? "Sending..." : "Update Email"}
           </button>
         </div>
