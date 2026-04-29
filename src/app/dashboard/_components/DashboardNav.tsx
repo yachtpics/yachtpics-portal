@@ -7,10 +7,10 @@ import { useState } from "react";
 
 const navItems = [
   { label: "Dashboard", href: "/dashboard", icon: "⊞" },
-  { label: "My Listings", href: "/dashboard/listings", icon: "\U0001f6a2" },
-  { label: "Shoots & Invoices", href: "/dashboard/shoots", icon: "\U0001f4cb" },
-  { label: "Billing", href: "/dashboard/billing", icon: "\U0001f4b3" },
-  { label: "My Profile", href: "/dashboard/profile", icon: "\U0001f464" },
+  { label: "My Listings", href: "/dashboard/listings", icon: "🚢" },
+  { label: "Shoots & Invoices", href: "/dashboard/shoots", icon: "📋" },
+  { label: "Billing", href: "/dashboard/billing", icon: "💳" },
+  { label: "My Profile", href: "/dashboard/profile", icon: "👤" },
   { label: "Help", href: "/dashboard/help", icon: "?" },
 ];
 
