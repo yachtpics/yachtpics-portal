@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface Broker {
   id: string;
@@ -21,13 +21,15 @@ const PHOTO_CATEGORIES = [
 export default function NewListingPage() {
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedBrokerId = searchParams.get("broker") ?? "";
 
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const [form, setForm] = useState({
-    broker_id: "",
+    broker_id: preselectedBrokerId,
     vessel_name: "",
     vessel_type: "",
     year: "",
@@ -144,6 +146,12 @@ export default function NewListingPage() {
   const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
   const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
 
+  const preselectedBroker = brokers.find((b) => b.id === preselectedBrokerId);
+  const preselectedBrokerName = preselectedBroker?.first_name
+    ? `${preselectedBroker.first_name} ${preselectedBroker.last_name ?? ""}`.trim()
+    : preselectedBroker?.display_email ?? "—";
+  const preselectedBrokerage = preselectedBroker?.broker_details?.[0]?.brokerage_name ?? null;
+
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
@@ -157,29 +165,38 @@ export default function NewListingPage() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Broker */}
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Broker</h2>
-          <div>
-            <label className={labelClass}>Select Broker *</label>
-            <select
-              className={inputClass}
-              value={form.broker_id}
-              onChange={(e) => setForm({ ...form, broker_id: e.target.value })}
-              required
-            >
-              <option value="">Choose a broker...</option>
-              {brokers.map((b) => {
-                const brokerage = b.broker_details?.[0]?.brokerage_name;
-                const name = b.first_name ? `${b.first_name} ${b.last_name ?? ""}`.trim() : b.display_email ?? b.id;
-                return (
-                  <option key={b.id} value={b.id}>
-                    {name}{brokerage ? ` — ${brokerage}` : ""}
-                  </option>
-                );
-              })}
-            </select>
-          </div>
-        </section>
+        {preselectedBrokerId ? (
+          <section className="bg-white border border-gray-200 rounded-xl p-6">
+            <h2 className="font-semibold text-gray-900 mb-1">Broker</h2>
+            <p className="text-gray-700 text-sm">
+              {preselectedBrokerName}{preselectedBrokerage ? ` — ${preselectedBrokerage}` : ""}
+            </p>
+          </section>
+        ) : (
+          <section className="bg-white border border-gray-200 rounded-xl p-6">
+            <h2 className="font-semibold text-gray-900 mb-4">Broker</h2>
+            <div>
+              <label className={labelClass}>Select Broker *</label>
+              <select
+                className={inputClass}
+                value={form.broker_id}
+                onChange={(e) => setForm({ ...form, broker_id: e.target.value })}
+                required
+              >
+                <option value="">Choose a broker...</option>
+                {brokers.map((b) => {
+                  const brokerage = b.broker_details?.[0]?.brokerage_name;
+                  const name = b.first_name ? `${b.first_name} ${b.last_name ?? ""}`.trim() : b.display_email ?? b.id;
+                  return (
+                    <option key={b.id} value={b.id}>
+                      {name}{brokerage ? ` — ${brokerage}` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </section>
+        )}
 
         {/* Vessel Info */}
         <section className="bg-white border border-gray-200 rounded-xl p-6">
