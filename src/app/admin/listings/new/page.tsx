@@ -210,7 +210,7 @@ export default function NewListingPage() {
               <label className={labelClass}>Type</label>
               <select className={inputClass} value={form.vessel_type} onChange={(e) => setForm({ ...form, vessel_type: e.target.value })}>
                 <option value="">Select type...</option>
-                {["Motor Yacht", "Sailing Yacht", "Catamaran", "Center Console", "Sportfish", "Express Cruiser", "Trawler", "Other"].map((t) => (
+                {["Bowrider", "Catamaran", "Center Console", "Convertible", "Cruiser", "Cuddy Cabin", "Dinghy", "Downeast", "Dual Console", "Express Cruiser", "Flybridge", "Motor Yacht", "Runabout", "Sailing Yacht", "Sportfish", "Sports Cruiser", "Tender", "Trawler", "Walkaround", "Other"].map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
