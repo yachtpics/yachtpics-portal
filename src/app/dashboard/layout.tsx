@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import DashboardNav from "./_components/DashboardNav";
 
@@ -11,9 +12,28 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Fetch profile + subscription
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, role")
+    .select("first_name, last_name, role, welcomed_at")
     .eq("id", user.id)
     .single();
+
+  // Send welcome email on first login (welcomed_at is null)
+  if (profile && !profile.welcomed_at) {
+    const serviceClient = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    // Stamp immediately to prevent double-sending
+    await serviceClient
+      .from("profiles")
+      .update({ welcomed_at: new Date().toISOString() })
+      .eq("id", user.id);
+    // Fire welcome email (non-blocking failure — if it fails, we don't crash the app)
+    fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://portal.yachtpics.com"}/api/email/welcome`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: user.id }),
+    }).catch(() => {});
+  }
 
   const { data: subscription } = await supabase
     .from("subscriptions")
