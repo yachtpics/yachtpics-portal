@@ -204,7 +204,7 @@ export default function NewListingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className={labelClass}>Vessel Name</label>
-              <input className={inputClass} value={form.vessel_name} onChange={(e) => setForm({ ...form, vessel_name: e.target.value })} placeholder="Sea Scape" />
+              <input className={inputClass} value={form.vessel_name} onChange={(e) => setForm({ ...form, vessel_name: e.target.value })} placeholder="" />
             </div>
             <div>
               <label className={labelClass}>Type</label>
@@ -217,31 +217,31 @@ export default function NewListingPage() {
             </div>
             <div>
               <label className={labelClass}>Year</label>
-              <input className={inputClass} type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} placeholder="2019" min="1900" max="2030" />
+              <input className={inputClass} type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} placeholder="" min="1900" max="2030" />
             </div>
             <div>
               <label className={labelClass}>Make</label>
-              <input className={inputClass} value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} placeholder="Azimut" />
+              <input className={inputClass} value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} placeholder="" />
             </div>
             <div>
               <label className={labelClass}>Model</label>
-              <input className={inputClass} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="55" />
+              <input className={inputClass} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="" />
             </div>
             <div>
               <label className={labelClass}>Length (ft)</label>
-              <input className={inputClass} type="number" value={form.length_ft} onChange={(e) => setForm({ ...form, length_ft: e.target.value })} placeholder="55" />
+              <input className={inputClass} type="number" value={form.length_ft} onChange={(e) => setForm({ ...form, length_ft: e.target.value })} placeholder="" />
             </div>
             <div>
               <label className={labelClass}>Asking Price ($)</label>
-              <input className={inputClass} type="number" value={form.asking_price} onChange={(e) => setForm({ ...form, asking_price: e.target.value })} placeholder="750000" />
+              <input className={inputClass} type="number" value={form.asking_price} onChange={(e) => setForm({ ...form, asking_price: e.target.value })} placeholder="" />
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass}>Location</label>
-              <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="North Palm Beach, FL" />
+              <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="" />
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass}>Description <span className="text-gray-400 font-normal">(optional)</span></label>
-              <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Key features, recent upgrades..." />
+              <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="" />
             </div>
           </div>
         </section>
