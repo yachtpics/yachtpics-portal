@@ -1,24 +1,64 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import Link from "next/link";
 
 export default function InviteBrokerPage() {
   const router = useRouter();
-  const [form, setForm] = useState({
+  const supabase = createClient();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [broker, setBroker] = useState({
     firstName: "",
     lastName: "",
     email: "",
     brokerage: "",
-    vesselName: "",
-    photosReady: false,
   });
+
+  const [vessel, setVessel] = useState({
+    vesselName: "",
+    vesselType: "",
+    year: "",
+    make: "",
+    model: "",
+    lengthFt: "",
+    askingPrice: "",
+    location: "",
+  });
+
+  const [photos, setPhotos] = useState<{ file: File; category: string; preview: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const set = (field: string, value: string | boolean) =>
-    setForm((prev) => ({ ...prev, [field]: value }));
+  function guessCategory(filename: string): string {
+    const name = filename.toLowerCase();
+    for (const cat of PHOTO_CATEGORIES) {
+      if (name.includes(cat.toLowerCase())) return cat;
+    }
+    return "Other";
+  }
+
+  function handleFiles(files: FileList | null) {
+    if (!files) return;
+    const newPhotos = Array.from(files).map((file) => ({
+      file,
+      category: guessCategory(file.name),
+      preview: URL.createObjectURL(file),
+    }));
+    setPhotos((prev) => [...prev, ...newPhotos]);
+  }
+
+  function removePhoto(index: number) {
+    setPhotos((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function updateCategory(index: number, category: string) {
+    setPhotos((prev) => prev.map((p, i) => i === index ? { ...p, category } : p));
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,160 +66,265 @@ export default function InviteBrokerPage() {
     setError(null);
 
     try {
-      const res = await fetch("/api/admin/invite-broker", {
+      // Step 1: Create broker account + send invite email
+      setProgress("Creating broker account…");
+      const inviteRes = await fetch("/api/admin/invite-broker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify({
+          firstName: broker.firstName,
+          lastName: broker.lastName,
+          email: broker.email,
+          brokerage: broker.brokerage,
+          vesselName: vessel.vesselName,
+          photosReady: photos.length > 0,
+        }),
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error ?? "Something went wrong.");
+      const inviteData = await inviteRes.json();
+      if (!inviteRes.ok) {
+        setError(inviteData.error ?? "Failed to create broker account.");
         return;
       }
-      // Redirect to new listing page with broker pre-selected and invite context
-      router.push(`/admin/listings/new?broker=${data.brokerId}&fromInvite=true`);
+      const brokerId = inviteData.brokerId;
+
+      // Step 2: Create listing if vessel info provided
+      let listingId: string | null = null;
+      if (vessel.vesselName || photos.length > 0) {
+        setProgress("Creating listing…");
+        const { data: listing, error: listingError } = await supabase
+          .from("listings")
+          .insert({
+            broker_id: brokerId,
+            vessel_name: vessel.vesselName || null,
+            vessel_type: vessel.vesselType || null,
+            year: vessel.year ? parseInt(vessel.year) : null,
+            length_ft: vessel.lengthFt ? parseFloat(vessel.lengthFt) : null,
+            make: vessel.make || null,
+            model: vessel.model || null,
+            asking_price: vessel.askingPrice ? parseFloat(vessel.askingPrice) : null,
+            location: vessel.location || null,
+            status: "active",
+          })
+          .select("id")
+          .single();
+
+        if (listingError || !listing) {
+          setError(listingError?.message ?? "Failed to create listing.");
+          return;
+        }
+        listingId = listing.id;
+      }
+
+      // Step 3: Upload photos
+      if (photos.length > 0 && listingId) {
+        for (let i = 0; i < photos.length; i++) {
+          setProgress(`Uploading photo ${i + 1} of ${photos.length}…`);
+          const photo = photos[i];
+          const ext = photo.file.name.split(".").pop();
+          const path = `${brokerId}/${listingId}/${Date.now()}-${i}.${ext}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from("listing-photos")
+            .upload(path, photo.file, { upsert: false });
+
+          if (!uploadError) {
+            await supabase.from("photos").insert({
+              listing_id: listingId,
+              storage_path: path,
+              filename: photo.file.name,
+              category: photo.category,
+              display_order: i,
+              is_visible: true,
+            });
+          }
+        }
+      }
+
+      router.push(`/admin/brokers/${brokerId}?invited=true`);
     } catch {
       setError("Unexpected error. Please try again.");
     } finally {
       setLoading(false);
+      setProgress(null);
     }
   };
 
-  const hasVessel = form.vesselName.trim().length > 0;
+  const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30";
+  const labelClass = "block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5";
 
   return (
-    <div className="px-6 py-8 max-w-2xl mx-auto">
+    <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-6">
         <Link href="/admin/brokers" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
           ← All brokers
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 mt-2">Invite Broker</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Creates an account and sends a personalized invite email. The broker sets their own password via the link.
+          Fill in everything below and hit Send — the broker gets their invite and their photos in one go.
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Broker info */}
+
+        {/* Broker Info */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <h2 className="font-semibold text-gray-900 mb-4">Broker Details</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                First Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={form.firstName}
-                onChange={(e) => set("firstName", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30"
-              />
+              <label className={labelClass}>First Name <span className="text-red-400">*</span></label>
+              <input type="text" required value={broker.firstName}
+                onChange={(e) => setBroker({ ...broker, firstName: e.target.value })}
+                className={inputClass} />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                Last Name <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={form.lastName}
-                onChange={(e) => set("lastName", e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30"
-              />
+              <label className={labelClass}>Last Name <span className="text-red-400">*</span></label>
+              <input type="text" required value={broker.lastName}
+                onChange={(e) => setBroker({ ...broker, lastName: e.target.value })}
+                className={inputClass} />
             </div>
           </div>
           <div className="mt-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-              Email Address <span className="text-red-400">*</span>
-            </label>
-            <input
-              type="email"
-              required
-              value={form.email}
-              onChange={(e) => set("email", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30"
-            />
+            <label className={labelClass}>Email Address <span className="text-red-400">*</span></label>
+            <input type="email" required value={broker.email}
+              onChange={(e) => setBroker({ ...broker, email: e.target.value })}
+              className={inputClass} />
           </div>
           <div className="mt-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-              Brokerage
-            </label>
-            <input
-              type="text"
-              value={form.brokerage}
-              onChange={(e) => set("brokerage", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30"
-            />
+            <label className={labelClass}>Brokerage</label>
+            <input type="text" value={broker.brokerage}
+              onChange={(e) => setBroker({ ...broker, brokerage: e.target.value })}
+              className={inputClass} />
           </div>
         </div>
 
-        {/* Photos / vessel */}
+        {/* Vessel Info */}
+        <div className="bg-white border border-gray-200 rounded-xl p-6">
+          <h2 className="font-semibold text-gray-900 mb-1">Vessel Information</h2>
+          <p className="text-xs text-gray-400 mb-4">Optional — used to personalize the invite email and create the listing.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Vessel Name</label>
+              <input type="text" value={vessel.vesselName}
+                onChange={(e) => setVessel({ ...vessel, vesselName: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Type</label>
+              <select value={vessel.vesselType}
+                onChange={(e) => setVessel({ ...vessel, vesselType: e.target.value })}
+                className={inputClass}>
+                <option value="">Select type...</option>
+                {["Bowrider","Catamaran","Center Console","Convertible","Cruiser","Cuddy Cabin","Dinghy","Downeast","Dual Console","Express Cruiser","Flybridge","Motor Yacht","Runabout","Sailing Yacht","Sportfish","Sports Cruiser","Tender","Trawler","Walkaround","Other"].map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={labelClass}>Year</label>
+              <input type="number" value={vessel.year} min="1900" max="2030"
+                onChange={(e) => setVessel({ ...vessel, year: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Make</label>
+              <input type="text" value={vessel.make}
+                onChange={(e) => setVessel({ ...vessel, make: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Model</label>
+              <input type="text" value={vessel.model}
+                onChange={(e) => setVessel({ ...vessel, model: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Length (ft)</label>
+              <input type="number" value={vessel.lengthFt}
+                onChange={(e) => setVessel({ ...vessel, lengthFt: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Asking Price ($)</label>
+              <input type="number" value={vessel.askingPrice}
+                onChange={(e) => setVessel({ ...vessel, askingPrice: e.target.value })}
+                className={inputClass} />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Location</label>
+              <input type="text" value={vessel.location}
+                onChange={(e) => setVessel({ ...vessel, location: e.target.value })}
+                className={inputClass} />
+            </div>
+          </div>
+        </div>
+
+        {/* Photos */}
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <h2 className="font-semibold text-gray-900 mb-1">Photos</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Optional — personalizes the invite email with vessel info and photos status.
+            Upload now — photos will be in the broker's portal the moment they log in.
           </p>
-          <div className="mb-4">
-            <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-              Vessel Name
-            </label>
-            <input
-              type="text"
-              value={form.vesselName}
-              onChange={(e) => set("vesselName", e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30"
-            />
+
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+            className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#d4a843] transition-colors mb-4"
+          >
+            <p className="text-gray-400 text-sm">Click or drag photos here</p>
+            <p className="text-gray-300 text-xs mt-1">JPG, PNG, WEBP</p>
+            <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden"
+              onChange={(e) => handleFiles(e.target.files)} />
           </div>
 
-          {hasVessel && (
-            <div
-              onClick={() => set("photosReady", !form.photosReady)}
-              className={`flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors ${
-                form.photosReady
-                  ? "border-[#d4a843] bg-[#fdf8ec]"
-                  : "border-gray-200 hover:border-gray-300"
-              }`}
-            >
-              <div className={`w-5 h-5 rounded flex-shrink-0 mt-0.5 flex items-center justify-center border-2 transition-colors ${
-                form.photosReady ? "bg-[#d4a843] border-[#d4a843]" : "border-gray-300"
-              }`}>
-                {form.photosReady && <span className="text-white text-xs font-bold">✓</span>}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-gray-900">Photos are ready now</p>
-                <p className="text-xs text-gray-500 mt-0.5">
-                  The invite email will tell them their photos for <strong>{form.vesselName}</strong> are ready to view. If unchecked, it will say photos are coming soon.
-                </p>
-              </div>
+          {photos.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {photos.map((photo, i) => (
+                <div key={i} className="relative rounded-lg overflow-hidden border border-gray-200">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={photo.preview} alt={photo.file.name} className="w-full h-28 object-cover" />
+                  <button type="button" onClick={() => removePhoto(i)}
+                    className="absolute top-1.5 right-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors">
+                    ×
+                  </button>
+                  <div className="p-2 space-y-1">
+                    {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category) ? (
+                      <select value={photo.category}
+                        onChange={(e) => updateCategory(i, e.target.value === "__custom__" ? "" : e.target.value)}
+                        className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]">
+                        <option value="__custom__">+ Custom...</option>
+                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <input type="text" value={photo.category} autoFocus
+                          onChange={(e) => updateCategory(i, e.target.value)}
+                          placeholder="Enter category..."
+                          className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]" />
+                        <button type="button" onClick={() => updateCategory(i, "Other")}
+                          className="text-gray-400 hover:text-gray-600 text-xs px-1">✕</button>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-400 truncate">{photo.file.name}</p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Preview hint */}
-        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 text-xs text-gray-500 leading-relaxed">
-          <strong className="text-gray-700">What the broker receives:</strong> A branded YachtPics email with a
-          secure link to set their password
-          {hasVessel
-            ? form.photosReady
-              ? ` and a notice that their photos for "${form.vesselName}" are ready.`
-              : ` and a note that photos for "${form.vesselName}" are on the way.`
-            : ". After that, you can create a listing and upload their photos."}
-        </div>
-
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
-            {error}
-          </div>
+          <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
         )}
 
         <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={loading}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-60 text-[#050b14] font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
-          >
-            {loading ? "Sending invite…" : "Send Invite"}
+          <button type="submit" disabled={loading}
+            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-60 text-[#050b14] font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors min-w-[160px]">
+            {loading
+              ? (progress ?? "Working…")
+              : photos.length > 0
+                ? `Send Invite & Upload ${photos.length} Photo${photos.length !== 1 ? "s" : ""}`
+                : "Send Invite"}
           </button>
           <Link href="/admin/brokers" className="text-sm text-gray-400 hover:text-gray-600 transition-colors">
             Cancel
