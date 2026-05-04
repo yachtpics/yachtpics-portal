@@ -7,7 +7,7 @@ export default async function AdminBrokersPage() {
   const { data: brokers } = await supabase
     .from("profiles")
     .select(`
-      id, first_name, last_name, display_email, phone, created_at,
+      id, first_name, last_name, display_email, phone, created_at, welcomed_at,
       broker_details(brokerage_name),
       subscriptions(plan, status, trial_ends_at)
     `)
@@ -55,12 +55,21 @@ export default async function AdminBrokersPage() {
                   ? Math.max(0, Math.ceil((new Date(sub[0].trial_ends_at).getTime() - Date.now()) / 86400000))
                   : null;
 
+                const invited = !broker.welcomed_at;
+
                 return (
                   <tr key={broker.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4">
-                      <p className="font-medium text-gray-900">
-                        {broker.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : "—"}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium text-gray-900">
+                          {broker.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : "—"}
+                        </p>
+                        {invited && (
+                          <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-600 border border-amber-200">
+                            Invited
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 text-gray-500 hidden sm:table-cell">{brokerage}</td>
                     <td className="px-6 py-4 text-gray-500 hidden md:table-cell">

@@ -262,7 +262,7 @@ export default function InviteBrokerPage() {
         <div className="bg-white border border-gray-200 rounded-xl p-6">
           <h2 className="font-semibold text-gray-900 mb-1">Photos</h2>
           <p className="text-xs text-gray-400 mb-4">
-            Upload now — photos will be in the broker's portal the moment they log in.
+            Upload now — photos will be in the broker&apos;s portal the moment they log in.
           </p>
 
           <div
