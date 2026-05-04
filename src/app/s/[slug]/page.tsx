@@ -50,14 +50,15 @@ export default async function PublicSlideshowPage({
     .eq("id", listing.broker_id)
     .maybeSingle();
 
-  const withUrls = await Promise.all(
-    (photos ?? []).map(async (photo) => {
-      const { data } = await supabase.storage
-        .from("listing-photos")
-        .createSignedUrl(photo.storage_path, 7200);
-      return { ...photo, url: data?.signedUrl ?? null };
-    })
-  );
+  const paths = (photos ?? []).map(p => p.storage_path);
+  const { data: signedData } = paths.length > 0
+    ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 7200)
+    : { data: [] };
+  const urlMap = new Map((signedData ?? []).map(d => [d.path, d.signedUrl]));
+  const withUrls = (photos ?? []).map(photo => ({
+    ...photo,
+    url: urlMap.get(photo.storage_path) ?? null,
+  }));
 
   const broker = {
     name:

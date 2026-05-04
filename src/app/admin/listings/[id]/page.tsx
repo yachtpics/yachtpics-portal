@@ -24,15 +24,16 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .eq("listing_id", params.id)
     .order("display_order");
 
-  // Get signed URLs for all photos
-  const photosWithUrls = await Promise.all(
-    (photos ?? []).map(async (photo) => {
-      const { data } = await supabase.storage
-        .from("listing-photos")
-        .createSignedUrl(photo.storage_path, 3600);
-      return { ...photo, url: data?.signedUrl ?? null };
-    })
-  );
+  // Get signed URLs for all photos in a single batch request
+  const paths = (photos ?? []).map(p => p.storage_path);
+  const { data: signedData } = paths.length > 0
+    ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600)
+    : { data: [] };
+  const urlMap = new Map((signedData ?? []).map(d => [d.path, d.signedUrl]));
+  const photosWithUrls = (photos ?? []).map(photo => ({
+    ...photo,
+    url: urlMap.get(photo.storage_path) ?? null,
+  }));
 
   return <AdminListingDetail listing={listing as any} photos={photosWithUrls} />;
 }
