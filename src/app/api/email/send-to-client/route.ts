@@ -108,7 +108,7 @@ export async function POST(req: NextRequest) {
           ${docsBlock}
         </div>
         <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">
-          <p style="margin:0;font-size:13px;color:#9ca3af;">YachtPics &middot; Professional Yacht Photography<br>Questions? Visit <a href="https://yachtpics.com" style="color:#d4a843;">yachtpics.com</a></p>
+          <p style="margin:0;font-size:12px;color:#c4c9d4;">Powered by <a href="https://yachtpics.com" style="color:#c4c9d4;text-decoration:none;">YachtPics</a></p>
         </div>
       </div>
     </body></html>`;
