@@ -18,6 +18,7 @@ export default function NewListingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const preselectedBrokerId = searchParams.get("broker") ?? "";
+  const fromInvite = searchParams.get("fromInvite") === "true";
 
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [saving, setSaving] = useState(false);
@@ -135,7 +136,17 @@ export default function NewListingPage() {
       setUploading(false);
     }
 
-    router.push(`/admin/listings/${listing.id}`);
+    // 3. If coming from broker invite flow and photos were uploaded, auto-notify broker
+    if (fromInvite && photos.length > 0) {
+      await fetch("/api/email/notify-broker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id }),
+      });
+      router.push(`/admin/brokers/${form.broker_id}?invited=true`);
+    } else {
+      router.push(`/admin/listings/${listing.id}`);
+    }
   }
 
   const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
@@ -151,8 +162,24 @@ export default function NewListingPage() {
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">New Listing</h1>
-        <p className="text-gray-500 mt-1 text-sm">Create a listing and upload photos for a broker.</p>
+        <p className="text-gray-500 mt-1 text-sm">
+          {fromInvite
+            ? "Invite sent. Now create their listing and upload photos — the broker will be notified automatically when you save."
+            : "Create a listing and upload photos for a broker."}
+        </p>
       </div>
+
+      {fromInvite && (
+        <div className="mb-6 flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
+          <span className="text-green-500 text-lg leading-none mt-0.5">✓</span>
+          <div>
+            <p className="text-sm font-semibold text-green-800">Invite sent successfully</p>
+            <p className="text-sm text-green-700 mt-0.5">
+              The broker will receive a second email when you save this listing confirming their photos are ready.
+            </p>
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mb-6 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-600">{error}</div>
@@ -199,7 +226,7 @@ export default function NewListingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className={labelClass}>Vessel Name</label>
-              <input className={inputClass} value={form.vessel_name} onChange={(e) => setForm({ ...form, vessel_name: e.target.value })} placeholder="" />
+              <input className={inputClass} value={form.vessel_name} onChange={(e) => setForm({ ...form, vessel_name: e.target.value })} />
             </div>
             <div>
               <label className={labelClass}>Type</label>
@@ -212,31 +239,31 @@ export default function NewListingPage() {
             </div>
             <div>
               <label className={labelClass}>Year</label>
-              <input className={inputClass} type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} placeholder="" min="1900" max="2030" />
+              <input className={inputClass} type="number" value={form.year} onChange={(e) => setForm({ ...form, year: e.target.value })} min="1900" max="2030" />
             </div>
             <div>
               <label className={labelClass}>Make</label>
-              <input className={inputClass} value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} placeholder="" />
+              <input className={inputClass} value={form.make} onChange={(e) => setForm({ ...form, make: e.target.value })} />
             </div>
             <div>
               <label className={labelClass}>Model</label>
-              <input className={inputClass} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="" />
+              <input className={inputClass} value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} />
             </div>
             <div>
               <label className={labelClass}>Length (ft)</label>
-              <input className={inputClass} type="number" value={form.length_ft} onChange={(e) => setForm({ ...form, length_ft: e.target.value })} placeholder="" />
+              <input className={inputClass} type="number" value={form.length_ft} onChange={(e) => setForm({ ...form, length_ft: e.target.value })} />
             </div>
             <div>
               <label className={labelClass}>Asking Price ($)</label>
-              <input className={inputClass} type="number" value={form.asking_price} onChange={(e) => setForm({ ...form, asking_price: e.target.value })} placeholder="" />
+              <input className={inputClass} type="number" value={form.asking_price} onChange={(e) => setForm({ ...form, asking_price: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass}>Location</label>
-              <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="" />
+              <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass}>Description <span className="text-gray-400 font-normal">(optional)</span></label>
-              <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="" />
+              <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
           </div>
         </section>
@@ -245,10 +272,11 @@ export default function NewListingPage() {
         <section className="bg-white border border-gray-200 rounded-xl p-6">
           <h2 className="font-semibold text-gray-900 mb-1">Photos</h2>
           <p className="text-gray-500 text-sm mb-4">
-            Drag files in or click to select. Categories are auto-detected from filenames.
+            {fromInvite
+              ? "Upload their photos here — the broker will be notified automatically when you save."
+              : "Drag files in or click to select. Categories are auto-detected from filenames."}
           </p>
 
-          {/* Drop zone */}
           <div
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
@@ -267,7 +295,6 @@ export default function NewListingPage() {
             />
           </div>
 
-          {/* Photo grid */}
           {photos.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {photos.map((photo, i) => (
@@ -340,7 +367,11 @@ export default function NewListingPage() {
             disabled={saving}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
           >
-            {saving ? "Creating..." : `Create Listing${photos.length > 0 ? ` & Upload ${photos.length} Photo${photos.length !== 1 ? "s" : ""}` : ""}`}
+            {saving
+              ? (fromInvite ? "Saving & notifying broker…" : "Creating...")
+              : fromInvite
+                ? `Save & Notify Broker${photos.length > 0 ? ` (${photos.length} photo${photos.length !== 1 ? "s" : ""})` : ""}`
+                : `Create Listing${photos.length > 0 ? ` & Upload ${photos.length} Photo${photos.length !== 1 ? "s" : ""}` : ""}`}
           </button>
         </div>
       </form>

@@ -21,6 +21,12 @@ export default async function AdminBrokersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Brokers</h1>
           <p className="text-gray-500 mt-1 text-sm">{brokers?.length ?? 0} broker accounts.</p>
         </div>
+        <Link
+          href="/admin/brokers/new"
+          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+        >
+          + Invite Broker
+        </Link>
       </div>
 
       {(!brokers || brokers.length === 0) ? (

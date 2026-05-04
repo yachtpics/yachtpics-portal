@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
-export default async function AdminBrokerDetailPage({ params }: { params: { id: string } }) {
+export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
 
   const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }] =
@@ -41,6 +41,18 @@ export default async function AdminBrokerDetailPage({ params }: { params: { id: 
           </Link>
         </div>
       </div>
+
+      {searchParams.invited === "true" && (
+        <div className="mb-6 flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
+          <span className="text-green-500 text-lg leading-none mt-0.5">✓</span>
+          <div>
+            <p className="text-sm font-semibold text-green-800">All done — broker invited and photos delivered</p>
+            <p className="text-sm text-green-700 mt-0.5">
+              {name} received an invite email with a link to set their password, plus a second email confirming their photos are ready.
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
         {/* Contact */}
