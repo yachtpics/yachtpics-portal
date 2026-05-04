@@ -3,12 +3,7 @@
 import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-
-const PHOTO_CATEGORIES = [
-  "Bow", "Stern", "Port", "Starboard", "Helm", "Cockpit",
-  "Salon", "Galley", "Master Stateroom", "Guest Stateroom",
-  "Head", "Engine Room", "Flybridge", "Swim Platform", "Other",
-];
+import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 
 interface Photo {
   id: string;

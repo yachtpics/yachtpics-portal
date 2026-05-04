@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 
 interface Broker {
   id: string;
@@ -11,12 +12,6 @@ interface Broker {
   display_email: string | null;
   broker_details: { brokerage_name: string | null }[] | null;
 }
-
-const PHOTO_CATEGORIES = [
-  "Bow", "Stern", "Port", "Starboard", "Helm", "Cockpit",
-  "Salon", "Galley", "Master Stateroom", "Guest Stateroom",
-  "Head", "Engine Room", "Flybridge", "Swim Platform", "Other",
-];
 
 export default function NewListingPage() {
   const supabase = createClient();
@@ -286,14 +281,30 @@ export default function NewListingPage() {
                   >
                     ×
                   </button>
-                  <div className="p-2">
-                    <select
-                      value={photo.category}
-                      onChange={(e) => updateCategory(i, e.target.value)}
-                      className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]"
-                    >
-                      {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
+                  <div className="p-2 space-y-1">
+                    {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category) ? (
+                      <select
+                        value={photo.category}
+                        onChange={(e) => updateCategory(i, e.target.value === "__custom__" ? "" : e.target.value)}
+                        className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]"
+                      >
+                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        <option value="__custom__">+ Custom...</option>
+                      </select>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          value={photo.category}
+                          onChange={(e) => updateCategory(i, e.target.value)}
+                          placeholder="Enter category..."
+                          autoFocus
+                          className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]"
+                        />
+                        <button type="button" onClick={() => updateCategory(i, "Other")} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">✕</button>
+                      </div>
+                    )}
+                    <p className="text-[10px] text-gray-400 truncate">{photo.file.name}</p>
                   </div>
                 </div>
               ))}

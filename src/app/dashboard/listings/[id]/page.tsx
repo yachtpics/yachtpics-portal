@@ -14,12 +14,7 @@ import {
   SortableContext, rectSortingStrategy, arrayMove, useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-
-const PHOTO_CATEGORIES = [
-  "Bow", "Stern", "Port", "Starboard", "Helm", "Cockpit",
-  "Salon", "Galley", "Master Stateroom", "Guest Stateroom",
-  "Head", "Engine Room", "Flybridge", "Swim Platform", "Other",
-];
+import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 
 interface Photo {
   id: string;
@@ -1230,14 +1225,34 @@ function SortablePhotoCard({
       <div className="p-2 bg-white">
         <div className="flex items-center gap-1">
           <span className="text-xs font-medium text-gray-500 shrink-0">{String(index + 1).padStart(2, "0")} ·</span>
-          <select
-            value={photo.category ?? "Other"}
-            onChange={(e) => { e.stopPropagation(); onUpdateCategory(e.target.value); }}
-            onClick={(e) => e.stopPropagation()}
-            className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
-          >
-            {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
+          {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ? (
+            <select
+              value={photo.category ?? "Other"}
+              onChange={(e) => { e.stopPropagation(); onUpdateCategory(e.target.value === "__custom__" ? "" : e.target.value); }}
+              onClick={(e) => e.stopPropagation()}
+              className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
+            >
+              {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              <option value="__custom__">+ Custom...</option>
+            </select>
+          ) : (
+            <div className="flex items-center gap-1 flex-1 min-w-0">
+              <input
+                type="text"
+                value={photo.category ?? ""}
+                onChange={(e) => { e.stopPropagation(); onUpdateCategory(e.target.value); }}
+                onClick={(e) => e.stopPropagation()}
+                placeholder="Custom category..."
+                className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none flex-1 min-w-0 focus:border-[#d4a843]"
+              />
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); onUpdateCategory("Other"); }}
+                className="text-gray-400 hover:text-gray-600 text-xs shrink-0 px-1"
+                title="Back to list"
+              >✕</button>
+            </div>
+          )}
           {!photo.is_visible && <span className="text-gray-400 text-xs shrink-0">· hidden</span>}
         </div>
         {photo.filename && (

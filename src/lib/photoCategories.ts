@@ -1,0 +1,46 @@
+export const PHOTO_CATEGORIES = [
+  // Exterior
+  "Profiles",
+  "Bow",
+  "Stern",
+  "Port",
+  "Starboard",
+  "Cockpit",
+  "Flybridge",
+  "Tower",
+  "Helm",
+  "Console",
+  "Swim Platform",
+  "Lazarette",
+  // Interior
+  "Salon",
+  "Dinette",
+  "Galley",
+  "Pantry",
+  "Cabin",
+  "Aft Cabin",
+  // Staterooms
+  "Master Stateroom",
+  "Master Stateroom Head",
+  "Forward Stateroom",
+  "Forward Stateroom Head",
+  "Guest Stateroom",
+  "Guest Stateroom Head",
+  "Port Guest Stateroom",
+  "Port Guest Stateroom Head",
+  "Starboard Guest Stateroom",
+  "Starboard Guest Stateroom Head",
+  "Crew",
+  "Crew Stateroom",
+  "Crew Stateroom Head",
+  // Heads
+  "Head",
+  "Day Head",
+  // Engine & Mechanical
+  "Engine Room",
+  "Engines",
+  "Electrical Room",
+  "Mechanical Room",
+  // Catch-all
+  "Other",
+] as const;
