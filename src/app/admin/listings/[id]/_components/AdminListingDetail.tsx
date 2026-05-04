@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import DeleteListingButton from "./DeleteListingButton";
 
 interface Photo {
   id: string;
@@ -395,6 +396,15 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
             })}
           </div>
         )}
+      </div>
+
+      {/* Danger zone */}
+      <div className="mt-6 border border-red-100 rounded-xl px-6 py-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-700">Delete this listing</p>
+          <p className="text-xs text-gray-400 mt-0.5">Permanently removes the listing and all its photos. This cannot be undone.</p>
+        </div>
+        <DeleteListingButton listingId={listing.id} vesselName={listing.vessel_name} brokerId={listing.broker_id} />
       </div>
     </div>
   );
