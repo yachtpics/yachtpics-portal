@@ -1232,8 +1232,8 @@ function SortablePhotoCard({
               onClick={(e) => e.stopPropagation()}
               className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
             >
-              {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
               <option value="__custom__">+ Custom...</option>
+              {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           ) : (
             <div className="flex items-center gap-1 flex-1 min-w-0">

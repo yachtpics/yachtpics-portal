@@ -288,8 +288,8 @@ export default function NewListingPage() {
                         onChange={(e) => updateCategory(i, e.target.value === "__custom__" ? "" : e.target.value)}
                         className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]"
                       >
-                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         <option value="__custom__">+ Custom...</option>
+                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     ) : (
                       <div className="flex items-center gap-1">
