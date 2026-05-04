@@ -29,13 +29,15 @@ interface BrokerInfo {
 }
 
 interface Props {
+  listingId: string;
+  slug: string;
   listing: Listing;
   broker: BrokerInfo;
   photos: Photo[];
   brokerId?: string;
 }
 
-export default function SlideshowViewer({ listing, broker: initialBroker, photos, brokerId }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, brokerId }: Props) {
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
@@ -43,6 +45,19 @@ export default function SlideshowViewer({ listing, broker: initialBroker, photos
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [broker, setBroker] = useState<BrokerInfo>(initialBroker);
+
+  // Track view once per session
+  useEffect(() => {
+    const key = `viewed_${slug}`;
+    if (typeof sessionStorage !== "undefined" && !sessionStorage.getItem(key)) {
+      sessionStorage.setItem(key, "1");
+      fetch("/api/slideshow/view", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, slug }),
+      }).catch(() => {});
+    }
+  }, [listingId, slug]);
 
   useEffect(() => {
     if (!brokerId) return;

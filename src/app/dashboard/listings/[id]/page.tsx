@@ -63,6 +63,11 @@ export default function BrokerListingPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docInputRef = useRef<HTMLInputElement>(null);
 
+  // Sent history + view tracking
+  interface ClientSend { id: string; client_email: string; sent_at: string; included_slideshow: boolean; document_count: number; message: string | null; }
+  const [clientSends, setClientSends] = useState<ClientSend[]>([]);
+  const [viewCount, setViewCount] = useState<number>(0);
+
   // Documents
   interface Document { id: string; storage_path: string; filename: string | null; created_at: string; }
   const [documents, setDocuments] = useState<Document[]>([]);
@@ -152,6 +157,17 @@ export default function BrokerListingPage() {
       .eq("listing_id", id)
       .order("created_at");
     setDocuments(docs ?? []);
+
+    const { data: sends } = await supabase.from("client_sends")
+      .select("id, client_email, sent_at, included_slideshow, document_count, message")
+      .eq("listing_id", id)
+      .order("sent_at", { ascending: false });
+    setClientSends(sends ?? []);
+
+    const { count } = await supabase.from("slideshow_views")
+      .select("id", { count: "exact", head: true })
+      .eq("listing_id", id);
+    setViewCount(count ?? 0);
 
     setLoading(false);
   }
@@ -953,6 +969,59 @@ export default function BrokerListingPage() {
         )}
       </div>
 
+      {/* Sent History section */}
+      <div className="mt-8 bg-white border border-gray-200 rounded-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Sent History</h2>
+            <p className="text-gray-500 text-xs mt-0.5">Emails sent to clients through the portal.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            {viewCount > 0 && (
+              <span className="flex items-center gap-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
+                <svg className="w-3.5 h-3.5 text-[#d4a843]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                </svg>
+                {viewCount} slideshow {viewCount === 1 ? "view" : "views"}
+              </span>
+            )}
+          </div>
+        </div>
+        {clientSends.length === 0 ? (
+          <div className="px-6 py-10 text-center">
+            <p className="text-gray-400 text-sm">No emails sent yet.</p>
+            <p className="text-gray-300 text-xs mt-1">Use the &ldquo;Send to Client&rdquo; button above to share this listing.</p>
+          </div>
+        ) : (
+          <ul className="divide-y divide-gray-50">
+            {clientSends.map((send) => (
+              <li key={send.id} className="px-6 py-4 flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium text-gray-900 truncate">{send.client_email}</p>
+                  {send.message && (
+                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 italic">&ldquo;{send.message}&rdquo;</p>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    {send.included_slideshow && (
+                      <span className="text-[10px] font-medium bg-[#d4a843]/10 text-[#b08c2a] px-2 py-0.5 rounded-full">Slideshow</span>
+                    )}
+                    {send.document_count > 0 && (
+                      <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                        {send.document_count} doc{send.document_count !== 1 ? "s" : ""}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <p className="text-xs text-gray-400 shrink-0 mt-0.5">
+                  {new Date(send.sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
       {/* Slideshow section */}
       <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
         <div className="flex items-start justify-between flex-wrap gap-4">
@@ -1156,7 +1225,6 @@ function SortablePhotoCard({
           {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
         </div>
       )}
-
 
       {/* Caption row */}
       <div className="p-2 bg-white">

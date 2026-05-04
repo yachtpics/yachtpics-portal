@@ -69,5 +69,14 @@ export default async function PublicSlideshowPage({
     logoUrl: brokerDetails?.logo_url ?? null,
   };
 
-  return <SlideshowViewer listing={listing} broker={broker} photos={withUrls} brokerId={listing.broker_id} />;
+  return (
+    <SlideshowViewer
+      listingId={listing.id}
+      slug={params.slug}
+      listing={listing}
+      broker={broker}
+      photos={withUrls}
+      brokerId={listing.broker_id}
+    />
+  );
 }

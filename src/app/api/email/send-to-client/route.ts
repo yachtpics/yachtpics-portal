@@ -9,7 +9,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Verify the broker owns this listing
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -51,7 +50,6 @@ export async function POST(req: NextRequest) {
       ? `https://portal.yachtpics.com/s/${listing.slideshow_slug}`
       : null;
 
-    // Generate signed URLs for selected documents
     const docLinks: { filename: string; url: string }[] = [];
     if (documentIds?.length > 0) {
       const { data: docs } = await supabaseAdmin
@@ -63,14 +61,13 @@ export async function POST(req: NextRequest) {
       for (const doc of docs ?? []) {
         const { data: signed } = await supabaseAdmin.storage
           .from("listing-documents")
-          .createSignedUrl(doc.storage_path, 60 * 60 * 24 * 7); // 7 days
+          .createSignedUrl(doc.storage_path, 60 * 60 * 24 * 7);
         if (signed?.signedUrl) {
           docLinks.push({ filename: doc.filename ?? "document.pdf", url: signed.signedUrl });
         }
       }
     }
 
-    // Build email HTML
     const messageBlock = message
       ? `<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
            <p style="margin:0;font-size:15px;color:#374151;line-height:1.6;white-space:pre-wrap;">${message}</p>
@@ -80,7 +77,7 @@ export async function POST(req: NextRequest) {
     const slideshowBlock = includeSlideshow && slideshowUrl
       ? `<div style="margin-bottom:20px;">
            <a href="${slideshowUrl}" style="display:inline-flex;align-items:center;gap:8px;background:#050b14;color:#ffffff;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">
-             <span>▶</span> View Photo Gallery
+             <span>&#9658;</span> View Photo Gallery
            </a>
          </div>`
       : "";
@@ -90,9 +87,9 @@ export async function POST(req: NextRequest) {
            <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Documents</p>
            ${docLinks.map(d => `
              <a href="${d.url}" style="display:flex;align-items:center;gap:10px;background:#f8f9fa;border-radius:8px;padding:12px 16px;text-decoration:none;margin-bottom:8px;">
-               <span style="font-size:18px;">📄</span>
+               <span style="font-size:18px;">&#128196;</span>
                <span style="font-size:14px;font-weight:500;color:#111827;">${d.filename}</span>
-               <span style="margin-left:auto;font-size:12px;color:#d4a843;font-weight:600;">Download →</span>
+               <span style="margin-left:auto;font-size:12px;color:#d4a843;font-weight:600;">Download &#8594;</span>
              </a>
            `).join("")}
          </div>`
@@ -105,13 +102,13 @@ export async function POST(req: NextRequest) {
         </div>
         <div style="padding:40px;">
           <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;">${vesselName}</h1>
-          <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">Sent by ${brokerName}${brokerage ? ` · ${brokerage}` : ""}</p>
+          <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">Sent by ${brokerName}${brokerage ? ` &middot; ${brokerage}` : ""}</p>
           ${messageBlock}
           ${slideshowBlock}
           ${docsBlock}
         </div>
         <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">
-          <p style="margin:0;font-size:13px;color:#9ca3af;">YachtPics · Professional Yacht Photography<br>Questions? Visit <a href="https://yachtpics.com" style="color:#d4a843;">yachtpics.com</a></p>
+          <p style="margin:0;font-size:13px;color:#9ca3af;">YachtPics &middot; Professional Yacht Photography<br>Questions? Visit <a href="https://yachtpics.com" style="color:#d4a843;">yachtpics.com</a></p>
         </div>
       </div>
     </body></html>`;
@@ -133,6 +130,16 @@ export async function POST(req: NextRequest) {
 
     const data = await res.json();
     if (!res.ok) return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
+
+    // Log the send for history tracking
+    await supabaseAdmin.from("client_sends").insert({
+      listing_id: listingId,
+      broker_id: user.id,
+      client_email: clientEmail,
+      message: message || null,
+      included_slideshow: !!(includeSlideshow && slideshowUrl),
+      document_count: docLinks.length,
+    });
 
     return NextResponse.json({ success: true });
   } catch (err) {
