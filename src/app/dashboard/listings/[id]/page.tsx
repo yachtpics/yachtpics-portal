@@ -974,7 +974,7 @@ export default function BrokerListingPage() {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <div>
             <h2 className="text-base font-semibold text-gray-900">Sent History</h2>
-            <p className="text-gray-500 text-xs mt-0.5">Emails sent to clients through the portal.</p>
+            <p className="text-gray-500 text-xs mt-0.5">Tracks emails sent via the &ldquo;Send to Client&rdquo; button above — not the Email link below.</p>
           </div>
           <div className="flex items-center gap-3">
             {viewCount > 0 && (
@@ -991,7 +991,7 @@ export default function BrokerListingPage() {
         {clientSends.length === 0 ? (
           <div className="px-6 py-10 text-center">
             <p className="text-gray-400 text-sm">No emails sent yet.</p>
-            <p className="text-gray-300 text-xs mt-1">Use the &ldquo;Send to Client&rdquo; button above to share this listing.</p>
+            <p className="text-gray-300 text-xs mt-1">Use the &ldquo;Send to Client&rdquo; button at the top of this page to send a tracked email.</p>
           </div>
         ) : (
           <ul className="divide-y divide-gray-50">
