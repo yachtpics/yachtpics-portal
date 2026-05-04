@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
+import DeleteBrokerButton from "./DeleteBrokerButton";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
@@ -138,7 +139,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       </div>
 
       {/* Shoot history */}
-      <div className="bg-white border border-gray-200 rounded-xl">
+      <div className="bg-white border border-gray-200 rounded-xl mb-6">
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">Shoot History</h2>
           <Link href={`/admin/shoots/new?broker=${params.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-sm font-medium transition-colors">
@@ -176,6 +177,15 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             })}
           </ul>
         )}
+      </div>
+
+      {/* Danger zone */}
+      <div className="border border-red-100 rounded-xl px-6 py-4 flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-700">Delete this broker</p>
+          <p className="text-xs text-gray-400 mt-0.5">Permanently removes their account and all associated data. This cannot be undone.</p>
+        </div>
+        <DeleteBrokerButton brokerId={params.id} brokerName={name} />
       </div>
     </div>
   );
