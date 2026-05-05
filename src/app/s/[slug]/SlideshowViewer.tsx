@@ -9,6 +9,12 @@ interface Photo {
   filename: string | null;
 }
 
+interface Video {
+  id: string;
+  url: string | null;
+  filename: string | null;
+}
+
 interface Listing {
   vessel_name: string | null;
   vessel_type: string | null;
@@ -34,10 +40,11 @@ interface Props {
   listing: Listing;
   broker: BrokerInfo;
   photos: Photo[];
+  videos?: Video[];
   brokerId?: string;
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, brokerId }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId }: Props) {
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
@@ -118,7 +125,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     .filter(Boolean)
     .join(" · ");
 
-  if (photos.length === 0) {
+  if (photos.length === 0 && videos.length === 0) {
     return (
       <div className="min-h-screen bg-[#050b14] flex items-center justify-center">
         <p className="text-gray-500 text-sm">No photos available.</p>
@@ -162,6 +169,23 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         </div>
       </div>
 
+      {/* Videos — shown above the slideshow when present */}
+      {videos.length > 0 && view === "slideshow" && (
+        <div className="border-b border-[#1e3a5f] px-4 py-4 space-y-3 bg-[#070e1c]">
+          {videos.map((video) => video.url && (
+            <div key={video.id} className="rounded-xl overflow-hidden">
+              <video
+                src={video.url}
+                controls
+                playsInline
+                preload="metadata"
+                className="w-full max-h-[360px] bg-black"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+
       {view === "slideshow" ? (
         <>
           {/* Main photo area */}
@@ -176,7 +200,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               setTouchStart(null);
             }}
           >
-            {/* Outgoing photo — stays visible while new photo fades in */}
+            {/* Outgoing photo */}
             {outgoing !== null && photos[outgoing]?.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -188,7 +212,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               />
             )}
 
-            {/* Current photo — fades in over outgoing */}
+            {/* Current photo */}
             {photos[current]?.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -265,6 +289,27 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       ) : (
         /* Grid view */
         <div className="flex-1 p-4 sm:p-6 overflow-auto">
+          {/* Videos appear first in grid view */}
+          {videos.length > 0 && (
+            <div className="mb-6 space-y-4">
+              {videos.map((video) => video.url && (
+                <div key={video.id} className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+                  <video
+                    src={video.url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full max-h-[420px] bg-black"
+                  />
+                  {video.filename && (
+                    <div className="px-4 py-2 bg-[#0a1628]">
+                      <p className="text-gray-400 text-xs truncate">{video.filename}</p>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {photos.map((photo, i) => (
               <div

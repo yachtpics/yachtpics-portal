@@ -24,7 +24,6 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .eq("listing_id", params.id)
     .order("display_order");
 
-  // Get signed URLs for all photos in a single batch request
   const paths = (photos ?? []).map(p => p.storage_path);
   const { data: signedData } = paths.length > 0
     ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600)
@@ -35,5 +34,20 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     url: urlMap.get(photo.storage_path) ?? null,
   }));
 
-  return <AdminListingDetail listing={listing as any} photos={photosWithUrls} />;
+  const { data: videos } = await supabase
+    .from("videos")
+    .select("id, storage_path, filename, created_at")
+    .eq("listing_id", params.id)
+    .order("created_at");
+  const vidPaths = (videos ?? []).map(v => v.storage_path);
+  const { data: vidSigned } = vidPaths.length > 0
+    ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 3600)
+    : { data: [] };
+  const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
+  const videosWithUrls = (videos ?? []).map(v => ({
+    ...v,
+    url: vidUrlMap.get(v.storage_path) ?? null,
+  }));
+
+  return <AdminListingDetail listing={listing as any} photos={photosWithUrls} videos={videosWithUrls} />;
 }

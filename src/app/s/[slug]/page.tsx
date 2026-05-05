@@ -11,7 +11,6 @@ export default async function PublicSlideshowPage({
 }: {
   params: { slug: string };
 }) {
-  // Force headers() call so Next.js treats this as fully dynamic (no static optimization)
   headers();
 
   const supabase = createClient(
@@ -28,7 +27,7 @@ export default async function PublicSlideshowPage({
 
   if (!listing) notFound();
 
-  const [{ data: profile }, { data: photos }] =
+  const [{ data: profile }, { data: photos }, { data: rawVideos }] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -41,15 +40,20 @@ export default async function PublicSlideshowPage({
         .eq("listing_id", listing.id)
         .eq("is_visible", true)
         .order("display_order"),
+      supabase
+        .from("videos")
+        .select("id, storage_path, filename")
+        .eq("listing_id", listing.id)
+        .order("created_at"),
     ]);
 
-  // Separate query to avoid any caching of old broken query
   const { data: brokerDetails } = await supabase
     .from("broker_details")
     .select("brokerage_name, brokerage_website, logo_url")
     .eq("id", listing.broker_id)
     .maybeSingle();
 
+  // Sign photo URLs
   const paths = (photos ?? []).map(p => p.storage_path);
   const { data: signedData } = paths.length > 0
     ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 7200)
@@ -58,6 +62,17 @@ export default async function PublicSlideshowPage({
   const withUrls = (photos ?? []).map(photo => ({
     ...photo,
     url: urlMap.get(photo.storage_path) ?? null,
+  }));
+
+  // Sign video URLs
+  const vidPaths = (rawVideos ?? []).map(v => v.storage_path);
+  const { data: vidSigned } = vidPaths.length > 0
+    ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 7200)
+    : { data: [] };
+  const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
+  const videos = (rawVideos ?? []).map(v => ({
+    ...v,
+    url: vidUrlMap.get(v.storage_path) ?? null,
   }));
 
   const broker = {
@@ -77,6 +92,7 @@ export default async function PublicSlideshowPage({
       listing={listing}
       broker={broker}
       photos={withUrls}
+      videos={videos}
       brokerId={listing.broker_id}
     />
   );

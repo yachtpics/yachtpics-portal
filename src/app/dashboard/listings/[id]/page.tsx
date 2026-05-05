@@ -70,6 +70,14 @@ export default function BrokerListingPage() {
   const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
+  // Videos
+  interface Video { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null; }
+  const [videos, setVideos] = useState<Video[]>([]);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoUploadProgress, setVideoUploadProgress] = useState(0);
+  const [deletingVideoIds, setDeletingVideoIds] = useState<Set<string>>(new Set());
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
   // Send to client
   const [sendModal, setSendModal] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
@@ -157,6 +165,19 @@ export default function BrokerListingPage() {
       .eq("listing_id", id)
       .order("created_at");
     setDocuments(docs ?? []);
+
+    const { data: vids } = await supabase.from("videos")
+      .select("id, storage_path, filename, created_at")
+      .eq("listing_id", id)
+      .order("created_at");
+    if (vids && vids.length > 0) {
+      const vidPaths = vids.map(v => v.storage_path);
+      const { data: vidSigned } = await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 3600);
+      const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
+      setVideos(vids.map(v => ({ ...v, url: vidUrlMap.get(v.storage_path) ?? null })));
+    } else {
+      setVideos([]);
+    }
 
     const { data: sends } = await supabase.from("client_sends")
       .select("id, client_email, sent_at, included_slideshow, document_count, message")
@@ -422,6 +443,55 @@ export default function BrokerListingPage() {
   async function updateCategory(photoId: string, category: string) {
     await supabase.from("photos").update({ category }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
+  }
+
+  async function handleVideoFiles(files: FileList | null) {
+    if (!files) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    setUploadingVideo(true);
+    setVideoUploadProgress(0);
+    const fileArr = Array.from(files).filter(f => f.type === "video/mp4" || f.name.endsWith(".mp4"));
+    for (let i = 0; i < fileArr.length; i++) {
+      const file = fileArr[i];
+      const path = `${user.id}/${id}/${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage.from("listing-videos").upload(path, file, { upsert: false });
+      if (!error) {
+        const { data: newVideo } = await supabase.from("videos").insert({
+          listing_id: id,
+          storage_path: path,
+          filename: file.name,
+          uploaded_by: user.id,
+          display_order: videos.length + i,
+        }).select().single();
+        if (newVideo) {
+          const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
+          setVideos(prev => [...prev, { ...newVideo, url: signed?.signedUrl ?? null }]);
+        }
+      }
+      setVideoUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
+    }
+    setUploadingVideo(false);
+  }
+
+  async function deleteVideo(videoId: string, storagePath: string) {
+    setDeletingVideoIds(prev => new Set(Array.from(prev).concat(videoId)));
+    await fetch("/api/videos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId, storagePath }),
+    });
+    setVideos(prev => prev.filter(v => v.id !== videoId));
+    setDeletingVideoIds(prev => { const next = new Set(prev); next.delete(videoId); return next; });
+  }
+
+  async function downloadVideo(storagePath: string, filename: string | null) {
+    const { data } = await supabase.storage.from("listing-videos").createSignedUrl(storagePath, 60);
+    if (!data?.signedUrl) return;
+    const a = window.document.createElement("a");
+    a.href = data.signedUrl;
+    a.download = filename ?? "video.mp4";
+    a.click();
   }
 
   async function sendToClient() {
@@ -901,6 +971,78 @@ export default function BrokerListingPage() {
           </div>
         </div>
       )}
+
+      {/* Video section */}
+      <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
+        <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Listing Videos</h2>
+            <p className="text-gray-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
+          </div>
+          <button
+            onClick={() => videoInputRef.current?.click()}
+            disabled={uploadingVideo}
+            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          >
+            {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload MP4"}
+          </button>
+          <input ref={videoInputRef} type="file" accept="video/mp4,.mp4" multiple className="hidden" onChange={(e) => handleVideoFiles(e.target.files)} />
+        </div>
+
+        {uploadingVideo && (
+          <div className="mb-4">
+            <div className="bg-gray-100 rounded-full h-2">
+              <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
+            </div>
+            <p className="text-xs text-gray-400 mt-1">Uploading large files may take a moment…</p>
+          </div>
+        )}
+
+        {videos.length === 0 ? (
+          <div
+            onClick={() => videoInputRef.current?.click()}
+            className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+          >
+            <p className="text-gray-400 text-sm">No videos yet — click to upload an MP4</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {videos.filter(v => !deletingVideoIds.has(v.id)).map((video) => (
+              <div key={video.id} className="rounded-xl overflow-hidden border border-gray-200">
+                {video.url && (
+                  <video
+                    src={video.url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full max-h-[420px] bg-black"
+                  />
+                )}
+                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => downloadVideo(video.storage_path, video.filename)}
+                    className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+                  >
+                    Download
+                  </button>
+                  <button
+                    onClick={() => deleteVideo(video.id, video.storage_path)}
+                    className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors shrink-0"
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Slideshow section */}
       <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">

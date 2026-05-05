@@ -32,7 +32,15 @@ interface Listing {
   profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null;
 }
 
-export default function AdminListingDetail({ listing, photos: initialPhotos }: { listing: Listing; photos: Photo[] }) {
+interface Video {
+  id: string;
+  storage_path: string;
+  filename: string | null;
+  created_at: string;
+  url: string | null;
+}
+
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos = [] }: { listing: Listing; photos: Photo[]; videos?: Video[] }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -398,6 +406,36 @@ export default function AdminListingDetail({ listing, photos: initialPhotos }: {
           </div>
         )}
       </div>
+
+      {/* Videos section (read-only for admin) */}
+      {videos.length > 0 && (
+        <div className="mt-6 bg-white border border-gray-200 rounded-xl p-6">
+          <h2 className="font-semibold text-gray-900 mb-4">Videos <span className="text-gray-400 font-normal text-sm">({videos.length})</span></h2>
+          <div className="space-y-4">
+            {videos.map((video) => (
+              <div key={video.id} className="rounded-xl overflow-hidden border border-gray-200">
+                {video.url && (
+                  <video
+                    src={video.url}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full max-h-[420px] bg-black"
+                  />
+                )}
+                <div className="px-4 py-3 bg-gray-50 flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">
+                      {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Danger zone */}
       <div className="mt-6 border border-red-100 rounded-xl px-6 py-4 flex items-center justify-between">
