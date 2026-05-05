@@ -11,9 +11,11 @@ export default function EditListingPage() {
   const router = useRouter();
   const id = params.id as string;
 
+  const VESSEL_TYPES = ["Billfish", "Bowrider", "Catamaran", "Center Console", "Convertible", "Cruiser", "Cuddy Cabin", "Dinghy", "Downeast", "Dual Console", "Express Cruiser", "Flybridge", "Motor Yacht", "Runabout", "Sailing Yacht", "Sportfish", "Sports Cruiser", "Tender", "Trawler", "Walkaround", "Other"];
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [customVesselType, setCustomVesselType] = useState(false);
 
   const [form, setForm] = useState({
     vessel_name: "",
@@ -41,6 +43,8 @@ export default function EditListingPage() {
         .single();
 
       if (!data) { router.push("/dashboard/listings"); return; }
+
+      if (data.vessel_type && !VESSEL_TYPES.includes(data.vessel_type)) setCustomVesselType(true);
 
       setForm({
         vessel_name: data.vessel_name ?? "",
@@ -119,12 +123,27 @@ export default function EditListingPage() {
             </div>
             <div>
               <label className={labelClass}>Type</label>
-              <select className={inputClass} value={form.vessel_type} onChange={(e) => setForm({ ...form, vessel_type: e.target.value })}>
-                <option value="">Select type...</option>
-                {["Billfish", "Motor Yacht", "Sailing Yacht", "Catamaran", "Center Console", "Sportfish", "Express Cruiser", "Trawler", "Other"].map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              {!customVesselType ? (
+                <select className={inputClass} value={form.vessel_type} onChange={(e) => {
+                  if (e.target.value === "__custom__") { setCustomVesselType(true); setForm({ ...form, vessel_type: "" }); }
+                  else setForm({ ...form, vessel_type: e.target.value });
+                }}>
+                  <option value="">Select type...</option>
+                  <option value="__custom__">+ Custom...</option>
+                  {VESSEL_TYPES.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex gap-2">
+                  <input type="text" autoFocus value={form.vessel_type}
+                    onChange={(e) => setForm({ ...form, vessel_type: e.target.value })}
+                    placeholder="Enter vessel type..."
+                    className={inputClass} />
+                  <button type="button" onClick={() => { setCustomVesselType(false); setForm({ ...form, vessel_type: "" }); }}
+                    className="text-gray-400 hover:text-gray-600 text-sm px-3 border border-gray-200 rounded-lg">✕</button>
+                </div>
+              )}
             </div>
             <div>
               <label className={labelClass}>Year</label>

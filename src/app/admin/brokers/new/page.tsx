@@ -18,6 +18,7 @@ export default function InviteBrokerPage() {
     brokerage: "",
   });
 
+  const [customVesselType, setCustomVesselType] = useState(false);
   const [vessel, setVessel] = useState({
     vesselName: "",
     vesselType: "",
@@ -210,14 +211,29 @@ export default function InviteBrokerPage() {
             </div>
             <div>
               <label className={labelClass}>Type</label>
-              <select value={vessel.vesselType}
-                onChange={(e) => setVessel({ ...vessel, vesselType: e.target.value })}
-                className={inputClass}>
-                <option value="">Select type...</option>
-                {["Billfish","Bowrider","Catamaran","Center Console","Convertible","Cruiser","Cuddy Cabin","Dinghy","Downeast","Dual Console","Express Cruiser","Flybridge","Motor Yacht","Runabout","Sailing Yacht","Sportfish","Sports Cruiser","Tender","Trawler","Walkaround","Other"].map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              {!customVesselType ? (
+                <select value={vessel.vesselType}
+                  onChange={(e) => {
+                    if (e.target.value === "__custom__") { setCustomVesselType(true); setVessel({ ...vessel, vesselType: "" }); }
+                    else setVessel({ ...vessel, vesselType: e.target.value });
+                  }}
+                  className={inputClass}>
+                  <option value="">Select type...</option>
+                  <option value="__custom__">+ Custom...</option>
+                  {["Billfish","Bowrider","Catamaran","Center Console","Convertible","Cruiser","Cuddy Cabin","Dinghy","Downeast","Dual Console","Express Cruiser","Flybridge","Motor Yacht","Runabout","Sailing Yacht","Sportfish","Sports Cruiser","Tender","Trawler","Walkaround","Other"].map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              ) : (
+                <div className="flex gap-2">
+                  <input type="text" autoFocus value={vessel.vesselType}
+                    onChange={(e) => setVessel({ ...vessel, vesselType: e.target.value })}
+                    placeholder="Enter vessel type..."
+                    className={inputClass} />
+                  <button type="button" onClick={() => { setCustomVesselType(false); setVessel({ ...vessel, vesselType: "" }); }}
+                    className="text-gray-400 hover:text-gray-600 text-sm px-3 border border-gray-200 rounded-lg">✕</button>
+                </div>
+              )}
             </div>
             <div>
               <label className={labelClass}>Year</label>
