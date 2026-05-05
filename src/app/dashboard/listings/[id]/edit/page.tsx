@@ -121,7 +121,7 @@ export default function EditListingPage() {
               <label className={labelClass}>Type</label>
               <select className={inputClass} value={form.vessel_type} onChange={(e) => setForm({ ...form, vessel_type: e.target.value })}>
                 <option value="">Select type...</option>
-                {["Motor Yacht", "Sailing Yacht", "Catamaran", "Center Console", "Sportfish", "Express Cruiser", "Trawler", "Other"].map((t) => (
+                {["Billfish", "Motor Yacht", "Sailing Yacht", "Catamaran", "Center Console", "Sportfish", "Express Cruiser", "Trawler", "Other"].map((t) => (
                   <option key={t} value={t}>{t}</option>
                 ))}
               </select>
