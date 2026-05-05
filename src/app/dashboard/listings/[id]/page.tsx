@@ -153,23 +153,16 @@ export default function BrokerListingPage() {
       .order("display_order");
 
     const photos_raw = p ?? [];
-    const paths = photos_raw.map(photo => photo.storage_path).filter(Boolean);
-    let signedUrlByPath: Record<string, string> = {};
-    if (paths.length > 0) {
+    // Use index-based signed URL mapping — Supabase preserves order
+    const photosWithUrls: (typeof photos_raw[0] & { url: string | null })[] = [];
+    if (photos_raw.length > 0) {
+      const paths = photos_raw.map(photo => photo.storage_path);
       const { data: signedData } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
-      for (const item of signedData ?? []) {
-        if (item.signedUrl && item.path) {
-          signedUrlByPath[item.path] = item.signedUrl;
-          signedUrlByPath[item.path.replace(/^\//, "")] = item.signedUrl;
-        }
+      for (let i = 0; i < photos_raw.length; i++) {
+        photosWithUrls.push({ ...photos_raw[i], url: signedData?.[i]?.signedUrl ?? null });
       }
     }
-    const withUrls = photos_raw.map(photo => ({
-      ...photo,
-      url: photo.storage_path
-        ? (signedUrlByPath[photo.storage_path] ?? signedUrlByPath[photo.storage_path.replace(/^\//, "")] ?? null)
-        : null,
-    }));
+    const withUrls = photosWithUrls;
 
     setPhotos(withUrls);
 
