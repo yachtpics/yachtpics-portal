@@ -65,7 +65,8 @@ export default function NewListingPage() {
   function guessCategory(filename: string): string {
     const name = filename.toLowerCase();
     for (const cat of PHOTO_CATEGORIES) {
-      if (name.includes(cat.toLowerCase())) return cat;
+      const lower = cat.toLowerCase();
+      if (name.includes(lower) || name.includes(lower.replace(/\s+/g, "_"))) return cat;
     }
     return "Other";
   }

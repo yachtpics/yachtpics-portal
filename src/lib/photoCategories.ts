@@ -3,6 +3,7 @@ export const PHOTO_CATEGORIES = [
   "Bow",
   "Cabin",
   "Cockpit",
+  "Command Deck",
   "Console",
   "Crew",
   "Crew Stateroom",

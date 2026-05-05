@@ -45,7 +45,8 @@ export default function NewListingPage() {
     const name = filename.toLowerCase();
     // Check exact category names first
     for (const cat of PHOTO_CATEGORIES) {
-      if (name.includes(cat.toLowerCase().replace(" ", "_")) || name.includes(cat.toLowerCase())) return cat;
+      const lower = cat.toLowerCase();
+      if (name.includes(lower) || name.includes(lower.replace(/\s+/g, "_"))) return cat;
     }
     // Common aliases / alternate naming conventions
     const aliases: Record<string, string> = {
