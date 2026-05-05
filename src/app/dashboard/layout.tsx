@@ -35,21 +35,22 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }).catch(() => {});
   }
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("plan, status, trial_ends_at")
-    .eq("broker_id", user.id)
-    .single();
+  const role = profile?.role ?? "broker";
 
-  const brokerName =
+  const { data: subscription } = role === "broker"
+    ? await supabase.from("subscriptions").select("plan, status, trial_ends_at").eq("broker_id", user.id).single()
+    : { data: null };
+
+  const userName =
     profile?.first_name
       ? `${profile.first_name} ${profile.last_name ?? ""}`.trim()
-      : user.email ?? "Broker";
+      : user.email ?? "User";
 
   return (
     <div className="flex min-h-screen bg-gray-50">
       <DashboardNav
-        brokerName={brokerName}
+        brokerName={userName}
+        role={role}
         plan={subscription?.status ?? "trialing"}
         trialEndsAt={subscription?.trial_ends_at ?? null}
       />

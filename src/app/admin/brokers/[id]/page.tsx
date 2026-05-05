@@ -2,17 +2,19 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import DeleteBrokerButton from "./DeleteBrokerButton";
+import AssistantsPanel from "./_components/AssistantsPanel";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
 
-  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }] =
+  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }] =
     await Promise.all([
       supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("plan, status, trial_ends_at, current_period_end").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at").eq("broker_id", params.id).order("updated_at", { ascending: false }),
       supabase.from("shoots").select("id, shoot_date, amount_cents, payment_status, invoice_number, listings:listing_id(vessel_name)").eq("broker_id", params.id).order("shoot_date", { ascending: false }).limit(10),
+      supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
     ]);
 
   if (!profile) notFound();
@@ -21,6 +23,15 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   const trialDays = subscription?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(subscription.trial_ends_at).getTime() - Date.now()) / 86400000))
     : null;
+
+  const assistantList = (assistants ?? []).map((a) => {
+    const p = a.profiles as { id: string; first_name: string | null; last_name: string | null; display_email: string | null } | null;
+    return {
+      id: a.assistant_id as string,
+      name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : null,
+      email: p?.display_email ?? null,
+    };
+  });
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
@@ -101,6 +112,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           </p>
         </div>
       </div>
+
+      {/* Assistants */}
+      <AssistantsPanel brokerId={params.id} initialAssistants={assistantList} />
 
       {/* Listings */}
       <div className="bg-white border border-gray-200 rounded-xl mb-6">

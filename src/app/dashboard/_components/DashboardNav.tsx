@@ -5,22 +5,30 @@ import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
 
-const navItems = [
+const brokerNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: "⊞" },
   { label: "My Listings", href: "/dashboard/listings", icon: "🚢" },
   { label: "Shoots & Invoices", href: "/dashboard/shoots", icon: "📋" },
+  { label: "Team", href: "/dashboard/team", icon: "👥" },
   { label: "Billing", href: "/dashboard/billing", icon: "💳" },
+  { label: "My Profile", href: "/dashboard/profile", icon: "👤" },
+  { label: "Help", href: "/dashboard/help", icon: "?" },
+];
+
+const assistantNavItems = [
+  { label: "Listings", href: "/dashboard/listings", icon: "🚢" },
   { label: "My Profile", href: "/dashboard/profile", icon: "👤" },
   { label: "Help", href: "/dashboard/help", icon: "?" },
 ];
 
 interface Props {
   brokerName: string;
+  role: string;
   plan: string;
   trialEndsAt: string | null;
 }
 
-export default function DashboardNav({ brokerName, plan, trialEndsAt }: Props) {
+export default function DashboardNav({ brokerName, role, plan, trialEndsAt }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -34,6 +42,8 @@ export default function DashboardNav({ brokerName, plan, trialEndsAt }: Props) {
   const trialDaysLeft = trialEndsAt
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86400000))
     : null;
+
+  const navItems = role === "assistant" ? assistantNavItems : brokerNavItems;
 
   return (
     <>
@@ -68,6 +78,9 @@ export default function DashboardNav({ brokerName, plan, trialEndsAt }: Props) {
           <span className="text-white font-semibold tracking-wide text-lg">
             YachtPics<span className="text-[#d4a843]"> Portal</span>
           </span>
+          {role === "assistant" && (
+            <p className="text-[#d4a843]/60 text-xs mt-1">Assistant</p>
+          )}
         </div>
         <nav className="flex-1 space-y-1">
           {navItems.map((item) => (
@@ -86,7 +99,7 @@ export default function DashboardNav({ brokerName, plan, trialEndsAt }: Props) {
           ))}
         </nav>
         <div className="border-t border-[#1e3a5f] pt-4 space-y-3">
-          {plan === "trialing" && trialDaysLeft !== null && (
+          {role === "broker" && plan === "trialing" && trialDaysLeft !== null && (
             <div className="bg-[#d4a843]/10 rounded-lg px-3 py-2.5">
               <p className="text-[#d4a843] text-xs font-medium">Free Trial</p>
               <p className="text-gray-400 text-xs mt-0.5">{trialDaysLeft} days remaining</p>
