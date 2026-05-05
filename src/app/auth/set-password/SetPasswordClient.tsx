@@ -16,21 +16,33 @@ export default function SetPasswordClient() {
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
+    async function init() {
+      // Invite links use implicit flow — tokens arrive in the URL hash
+      if (typeof window !== "undefined" && window.location.hash) {
+        const hashParams = new URLSearchParams(window.location.hash.substring(1));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token");
+        if (accessToken && refreshToken) {
+          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+          // Clean the hash out of the URL
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.replace("/auth/login");
         return;
       }
-      supabase
+      const { data } = await supabase
         .from("profiles")
         .select("first_name")
         .eq("id", user.id)
-        .single()
-        .then(({ data }) => {
-          if (data?.first_name) setFirstName(data.first_name);
-          setChecking(false);
-        });
-    });
+        .single();
+      if (data?.first_name) setFirstName(data.first_name);
+      setChecking(false);
+    }
+    init();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
