@@ -128,18 +128,22 @@ export default function BrokerListingPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: l } = await supabase.from("listings")
-      .select("vessel_name, location, status, slideshow_slug, slideshow_published")
-      .eq("id", id)
-      .eq("broker_id", user.id)
-      .single();
+    const { data: profileData } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+    const isAssistant = profileData?.role === "assistant";
+
+    const listingQuery = supabase.from("listings")
+      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id")
+      .eq("id", id);
+    if (!isAssistant) listingQuery.eq("broker_id", user.id);
+    const { data: l } = await listingQuery.single();
 
     if (!l) { router.push("/dashboard/listings"); return; }
     setListing(l);
 
+    const brokerId = (l as unknown as { broker_id: string }).broker_id;
     const { data: sub } = await supabase.from("subscriptions")
       .select("status")
-      .eq("broker_id", user.id)
+      .eq("broker_id", brokerId)
       .single();
     setSubStatus(sub?.status ?? null);
 
