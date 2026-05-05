@@ -17,15 +17,24 @@ export default function SetPasswordClient() {
 
   useEffect(() => {
     async function init() {
-      // Invite links use implicit flow — tokens arrive in the URL hash
-      if (typeof window !== "undefined" && window.location.hash) {
-        const hashParams = new URLSearchParams(window.location.hash.substring(1));
-        const accessToken = hashParams.get("access_token");
-        const refreshToken = hashParams.get("refresh_token");
-        if (accessToken && refreshToken) {
-          await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-          // Clean the hash out of the URL
+      if (typeof window !== "undefined") {
+        // PKCE flow: code arrives as a query param
+        const searchParams = new URLSearchParams(window.location.search);
+        const code = searchParams.get("code");
+        if (code) {
+          await supabase.auth.exchangeCodeForSession(code);
           window.history.replaceState(null, "", window.location.pathname);
+        }
+
+        // Implicit flow fallback: tokens arrive in the URL hash
+        if (!code && window.location.hash) {
+          const hashParams = new URLSearchParams(window.location.hash.substring(1));
+          const accessToken = hashParams.get("access_token");
+          const refreshToken = hashParams.get("refresh_token");
+          if (accessToken && refreshToken) {
+            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+            window.history.replaceState(null, "", window.location.pathname);
+          }
         }
       }
 
@@ -92,7 +101,7 @@ export default function SetPasswordClient() {
 
         <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
           <h1 className="text-xl font-bold text-gray-900 mb-1">
-            {firstName ? `Welcome, ${firstName}` : "Welcome"}
+            {firstName ? "Welcome, " + firstName : "Welcome"}
           </h1>
           <p className="text-sm text-gray-500 mb-6 leading-relaxed">
             Create a password to secure your account. You&apos;ll use this each time you log in.
@@ -139,7 +148,7 @@ export default function SetPasswordClient() {
               disabled={loading}
               className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-60 text-[#050b14] font-semibold text-sm py-3 rounded-lg transition-colors mt-2"
             >
-              {loading ? "Setting up…" : "Set Password & Go to Dashboard"}
+              {loading ? "Setting up..." : "Set Password & Go to Dashboard"}
             </button>
           </form>
         </div>
