@@ -157,9 +157,14 @@ export default function BrokerListingPage() {
     const photosWithUrls: (typeof photos_raw[0] & { url: string | null })[] = [];
     if (photos_raw.length > 0) {
       const paths = photos_raw.map(photo => photo.storage_path);
-      const { data: signedData } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
+      const { data: signedData, error: signedError } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
+      console.log("[Photos] paths:", paths);
+      console.log("[Photos] signedData:", signedData);
+      console.log("[Photos] signedError:", signedError);
       for (let i = 0; i < photos_raw.length; i++) {
-        photosWithUrls.push({ ...photos_raw[i], url: signedData?.[i]?.signedUrl ?? null });
+        const url = signedData?.[i]?.signedUrl ?? null;
+        if (!url) console.warn("[Photos] NULL url for path:", paths[i], "signedData[i]:", signedData?.[i]);
+        photosWithUrls.push({ ...photos_raw[i], url });
       }
     }
     const withUrls = photosWithUrls;
