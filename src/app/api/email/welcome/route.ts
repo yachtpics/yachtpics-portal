@@ -57,19 +57,25 @@ export async function POST(req: NextRequest) {
         <tr>
           <td style="padding:14px 0;border-bottom:1px solid #f3f4f6;vertical-align:top;">
             <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;flex-shrink:0;">1</span>
-            <span style="font-size:14px;color:#374151;"><strong style="color:#111827;">View your photos</strong> — open Listings to see everything we delivered.</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Review your photos</strong> — open your listing to see everything we delivered. You can rename categories, reorder photos, and hide any shots you don&rsquo;t want to share with clients.</span>
           </td>
         </tr>
         <tr>
           <td style="padding:14px 0;border-bottom:1px solid #f3f4f6;vertical-align:top;">
             <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">2</span>
-            <span style="font-size:14px;color:#374151;"><strong style="color:#111827;">Share with a client</strong> — hit &ldquo;Send to Client&rdquo; to email them a professional slideshow link.</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Create a slideshow</strong> — scroll down to the Client Slideshow section and click &ldquo;Create Slideshow.&rdquo; This generates a shareable link your clients can open on any device — no login required.</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 0;border-bottom:1px solid #f3f4f6;vertical-align:top;">
+            <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">3</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Send to your client</strong> — use the &ldquo;Send to Client&rdquo; button to deliver a branded email with the slideshow link and any listing documents. You&rsquo;ll see a record of every email sent right on the listing page.</span>
           </td>
         </tr>
         <tr>
           <td style="padding:14px 0;vertical-align:top;">
-            <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">3</span>
-            <span style="font-size:14px;color:#374151;"><strong style="color:#111827;">Download anytime</strong> — grab full-resolution files directly from your listing page.</span>
+            <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">4</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Download anytime</strong> — grab full-resolution files individually or all at once using the Download All button on your listing page.</span>
           </td>
         </tr>
       </table>
