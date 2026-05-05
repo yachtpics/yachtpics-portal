@@ -44,7 +44,7 @@ export default async function ListingsPage() {
         .order("updated_at", { ascending: false });
 
       listings = (allListings ?? []).map((l) => {
-        const p = l.profiles as { first_name: string | null; last_name: string | null; display_email: string | null } | null;
+        const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
         const brokerName = p?.first_name
           ? `${p.first_name} ${p.last_name ?? ""}`.trim()
           : p?.display_email ?? null;

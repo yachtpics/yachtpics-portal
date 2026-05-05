@@ -25,7 +25,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     : null;
 
   const assistantList = (assistants ?? []).map((a) => {
-    const p = a.profiles as { id: string; first_name: string | null; last_name: string | null; display_email: string | null } | null;
+    const p = (a.profiles as unknown as { id: string; first_name: string | null; last_name: string | null; display_email: string | null } | null);
     return {
       id: a.assistant_id as string,
       name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : null,
