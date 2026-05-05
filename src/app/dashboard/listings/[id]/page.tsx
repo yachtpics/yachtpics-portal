@@ -131,10 +131,10 @@ export default function BrokerListingPage() {
     const { data: profileData } = await supabase.from("profiles").select("role").eq("id", user.id).single();
     const isAssistant = profileData?.role === "assistant";
 
-    const listingQuery = supabase.from("listings")
+    let listingQuery = supabase.from("listings")
       .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id")
       .eq("id", id);
-    if (!isAssistant) listingQuery.eq("broker_id", user.id);
+    if (!isAssistant) listingQuery = listingQuery.eq("broker_id", user.id);
     const { data: l } = await listingQuery.single();
 
     if (!l) { router.push("/dashboard/listings"); return; }
@@ -152,7 +152,7 @@ export default function BrokerListingPage() {
       .eq("listing_id", id)
       .order("display_order");
 
-    const paths = (p ?? []).map(photo => photo.storage_path);
+    const paths = (p ?? []).filter(photo => photo.storage_path).map(photo => photo.storage_path);
     const { data: signedData } = paths.length > 0
       ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600)
       : { data: [] };
