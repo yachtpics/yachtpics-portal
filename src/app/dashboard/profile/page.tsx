@@ -224,15 +224,15 @@ export default function ProfilePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className={labelClass}>Brokerage Name</label>
-              <input className={inputClass} value={broker.brokerage_name} onChange={(e) => setBroker({ ...broker, brokerage_name: e.target.value })} placeholder="MarineMax, Ocean Alexander..." />
+              <input className={inputClass} value={broker.brokerage_name} onChange={(e) => setBroker({ ...broker, brokerage_name: e.target.value })} placeholder="" />
             </div>
             <div className="sm:col-span-2">
               <label className={labelClass}>Street Address</label>
-              <input className={inputClass} value={broker.brokerage_address} onChange={(e) => setBroker({ ...broker, brokerage_address: e.target.value })} placeholder="123 Marina Drive" />
+              <input className={inputClass} value={broker.brokerage_address} onChange={(e) => setBroker({ ...broker, brokerage_address: e.target.value })} placeholder="123 Main Street" />
             </div>
             <div>
               <label className={labelClass}>City</label>
-              <input className={inputClass} value={broker.brokerage_city} onChange={(e) => setBroker({ ...broker, brokerage_city: e.target.value })} placeholder="North Palm Beach" />
+              <input className={inputClass} value={broker.brokerage_city} onChange={(e) => setBroker({ ...broker, brokerage_city: e.target.value })} placeholder="" />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -241,12 +241,12 @@ export default function ProfilePage() {
               </div>
               <div>
                 <label className={labelClass}>ZIP</label>
-                <input className={inputClass} value={broker.brokerage_zip} onChange={(e) => setBroker({ ...broker, brokerage_zip: e.target.value })} placeholder="33408" />
+                <input className={inputClass} value={broker.brokerage_zip} onChange={(e) => setBroker({ ...broker, brokerage_zip: e.target.value })} placeholder="00000" />
               </div>
             </div>
             <div>
               <label className={labelClass}>Website</label>
-              <input className={inputClass} value={broker.brokerage_website} onChange={(e) => setBroker({ ...broker, brokerage_website: e.target.value })} placeholder="https://brokerage.com" />
+              <input className={inputClass} value={broker.brokerage_website} onChange={(e) => setBroker({ ...broker, brokerage_website: e.target.value })} placeholder="https://yourbrokerage.com" />
             </div>
             <div>
               <label className={labelClass}>License Number</label>
