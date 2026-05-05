@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
     const { error: linkErr } = await supabase
       .from("broker_assistants")
       .upsert(
-        { broker_id: brokerId, assistant_id: assistantId, invited_by: caller.id },
+        { broker_id: brokerId, assistant_id: assistantId },
         { onConflict: "broker_id,assistant_id" }
       );
 
