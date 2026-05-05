@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import ConnectBrokerPanel from "./_components/ConnectBrokerPanel";
 
 export default async function MyBrokersPage() {
   const supabase = await createClient();
@@ -23,17 +24,19 @@ export default async function MyBrokersPage() {
 
   const brokerIds = (links ?? []).map((l) => l.broker_id as string);
 
-  // Fetch broker_details and listings in parallel
-  const [{ data: details }, { data: allListings }] = await Promise.all([
+  // Fetch all brokers + broker_details + listings in parallel
+  const [{ data: details }, { data: allListings }, { data: allBrokers }] = await Promise.all([
     brokerIds.length > 0
       ? supabase.from("broker_details").select("id, brokerage_name, brokerage_website").in("id", brokerIds)
       : Promise.resolve({ data: [] }),
     brokerIds.length > 0
       ? supabase.from("listings").select("id, vessel_name, location, status, broker_id").in("broker_id", brokerIds).order("updated_at", { ascending: false })
       : Promise.resolve({ data: [] }),
+    supabase.from("profiles").select("id, first_name, last_name, display_email").eq("role", "broker").order("last_name", { ascending: true }),
   ]);
 
   const detailsMap = Object.fromEntries((details ?? []).map((d) => [d.id, d]));
+  const linkedIds = new Set(brokerIds);
 
   type ListingRow = { id: string; vessel_name: string | null; location: string | null; status: string; broker_id: string };
   const listingsByBroker: Record<string, ListingRow[]> = {};
@@ -56,6 +59,15 @@ export default async function MyBrokersPage() {
     };
   });
 
+  // Available brokers = all brokers not yet linked to this assistant
+  const availableBrokers = (allBrokers ?? [])
+    .filter((b) => !linkedIds.has(b.id))
+    .map((b) => ({
+      id: b.id,
+      name: b.first_name ? (b.first_name + " " + (b.last_name ?? "")).trim() : b.display_email ?? "Broker",
+      email: b.display_email ?? null,
+    }));
+
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
@@ -68,7 +80,7 @@ export default async function MyBrokersPage() {
       {brokers.length === 0 ? (
         <div className="bg-white border border-gray-200 rounded-xl py-16 text-center">
           <p className="text-gray-400 text-sm">No brokers linked yet.</p>
-          <p className="text-gray-400 text-xs mt-1">Contact your YachtPics admin to get connected.</p>
+          <p className="text-gray-400 text-xs mt-1">Use the form below to connect to a broker.</p>
         </div>
       ) : (
         <div className="space-y-4">
@@ -141,6 +153,8 @@ export default async function MyBrokersPage() {
           ))}
         </div>
       )}
+
+      <ConnectBrokerPanel availableBrokers={availableBrokers} />
     </div>
   );
 }
