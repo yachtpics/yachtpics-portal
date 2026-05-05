@@ -9,12 +9,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing photoId or storagePath" }, { status: 400 });
     }
 
-    // Verify the requesting user owns the listing this photo belongs to
+    // Verify the requesting user is authenticated
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: photo } = await supabaseUser
+    // Use service role for all permission checks — avoids RLS blocking reads
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data: photo } = await supabaseAdmin
       .from("photos")
       .select("id, listing_id, listings(broker_id)")
       .eq("id", photoId)
@@ -23,17 +29,35 @@ export async function POST(req: NextRequest) {
     if (!photo) return NextResponse.json({ error: "Photo not found" }, { status: 404 });
 
     const listing = photo.listings as unknown as { broker_id: string } | null;
-    if (listing?.broker_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const brokerId = listing?.broker_id;
+
+    const isOwner = brokerId === user.id;
+
+    if (!isOwner) {
+      // Check if they're a linked assistant for this broker
+      const { data: profileData } = await supabaseAdmin
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profileData?.role !== "assistant") {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      const { data: link } = await supabaseAdmin
+        .from("broker_assistants")
+        .select("broker_id")
+        .eq("broker_id", brokerId)
+        .eq("assistant_id", user.id)
+        .maybeSingle();
+
+      if (!link) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Use service role to do the actual delete (bypasses RLS)
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-
+    // Delete from storage (best effort — file may already be missing)
     await supabaseAdmin.storage.from("listing-photos").remove([storagePath]);
+
     const { error: dbError } = await supabaseAdmin
       .from("photos")
       .delete()

@@ -333,15 +333,20 @@ export default function BrokerListingPage() {
   }
 
   async function deletePhoto(photoId: string, storagePath: string) {
-    // Immediately remove from view to avoid "no preview" ghost
     setDeletingIds((prev) => new Set(Array.from(prev).concat(photoId)));
-    await fetch("/api/photos/delete", {
+    const res = await fetch("/api/photos/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ photoId, storagePath }),
     });
-    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-    setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
+    if (res.ok) {
+      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
+      setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
+    } else {
+      const data = await res.json().catch(() => ({}));
+      setMessage("Delete failed: " + (data.error ?? res.statusText));
+      setTimeout(() => setMessage(""), 4000);
+    }
     setDeletingIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
   }
 
@@ -349,8 +354,15 @@ export default function BrokerListingPage() {
     if (selectedIds.size === 0) return;
     setDeleting(true);
     const toDelete = photos.filter((p) => selectedIds.has(p.id));
-    await Promise.all(toDelete.map((p) => supabase.storage.from("listing-photos").remove([p.storage_path])));
-    await Promise.all(toDelete.map((p) => supabase.from("photos").delete().eq("id", p.id)));
+    await Promise.all(
+      toDelete.map((p) =>
+        fetch("/api/photos/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photoId: p.id, storagePath: p.storage_path }),
+        })
+      )
+    );
     setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
     setSelectedIds(new Set());
     setSelectMode(false);
@@ -1363,7 +1375,13 @@ function SortablePhotoCard({
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-48 object-contain bg-gray-50 pointer-events-none" />
         ) : (
-          <div className="w-full h-48 bg-gray-100 flex items-center justify-center text-gray-400 text-xs pointer-events-none">No preview</div>
+          <div className="w-full h-48 bg-amber-50 border-b border-amber-200 flex flex-col items-center justify-center gap-2 pointer-events-none">
+            <span className="text-2xl">⚠️</span>
+            <div className="text-center px-3">
+              <p className="text-amber-700 text-xs font-semibold">File missing</p>
+              <p className="text-amber-600 text-[10px] mt-0.5">Delete and re-upload</p>
+            </div>
+          </div>
         )}
       </div>
 
