@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 export default async function MyBrokersPage() {
   const supabase = await createClient();
@@ -22,15 +23,24 @@ export default async function MyBrokersPage() {
 
   const brokerIds = (links ?? []).map((l) => l.broker_id as string);
 
-  // Fetch broker_details separately
-  const { data: details } = brokerIds.length > 0
-    ? await supabase
-        .from("broker_details")
-        .select("id, brokerage_name, brokerage_website")
-        .in("id", brokerIds)
-    : { data: [] };
+  // Fetch broker_details and listings in parallel
+  const [{ data: details }, { data: allListings }] = await Promise.all([
+    brokerIds.length > 0
+      ? supabase.from("broker_details").select("id, brokerage_name, brokerage_website").in("id", brokerIds)
+      : Promise.resolve({ data: [] }),
+    brokerIds.length > 0
+      ? supabase.from("listings").select("id, vessel_name, location, status, broker_id").in("broker_id", brokerIds).order("updated_at", { ascending: false })
+      : Promise.resolve({ data: [] }),
+  ]);
 
   const detailsMap = Object.fromEntries((details ?? []).map((d) => [d.id, d]));
+
+  type ListingRow = { id: string; vessel_name: string | null; location: string | null; status: string; broker_id: string };
+  const listingsByBroker: Record<string, ListingRow[]> = {};
+  for (const listing of allListings ?? []) {
+    if (!listingsByBroker[listing.broker_id]) listingsByBroker[listing.broker_id] = [];
+    listingsByBroker[listing.broker_id]!.push(listing as ListingRow);
+  }
 
   const brokers = (links ?? []).map((l) => {
     const p = l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null; phone: string | null } | null;
@@ -42,6 +52,7 @@ export default async function MyBrokersPage() {
       phone: p?.phone ?? null,
       brokerage_name: d?.brokerage_name ?? null,
       brokerage_website: d?.brokerage_website ?? null,
+      listings: listingsByBroker[l.broker_id as string] ?? [],
     };
   });
 
@@ -89,6 +100,43 @@ export default async function MyBrokersPage() {
                   </div>
                 )}
               </div>
+
+              {/* Listings toggle */}
+              <details className="mt-5 group">
+                <summary className="cursor-pointer list-none flex items-center justify-between text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors select-none">
+                  <span>View Listings ({broker.listings.length})</span>
+                  <span className="text-gray-400 group-open:rotate-180 transition-transform inline-block">▾</span>
+                </summary>
+                <div className="mt-3 border-t border-gray-100 pt-3 space-y-2">
+                  {broker.listings.length === 0 ? (
+                    <p className="text-sm text-gray-400">No listings yet.</p>
+                  ) : (
+                    broker.listings.map((listing) => (
+                      <Link
+                        key={listing.id}
+                        href={"/dashboard/listings/" + listing.id}
+                        className="flex items-center justify-between px-3 py-2.5 rounded-lg hover:bg-gray-50 transition-colors group/row"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-gray-900 group-hover/row:text-[#c49a35] transition-colors">
+                            {listing.vessel_name ?? "Untitled vessel"}
+                          </p>
+                          {listing.location && (
+                            <p className="text-xs text-gray-400 mt-0.5">{listing.location}</p>
+                          )}
+                        </div>
+                        <span className={"text-xs font-medium px-2 py-1 rounded-full " + (
+                          listing.status === "active" ? "bg-green-50 text-green-700"
+                          : listing.status === "sold" ? "bg-blue-50 text-blue-700"
+                          : "bg-gray-100 text-gray-500"
+                        )}>
+                          {listing.status}
+                        </span>
+                      </Link>
+                    ))
+                  )}
+                </div>
+              </details>
             </div>
           ))}
         </div>
