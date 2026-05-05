@@ -14,14 +14,27 @@ export default async function MyBrokersPage() {
 
   if (profile?.role !== "assistant") redirect("/dashboard");
 
+  // Fetch linked broker IDs + profile info
   const { data: links } = await supabase
     .from("broker_assistants")
-    .select("broker_id, profiles:broker_id(first_name, last_name, display_email, phone), broker_details:broker_id(brokerage_name, brokerage_website)")
+    .select("broker_id, profiles:broker_id(first_name, last_name, display_email, phone)")
     .eq("assistant_id", user.id);
+
+  const brokerIds = (links ?? []).map((l) => l.broker_id as string);
+
+  // Fetch broker_details separately
+  const { data: details } = brokerIds.length > 0
+    ? await supabase
+        .from("broker_details")
+        .select("id, brokerage_name, brokerage_website")
+        .in("id", brokerIds)
+    : { data: [] };
+
+  const detailsMap = Object.fromEntries((details ?? []).map((d) => [d.id, d]));
 
   const brokers = (links ?? []).map((l) => {
     const p = l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null; phone: string | null } | null;
-    const d = l.broker_details as unknown as { brokerage_name: string | null; brokerage_website: string | null } | null;
+    const d = detailsMap[l.broker_id as string];
     return {
       id: l.broker_id as string,
       name: p?.first_name ? (p.first_name + " " + (p.last_name ?? "")).trim() : p?.display_email ?? "Broker",
@@ -50,14 +63,10 @@ export default async function MyBrokersPage() {
         <div className="space-y-4">
           {brokers.map((broker) => (
             <div key={broker.id} className="bg-white border border-gray-200 rounded-xl px-6 py-5">
-              <div className="flex items-start justify-between">
-                <div>
-                  <p className="text-base font-semibold text-gray-900">{broker.name}</p>
-                  {broker.brokerage_name && (
-                    <p className="text-sm text-[#c49a35] mt-0.5">{broker.brokerage_name}</p>
-                  )}
-                </div>
-              </div>
+              <p className="text-base font-semibold text-gray-900">{broker.name}</p>
+              {broker.brokerage_name && (
+                <p className="text-sm text-[#c49a35] mt-0.5">{broker.brokerage_name}</p>
+              )}
               <div className="mt-4 space-y-2">
                 {broker.email && (
                   <div className="flex items-center gap-2">
@@ -74,7 +83,9 @@ export default async function MyBrokersPage() {
                 {broker.brokerage_website && (
                   <div className="flex items-center gap-2">
                     <span className="text-gray-400 text-xs w-12">Web</span>
-                    <a href={broker.brokerage_website} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 hover:text-[#c49a35] transition-colors">{broker.brokerage_website.replace(/^https?:\/\//, "")}</a>
+                    <a href={broker.brokerage_website} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-700 hover:text-[#c49a35] transition-colors">
+                      {broker.brokerage_website.replace(/^https?:\/\//, "")}
+                    </a>
                   </div>
                 )}
               </div>
