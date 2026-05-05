@@ -17,6 +17,7 @@ const brokerNavItems = [
 
 const assistantNavItems = [
   { label: "Listings", href: "/dashboard/listings", icon: "🚢" },
+  { label: "My Brokers", href: "/dashboard/brokers", icon: "👥" },
   { label: "My Profile", href: "/dashboard/profile", icon: "👤" },
   { label: "Help", href: "/dashboard/help", icon: "?" },
 ];
