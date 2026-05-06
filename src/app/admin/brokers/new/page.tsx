@@ -208,7 +208,7 @@ export default function InviteBrokerPage() {
               placeholder="assistant@brokerage.com"
               className={inputClass} />
             <p className="text-xs text-gray-400 mt-1.5">
-              If this broker has an assistant who manages their portal, add their email here. They'll be linked automatically and notified when photos are ready.
+              If this broker has an assistant who manages their portal, add their email here. They&apos;ll be linked automatically and notified when photos are ready.
             </p>
           </div>
         </div>
