@@ -58,6 +58,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
   const [customEdit, setCustomEdit] = useState<{ photoId: string; value: string } | null>(null);
+  // Custom categories added during this session (or already present on photos at load)
+  const [customCategories, setCustomCategories] = useState<string[]>(() => {
+    const custom = initialPhotos
+      .map((p) => p.category)
+      .filter((c): c is string => c !== null && !(PHOTO_CATEGORIES as readonly string[]).includes(c));
+    return [...new Set(custom)];
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -144,6 +151,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       return;
     }
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
+    // If it's a non-standard category, add it to the custom list so other photos can pick it
+    if (!(PHOTO_CATEGORIES as readonly string[]).includes(category)) {
+      setCustomCategories((prev) => prev.includes(category) ? prev : [...prev, category]);
+    }
   }
 
   async function deletePhoto(photoId: string, storagePath: string) {
@@ -430,11 +441,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                       </div>
                     ) : (
                       <select
-                        value={(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ? (photo.category ?? "Other") : "__custom__"}
+                        value={
+                          (PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ||
+                          customCategories.includes(photo.category ?? "")
+                            ? (photo.category ?? "Other")
+                            : "__custom__"
+                        }
                         onChange={(e) => {
                           e.stopPropagation();
-                          if (e.target.value === "__custom__") {
-                            setCustomEdit({ photoId: photo.id, value: photo.category ?? "" });
+                          if (e.target.value === "__new__") {
+                            setCustomEdit({ photoId: photo.id, value: "" });
                           } else {
                             updateCategory(photo.id, e.target.value);
                           }
@@ -442,9 +458,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                         onClick={(e) => e.stopPropagation()}
                         className="text-xs text-gray-600 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors max-w-full"
                       >
-                        <option value="__custom__">
-                          {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ? "+ Custom..." : (photo.category ?? "Custom")}
-                        </option>
+                        <option value="__new__">+ New custom...</option>
+                        {customCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+                        {customCategories.length > 0 && <option disabled>──────────</option>}
                         {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     )}
