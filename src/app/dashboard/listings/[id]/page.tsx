@@ -1363,7 +1363,6 @@ function SortablePhotoCard({
       >
         {photo.url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={photo.url}
             alt={photo.filename ?? ""}
