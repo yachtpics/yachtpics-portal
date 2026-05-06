@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
@@ -57,6 +57,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [deleting, setDeleting] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [customEdit, setCustomEdit] = useState<{ photoId: string; value: string } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -131,7 +132,17 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   }
 
   async function updateCategory(photoId: string, category: string) {
-    await supabase.from("photos").update({ category }).eq("id", photoId);
+    const res = await fetch("/api/admin/photos/update-category", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoId, category }),
+    });
+    if (!res.ok) {
+      const data = await res.json();
+      setMessage("Failed to save category: " + (data.error ?? "Unknown error"));
+      setTimeout(() => setMessage(""), 4000);
+      return;
+    }
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
   }
 
@@ -389,10 +400,54 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
                   {/* Category + actions below thumbnail */}
                   <div className="p-2 bg-white">
-                    <AdminCategoryPicker
-                      category={photo.category}
-                      onSave={(cat) => updateCategory(photo.id, cat)}
-                    />
+                    {customEdit?.photoId === photo.id ? (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="text"
+                          autoFocus
+                          value={customEdit.value}
+                          onChange={(e) => setCustomEdit({ photoId: photo.id, value: e.target.value })}
+                          onBlur={() => {
+                            const v = customEdit.value.trim();
+                            updateCategory(photo.id, v || "Other");
+                            setCustomEdit(null);
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              const v = customEdit.value.trim();
+                              updateCategory(photo.id, v || "Other");
+                              setCustomEdit(null);
+                            }
+                            if (e.key === "Escape") setCustomEdit(null);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          placeholder="Type & press Enter..."
+                          className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none flex-1 min-w-0 focus:border-[#d4a843]"
+                        />
+                        <button type="button" onClick={(e) => { e.stopPropagation(); setCustomEdit(null); }}
+                          className="text-gray-400 hover:text-gray-600 text-xs px-1">✕</button>
+                      </div>
+                    ) : (
+                      <select
+                        value={(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ? (photo.category ?? "Other") : "__custom__"}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          if (e.target.value === "__custom__") {
+                            setCustomEdit({ photoId: photo.id, value: photo.category ?? "" });
+                          } else {
+                            updateCategory(photo.id, e.target.value);
+                          }
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="text-xs text-gray-600 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors max-w-full"
+                      >
+                        <option value="__custom__">
+                          {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ? "+ Custom..." : (photo.category ?? "Custom")}
+                        </option>
+                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    )}
                     {!photo.is_visible && <span className="text-[10px] text-gray-400 ml-1">· hidden</span>}
                     {!selectMode && (
                       <div className="flex gap-1.5 mt-2">
@@ -507,66 +562,6 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>,
         document.body
       )}
-    </div>
-  );
-}
-
-function AdminCategoryPicker({ category, onSave }: { category: string | null; onSave: (cat: string) => void }) {
-  const inList = (PHOTO_CATEGORIES as readonly string[]).includes(category ?? "");
-  const [showCustom, setShowCustom] = useState(!inList);
-  const [customValue, setCustomValue] = useState(!inList ? (category ?? "") : "");
-
-  const commit = useCallback(() => {
-    const trimmed = customValue.trim();
-    if (trimmed) {
-      onSave(trimmed);
-    } else {
-      setShowCustom(false);
-      setCustomValue("");
-      onSave("Other");
-    }
-  }, [customValue, onSave]);
-
-  if (!showCustom) {
-    return (
-      <select
-        value={category ?? "Other"}
-        onChange={(e) => {
-          if (e.target.value === "__custom__") {
-            setShowCustom(true);
-            setCustomValue("");
-          } else {
-            onSave(e.target.value);
-          }
-        }}
-        onClick={(e) => e.stopPropagation()}
-        className="text-xs text-gray-600 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors max-w-full"
-      >
-        <option value="__custom__">+ Custom...</option>
-        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-      </select>
-    );
-  }
-
-  return (
-    <div className="flex items-center gap-1">
-      <input
-        type="text"
-        value={customValue}
-        onChange={(e) => setCustomValue(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
-        onClick={(e) => e.stopPropagation()}
-        placeholder="Type & press Enter..."
-        autoFocus
-        className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none w-28 focus:border-[#d4a843]"
-      />
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); setShowCustom(false); setCustomValue(""); onSave("Other"); }}
-        className="text-gray-400 hover:text-gray-600 text-xs px-1"
-        title="Back to list"
-      >✕</button>
     </div>
   );
 }
