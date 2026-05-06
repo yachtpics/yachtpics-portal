@@ -41,7 +41,7 @@ interface Video {
   url: string | null;
 }
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos = [] }: { listing: Listing; photos: Photo[]; videos?: Video[] }) {
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos = [], globalCustomCategories = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[] }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -58,13 +58,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
   const [customEdit, setCustomEdit] = useState<{ photoId: string; value: string } | null>(null);
-  // Custom categories added during this session (or already present on photos at load)
-  const [customCategories, setCustomCategories] = useState<string[]>(() => {
-    const custom = initialPhotos
-      .map((p) => p.category)
-      .filter((c): c is string => c !== null && !(PHOTO_CATEGORIES as readonly string[]).includes(c));
-    return Array.from(new Set(custom));
-  });
+  // Custom categories — seeded from every listing in the DB at page load,
+  // then extended locally when a new one is saved during this session
+  const [customCategories, setCustomCategories] = useState<string[]>(globalCustomCategories);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setMounted(true); }, []);

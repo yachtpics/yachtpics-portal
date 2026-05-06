@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import AdminListingDetail from "./_components/AdminListingDetail";
+import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 
 export default async function AdminListingPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
@@ -49,5 +50,26 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     url: vidUrlMap.get(v.storage_path) ?? null,
   }));
 
-  return <AdminListingDetail listing={listing as any} photos={photosWithUrls} videos={videosWithUrls} />;
+  // Collect all non-standard categories used across every listing so they're
+  // available in the dropdown on any listing page
+  const { data: allCatRows } = await supabase
+    .from("photos")
+    .select("category")
+    .not("category", "is", null);
+  const globalCustomCategories = Array.from(
+    new Set(
+      (allCatRows ?? [])
+        .map((r) => r.category as string)
+        .filter((c) => !(PHOTO_CATEGORIES as readonly string[]).includes(c))
+    )
+  ).sort((a, b) => a.localeCompare(b));
+
+  return (
+    <AdminListingDetail
+      listing={listing as any}
+      photos={photosWithUrls}
+      videos={videosWithUrls}
+      globalCustomCategories={globalCustomCategories}
+    />
+  );
 }
