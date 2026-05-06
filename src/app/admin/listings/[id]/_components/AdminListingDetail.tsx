@@ -459,9 +459,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                         className="text-xs text-gray-600 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors max-w-full"
                       >
                         <option value="__new__">+ New custom...</option>
-                        {customCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                        {customCategories.length > 0 && <option disabled>──────────</option>}
-                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        {[...PHOTO_CATEGORIES, ...customCategories]
+                          .sort((a, b) => a.localeCompare(b))
+                          .map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     )}
                     {!photo.is_visible && <span className="text-[10px] text-gray-400 ml-1">· hidden</span>}
