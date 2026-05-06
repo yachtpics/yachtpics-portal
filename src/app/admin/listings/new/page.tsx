@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { guessCategory } from "@/lib/guessCategory";
 
 interface Broker {
   id: string;
@@ -62,14 +63,6 @@ export default function NewListingPage() {
     setPhotos((prev) => [...prev, ...newPhotos]);
   }
 
-  function guessCategory(filename: string): string {
-    const name = filename.toLowerCase();
-    for (const cat of PHOTO_CATEGORIES) {
-      const lower = cat.toLowerCase();
-      if (name.includes(lower) || name.includes(lower.replace(/\s+/g, "_"))) return cat;
-    }
-    return "Other";
-  }
 
   function removePhoto(index: number) {
     setPhotos((prev) => prev.filter((_, i) => i !== index));

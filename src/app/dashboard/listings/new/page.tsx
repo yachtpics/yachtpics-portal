@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { guessCategory } from "@/lib/guessCategory";
 
 export default function NewListingPage() {
   const supabase = createClient();
@@ -41,33 +42,6 @@ export default function NewListingPage() {
     setPhotos((prev) => [...prev, ...newPhotos]);
   }
 
-  function guessCategory(filename: string): string {
-    const name = filename.toLowerCase();
-    // Check exact category names first
-    for (const cat of PHOTO_CATEGORIES) {
-      const lower = cat.toLowerCase();
-      if (name.includes(lower) || name.includes(lower.replace(/\s+/g, "_"))) return cat;
-    }
-    // Common aliases / alternate naming conventions
-    const aliases: Record<string, string> = {
-      exterior: "Starboard", profile: "Port", profiles: "Port",
-      front: "Bow", aft: "Stern", back: "Stern",
-      bridge: "Flybridge", fly: "Flybridge",
-      interior: "Salon", living: "Salon", main_salon: "Salon", mainsalon: "Salon",
-      kitchen: "Galley", dining: "Galley",
-      master: "Master Stateroom", master_cabin: "Master Stateroom",
-      guest: "Guest Stateroom", cabin: "Guest Stateroom",
-      bath: "Head", bathroom: "Head", toilet: "Head",
-      engine: "Engine Room", bilge: "Engine Room",
-      swim: "Swim Platform", platform: "Swim Platform",
-      wheel: "Helm", steering: "Helm",
-      deck: "Cockpit",
-    };
-    for (const [alias, cat] of Object.entries(aliases)) {
-      if (name.includes(alias)) return cat;
-    }
-    return "Other";
-  }
 
   function removePhoto(index: number) {
     setPhotos((prev) => prev.filter((_, i) => i !== index));

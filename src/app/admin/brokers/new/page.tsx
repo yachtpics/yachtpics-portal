@@ -4,6 +4,7 @@ import { useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { guessCategory } from "@/lib/guessCategory";
 import Link from "next/link";
 
 export default function InviteBrokerPage() {
@@ -36,14 +37,6 @@ export default function InviteBrokerPage() {
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function guessCategory(filename: string): string {
-    const name = filename.toLowerCase();
-    for (const cat of PHOTO_CATEGORIES) {
-      const lower = cat.toLowerCase();
-      if (name.includes(lower) || name.includes(lower.replace(/\s+/g, "_"))) return cat;
-    }
-    return "Other";
-  }
 
   function handleFiles(files: FileList | null) {
     if (!files) return;
