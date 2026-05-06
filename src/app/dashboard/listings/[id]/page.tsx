@@ -16,6 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
+import { getAccessStatus, hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 
 interface Photo {
   id: string;
@@ -35,6 +36,7 @@ export default function BrokerListingPage() {
 
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean } | null>(null);
   const [subStatus, setSubStatus] = useState<string | null>(null);
+  const [accessStatus, setAccessStatus] = useState<AccessStatus>("trial_active");
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -106,7 +108,7 @@ export default function BrokerListingPage() {
     e.preventDefault();
     dragCounter.current = 0;
     setDragOver(false);
-    handleFiles(e.dataTransfer.files);
+    if (hasAccess(accessStatus)) handleFiles(e.dataTransfer.files);
   }
 
   useEffect(() => {
@@ -143,10 +145,11 @@ export default function BrokerListingPage() {
 
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
     const { data: sub } = await supabase.from("subscriptions")
-      .select("status")
+      .select("status, stripe_subscription_id, trial_ends_at")
       .eq("broker_id", brokerId)
       .maybeSingle();
     setSubStatus(sub?.status ?? null);
+    setAccessStatus(getAccessStatus(sub ?? null));
 
     const { data: p } = await supabase.from("photos")
       .select("id, storage_path, filename, category, display_order, is_visible")
@@ -725,10 +728,18 @@ export default function BrokerListingPage() {
             </>
           )}
 
-          <button onClick={() => fileInputRef.current?.click()}
-            className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
-            + Add Photos
-          </button>
+          {hasAccess(accessStatus) ? (
+            <button onClick={() => fileInputRef.current?.click()}
+              className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+              + Add Photos
+            </button>
+          ) : (
+            <Link href="/dashboard/billing"
+              className="bg-gray-100 text-gray-400 text-sm font-semibold px-4 py-2.5 rounded-lg cursor-not-allowed border border-gray-200"
+              title="Subscribe to upload photos">
+              + Add Photos
+            </Link>
+          )}
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
       </div>
@@ -748,11 +759,20 @@ export default function BrokerListingPage() {
 
       {photos.length === 0 ? (
         <div
-          onClick={() => fileInputRef.current?.click()}
-          className="border-2 border-dashed border-gray-200 rounded-xl p-16 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+          onClick={() => hasAccess(accessStatus) && fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl p-16 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
         >
-          <p className="text-gray-400 text-sm">No photos yet — drag here or click to upload</p>
-          <p className="text-gray-300 text-xs mt-1">YachtPics professional photos will also appear here after your shoot</p>
+          {hasAccess(accessStatus) ? (
+            <>
+              <p className="text-gray-400 text-sm">No photos yet — drag here or click to upload</p>
+              <p className="text-gray-300 text-xs mt-1">YachtPics professional photos will also appear here after your shoot</p>
+            </>
+          ) : (
+            <>
+              <p className="text-gray-400 text-sm">Your trial has ended</p>
+              <Link href="/dashboard/billing" className="text-[#d4a843] text-xs font-medium hover:underline mt-1 inline-block">Subscribe to upload photos &#8594;</Link>
+            </>
+          )}
         </div>
       ) : (
         <div>
@@ -973,8 +993,8 @@ export default function BrokerListingPage() {
             <p className="text-gray-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
           </div>
           <button
-            onClick={() => videoInputRef.current?.click()}
-            disabled={uploadingVideo}
+            onClick={() => hasAccess(accessStatus) && videoInputRef.current?.click()}
+            disabled={uploadingVideo || !hasAccess(accessStatus)}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
             {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload MP4"}
@@ -993,10 +1013,13 @@ export default function BrokerListingPage() {
 
         {videos.length === 0 ? (
           <div
-            onClick={() => videoInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+            onClick={() => hasAccess(accessStatus) && videoInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
           >
-            <p className="text-gray-400 text-sm">No videos yet — click to upload an MP4</p>
+            {!hasAccess(accessStatus)
+              ? <p className="text-gray-400 text-sm"><Link href="/dashboard/billing" className="text-[#d4a843] font-medium hover:underline">Subscribe</Link> to upload videos</p>
+              : <p className="text-gray-400 text-sm">No videos yet — click to upload an MP4</p>
+            }
           </div>
         ) : (
           <div className="space-y-4">
@@ -1065,7 +1088,7 @@ export default function BrokerListingPage() {
                   Unpublish
                 </button>
               </>
-            ) : (subStatus === "active" || subStatus === "trialing") ? (
+            ) : hasAccess(accessStatus) ? (
               <button
                 onClick={publishSlideshow}
                 disabled={slideshowWorking || photos.filter(p => p.is_visible).length === 0}
@@ -1078,7 +1101,7 @@ export default function BrokerListingPage() {
                 href="/dashboard/billing"
                 className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
               >
-                Upgrade to Unlock
+                {accessStatus === "trial_expired" ? "Subscribe to Unlock" : "Upgrade to Unlock"}
               </Link>
             )}
           </div>
@@ -1165,8 +1188,8 @@ export default function BrokerListingPage() {
             <p className="text-gray-500 text-sm mt-0.5">Upload PDF brochures or spec sheets for this listing.</p>
           </div>
           <button
-            onClick={() => docInputRef.current?.click()}
-            disabled={uploadingDoc}
+            onClick={() => hasAccess(accessStatus) && docInputRef.current?.click()}
+            disabled={uploadingDoc || !hasAccess(accessStatus)}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
             {uploadingDoc ? "Uploading…" : "＋ Upload PDF"}
@@ -1176,10 +1199,13 @@ export default function BrokerListingPage() {
 
         {documents.length === 0 ? (
           <div
-            onClick={() => docInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+            onClick={() => hasAccess(accessStatus) && docInputRef.current?.click()}
+            className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
           >
-            <p className="text-gray-400 text-sm">No documents yet — click to upload a PDF</p>
+            {!hasAccess(accessStatus)
+              ? <p className="text-gray-400 text-sm"><Link href="/dashboard/billing" className="text-[#d4a843] font-medium hover:underline">Subscribe</Link> to upload documents</p>
+              : <p className="text-gray-400 text-sm">No documents yet — click to upload a PDF</p>
+            }
           </div>
         ) : (
           <div className="space-y-2">

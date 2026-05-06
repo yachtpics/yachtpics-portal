@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import DashboardNav from "./_components/DashboardNav";
+import TrialBanner from "./_components/TrialBanner";
+import { getAccessStatus } from "@/lib/subscriptionAccess";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -38,8 +40,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const role = profile?.role ?? "broker";
 
   const { data: subscription } = role === "broker"
-    ? await supabase.from("subscriptions").select("plan, status, trial_ends_at").eq("broker_id", user.id).single()
+    ? await supabase.from("subscriptions").select("plan, status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single()
     : { data: null };
+
+  const accessStatus = role === "broker" ? getAccessStatus(subscription ?? null) : "active";
 
   const userName =
     profile?.first_name
@@ -53,8 +57,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         role={role}
         plan={subscription?.status ?? "trialing"}
         trialEndsAt={subscription?.trial_ends_at ?? null}
+        accessStatus={accessStatus}
       />
       <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">
+        {role === "broker" && (
+          <TrialBanner accessStatus={accessStatus} trialEndsAt={subscription?.trial_ends_at ?? null} />
+        )}
         {children}
       </main>
     </div>

@@ -4,11 +4,14 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PLANS } from "@/lib/plans";
 import HelpTip from "@/components/HelpTip";
+import { getAccessStatus } from "@/lib/subscriptionAccess";
 
 type Subscription = {
   status: string | null;
   stripe_price_id: string | null;
+  stripe_subscription_id: string | null;
   current_period_end: string | null;
+  trial_ends_at: string | null;
   plan: string | null;
 };
 
@@ -27,7 +30,7 @@ export default function BillingPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, current_period_end, plan").eq("broker_id", user.id).single();
+      const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at, plan").eq("broker_id", user.id).single();
       setSub(data ?? null);
       setLoading(false);
     }
@@ -36,6 +39,8 @@ export default function BillingPage() {
 
   const currentPlan = PLANS.find((p) => p.priceId === sub?.stripe_price_id);
   const isActive = sub?.status === "active" || sub?.status === "trialing";
+  const accessStatus = getAccessStatus(sub ?? null);
+  const trialExpired = accessStatus === "trial_expired";
 
   async function startCheckout(priceId: string) {
     setCheckoutLoading(priceId);
@@ -148,6 +153,23 @@ export default function BillingPage() {
         </div>
       </div>
 
+      {/* Trial expired callout */}
+      {trialExpired && (
+        <div className="mb-8 bg-red-50 border border-red-200 rounded-xl px-5 py-5">
+          <div className="flex items-start gap-3">
+            <svg className="w-5 h-5 text-red-500 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <div>
+              <p className="text-sm font-semibold text-red-800">Your free trial has ended</p>
+              <p className="text-xs text-red-600 mt-1">
+                Photo uploads, video uploads, and slideshow sharing are paused until you subscribe. Your existing photos and listings are safe — choose a plan below to reactivate.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Plan grid */}
       <div>
         <div className="flex items-center gap-2 mb-2">
@@ -172,7 +194,7 @@ export default function BillingPage() {
                   disabled={isCurrent || checkoutLoading === plan.priceId}
                   className={`mt-4 w-full py-2.5 rounded-lg text-sm font-semibold transition-colors ${isCurrent ? "bg-gray-100 text-gray-400 cursor-default" : "bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14]"} disabled:opacity-60`}
                 >
-                  {checkoutLoading === plan.priceId ? "Loading..." : isCurrent ? "Current plan" : isActive ? "Switch plan" : "Start free trial"}
+                  {checkoutLoading === plan.priceId ? "Loading..." : isCurrent ? "Current plan" : trialExpired ? "Subscribe" : isActive ? "Switch plan" : "Start free trial"}
                 </button>
               </div>
             );

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { useState } from "react";
+import type { AccessStatus } from "@/lib/subscriptionAccess";
 
 const brokerNavItems = [
   { label: "Dashboard", href: "/dashboard", icon: "⊞" },
@@ -27,9 +28,10 @@ interface Props {
   role: string;
   plan: string;
   trialEndsAt: string | null;
+  accessStatus: AccessStatus;
 }
 
-export default function DashboardNav({ brokerName, role, plan, trialEndsAt }: Props) {
+export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -100,7 +102,19 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt }: Pr
           ))}
         </nav>
         <div className="border-t border-[#1e3a5f] pt-4 space-y-3">
-          {role === "broker" && plan === "trialing" && trialDaysLeft !== null && (
+          {role === "broker" && accessStatus === "trial_expired" && (
+            <Link href="/dashboard/billing" className="block bg-red-900/40 border border-red-700/40 rounded-lg px-3 py-2.5 hover:bg-red-900/60 transition-colors">
+              <p className="text-red-400 text-xs font-semibold">Trial Ended</p>
+              <p className="text-red-500/70 text-xs mt-0.5">Subscribe to continue &#8594;</p>
+            </Link>
+          )}
+          {role === "broker" && accessStatus === "trial_expiring" && trialDaysLeft !== null && (
+            <Link href="/dashboard/billing" className="block bg-amber-900/30 border border-amber-700/30 rounded-lg px-3 py-2.5 hover:bg-amber-900/50 transition-colors">
+              <p className="text-amber-400 text-xs font-semibold">Trial Expiring</p>
+              <p className="text-amber-500/70 text-xs mt-0.5">{trialDaysLeft} {trialDaysLeft === 1 ? "day" : "days"} remaining</p>
+            </Link>
+          )}
+          {role === "broker" && accessStatus === "trial_active" && trialDaysLeft !== null && (
             <div className="bg-[#d4a843]/10 rounded-lg px-3 py-2.5">
               <p className="text-[#d4a843] text-xs font-medium">Free Trial</p>
               <p className="text-gray-400 text-xs mt-0.5">{trialDaysLeft} days remaining</p>
