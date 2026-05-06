@@ -384,10 +384,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     }
                   >
                     {photo.url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-36 object-cover" />
+                      <OrientedThumbnail url={photo.url} filename={photo.filename} />
                     ) : (
-                      <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                      <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
                     )}
                     {selectMode && (
                       <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
@@ -568,5 +567,21 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         document.body
       )}
     </div>
+  );
+}
+
+function OrientedThumbnail({ url, filename }: { url: string; filename: string | null }) {
+  const [isVertical, setIsVertical] = useState(false);
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={url}
+      alt={filename ?? ""}
+      onLoad={(e) => {
+        const img = e.target as HTMLImageElement;
+        setIsVertical(img.naturalHeight > img.naturalWidth);
+      }}
+      className={`w-full object-cover ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+    />
   );
 }

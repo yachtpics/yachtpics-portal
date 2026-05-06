@@ -52,6 +52,14 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [broker, setBroker] = useState<BrokerInfo>(initialBroker);
+  const [verticalIds, setVerticalIds] = useState<Set<string>>(new Set());
+
+  function handleImgLoad(e: React.SyntheticEvent<HTMLImageElement>, id: string) {
+    const img = e.currentTarget;
+    if (img.naturalHeight > img.naturalWidth) {
+      setVerticalIds((prev) => { const next = new Set(prev); next.add(id); return next; });
+    }
+  }
 
   // Track view once per session
   useEffect(() => {
@@ -325,7 +333,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   <img
                     src={photo.url}
                     alt=""
-                    className="w-full h-40 object-contain bg-[#0a1628]"
+                    onLoad={(e) => handleImgLoad(e, photo.id)}
+                    className={`w-full object-cover ${verticalIds.has(photo.id) ? "aspect-[3/4]" : "aspect-[4/3]"}`}
                   />
                 )}
                 <div className="p-2 bg-[#0a1628]">

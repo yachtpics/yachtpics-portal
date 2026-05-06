@@ -1300,6 +1300,7 @@ function SortablePhotoCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isVertical, setIsVertical] = useState(false);
   const inStandardList = (PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "");
   const [showCustomInput, setShowCustomInput] = useState(!inStandardList);
   const [customValue, setCustomValue] = useState(!inStandardList ? (photo.category ?? "") : "");
@@ -1362,9 +1363,18 @@ function SortablePhotoCard({
       >
         {photo.url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-48 object-contain bg-gray-50 pointer-events-none" />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={photo.url}
+            alt={photo.filename ?? ""}
+            onLoad={(e) => {
+              const img = e.target as HTMLImageElement;
+              setIsVertical(img.naturalHeight > img.naturalWidth);
+            }}
+            className={`w-full object-cover pointer-events-none ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+          />
         ) : (
-          <div className="w-full h-48 bg-amber-50 border-b border-amber-200 flex flex-col items-center justify-center gap-2 pointer-events-none">
+          <div className="w-full aspect-[4/3] bg-amber-50 border-b border-amber-200 flex flex-col items-center justify-center gap-2 pointer-events-none">
             <span className="text-2xl">⚠️</span>
             <div className="text-center px-3">
               <p className="text-amber-700 text-xs font-semibold">File missing</p>
