@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
@@ -54,7 +55,21 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  const [mounted, setMounted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (lightboxIndex === null) return;
+      if (e.key === "ArrowLeft") setLightboxIndex(i => i !== null ? Math.max(0, i - 1) : null);
+      if (e.key === "ArrowRight") setLightboxIndex(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
+      if (e.key === "Escape") setLightboxIndex(null);
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [lightboxIndex, photos.length]);
 
   const broker = listing.profiles;
   const brokerName = broker?.first_name
@@ -339,77 +354,73 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {photos.map((photo) => {
+            {photos.map((photo, idx) => {
               const isSelected = selectedIds.has(photo.id);
               return (
                 <div
                   key={photo.id}
-                  className={`relative rounded-lg overflow-hidden border-2 transition-colors cursor-pointer ${
+                  className={`rounded-lg overflow-hidden border-2 bg-white transition-colors ${
                     isSelected ? "border-[#d4a843] shadow-md" :
-                    photo.is_visible ? "border-transparent" : "border-gray-200 opacity-50"
+                    photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
                   }`}
-                  onClick={() => selectMode && setSelectedIds((prev) => {
-                    const next = new Set(prev);
-                    next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id);
-                    return next;
-                  })}
                 >
-                  {/* Photo + overlay scoped to photo area only */}
-                  <div className="relative">
+                  {/* Thumbnail — click to enlarge or select */}
+                  <div
+                    className="relative cursor-pointer"
+                    onClick={() => selectMode
+                      ? setSelectedIds((prev) => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next; })
+                      : setLightboxIndex(idx)
+                    }
+                  >
                     {photo.url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-28 object-cover" />
+                      <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-36 object-cover" />
                     ) : (
-                      <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                      <div className="w-full h-36 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
                     )}
-
-                    {/* Checkbox in select mode */}
                     {selectMode && (
-                      <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                      <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
                         isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
                       }`}>
                         {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
                       </div>
                     )}
+                  </div>
 
-                    {/* Actions overlay — covers photo only, not category row */}
+                  {/* Category + actions below thumbnail */}
+                  <div className="p-2 bg-white">
+                    <AdminCategoryPicker
+                      category={photo.category}
+                      onSave={(cat) => updateCategory(photo.id, cat)}
+                    />
+                    {!photo.is_visible && <span className="text-[10px] text-gray-400 ml-1">· hidden</span>}
                     {!selectMode && (
-                      <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
+                      <div className="flex gap-1.5 mt-2">
                         <button
                           onClick={() => toggleVisibility(photo.id, photo.is_visible)}
-                          className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
-                          title={photo.is_visible ? "Hide" : "Show"}
+                          className="flex-1 text-[10px] font-medium text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 rounded py-1 transition-colors"
                         >
                           {photo.is_visible ? "Hide" : "Show"}
                         </button>
                         {confirmDeleteId === photo.id ? (
                           <>
                             <button onClick={() => setConfirmDeleteId(null)}
-                              className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
+                              className="flex-1 text-[10px] font-medium text-gray-500 border border-gray-200 rounded py-1 transition-colors">
                               Cancel
                             </button>
                             <button onClick={() => { setConfirmDeleteId(null); deletePhoto(photo.id, photo.storage_path); }}
-                              className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded transition-colors">
+                              className="flex-1 text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 rounded py-1 transition-colors">
                               Confirm
                             </button>
                           </>
                         ) : (
                           <button onClick={() => setConfirmDeleteId(photo.id)}
-                            className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
+                            className="flex-1 text-[10px] font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded py-1 transition-colors">
                             Delete
                           </button>
                         )}
                       </div>
                     )}
-                  </div>
-
-                  {/* Category */}
-                  <div className="p-1.5">
-                    <AdminCategoryPicker
-                      category={photo.category}
-                      onSave={(cat) => updateCategory(photo.id, cat)}
-                    />
-                    {!photo.is_visible && <span className="text-xs text-gray-400 ml-1">· hidden</span>}
                   </div>
                 </div>
               );
@@ -456,6 +467,46 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>
         <DeleteListingButton listingId={listing.id} vesselName={listing.vessel_name} brokerId={listing.broker_id} />
       </div>
+      {/* Lightbox */}
+      {mounted && lightboxIndex !== null && createPortal(
+        <div
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column" }}
+          onClick={() => setLightboxIndex(null)}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", flexShrink: 0 }}>
+            <span style={{ color: "#9ca3af", fontSize: 14 }}>
+              {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
+            </span>
+            <button onClick={() => setLightboxIndex(null)}
+              style={{ color: "#fff", background: "none", border: "none", fontSize: 28, cursor: "pointer", lineHeight: 1 }}>×</button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 48px" }}
+            onClick={(e) => e.stopPropagation()}>
+            {photos[lightboxIndex]?.url && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={photos[lightboxIndex].url!} alt={photos[lightboxIndex].filename ?? ""}
+                style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", display: "block" }} />
+            )}
+            {lightboxIndex > 0 && (
+              <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
+                style={{ position: "absolute", left: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+            )}
+            {lightboxIndex < photos.length - 1 && (
+              <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
+                style={{ position: "absolute", right: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+            )}
+          </div>
+          <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "12px 16px", flexShrink: 0 }}>
+            {photos.map((p, i) => (
+              <button key={p.id} onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
+                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid #d4a843" : "none" }}>
+                {p.url && <img src={p.url} alt="" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />}
+              </button>
+            ))}
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
