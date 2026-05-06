@@ -55,7 +55,7 @@ export default function InviteBrokerPanel() {
           <div>
             <h3 className="text-sm font-semibold text-gray-900 mb-1">Invite a New Broker</h3>
             <p className="text-xs text-gray-400">
-              Set up a portal account for a broker who isn't in the system yet. They'll receive an email to create their password.
+              Set up a portal account for a broker who isn&apos;t in the system yet. They&apos;ll receive an email to create their password.
             </p>
           </div>
           <button
@@ -125,7 +125,7 @@ export default function InviteBrokerPanel() {
 
             {success && (
               <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-4 py-3">
-                Invite sent. You're now linked to their account.
+                Invite sent. You&apos;re now linked to their account.
               </p>
             )}
 
