@@ -17,6 +17,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { getAccessStatus, hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
+import ContentRightsModal from "@/components/ContentRightsModal";
 
 interface Photo {
   id: string;
@@ -37,6 +38,9 @@ export default function BrokerListingPage() {
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean } | null>(null);
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("trial_active");
+  const [showRightsModal, setShowRightsModal] = useState(false);
+  const [rightsAccepted, setRightsAccepted] = useState(false);
+  const pendingActionRef = useRef<(() => void) | null>(null);
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
@@ -57,8 +61,30 @@ export default function BrokerListingPage() {
   const [mounted, setMounted] = useState(false);
   const tapStart = useRef<{x: number; y: number} | null>(null);
   useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setRightsAccepted(localStorage.getItem("yp_content_rights_v1") === "accepted");
+    }
+  }, []);
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function requireRights(action: () => void) {
+    if (rightsAccepted) { action(); return; }
+    pendingActionRef.current = action;
+    setShowRightsModal(true);
+  }
+  function handleRightsAccept() {
+    localStorage.setItem("yp_content_rights_v1", "accepted");
+    setRightsAccepted(true);
+    setShowRightsModal(false);
+    pendingActionRef.current?.();
+    pendingActionRef.current = null;
+  }
+  function handleRightsCancel() {
+    setShowRightsModal(false);
+    pendingActionRef.current = null;
+  }
   const docInputRef = useRef<HTMLInputElement>(null);
 
   // Sent history + view tracking
@@ -108,7 +134,7 @@ export default function BrokerListingPage() {
     e.preventDefault();
     dragCounter.current = 0;
     setDragOver(false);
-    if (hasAccess(accessStatus)) handleFiles(e.dataTransfer.files);
+    if (hasAccess(accessStatus)) requireRights(() => handleFiles(e.dataTransfer.files));
   }
 
   useEffect(() => {
@@ -729,7 +755,7 @@ export default function BrokerListingPage() {
           )}
 
           {hasAccess(accessStatus) ? (
-            <button onClick={() => fileInputRef.current?.click()}
+            <button onClick={() => requireRights(() => fileInputRef.current?.click())}
               className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
               + Add Photos
             </button>
@@ -759,7 +785,7 @@ export default function BrokerListingPage() {
 
       {photos.length === 0 ? (
         <div
-          onClick={() => hasAccess(accessStatus) && fileInputRef.current?.click()}
+          onClick={() => hasAccess(accessStatus) && requireRights(() => fileInputRef.current?.click())}
           className={`border-2 border-dashed rounded-xl p-16 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
         >
           {hasAccess(accessStatus) ? (
@@ -804,7 +830,7 @@ export default function BrokerListingPage() {
 
           {/* Drop zone strip */}
           <div
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => requireRights(() => fileInputRef.current?.click())}
             className="mt-3 border-2 border-dashed border-gray-200 rounded-xl py-4 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
           >
             <p className="text-gray-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
@@ -993,7 +1019,7 @@ export default function BrokerListingPage() {
             <p className="text-gray-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
           </div>
           <button
-            onClick={() => hasAccess(accessStatus) && videoInputRef.current?.click()}
+            onClick={() => hasAccess(accessStatus) && requireRights(() => videoInputRef.current?.click())}
             disabled={uploadingVideo || !hasAccess(accessStatus)}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
@@ -1013,7 +1039,7 @@ export default function BrokerListingPage() {
 
         {videos.length === 0 ? (
           <div
-            onClick={() => hasAccess(accessStatus) && videoInputRef.current?.click()}
+            onClick={() => hasAccess(accessStatus) && requireRights(() => videoInputRef.current?.click())}
             className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
           >
             {!hasAccess(accessStatus)
@@ -1188,7 +1214,7 @@ export default function BrokerListingPage() {
             <p className="text-gray-500 text-sm mt-0.5">Upload PDF brochures or spec sheets for this listing.</p>
           </div>
           <button
-            onClick={() => hasAccess(accessStatus) && docInputRef.current?.click()}
+            onClick={() => hasAccess(accessStatus) && requireRights(() => docInputRef.current?.click())}
             disabled={uploadingDoc || !hasAccess(accessStatus)}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
@@ -1199,7 +1225,7 @@ export default function BrokerListingPage() {
 
         {documents.length === 0 ? (
           <div
-            onClick={() => hasAccess(accessStatus) && docInputRef.current?.click()}
+            onClick={() => hasAccess(accessStatus) && requireRights(() => docInputRef.current?.click())}
             className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
           >
             {!hasAccess(accessStatus)
