@@ -354,51 +354,54 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     return next;
                   })}
                 >
-                  {photo.url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-28 object-cover" />
-                  ) : (
-                    <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
-                  )}
+                  {/* Photo + overlay scoped to photo area only */}
+                  <div className="relative">
+                    {photo.url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={photo.url} alt={photo.filename ?? ""} className="w-full h-28 object-cover" />
+                    ) : (
+                      <div className="w-full h-28 bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                    )}
 
-                  {/* Checkbox in select mode */}
-                  {selectMode && (
-                    <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                      isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
-                    }`}>
-                      {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
-                    </div>
-                  )}
+                    {/* Checkbox in select mode */}
+                    {selectMode && (
+                      <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                        isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
+                      }`}>
+                        {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
+                      </div>
+                    )}
 
-                  {/* Actions overlay — hidden in select mode */}
-                  {!selectMode && (
-                    <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
-                      <button
-                        onClick={() => toggleVisibility(photo.id, photo.is_visible)}
-                        className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
-                        title={photo.is_visible ? "Hide" : "Show"}
-                      >
-                        {photo.is_visible ? "Hide" : "Show"}
-                      </button>
-                      {confirmDeleteId === photo.id ? (
-                        <>
-                          <button onClick={() => setConfirmDeleteId(null)}
-                            className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
-                            Cancel
-                          </button>
-                          <button onClick={() => { setConfirmDeleteId(null); deletePhoto(photo.id, photo.storage_path); }}
-                            className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded transition-colors">
-                            Confirm
-                          </button>
-                        </>
-                      ) : (
-                        <button onClick={() => setConfirmDeleteId(photo.id)}
-                          className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
-                          Delete
+                    {/* Actions overlay — covers photo only, not category row */}
+                    {!selectMode && (
+                      <div className="absolute inset-0 bg-black/0 hover:bg-black/40 transition-colors flex items-center justify-center gap-2 opacity-0 hover:opacity-100">
+                        <button
+                          onClick={() => toggleVisibility(photo.id, photo.is_visible)}
+                          className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors"
+                          title={photo.is_visible ? "Hide" : "Show"}
+                        >
+                          {photo.is_visible ? "Hide" : "Show"}
                         </button>
-                      )}
-                    </div>
-                  )}
+                        {confirmDeleteId === photo.id ? (
+                          <>
+                            <button onClick={() => setConfirmDeleteId(null)}
+                              className="bg-white/90 hover:bg-white text-gray-700 text-xs font-medium px-2 py-1 rounded transition-colors">
+                              Cancel
+                            </button>
+                            <button onClick={() => { setConfirmDeleteId(null); deletePhoto(photo.id, photo.storage_path); }}
+                              className="bg-red-500 hover:bg-red-600 text-white text-xs font-bold px-2 py-1 rounded transition-colors">
+                              Confirm
+                            </button>
+                          </>
+                        ) : (
+                          <button onClick={() => setConfirmDeleteId(photo.id)}
+                            className="bg-red-500/90 hover:bg-red-500 text-white text-xs font-medium px-2 py-1 rounded transition-colors">
+                            Delete
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
 
                   {/* Category */}
                   <div className="p-1.5">
