@@ -62,7 +62,7 @@ export default function BrokerListingPage() {
   // Sent history + view tracking
   interface ClientSend { id: string; client_email: string; sent_at: string; included_slideshow: boolean; document_count: number; message: string | null; }
   const [clientSends, setClientSends] = useState<ClientSend[]>([]);
-  const [viewCount, setViewCount] = useState<number>(0);
+  const [viewTimestamps, setViewTimestamps] = useState<Date[]>([]);
 
   // Documents
   interface Document { id: string; storage_path: string; filename: string | null; created_at: string; }
@@ -192,10 +192,11 @@ export default function BrokerListingPage() {
       .order("sent_at", { ascending: false });
     setClientSends(sends ?? []);
 
-    const { count } = await supabase.from("slideshow_views")
-      .select("id", { count: "exact", head: true })
-      .eq("listing_id", id);
-    setViewCount(count ?? 0);
+    const { data: viewRows } = await supabase.from("slideshow_views")
+      .select("viewed_at")
+      .eq("listing_id", id)
+      .order("viewed_at", { ascending: false });
+    setViewTimestamps((viewRows ?? []).map(r => new Date(r.viewed_at)));
 
     setLoading(false);
   }
@@ -1232,13 +1233,13 @@ export default function BrokerListingPage() {
             <p className="text-gray-500 text-xs mt-0.5">Tracks emails sent via the &ldquo;Send to Client&rdquo; button above — not the Email link below.</p>
           </div>
           <div className="flex items-center gap-3">
-            {viewCount > 0 && (
+            {viewTimestamps.length > 0 && (
               <span className="flex items-center gap-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
                 <svg className="w-3.5 h-3.5 text-[#d4a843]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
-                {viewCount} slideshow {viewCount === 1 ? "view" : "views"}
+                {viewTimestamps.length} total {viewTimestamps.length === 1 ? "view" : "views"}
               </span>
             )}
           </div>
@@ -1250,35 +1251,70 @@ export default function BrokerListingPage() {
           </div>
         ) : (
           <ul className="divide-y divide-gray-50">
-            {clientSends.map((send) => (
-              <li key={send.id} className="px-6 py-4 flex items-start justify-between gap-4">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-medium text-gray-900 truncate">{send.client_email}</p>
-                  {send.message && (
-                    <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 italic">&ldquo;{send.message}&rdquo;</p>
-                  )}
-                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                    {send.included_slideshow && (
-                      <span className="text-[10px] font-medium bg-[#d4a843]/10 text-[#b08c2a] px-2 py-0.5 rounded-full">Slideshow</span>
+            {clientSends.map((send) => {
+              const sentAt = new Date(send.sent_at);
+              const viewsSince = viewTimestamps.filter(t => t >= sentAt);
+              const lastViewed = viewsSince.length > 0 ? viewsSince[0] : null;
+              return (
+                <li key={send.id} className="px-6 py-4 flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-gray-900 truncate">{send.client_email}</p>
+                    {send.message && (
+                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 italic">&ldquo;{send.message}&rdquo;</p>
                     )}
-                    {send.document_count > 0 && (
-                      <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
-                        {send.document_count} doc{send.document_count !== 1 ? "s" : ""}
-                      </span>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      {send.included_slideshow && (
+                        <span className="text-[10px] font-medium bg-[#d4a843]/10 text-[#b08c2a] px-2 py-0.5 rounded-full">Slideshow</span>
+                      )}
+                      {send.document_count > 0 && (
+                        <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                          {send.document_count} doc{send.document_count !== 1 ? "s" : ""}
+                        </span>
+                      )}
+                    </div>
+                    {send.included_slideshow && (
+                      <div className="mt-2">
+                        {lastViewed ? (
+                          <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
+                            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            Opened {viewsSince.length} {viewsSince.length === 1 ? "time" : "times"} · Last {relativeTime(lastViewed)}
+                          </span>
+                        ) : (
+                          <span className="text-[11px] text-gray-400">Not yet opened</span>
+                        )}
+                      </div>
                     )}
                   </div>
-                </div>
-                <p className="text-xs text-gray-400 shrink-0 mt-0.5">
-                  {new Date(send.sent_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                </p>
-              </li>
-            ))}
+                  <p className="text-xs text-gray-400 shrink-0 mt-0.5">
+                    {sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                  </p>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
 
     </div>
   );
+}
+
+// ─── Relative time helper ─────────────────────────────────────────────────────
+function relativeTime(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+  if (seconds < 60) return "just now";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return "yesterday";
+  if (days < 7) return `${days} days ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 // ─── Sortable photo card ───────────────────────────────────────────────────────

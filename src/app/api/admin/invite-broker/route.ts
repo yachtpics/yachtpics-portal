@@ -29,13 +29,10 @@ export async function POST(req: NextRequest) {
     const brokerId = linkData.user.id;
     const inviteLink = linkData.properties?.action_link ?? "https://portal.yachtpics.com";
 
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: brokerId,
-      role: "broker",
-      first_name: firstName,
-      last_name: lastName,
-      display_email: email,
-    });
+    const { error: profileError } = await supabase.from("profiles").upsert(
+      { id: brokerId, role: "broker", first_name: firstName, last_name: lastName, display_email: email },
+      { onConflict: "id" }
+    );
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
