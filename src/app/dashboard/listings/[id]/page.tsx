@@ -1326,6 +1326,8 @@ function SortablePhotoCard({
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const isCustomCategory = !(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "");
+  const [customCategory, setCustomCategory] = useState(isCustomCategory ? (photo.category ?? "") : "");
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -1401,10 +1403,18 @@ function SortablePhotoCard({
       <div className="p-2 bg-white">
         <div className="flex items-center gap-1">
           <span className="text-xs font-medium text-gray-500 shrink-0">{String(index + 1).padStart(2, "0")} ·</span>
-          {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ? (
+          {!isCustomCategory ? (
             <select
               value={photo.category ?? "Other"}
-              onChange={(e) => { e.stopPropagation(); onUpdateCategory(e.target.value === "__custom__" ? "" : e.target.value); }}
+              onChange={(e) => {
+                e.stopPropagation();
+                if (e.target.value === "__custom__") {
+                  setCustomCategory("");
+                  onUpdateCategory("");
+                } else {
+                  onUpdateCategory(e.target.value);
+                }
+              }}
               onClick={(e) => e.stopPropagation()}
               className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
             >
@@ -1415,15 +1425,18 @@ function SortablePhotoCard({
             <div className="flex items-center gap-1 flex-1 min-w-0">
               <input
                 type="text"
-                value={photo.category ?? ""}
-                onChange={(e) => { e.stopPropagation(); onUpdateCategory(e.target.value); }}
+                value={customCategory}
+                onChange={(e) => { e.stopPropagation(); setCustomCategory(e.target.value); }}
+                onBlur={() => { if (customCategory.trim()) onUpdateCategory(customCategory.trim()); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (customCategory.trim()) onUpdateCategory(customCategory.trim()); (e.target as HTMLInputElement).blur(); } }}
                 onClick={(e) => e.stopPropagation()}
-                placeholder="Custom category..."
+                placeholder="Type & press Enter..."
+                autoFocus
                 className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none flex-1 min-w-0 focus:border-[#d4a843]"
               />
               <button
                 type="button"
-                onClick={(e) => { e.stopPropagation(); onUpdateCategory("Other"); }}
+                onClick={(e) => { e.stopPropagation(); setCustomCategory(""); onUpdateCategory("Other"); }}
                 className="text-gray-400 hover:text-gray-600 text-xs shrink-0 px-1"
                 title="Back to list"
               >✕</button>

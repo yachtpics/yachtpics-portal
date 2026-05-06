@@ -16,6 +16,7 @@ export default function InviteBrokerPage() {
     lastName: "",
     email: "",
     brokerage: "",
+    assistantEmail: "",
   });
 
   const [customVesselType, setCustomVesselType] = useState(false);
@@ -80,6 +81,7 @@ export default function InviteBrokerPage() {
           brokerage: broker.brokerage,
           vesselName: vessel.vesselName,
           photosReady: photos.length > 0,
+          assistantEmail: broker.assistantEmail || undefined,
         }),
       });
       const inviteData = await inviteRes.json();
@@ -196,6 +198,18 @@ export default function InviteBrokerPage() {
             <input type="text" value={broker.brokerage}
               onChange={(e) => setBroker({ ...broker, brokerage: e.target.value })}
               className={inputClass} />
+          </div>
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            <label className={labelClass}>
+              Assistant Email <span className="text-gray-400 normal-case font-normal tracking-normal">(optional)</span>
+            </label>
+            <input type="email" value={broker.assistantEmail}
+              onChange={(e) => setBroker({ ...broker, assistantEmail: e.target.value })}
+              placeholder="assistant@brokerage.com"
+              className={inputClass} />
+            <p className="text-xs text-gray-400 mt-1.5">
+              If this broker has an assistant who manages their portal, add their email here. They'll be linked automatically and notified when photos are ready.
+            </p>
           </div>
         </div>
 

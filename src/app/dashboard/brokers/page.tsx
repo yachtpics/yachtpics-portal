@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import ConnectBrokerPanel from "./_components/ConnectBrokerPanel";
+import InviteBrokerPanel from "./_components/InviteBrokerPanel";
 
 export default async function MyBrokersPage() {
   const supabase = await createClient();
@@ -155,6 +156,7 @@ export default async function MyBrokersPage() {
       )}
 
       <ConnectBrokerPanel availableBrokers={availableBrokers} />
+      <InviteBrokerPanel />
     </div>
   );
 }
