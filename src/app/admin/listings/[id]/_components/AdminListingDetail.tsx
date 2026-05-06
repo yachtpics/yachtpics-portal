@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
@@ -113,6 +113,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   async function toggleVisibility(photoId: string, current: boolean) {
     await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
+  }
+
+  async function updateCategory(photoId: string, category: string) {
+    await supabase.from("photos").update({ category }).eq("id", photoId);
+    setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
   }
 
   async function deletePhoto(photoId: string, storagePath: string) {
@@ -395,9 +400,12 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     </div>
                   )}
 
-                  {/* Category badge */}
+                  {/* Category */}
                   <div className="p-1.5">
-                    <span className="text-xs text-gray-500">{photo.category ?? "Other"}</span>
+                    <AdminCategoryPicker
+                      category={photo.category}
+                      onSave={(cat) => updateCategory(photo.id, cat)}
+                    />
                     {!photo.is_visible && <span className="text-xs text-gray-400 ml-1">· hidden</span>}
                   </div>
                 </div>
@@ -445,6 +453,66 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>
         <DeleteListingButton listingId={listing.id} vesselName={listing.vessel_name} brokerId={listing.broker_id} />
       </div>
+    </div>
+  );
+}
+
+function AdminCategoryPicker({ category, onSave }: { category: string | null; onSave: (cat: string) => void }) {
+  const inList = (PHOTO_CATEGORIES as readonly string[]).includes(category ?? "");
+  const [showCustom, setShowCustom] = useState(!inList);
+  const [customValue, setCustomValue] = useState(!inList ? (category ?? "") : "");
+
+  const commit = useCallback(() => {
+    const trimmed = customValue.trim();
+    if (trimmed) {
+      onSave(trimmed);
+    } else {
+      setShowCustom(false);
+      setCustomValue("");
+      onSave("Other");
+    }
+  }, [customValue, onSave]);
+
+  if (!showCustom) {
+    return (
+      <select
+        value={category ?? "Other"}
+        onChange={(e) => {
+          if (e.target.value === "__custom__") {
+            setShowCustom(true);
+            setCustomValue("");
+          } else {
+            onSave(e.target.value);
+          }
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="text-xs text-gray-600 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors max-w-full"
+      >
+        <option value="__custom__">+ Custom...</option>
+        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+      </select>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <input
+        type="text"
+        value={customValue}
+        onChange={(e) => setCustomValue(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } }}
+        onClick={(e) => e.stopPropagation()}
+        placeholder="Type & press Enter..."
+        autoFocus
+        className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none w-28 focus:border-[#d4a843]"
+      />
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); setShowCustom(false); setCustomValue(""); onSave("Other"); }}
+        className="text-gray-400 hover:text-gray-600 text-xs px-1"
+        title="Back to list"
+      >✕</button>
     </div>
   );
 }
