@@ -63,7 +63,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     const custom = initialPhotos
       .map((p) => p.category)
       .filter((c): c is string => c !== null && !(PHOTO_CATEGORIES as readonly string[]).includes(c));
-    return [...new Set(custom)];
+    return Array.from(new Set(custom));
   });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
