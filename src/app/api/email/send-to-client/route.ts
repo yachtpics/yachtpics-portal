@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { assertListingAccess } from "@/lib/assertListingAccess";
 
 export async function POST(req: NextRequest) {
   try {
@@ -24,9 +25,11 @@ export async function POST(req: NextRequest) {
       .eq("id", listingId)
       .single();
 
-    if (!listing || listing.broker_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
+
+    // Verify caller is the broker or a linked assistant
+    const access = await assertListingAccess(supabaseAdmin, listingId, user.id);
+    if (access instanceof NextResponse) return access;
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")
@@ -131,10 +134,10 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
     if (!res.ok) return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
 
-    // Log the send for history tracking
+    // Log the send for history tracking (always use listing's broker_id, not caller's id)
     await supabaseAdmin.from("client_sends").insert({
       listing_id: listingId,
-      broker_id: user.id,
+      broker_id: listing.broker_id,
       client_email: clientEmail,
       message: message || null,
       included_slideshow: !!(includeSlideshow && slideshowUrl),

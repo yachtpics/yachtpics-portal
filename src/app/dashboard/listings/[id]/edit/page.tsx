@@ -35,11 +35,12 @@ export default function EditListingPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // No broker_id filter — access is enforced by the PATCH API for both
+      // brokers and linked assistants. RLS allows reads by authenticated users.
       const { data } = await supabase
         .from("listings")
         .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status")
         .eq("id", id)
-        .eq("broker_id", user.id)
         .single();
 
       if (!data) { router.push("/dashboard/listings"); return; }
@@ -69,9 +70,12 @@ export default function EditListingPage() {
     setSaving(true);
     setError("");
 
-    const { error: updateError } = await supabase
-      .from("listings")
-      .update({
+    // Route through the API so assistants and brokers both go through the same
+    // server-side access check (uses service role, bypasses RLS restrictions).
+    const res = await fetch(`/api/listings/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
         vessel_name: form.vessel_name || null,
         vessel_type: form.vessel_type || null,
         year: form.year ? parseInt(form.year) : null,
@@ -82,11 +86,12 @@ export default function EditListingPage() {
         location: form.location || null,
         description: form.description || null,
         status: form.status,
-      })
-      .eq("id", id);
+      }),
+    });
 
-    if (updateError) {
-      setError(updateError.message);
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body.error ?? "Failed to save changes.");
       setSaving(false);
       return;
     }

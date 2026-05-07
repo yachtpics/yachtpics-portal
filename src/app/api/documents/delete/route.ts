@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { assertListingAccess } from "@/lib/assertListingAccess";
 
 export async function POST(req: NextRequest) {
   try {
@@ -9,29 +10,27 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing documentId or storagePath" }, { status: 400 });
     }
 
-    // Verify the requesting user owns the listing this document belongs to
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { data: doc } = await supabaseUser
+    // Use service role for all permission checks — avoids RLS blocking the join read
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+
+    const { data: doc } = await supabaseAdmin
       .from("documents")
-      .select("id, listing_id, listings(broker_id)")
+      .select("id, listing_id")
       .eq("id", documentId)
       .single();
 
     if (!doc) return NextResponse.json({ error: "Document not found" }, { status: 404 });
 
-    const listing = doc.listings as unknown as { broker_id: string } | null;
-    if (listing?.broker_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Use service role to delete (bypasses RLS)
-    const supabaseAdmin = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    // Verify caller is the broker or a linked assistant
+    const access = await assertListingAccess(supabaseAdmin, doc.listing_id, user.id);
+    if (access instanceof NextResponse) return access;
 
     await supabaseAdmin.storage.from("listing-documents").remove([storagePath]);
     const { error: dbError } = await supabaseAdmin
