@@ -2,11 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import AssistantBrokerPanel from "./_components/AssistantBrokerPanel";
+import DeleteAssistantButton from "./_components/DeleteAssistantButton";
 
 export default async function AdminAssistantDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
 
-  // Fetch the assistant profile
   const { data: assistant } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, display_email, created_at, role")
@@ -15,7 +15,6 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
 
   if (!assistant || assistant.role !== "assistant") notFound();
 
-  // Fetch their currently linked brokers
   const { data: links } = await supabase
     .from("broker_assistants")
     .select("broker_id, profiles:broker_id(id, first_name, last_name, display_email)")
@@ -30,7 +29,6 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
     };
   });
 
-  // Fetch all brokers for the "add broker" dropdown
   const { data: allBrokers } = await supabase
     .from("profiles")
     .select("id, first_name, last_name, display_email")
@@ -55,7 +53,7 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
         <Link href="/admin/assistants" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
-          ← Back to Assistants
+          &larr; Back to Assistants
         </Link>
         <div className="mt-4 flex items-start justify-between">
           <div>
@@ -63,9 +61,12 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
             <p className="text-gray-500 mt-0.5 text-sm">{assistant.display_email ?? "No email"}</p>
             <p className="text-gray-400 text-xs mt-1">Account created {joinedDate}</p>
           </div>
-          <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-700 mt-1">
-            Assistant
-          </span>
+          <div className="flex items-center gap-3 mt-1">
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-700">
+              Assistant
+            </span>
+            <DeleteAssistantButton assistantId={params.id} displayName={displayName} />
+          </div>
         </div>
       </div>
 

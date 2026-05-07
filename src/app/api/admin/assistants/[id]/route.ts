@@ -58,15 +58,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 }
 
-// DELETE /api/admin/assistants/[id] — unlink a broker from this assistant
+// DELETE /api/admin/assistants/[id]
+// - With body { brokerId }: unlink that broker from this assistant
+// - With body { deleteAccount: true }: fully delete the assistant account
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     const assistantId = params.id;
-    const { brokerId } = await req.json();
-
-    if (!brokerId) {
-      return NextResponse.json({ error: "brokerId is required." }, { status: 400 });
-    }
+    const body = await req.json();
 
     const serverSupabase = await createServerClient();
     const { data: { user: caller } } = await serverSupabase.auth.getUser();
@@ -86,6 +84,21 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    if (body.deleteAccount) {
+      // Full account deletion: remove all broker links, profile, and auth user
+      await supabase.from("broker_assistants").delete().eq("assistant_id", assistantId);
+      await supabase.from("profiles").delete().eq("id", assistantId);
+      const { error: authErr } = await supabase.auth.admin.deleteUser(assistantId);
+      if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });
+      return NextResponse.json({ success: true, deleted: true });
+    }
+
+    // Unlink a single broker
+    const { brokerId } = body;
+    if (!brokerId) {
+      return NextResponse.json({ error: "brokerId or deleteAccount is required." }, { status: 400 });
+    }
 
     await supabase
       .from("broker_assistants")
