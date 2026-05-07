@@ -168,7 +168,7 @@ export default function HelpPage() {
       </div>
 
       {/* Contact */}
-      <div className="bg-[#d4a843]/10 border border-[#d4a843]/30 rounded-xl px-6 py-5">
+      <div className="bg-[#d4a843]/10 border border-[#d4a843]/30 rounded-xl px-6 py-5 mb-4">
         <p className="text-sm font-semibold text-gray-900 mb-1">Still have questions?</p>
         <p className="text-gray-500 text-xs leading-relaxed">
           Reach out to your YachtPics rep directly at{" "}
@@ -179,6 +179,4 @@ export default function HelpPage() {
         </p>
       </div>
 
-    </div>
-  );
-}
+      {/* Cop
