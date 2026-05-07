@@ -105,7 +105,7 @@ export default function HelpPage() {
 
       {/* Header */}
       <div className="mb-10">
-        <h1 className="text-2xl font-bold text-gray-900">Help & User Guide</h1>
+        <h1 className="text-2xl font-bold text-gray-900">Help &amp; User Guide</h1>
         <p className="text-gray-500 mt-1 text-sm">
           Everything you need to get up and running with the YachtPics Portal.
         </p>
@@ -116,7 +116,7 @@ export default function HelpPage() {
         <div>
           <p className="text-white font-semibold text-sm">Full User Guide (PDF)</p>
           <p className="text-gray-400 text-xs mt-0.5">
-            A complete walkthrough of every feature — great to keep on file or share with your team.
+            A complete walkthrough of every feature &mdash; great to keep on file or share with your team.
           </p>
         </div>
         <a
@@ -124,7 +124,7 @@ export default function HelpPage() {
           download
           className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap"
         >
-          Download Guide ↓
+          Download Guide &darr;
         </a>
       </div>
 
@@ -179,4 +179,21 @@ export default function HelpPage() {
         </p>
       </div>
 
-      {/* Cop
+      {/* Copyright / DMCA */}
+      <div className="bg-white border border-gray-200 rounded-xl px-6 py-5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Copyright &amp; Content</p>
+        <p className="text-gray-500 text-xs leading-relaxed">
+          All content uploaded to the YachtPics Portal must be owned by you or used with the copyright
+          holder&apos;s permission. If you believe content on this platform infringes your copyright,
+          please submit a takedown request to{" "}
+          <a href="mailto:dmca@yachtpics.com" className="text-[#c49a35] hover:underline font-medium">
+            dmca@yachtpics.com
+          </a>
+          {" "}with a description of the work, the location of the infringing material, and your contact
+          information. We will respond promptly.
+        </p>
+      </div>
+
+    </div>
+  );
+}
