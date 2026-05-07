@@ -74,16 +74,33 @@ export default function SetPasswordClient() {
         return;
       }
 
-      // Implicit flow: Supabase client auto-detects #access_token in hash.
-      // Check getSession() immediately in case it already processed the hash
-      // before our onAuthStateChange listener was registered.
+      // Implicit flow: @supabase/ssr does NOT auto-process #access_token from the
+      // URL hash the way the browser client does. Parse it explicitly and call
+      // setSession() so Supabase creates the session from the tokens in the hash.
+      const hash = window.location.hash;
+      if (hash.includes("access_token=")) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token") ?? "";
+        if (accessToken) {
+          const { data: sessData, error: sessErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (sessErr || !sessData.session?.user) { fail(); }
+          // On success, onAuthStateChange fires SIGNED_IN → settle()
+          return;
+        }
+      }
+
+      // Fallback: check if getSession() already has a valid session
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         await settle(session.user.id);
         return;
       }
 
-      // Still no session — give onAuthStateChange up to 4 seconds
+      // Last resort — give onAuthStateChange up to 4 seconds
       setTimeout(async () => {
         if (settled) return;
         const { data: { user } } = await supabase.auth.getUser();
