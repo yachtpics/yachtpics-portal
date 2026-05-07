@@ -76,14 +76,12 @@ export default async function ListingsPage() {
               : "View your photos, toggle visibility, and reorder your gallery."}
           </p>
         </div>
-        {!isAssistant && (
-          <Link
-            href="/dashboard/listings/new"
-            className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
-          >
-            + New Listing
-          </Link>
-        )}
+        <Link
+          href="/dashboard/listings/new"
+          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+        >
+          + New Listing
+        </Link>
       </div>
 
       {listings.length === 0 ? (
