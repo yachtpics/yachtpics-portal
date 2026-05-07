@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
     const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
       type: "invite",
       email,
-      options: { redirectTo: "https://portal.yachtpics.com/auth/callback?next=/auth/set-password" },
+      options: { redirectTo: "https://portal.yachtpics.com/auth/set-password" },
     });
 
     if (linkError || !linkData?.user) {
@@ -128,7 +128,7 @@ export async function POST(req: NextRequest) {
         const { data: assistantLinkData, error: assistantLinkError } = await supabase.auth.admin.generateLink({
           type: "invite",
           email: assistantEmail,
-          options: { redirectTo: "https://portal.yachtpics.com/auth/callback?next=/auth/set-password" },
+          options: { redirectTo: "https://portal.yachtpics.com/auth/set-password" },
         });
 
         if (assistantLinkError || !assistantLinkData?.user) {

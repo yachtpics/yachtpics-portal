@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         type: "invite",
         email,
         options: {
-          redirectTo: "https://portal.yachtpics.com/auth/callback?next=/auth/set-password",
+          redirectTo: "https://portal.yachtpics.com/auth/set-password",
           data: { role: "assistant" },
         },
       });
