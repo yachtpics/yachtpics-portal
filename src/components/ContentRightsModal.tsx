@@ -15,7 +15,7 @@ export default function ContentRightsModal({ onAccept, onCancel }: Props) {
       <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6">
         <h2 className="text-base font-bold text-gray-900 mb-1">Before you upload</h2>
         <p className="text-sm text-gray-500 mb-5">
-          To keep everyone protected, please confirm that you have the right to use the files you're uploading.
+          To keep everyone protected, please confirm that you have the right to use the files you&apos;re uploading.
         </p>
         <label className="flex items-start gap-3 cursor-pointer select-none">
           <input
@@ -30,7 +30,7 @@ export default function ContentRightsModal({ onAccept, onCancel }: Props) {
           </span>
         </label>
         <p className="text-xs text-gray-400 mt-4">
-          This confirmation is saved so you won't see it again on this device.
+          This confirmation is saved so you won&apos;t see it again on this device.
         </p>
         <div className="flex gap-3 mt-5">
           <button
