@@ -1350,6 +1350,12 @@ export default function BrokerListingPage() {
         )}
       </div>
 
+      {showRightsModal && (
+        <ContentRightsModal
+          onAccept={handleRightsAccept}
+          onCancel={handleRightsCancel}
+        />
+      )}
     </div>
   );
 }
