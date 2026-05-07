@@ -28,51 +28,68 @@ export default function SetPasswordClient() {
       if (data?.first_name) setFirstName(data.first_name);
     }
 
-    // onAuthStateChange fires automatically when Supabase detects hash tokens
-    // (implicit flow) or after exchangeCodeForSession succeeds (PKCE)
+    async function settle(userId: string) {
+      if (settled) return;
+      settled = true;
+      await loadProfile(userId);
+      if (typeof window !== "undefined") {
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+      setChecking(false);
+    }
+
+    function fail() {
+      if (settled) return;
+      settled = true;
+      setLinkInvalid(true);
+      setChecking(false);
+    }
+
+    // Subscribe FIRST before any async work — avoids missing events that fire
+    // immediately when Supabase detects hash tokens on page load
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (settled) return;
       if ((event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") && session?.user) {
-        settled = true;
-        await loadProfile(session.user.id);
-        if (typeof window !== "undefined" &&
-          (window.location.hash || window.location.search.includes("code="))) {
-          window.history.replaceState(null, "", window.location.pathname);
-        }
-        setChecking(false);
+        await settle(session.user.id);
       }
     });
 
-    // PKCE: code arrives as ?code= — exchange manually, then onAuthStateChange fires
     async function handleInit() {
       if (typeof window === "undefined") return;
-      const code = new URLSearchParams(window.location.search).get("code");
-      if (code) {
-        const { error: exchError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchError) {
-          settled = true;
-          setLinkInvalid(true);
-          setChecking(false);
-        }
-        // onAuthStateChange fires SIGNED_IN if exchange succeeded
+
+      const params = new URLSearchParams(window.location.search);
+
+      // Supabase reports genuine token expiry/invalid via ?error= on the redirect
+      if (params.get("error")) {
+        fail();
         return;
       }
 
-      // Implicit flow: Supabase client detects #access_token automatically.
-      // Give onAuthStateChange up to 3 seconds to fire before giving up.
+      // PKCE flow: code arrives as ?code=
+      const code = params.get("code");
+      if (code) {
+        const { error: exchError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchError) { fail(); }
+        // On success, onAuthStateChange fires SIGNED_IN -> settle()
+        return;
+      }
+
+      // Implicit flow: Supabase client auto-detects #access_token in hash.
+      // Check getSession() immediately in case it already processed the hash
+      // before our onAuthStateChange listener was registered.
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        await settle(session.user.id);
+        return;
+      }
+
+      // Still no session — give onAuthStateChange up to 4 seconds
       setTimeout(async () => {
         if (settled) return;
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          settled = true;
-          await loadProfile(user.id);
-          setChecking(false);
-        } else {
-          settled = true;
-          setLinkInvalid(true);
-          setChecking(false);
-        }
-      }, 3000);
+        if (user) { await settle(user.id); }
+        else { fail(); }
+      }, 4000);
     }
 
     handleInit();
