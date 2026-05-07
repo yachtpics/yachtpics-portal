@@ -14,44 +14,71 @@ export default function SetPasswordClient() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
+  const [linkInvalid, setLinkInvalid] = useState(false);
 
   useEffect(() => {
-    async function init() {
-      if (typeof window !== "undefined") {
-        // PKCE flow: code arrives as a query param
-        const searchParams = new URLSearchParams(window.location.search);
-        const code = searchParams.get("code");
-        if (code) {
-          await supabase.auth.exchangeCodeForSession(code);
-          window.history.replaceState(null, "", window.location.pathname);
-        }
+    let settled = false;
 
-        // Implicit flow fallback: tokens arrive in the URL hash
-        if (!code && window.location.hash) {
-          const hashParams = new URLSearchParams(window.location.hash.substring(1));
-          const accessToken = hashParams.get("access_token");
-          const refreshToken = hashParams.get("refresh_token");
-          if (accessToken && refreshToken) {
-            await supabase.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
-            window.history.replaceState(null, "", window.location.pathname);
-          }
-        }
-      }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.replace("/auth/login");
-        return;
-      }
+    async function loadProfile(userId: string) {
       const { data } = await supabase
         .from("profiles")
         .select("first_name")
-        .eq("id", user.id)
+        .eq("id", userId)
         .single();
       if (data?.first_name) setFirstName(data.first_name);
-      setChecking(false);
     }
-    init();
+
+    // onAuthStateChange fires automatically when Supabase detects hash tokens
+    // (implicit flow) or after exchangeCodeForSession succeeds (PKCE)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (settled) return;
+      if ((event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") && session?.user) {
+        settled = true;
+        await loadProfile(session.user.id);
+        if (typeof window !== "undefined" &&
+          (window.location.hash || window.location.search.includes("code="))) {
+          window.history.replaceState(null, "", window.location.pathname);
+        }
+        setChecking(false);
+      }
+    });
+
+    // PKCE: code arrives as ?code= — exchange manually, then onAuthStateChange fires
+    async function handleInit() {
+      if (typeof window === "undefined") return;
+      const code = new URLSearchParams(window.location.search).get("code");
+      if (code) {
+        const { error: exchError } = await supabase.auth.exchangeCodeForSession(code);
+        if (exchError) {
+          settled = true;
+          setLinkInvalid(true);
+          setChecking(false);
+        }
+        // onAuthStateChange fires SIGNED_IN if exchange succeeded
+        return;
+      }
+
+      // Implicit flow: Supabase client detects #access_token automatically.
+      // Give onAuthStateChange up to 3 seconds to fire before giving up.
+      setTimeout(async () => {
+        if (settled) return;
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          settled = true;
+          await loadProfile(user.id);
+          setChecking(false);
+        } else {
+          settled = true;
+          setLinkInvalid(true);
+          setChecking(false);
+        }
+      }, 3000);
+    }
+
+    handleInit();
+
+    return () => subscription.unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -86,6 +113,37 @@ export default function SetPasswordClient() {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="w-5 h-5 border-2 border-[#d4a843] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  if (linkInvalid) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+        <div className="w-full max-w-sm text-center">
+          <p className="text-xl font-semibold text-gray-900 tracking-tight mb-8">
+            YachtPics <span className="text-[#d4a843]">Portal</span>
+          </p>
+          <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
+            <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
+              <span className="text-amber-500 text-lg">!</span>
+            </div>
+            <h1 className="text-lg font-bold text-gray-900 mb-2">Link expired</h1>
+            <p className="text-sm text-gray-500 leading-relaxed mb-6">
+              This invite link has already been used or has expired. Contact your broker or{" "}
+              <a href="mailto:hello@yachtpics.com" className="text-[#d4a843] hover:underline">
+                hello@yachtpics.com
+              </a>{" "}
+              to request a new one.
+            </p>
+            <a
+              href="/auth/login"
+              className="block w-full bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] font-semibold text-sm py-3 rounded-lg transition-colors text-center"
+            >
+              Go to Login
+            </a>
+          </div>
+        </div>
       </div>
     );
   }
