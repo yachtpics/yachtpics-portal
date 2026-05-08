@@ -86,8 +86,9 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
     );
 
     if (body.deleteAccount) {
-      // Full account deletion: remove all broker links, profile, and auth user
+      // Full account deletion: remove all related records then auth user
       await supabase.from("broker_assistants").delete().eq("assistant_id", assistantId);
+      await supabase.from("notifications").delete().eq("user_id", assistantId);
       await supabase.from("profiles").delete().eq("id", assistantId);
       const { error: authErr } = await supabase.auth.admin.deleteUser(assistantId);
       if (authErr) return NextResponse.json({ error: authErr.message }, { status: 500 });

@@ -30,7 +30,6 @@ export default function DeleteAssistantButton({
       if (!res.ok) {
         setError(data.error ?? "Failed to delete assistant.");
         setDeleting(false);
-        setConfirming(false);
       } else {
         router.push("/admin/assistants");
         router.refresh();
