@@ -16,16 +16,32 @@ export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // createClient is intentionally deferred to useEffect so it never runs during SSR.
-    // createBrowserClient accesses browser APIs at construction time.
-    import("@/lib/supabase/client").then(({ createClient }) => {
+    // Defer client creation — createBrowserClient accesses browser APIs at construction time.
+    import("@/lib/supabase/client").then(async ({ createClient }) => {
       const supabase = createClient();
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
+
+      // If there's a ?code= in the URL, exchange it for a session here in the browser.
+      // This keeps the code verifier in the same JS context where it was stored.
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get("code");
+
+      if (code) {
+        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        if (!error) {
+          // Clean the code from the URL without reloading
+          window.history.replaceState({}, "", "/auth/reset-password");
           setReady(true);
         }
         setChecking(false);
-      });
+        return;
+      }
+
+      // No code — check if there's already a valid session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        setReady(true);
+      }
+      setChecking(false);
     });
   }, []);
 
