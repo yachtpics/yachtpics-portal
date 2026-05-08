@@ -7,6 +7,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export default function SetPasswordClient() {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [needsName, setNeedsName] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,11 +22,20 @@ export default function SetPasswordClient() {
   useEffect(() => {
     let settled = false;
 
-    function settle(userId: string, supabase: SupabaseClient) {
+    function settle(uid: string, supabase: SupabaseClient) {
       if (settled) return;
       settled = true;
-      supabase.from("profiles").select("first_name").eq("id", userId).single()
-        .then(({ data }) => { if (data?.first_name) setFirstName(data.first_name); });
+      setUserId(uid);
+      supabase.from("profiles").select("first_name, last_name").eq("id", uid).single()
+        .then(({ data }) => {
+          if (data?.first_name) {
+            setFirstName(data.first_name);
+            setLastName(data.last_name ?? "");
+          } else {
+            // No name on file — collect it during setup
+            setNeedsName(true);
+          }
+        });
       window.history.replaceState(null, "", window.location.pathname);
       setChecking(false);
     }
@@ -62,8 +74,8 @@ export default function SetPasswordClient() {
         if (exchError) { fail(subscription); return; }
         setTimeout(async () => {
           if (settled) return;
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) settle(user.id, supabase); else fail(subscription);
+          const { data: { user: u } } = await supabase.auth.getUser();
+          if (u) settle(u.id, supabase); else fail(subscription);
         }, 3000);
         return;
       }
@@ -83,8 +95,8 @@ export default function SetPasswordClient() {
           if (sessErr || !sessData.session?.user) { fail(subscription); return; }
           setTimeout(async () => {
             if (settled) return;
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) settle(user.id, supabase); else fail(subscription);
+            const { data: { user: u } } = await supabase.auth.getUser();
+            if (u) settle(u.id, supabase); else fail(subscription);
           }, 3000);
           return;
         }
@@ -97,8 +109,8 @@ export default function SetPasswordClient() {
       // Nothing found — give onAuthStateChange up to 5s to fire
       setTimeout(async () => {
         if (settled) return;
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) settle(user.id, supabase); else fail(subscription);
+        const { data: { user: u } } = await supabase.auth.getUser();
+        if (u) settle(u.id, supabase); else fail(subscription);
       }, 5000);
     }
 
@@ -110,12 +122,22 @@ export default function SetPasswordClient() {
     e.preventDefault();
     setError(null);
 
+    if (needsName && !firstName.trim()) { setError("Please enter your first name."); return; }
     if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
     if (password !== confirm) { setError("Passwords don't match."); return; }
 
     setLoading(true);
     const { createClient } = await import("@/lib/supabase/client");
     const supabase = supabaseInstance ?? createClient();
+
+    // Save name to profile if it was collected here
+    if (needsName && userId && firstName.trim()) {
+      await supabase.from("profiles").update({
+        first_name: firstName.trim(),
+        last_name: lastName.trim() || null,
+      }).eq("id", userId);
+    }
+
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
@@ -183,10 +205,42 @@ export default function SetPasswordClient() {
             {firstName ? "Welcome, " + firstName : "Welcome"}
           </h1>
           <p className="text-sm text-gray-500 mb-6 leading-relaxed">
-            Create a password to secure your account. You&apos;ll use this each time you log in.
+            {needsName
+              ? "Tell us your name and create a password to get started."
+              : "Create a password to secure your account. You’ll use this each time you log in."}
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-4">
+            {needsName && (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                    First name <span className="text-red-400">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                    placeholder="Jane"
+                    className={inputClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
+                    Last name
+                  </label>
+                  <input
+                    type="text"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                    placeholder="Smith"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
                 Password
@@ -194,7 +248,7 @@ export default function SetPasswordClient() {
               <input
                 type="password"
                 required
-                autoFocus
+                autoFocus={!needsName}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 8 characters"
