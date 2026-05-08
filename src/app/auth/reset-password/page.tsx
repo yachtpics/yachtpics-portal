@@ -4,11 +4,9 @@ export const dynamic = 'force-dynamic';
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const supabase = createClient();
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -18,17 +16,17 @@ export default function ResetPasswordPage() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // The /auth/callback route already exchanged the code and set the session.
-    // Just verify an active session exists before showing the form.
-    async function check() {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setReady(true);
-      }
-      setChecking(false);
-    }
-    check();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // createClient is intentionally deferred to useEffect so it never runs during SSR.
+    // createBrowserClient accesses browser APIs at construction time.
+    import("@/lib/supabase/client").then(({ createClient }) => {
+      const supabase = createClient();
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          setReady(true);
+        }
+        setChecking(false);
+      });
+    });
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -45,6 +43,9 @@ export default function ResetPasswordPage() {
     }
 
     setLoading(true);
+
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
