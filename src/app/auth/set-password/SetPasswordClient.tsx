@@ -2,12 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export default function SetPasswordClient() {
   const router = useRouter();
-  const supabase = createClient();
-
   const [firstName, setFirstName] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -15,75 +13,63 @@ export default function SetPasswordClient() {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [linkInvalid, setLinkInvalid] = useState(false);
+  // Keep a ref to the supabase instance so handleSubmit can reuse it
+  const [supabaseInstance, setSupabaseInstance] = useState<SupabaseClient | null>(null);
 
   useEffect(() => {
     let settled = false;
 
-    async function loadProfile(userId: string) {
-      const { data } = await supabase
-        .from("profiles")
-        .select("first_name")
-        .eq("id", userId)
-        .single();
-      if (data?.first_name) setFirstName(data.first_name);
-    }
-
-    async function settle(userId: string) {
+    function settle(userId: string, supabase: SupabaseClient) {
       if (settled) return;
       settled = true;
-      await loadProfile(userId);
-      if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", window.location.pathname);
-      }
+      supabase.from("profiles").select("first_name").eq("id", userId).single()
+        .then(({ data }) => { if (data?.first_name) setFirstName(data.first_name); });
+      window.history.replaceState(null, "", window.location.pathname);
       setChecking(false);
     }
 
-    function fail() {
+    function fail(sub?: { unsubscribe: () => void }) {
       if (settled) return;
       settled = true;
+      sub?.unsubscribe();
       setLinkInvalid(true);
       setChecking(false);
     }
 
-    // Subscribe FIRST before any async work — avoids missing events that fire
-    // immediately when Supabase detects hash tokens on page load
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (settled) return;
-      if ((event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") && session?.user) {
-        await settle(session.user.id);
-      }
-    });
+    async function init() {
+      // Defer client creation — createBrowserClient accesses browser APIs at init time
+      const { createClient } = await import("@/lib/supabase/client");
+      const supabase = createClient();
+      setSupabaseInstance(supabase);
 
-    async function handleInit() {
-      if (typeof window === "undefined") return;
+      // Subscribe first to catch events that fire immediately on init
+      const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+        if (settled) return;
+        if ((event === "SIGNED_IN" || event === "PASSWORD_RECOVERY") && session?.user) {
+          settle(session.user.id, supabase);
+        }
+      });
 
       const params = new URLSearchParams(window.location.search);
 
-      // Supabase reports genuine token expiry/invalid via ?error= on the redirect
-      if (params.get("error")) {
-        fail();
-        return;
-      }
+      // Error signalled in URL
+      if (params.get("error")) { fail(subscription); return; }
 
-      // PKCE flow: code arrives as ?code=
+      // PKCE flow — code arrives as ?code=
       const code = params.get("code");
       if (code) {
         const { error: exchError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchError) { fail(); return; }
-        // onAuthStateChange should fire SIGNED_IN — but @supabase/ssr sometimes
-        // doesn't emit it on the browser client. Add a fallback so we never spin forever.
+        if (exchError) { fail(subscription); return; }
         setTimeout(async () => {
           if (settled) return;
           const { data: { user } } = await supabase.auth.getUser();
-          if (user) { await settle(user.id); }
-          else { fail(); }
-        }, 2000);
+          if (user) settle(user.id, supabase); else fail(subscription);
+        }, 3000);
         return;
       }
 
-      // Implicit flow: @supabase/ssr does NOT auto-process #access_token from the
-      // URL hash the way the browser client does. Parse it explicitly and call
-      // setSession() so Supabase creates the session from the tokens in the hash.
+      // Implicit flow — tokens arrive as #access_token= in hash
+      // (used by admin.generateLink invite links)
       const hash = window.location.hash;
       if (hash.includes("access_token=")) {
         const hashParams = new URLSearchParams(hash.substring(1));
@@ -94,37 +80,29 @@ export default function SetPasswordClient() {
             access_token: accessToken,
             refresh_token: refreshToken,
           });
-          if (sessErr || !sessData.session?.user) { fail(); return; }
-          // onAuthStateChange should fire SIGNED_IN — add the same safety fallback.
+          if (sessErr || !sessData.session?.user) { fail(subscription); return; }
           setTimeout(async () => {
             if (settled) return;
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) { await settle(user.id); }
-            else { fail(); }
-          }, 2000);
+            if (user) settle(user.id, supabase); else fail(subscription);
+          }, 3000);
           return;
         }
       }
 
-      // Fallback: check if getSession() already has a valid session
+      // Check for existing session (e.g. page reload after exchange)
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        await settle(session.user.id);
-        return;
-      }
+      if (session?.user) { settle(session.user.id, supabase); return; }
 
-      // Last resort — give onAuthStateChange up to 4 seconds
+      // Nothing found — give onAuthStateChange up to 5s to fire
       setTimeout(async () => {
         if (settled) return;
         const { data: { user } } = await supabase.auth.getUser();
-        if (user) { await settle(user.id); }
-        else { fail(); }
-      }, 4000);
+        if (user) settle(user.id, supabase); else fail(subscription);
+      }, 5000);
     }
 
-    handleInit();
-
-    return () => subscription.unsubscribe();
+    init();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -132,16 +110,12 @@ export default function SetPasswordClient() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
-      return;
-    }
-    if (password !== confirm) {
-      setError("Passwords don't match.");
-      return;
-    }
+    if (password.length < 8) { setError("Password must be at least 8 characters."); return; }
+    if (password !== confirm) { setError("Passwords don't match."); return; }
 
     setLoading(true);
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = supabaseInstance ?? createClient();
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
@@ -227,7 +201,6 @@ export default function SetPasswordClient() {
                 className={inputClass}
               />
             </div>
-
             <div>
               <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
                 Confirm Password
@@ -241,13 +214,11 @@ export default function SetPasswordClient() {
                 className={inputClass}
               />
             </div>
-
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
                 {error}
               </div>
             )}
-
             <button
               type="submit"
               disabled={loading}
