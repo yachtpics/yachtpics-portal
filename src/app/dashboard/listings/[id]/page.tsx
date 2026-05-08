@@ -16,7 +16,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
-import { getAccessStatus, hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
+import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
 
 interface Photo {
@@ -170,12 +170,12 @@ export default function BrokerListingPage() {
     setListing(l);
 
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
-    const { data: sub } = await supabase.from("subscriptions")
-      .select("status, stripe_subscription_id, trial_ends_at")
-      .eq("broker_id", brokerId)
-      .maybeSingle();
-    setSubStatus(sub?.status ?? null);
-    setAccessStatus(getAccessStatus(sub ?? null));
+    // Use the API (service role) so RLS doesn't block assistants from reading
+    // the broker's subscription row.
+    const subRes = await fetch(`/api/subscription/status?brokerId=${brokerId}`);
+    const subData = subRes.ok ? await subRes.json() : null;
+    setSubStatus(subData?.status ?? null);
+    setAccessStatus((subData?.status as AccessStatus) ?? "no_access");
 
     const { data: p } = await supabase.from("photos")
       .select("id, storage_path, filename, category, display_order, is_visible")
@@ -1570,11 +1570,4 @@ function SortablePhotoCard({
               <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
                 className="flex-1 text-center text-xs font-medium text-red-500 py-1.5 rounded bg-red-50 hover:bg-red-100 transition-colors">
                 Delete
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+              

@@ -69,8 +69,15 @@ export default function SetPasswordClient() {
       const code = params.get("code");
       if (code) {
         const { error: exchError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchError) { fail(); }
-        // On success, onAuthStateChange fires SIGNED_IN -> settle()
+        if (exchError) { fail(); return; }
+        // onAuthStateChange should fire SIGNED_IN — but @supabase/ssr sometimes
+        // doesn't emit it on the browser client. Add a fallback so we never spin forever.
+        setTimeout(async () => {
+          if (settled) return;
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) { await settle(user.id); }
+          else { fail(); }
+        }, 2000);
         return;
       }
 
@@ -87,8 +94,14 @@ export default function SetPasswordClient() {
             access_token: accessToken,
             refresh_token: refreshToken,
           });
-          if (sessErr || !sessData.session?.user) { fail(); }
-          // On success, onAuthStateChange fires SIGNED_IN → settle()
+          if (sessErr || !sessData.session?.user) { fail(); return; }
+          // onAuthStateChange should fire SIGNED_IN — add the same safety fallback.
+          setTimeout(async () => {
+            if (settled) return;
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) { await settle(user.id); }
+            else { fail(); }
+          }, 2000);
           return;
         }
       }
