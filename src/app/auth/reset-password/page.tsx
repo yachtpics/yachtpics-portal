@@ -25,10 +25,10 @@ export default function ResetPasswordPage() {
       const params = new URLSearchParams(window.location.search);
       const code = params.get("code");
 
+      // PKCE flow: ?code= in URL
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
         if (!error) {
-          // Clean the code from the URL without reloading
           window.history.replaceState({}, "", "/auth/reset-password");
           setReady(true);
         }
@@ -36,7 +36,27 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // No code — check if there's already a valid session
+      // Implicit flow: tokens in URL hash (cross-device reset links)
+      const hash = window.location.hash;
+      if (hash.includes("access_token=")) {
+        const hashParams = new URLSearchParams(hash.substring(1));
+        const accessToken = hashParams.get("access_token");
+        const refreshToken = hashParams.get("refresh_token") ?? "";
+        if (accessToken) {
+          const { data: sessData, error: sessErr } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          });
+          if (!sessErr && sessData.session?.user) {
+            window.history.replaceState({}, "", "/auth/reset-password");
+            setReady(true);
+          }
+        }
+        setChecking(false);
+        return;
+      }
+
+      // No code or hash — check for existing session
       const { data: { session } } = await supabase.auth.getSession();
       if (session?.user) {
         setReady(true);

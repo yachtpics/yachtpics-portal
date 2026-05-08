@@ -13,8 +13,14 @@ export default function ForgotPasswordPage() {
     setLoading(true);
     setError("");
 
-    const { createClient } = await import("@/lib/supabase/client");
-    const supabase = createClient();
+    // Use implicit flow so the reset link works on any device/browser —
+    // PKCE requires the code verifier to be on the same browser session.
+    const { createBrowserClient } = await import("@supabase/ssr");
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      { auth: { flowType: "implicit" } }
+    );
     const { error } = await supabase.auth.resetPasswordForEmail(email, {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     });
