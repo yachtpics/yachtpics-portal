@@ -134,10 +134,11 @@ export async function POST(req: NextRequest) {
     const data = await res.json();
     if (!res.ok) return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
 
-    // Log the send for history tracking (always use listing's broker_id, not caller's id)
+    // Log the send for history tracking (broker_id = listing owner, sent_by = actual sender)
     await supabaseAdmin.from("client_sends").insert({
       listing_id: listingId,
       broker_id: listing.broker_id,
+      sent_by: user.id,
       client_email: clientEmail,
       message: message || null,
       included_slideshow: !!(includeSlideshow && slideshowUrl),
