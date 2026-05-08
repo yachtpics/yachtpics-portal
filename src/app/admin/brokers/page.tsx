@@ -47,9 +47,9 @@ export default async function AdminBrokersPage() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {brokers.map((broker) => {
-                const details = broker.broker_details as { brokerage_name: string | null }[] | null;
+                const details = broker.broker_details as { brokerage_name: string | null } | { brokerage_name: string | null }[] | null;
                 const sub = broker.subscriptions as { plan: string; status: string; trial_ends_at: string | null }[] | null;
-                const brokerage = details?.[0]?.brokerage_name ?? "—";
+                const brokerage = (Array.isArray(details) ? details[0]?.brokerage_name : details?.brokerage_name) ?? "—";
                 const status = sub?.[0]?.status ?? "—";
                 const trialDays = sub?.[0]?.trial_ends_at
                   ? Math.max(0, Math.ceil((new Date(sub[0].trial_ends_at).getTime() - Date.now()) / 86400000))
