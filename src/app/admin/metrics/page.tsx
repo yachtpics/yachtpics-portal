@@ -170,7 +170,7 @@ export default async function MetricsPage() {
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-8">
         <div className="px-6 py-4 border-b border-gray-100">
           <h2 className="font-semibold text-gray-900">Broker Activity</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Sorted by most recently active. "Sends" split by who sent — broker vs assistant.</p>
+          <p className="text-xs text-gray-400 mt-0.5">Sorted by most recently active. Sends column split by who sent — broker vs assistant.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
