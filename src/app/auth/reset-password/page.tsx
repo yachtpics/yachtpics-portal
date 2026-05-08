@@ -13,79 +13,19 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
-  const [linkInvalid, setLinkInvalid] = useState(false);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    let settled = false;
-
-    function fail() {
-      if (settled) return;
-      settled = true;
-      setLinkInvalid(true);
-      setChecking(false);
-    }
-
-    function succeed() {
-      if (settled) return;
-      settled = true;
-      setChecking(false);
-    }
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (settled) return;
-      if (event === "PASSWORD_RECOVERY" || event === "SIGNED_IN") {
-        succeed();
-      }
-    });
-
-    async function handleInit() {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("error")) { fail(); return; }
-
-      const code = params.get("code");
-      if (code) {
-        const { error: exchError } = await supabase.auth.exchangeCodeForSession(code);
-        if (exchError) { fail(); return; }
-        setTimeout(async () => {
-          if (settled) return;
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) { succeed(); } else { fail(); }
-        }, 2000);
-        return;
-      }
-
-      const hash = window.location.hash;
-      if (hash.includes("access_token=")) {
-        const hashParams = new URLSearchParams(hash.substring(1));
-        const accessToken = hashParams.get("access_token");
-        const refreshToken = hashParams.get("refresh_token") ?? "";
-        if (accessToken) {
-          const { data: sessData, error: sessErr } = await supabase.auth.setSession({
-            access_token: accessToken,
-            refresh_token: refreshToken,
-          });
-          if (sessErr || !sessData.session?.user) { fail(); return; }
-          setTimeout(async () => {
-            if (settled) return;
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) { succeed(); } else { fail(); }
-          }, 2000);
-          return;
-        }
-      }
-
+    // The /auth/callback route already exchanged the code and set the session.
+    // Just verify an active session exists before showing the form.
+    async function check() {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) { succeed(); return; }
-
-      setTimeout(async () => {
-        if (settled) return;
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) { succeed(); } else { fail(); }
-      }, 4000);
+      if (session?.user) {
+        setReady(true);
+      }
+      setChecking(false);
     }
-
-    handleInit();
-    return () => subscription.unsubscribe();
+    check();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -125,7 +65,7 @@ export default function ResetPasswordPage() {
     );
   }
 
-  if (linkInvalid) {
+  if (!ready) {
     return (
       <div className="min-h-screen bg-[#050b14] flex items-center justify-center px-4">
         <div className="w-full max-w-sm text-center">
