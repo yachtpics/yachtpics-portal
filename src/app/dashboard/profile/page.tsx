@@ -44,6 +44,9 @@ export default function ProfilePage() {
   const [inviting, setInviting] = useState(false);
   const [newLoginEmail, setNewLoginEmail] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
@@ -109,6 +112,17 @@ export default function ProfilePage() {
     if (error) { setMessage({ type: "error", text: error.message }); }
     else { setMessage({ type: "success", text: "Confirmation sent to " + newLoginEmail + ". Check your inbox to complete the change." }); setNewLoginEmail(""); }
     setChangingEmail(false);
+  }
+
+  async function changePassword() {
+    if (!newPassword || newPassword.length < 8) { setMessage({ type: "error", text: "Password must be at least 8 characters." }); return; }
+    if (newPassword !== confirmPassword) { setMessage({ type: "error", text: "Passwords don't match." }); return; }
+    setChangingPassword(true);
+    setMessage(null);
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) { setMessage({ type: "error", text: error.message }); }
+    else { setMessage({ type: "success", text: "Password updated successfully." }); setNewPassword(""); setConfirmPassword(""); }
+    setChangingPassword(false);
   }
 
   async function removeAssistant(assistantId: string) {
@@ -300,7 +314,7 @@ export default function ProfilePage() {
       )}
 
       {/* Change login email */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6">
+      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
         <div className="flex items-center gap-2 mb-1">
           <h2 className="font-semibold text-gray-900">Change Login Email</h2>
           <HelpTip text="Changes the email you use to sign in -- separate from your contact email shown to YachtPics." detail="A confirmation link goes to the new address. Your login will not change until you click it." position="above" width={280} />
@@ -310,6 +324,43 @@ export default function ProfilePage() {
           <input className={inputClass + " flex-1"} type="email" value={newLoginEmail} onChange={(e) => setNewLoginEmail(e.target.value)} placeholder="new@email.com" />
           <button onClick={changeLoginEmail} disabled={changingEmail || !newLoginEmail} className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap">
             {changingEmail ? "Sending..." : "Update Email"}
+          </button>
+        </div>
+      </section>
+
+      {/* Change password */}
+      <section className="bg-white border border-gray-200 rounded-xl p-6">
+        <h2 className="font-semibold text-gray-900 mb-1">Change Password</h2>
+        <p className="text-gray-500 text-sm mb-5">Choose a new password for your account.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>New Password</label>
+            <input
+              className={inputClass}
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="At least 8 characters"
+            />
+          </div>
+          <div>
+            <label className={labelClass}>Confirm New Password</label>
+            <input
+              className={inputClass}
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder="Repeat your password"
+            />
+          </div>
+        </div>
+        <div className="mt-4">
+          <button
+            onClick={changePassword}
+            disabled={changingPassword || !newPassword || !confirmPassword}
+            className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+          >
+            {changingPassword ? "Updating..." : "Update Password"}
           </button>
         </div>
       </section>
