@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import DeleteAssistantButton from "./[id]/_components/DeleteAssistantButton";
 
 export default async function AdminAssistantsPage() {
   const supabase = await createClient();
@@ -68,10 +69,18 @@ export default async function AdminAssistantsPage() {
                       )}
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={"/admin/assistants/" + assistant.id}
-                        className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
-                        Manage &rarr;
-                      </Link>
+                      <div className="flex items-center justify-end gap-4">
+                        <DeleteAssistantButton
+                          assistantId={assistant.id}
+                          displayName={assistant.first_name
+                            ? (assistant.first_name + " " + (assistant.last_name ?? "")).trim()
+                            : assistant.display_email ?? "this assistant"}
+                        />
+                        <Link href={"/admin/assistants/" + assistant.id}
+                          className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                          Manage &rarr;
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );

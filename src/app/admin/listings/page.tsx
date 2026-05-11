@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import DeleteListingButton from "./[id]/_components/DeleteListingButton";
 
 export default async function AdminListingsPage() {
   const supabase = await createClient();
@@ -7,7 +8,7 @@ export default async function AdminListingsPage() {
   const { data: listings } = await supabase
     .from("listings")
     .select(`
-      id, vessel_name, vessel_type, year, length_ft, location, status, updated_at,
+      id, broker_id, vessel_name, vessel_type, year, length_ft, location, status, updated_at,
       profiles:broker_id(first_name, last_name)
     `)
     .order("updated_at", { ascending: false });
@@ -72,9 +73,17 @@ export default async function AdminListingsPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/admin/listings/${listing.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
-                        Manage →
-                      </Link>
+                      <div className="flex items-center justify-end gap-4">
+                        <DeleteListingButton
+                          listingId={listing.id}
+                          vesselName={listing.vessel_name ?? null}
+                          brokerId={listing.broker_id ?? ""}
+                          redirectTo="/admin/listings"
+                        />
+                        <Link href={`/admin/listings/${listing.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                          Manage →
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );

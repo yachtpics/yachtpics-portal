@@ -18,13 +18,20 @@ export default function LoginPage() {
     setError("");
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
       setLoading(false);
     } else {
-      router.push("/dashboard");
+      // Redirect admins directly to the admin panel
+      const userId = authData.user?.id;
+      let destination = "/dashboard";
+      if (userId) {
+        const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single();
+        if (profile?.role === "admin") destination = "/admin";
+      }
+      router.push(destination);
       router.refresh();
     }
   };
@@ -36,7 +43,7 @@ export default function LoginPage() {
           <Link href="/" className="text-white text-2xl font-semibold tracking-wide">
             YachtPics<span className="text-[#d4a843]"> Portal</span>
           </Link>
-          <p className="text-gray-400 mt-2 text-sm">Sign in to your broker account</p>
+          <p className="text-gray-400 mt-2 text-sm">Sign in to your account</p>
         </div>
 
         <form onSubmit={handleLogin} className="bg-[#0a1628] rounded-xl p-8 space-y-5">

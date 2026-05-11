@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import DeleteBrokerButton from "./[id]/DeleteBrokerButton";
 
 export default async function AdminBrokersPage() {
   const supabase = await createClient();
@@ -86,10 +87,16 @@ export default async function AdminBrokersPage() {
                       </span>
                     </td>
                     <td className="px-6 py-4 text-right">
-                      <Link href={`/admin/brokers/${broker.id}`}
-                        className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
-                        Manage →
-                      </Link>
+                      <div className="flex items-center justify-end gap-4">
+                        <DeleteBrokerButton
+                          brokerId={broker.id}
+                          brokerName={broker.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : broker.display_email ?? "this broker"}
+                        />
+                        <Link href={`/admin/brokers/${broker.id}`}
+                          className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                          Manage →
+                        </Link>
+                      </div>
                     </td>
                   </tr>
                 );

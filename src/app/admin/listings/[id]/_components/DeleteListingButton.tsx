@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-export default function DeleteListingButton({ listingId, vesselName, brokerId }: { listingId: string; vesselName: string | null; brokerId: string }) {
+export default function DeleteListingButton({ listingId, vesselName, brokerId, redirectTo }: { listingId: string; vesselName: string | null; brokerId: string; redirectTo?: string }) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -24,7 +24,7 @@ export default function DeleteListingButton({ listingId, vesselName, brokerId }:
         setLoading(false);
         return;
       }
-      router.push(`/admin/brokers/${brokerId}`);
+      router.push(redirectTo ?? `/admin/brokers/${brokerId}`);
     } catch {
       setError("Unexpected error. Please try again.");
       setLoading(false);
