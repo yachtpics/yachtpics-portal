@@ -17,7 +17,7 @@ const sections = [
       "Go to My Profile and confirm your name, brokerage, phone, and website.",
       "Upload your company logo — it appears in the footer of every client slideshow.",
       "Complete this before sharing your first listing so clients see your branding.",
-      "To change your password, scroll to the Change Password section and enter your current password followed by your new one.",
+      "To change your password, go to My Profile and scroll to the Change Password section — enter your new password, confirm it, and save.",
     ],
   },
   {

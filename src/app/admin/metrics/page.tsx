@@ -33,12 +33,23 @@ export default async function MetricsPage() {
     serviceSupabase.from("client_sends").select("broker_id, sent_by, sent_at"),
     serviceSupabase.from("slideshow_views").select("listing_id, listings!inner(broker_id)"),
     serviceSupabase.from("broker_assistants").select("broker_id, assistant_id"),
-    // Photos uploaded by brokers or assistants (not by admin — admin uploads have uploaded_by = null)
-    serviceSupabase.from("photos").select("listing_id, uploaded_by, profiles!inner(role)").not("uploaded_by", "is", null).in("profiles.role", ["broker", "assistant"]),
+    // Photos where uploaded_by is set — admin uploads have uploaded_by = null, broker/assistant uploads have a user ID
+    serviceSupabase.from("photos").select("listing_id, uploaded_by").not("uploaded_by", "is", null),
+  ]);
+
+  // Build a set of all broker and assistant IDs so we can distinguish their uploads from admin uploads
+  const brokerAndAssistantIds = new Set([
+    ...(brokerProfiles ?? []).map((p) => p.id),
+    ...(assistantProfiles ?? []).map((p) => p.id),
   ]);
 
   // Listing IDs that have at least one broker/assistant-uploaded photo
-  const selfUploadListingIds = new Set((brokerUploadedPhotos ?? []).map((p) => p.listing_id).filter(Boolean));
+  const selfUploadListingIds = new Set(
+    (brokerUploadedPhotos ?? [])
+      .filter((p) => p.uploaded_by && brokerAndAssistantIds.has(p.uploaded_by))
+      .map((p) => p.listing_id)
+      .filter(Boolean)
+  );
 
   // Build per-broker stats
   const brokerStats = (brokerProfiles ?? []).map((p) => {
@@ -79,7 +90,10 @@ export default async function MetricsPage() {
       assistantSentCount,
       slideshowViews: myViews.length,
       selfUploadCount,
-      selfUploadListings: selfUploadListings.map((l) => ({ id: l.id, name: (l as { id: string; broker_id: string; slideshow_published: boolean; vessel_name: string | null }).vessel_name ?? "Untitled" })),
+      selfUploadListings: selfUploadListings.map((l) => {
+        const vesselName = (l as Record<string, unknown>).vessel_name as string | null;
+        return { id: l.id, name: vesselName ?? "Untitled" };
+      }),
       lastSend,
     };
   });
