@@ -22,8 +22,10 @@ export default async function MetricsPage() {
   const lastSignInMap = new Map(authUsers.map((u) => [u.id, u.last_sign_in_at ?? null]));
 
   // Aggregate data
+  type ListingRow = { id: string; broker_id: string; slideshow_published: boolean; vessel_name: string | null };
+
   const [
-    { data: listings },
+    { data: listingsRaw },
     { data: sends },
     { data: views },
     { data: brokerAssistants },
@@ -36,6 +38,8 @@ export default async function MetricsPage() {
     // Photos where uploaded_by is set — admin uploads have uploaded_by = null, broker/assistant uploads have a user ID
     serviceSupabase.from("photos").select("listing_id, uploaded_by").not("uploaded_by", "is", null),
   ]);
+
+  const listings = (listingsRaw ?? []) as ListingRow[];
 
   // Build a set of all broker and assistant IDs so we can distinguish their uploads from admin uploads
   const brokerAndAssistantIds = new Set([
@@ -90,10 +94,7 @@ export default async function MetricsPage() {
       assistantSentCount,
       slideshowViews: myViews.length,
       selfUploadCount,
-      selfUploadListings: selfUploadListings.map((l) => {
-        const vesselName = (l as Record<string, unknown>).vessel_name as string | null;
-        return { id: l.id, name: vesselName ?? "Untitled" };
-      }),
+      selfUploadListings: selfUploadListings.map((l) => ({ id: l.id, name: l.vessel_name ?? "Untitled" })),
       lastSend,
     };
   });
