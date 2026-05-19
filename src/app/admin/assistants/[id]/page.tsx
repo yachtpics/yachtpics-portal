@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import AssistantBrokerPanel from "./_components/AssistantBrokerPanel";
 import DeleteAssistantButton from "./_components/DeleteAssistantButton";
+import ResendInviteButton from "./_components/ResendInviteButton";
+import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 
 export default async function AdminAssistantDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
@@ -67,6 +69,16 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
             </span>
             <DeleteAssistantButton assistantId={params.id} displayName={displayName} />
           </div>
+        </div>
+      </div>
+
+      {/* Contact card */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Contact</p>
+        <p className="text-sm text-gray-900">{assistant.display_email ?? "—"}</p>
+        <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+          <ResendInviteButton assistantId={params.id} />
+          <SetTempPasswordButton assistantId={params.id} />
         </div>
       </div>
 
