@@ -12,7 +12,8 @@ export default async function AdminAssistantsPage() {
       broker_assistants!assistant_id(broker_id, profiles:broker_id(first_name, last_name, display_email))
     `)
     .eq("role", "assistant")
-    .order("created_at", { ascending: false });
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true });
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">

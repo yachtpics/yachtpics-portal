@@ -13,7 +13,8 @@ export default async function AdminBrokersPage() {
       subscriptions(plan, status, trial_ends_at)
     `)
     .eq("role", "broker")
-    .order("created_at", { ascending: false });
+    .order("last_name", { ascending: true })
+    .order("first_name", { ascending: true });
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
