@@ -202,4 +202,12 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       {/* Danger zone */}
       <div className="border border-red-100 rounded-xl px-6 py-4 flex items-center justify-between">
         <div>
-          <p classNa
+          <p className="text-sm font-semibold text-red-700">Delete broker</p>
+          <p className="text-xs text-gray-500 mt-0.5">Permanently removes this broker and all associated data. This cannot be undone.</p>
+        </div>
+        <DeleteBrokerButton brokerId={params.id} brokerName={name} />
+      </div>
+
+    </div>
+  );
+}
