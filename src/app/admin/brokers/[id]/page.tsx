@@ -4,6 +4,7 @@ import Link from "next/link";
 import DeleteBrokerButton from "./DeleteBrokerButton";
 import AssistantsPanel from "./_components/AssistantsPanel";
 import ResendInviteButton from "./_components/ResendInviteButton";
+import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
@@ -81,8 +82,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           {details?.license_number && (
             <p className="text-xs text-gray-400 mt-2">License: {details.license_number}</p>
           )}
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
             <ResendInviteButton brokerId={params.id} />
+            <SetTempPasswordButton brokerId={params.id} />
           </div>
         </div>
 
