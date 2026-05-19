@@ -54,6 +54,11 @@ export default function BrokerListingPage() {
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkCategorizing, setBulkCategorizing] = useState(false);
+  // Upload category prompt — shown when files can't be auto-categorized
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
+  const [pendingCategory, setPendingCategory] = useState("Other");
   const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
@@ -280,12 +285,26 @@ export default function BrokerListingPage() {
 
   async function handleFiles(files: FileList | null) {
     if (!files) return;
+    const fileArr = Array.from(files);
+
+    // If any files can't be auto-categorized, prompt before uploading
+    const uncategorized = fileArr.filter((f) => guessCategory(f.name) === "Other");
+    if (uncategorized.length > 0) {
+      setPendingFiles(fileArr);
+      setPendingCategory("Other");
+      return;
+    }
+
+    await doUpload(fileArr, null);
+  }
+
+  async function doUpload(fileArr: File[], overrideCategory: string | null) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
     setUploading(true);
     setUploadProgress(0);
-    const fileArr = Array.from(files);
+    setPendingFiles(null);
 
     for (let i = 0; i < fileArr.length; i++) {
       const file = fileArr[i];
@@ -295,11 +314,15 @@ export default function BrokerListingPage() {
       const { error } = await supabase.storage.from("listing-photos").upload(path, file, { upsert: false });
 
       if (!error) {
+        const category = overrideCategory && guessCategory(file.name) === "Other"
+          ? overrideCategory
+          : guessCategory(file.name);
+
         const { data: newPhoto } = await supabase.from("photos").insert({
           listing_id: id,
           storage_path: path,
           filename: file.name,
-          category: guessCategory(file.name),
+          category,
           display_order: photos.length + i,
           is_visible: true,
           uploaded_by: user.id,
@@ -334,6 +357,17 @@ export default function BrokerListingPage() {
   function clearSelection() {
     setSelectedIds(new Set());
     setSelectMode(false);
+    setBulkCategory("");
+  }
+
+  async function applyBulkCategory() {
+    if (!bulkCategory || selectedIds.size === 0) return;
+    setBulkCategorizing(true);
+    const ids = Array.from(selectedIds);
+    await Promise.all(ids.map((photoId) => updateCategory(photoId, bulkCategory)));
+    setBulkCategorizing(false);
+    setBulkCategory("");
+    clearSelection();
   }
 
   async function deletePhoto(photoId: string, storagePath: string) {
@@ -735,6 +769,29 @@ export default function BrokerListingPage() {
               </button>
               {selectedIds.size > 0 && (
                 <>
+                  {/* Bulk category assign */}
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={bulkCategory}
+                      onChange={(e) => setBulkCategory(e.target.value)}
+                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#d4a843] bg-white"
+                    >
+                      <option value="">Assign category…</option>
+                      {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                      <option value="Other">Other</option>
+                    </select>
+                    {bulkCategory && (
+                      <button
+                        onClick={applyBulkCategory}
+                        disabled={bulkCategorizing}
+                        className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                      >
+                        {bulkCategorizing ? "Applying…" : `Apply to ${selectedIds.size}`}
+                      </button>
+                    )}
+                  </div>
                   <button
                     onClick={() => downloadPhotos(selectedPhotos)}
                     disabled={downloading}
@@ -779,6 +836,42 @@ export default function BrokerListingPage() {
           <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Uploading...</span><span>{uploadProgress}%</span></div>
           <div className="bg-gray-100 rounded-full h-2">
             <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* Category prompt — shown when photos can't be auto-categorized from filename */}
+      {pendingFiles && (
+        <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
+          <p className="text-sm font-semibold text-amber-800 mb-1">
+            {pendingFiles.filter(f => guessCategory(f.name) === "Other").length} of {pendingFiles.length} photo{pendingFiles.length !== 1 ? "s" : ""} couldn't be auto-categorized
+          </p>
+          <p className="text-xs text-amber-700 mb-3">
+            Pick a category to apply to those photos, or skip and assign them manually after uploading.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={pendingCategory}
+              onChange={(e) => setPendingCategory(e.target.value)}
+              className="text-sm border border-amber-200 bg-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#d4a843]"
+            >
+              {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+              <option value="Other">Other (assign later)</option>
+            </select>
+            <button
+              onClick={() => doUpload(pendingFiles, pendingCategory === "Other" ? null : pendingCategory)}
+              className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              Upload {pendingFiles.length} photo{pendingFiles.length !== 1 ? "s" : ""}
+            </button>
+            <button
+              onClick={() => setPendingFiles(null)}
+              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}

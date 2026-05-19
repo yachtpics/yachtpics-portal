@@ -291,33 +291,4 @@ export default async function MetricsPage() {
                     <p className="text-xs text-gray-400 mt-0.5">{a.email}</p>
                   </td>
                   <td className="px-4 py-4">
-                    <div className="flex flex-col gap-1">
-                      {activityBadge(a.daysSinceLogin)}
-                      <span className="text-xs text-gray-400">{fmtDate(a.lastSignIn)}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-4 text-center">
-                    <span className={`font-medium ${a.sendCount > 0 ? "text-gray-900" : "text-gray-300"}`}>
-                      {a.sendCount}
-                    </span>
-                  </td>
-                  <td className="px-4 py-4">
-                    {a.linkedBrokers.length === 0 ? (
-                      <span className="text-xs text-gray-300">None</span>
-                    ) : (
-                      <span className="text-xs text-gray-600">{a.linkedBrokers.join(", ")}</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-4 text-xs text-gray-400">{fmtDate(a.joinedAt)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {assistantStats.length === 0 && (
-            <div className="py-12 text-center text-gray-400 text-sm">No assistants yet.</div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
+        
