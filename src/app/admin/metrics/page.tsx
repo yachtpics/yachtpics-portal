@@ -26,18 +26,19 @@ export default async function MetricsPage() {
     { data: listings },
     { data: sends },
     { data: views },
-    { data: shoots },
     { data: brokerAssistants },
+    { data: brokerUploadedPhotos },
   ] = await Promise.all([
-    serviceSupabase.from("listings").select("id, broker_id, slideshow_published"),
+    serviceSupabase.from("listings").select("id, broker_id, slideshow_published, vessel_name"),
     serviceSupabase.from("client_sends").select("broker_id, sent_by, sent_at"),
     serviceSupabase.from("slideshow_views").select("listing_id, listings!inner(broker_id)"),
-    serviceSupabase.from("shoots").select("listing_id"),
     serviceSupabase.from("broker_assistants").select("broker_id, assistant_id"),
+    // Photos uploaded by brokers or assistants (not by admin — admin uploads have uploaded_by = null)
+    serviceSupabase.from("photos").select("listing_id, uploaded_by, profiles!inner(role)").not("uploaded_by", "is", null).in("profiles.role", ["broker", "assistant"]),
   ]);
 
-  // Which listing IDs have a YachtPics shoot
-  const shootListingIds = new Set((shoots ?? []).map((s) => s.listing_id).filter(Boolean));
+  // Listing IDs that have at least one broker/assistant-uploaded photo
+  const selfUploadListingIds = new Set((brokerUploadedPhotos ?? []).map((p) => p.listing_id).filter(Boolean));
 
   // Build per-broker stats
   const brokerStats = (brokerProfiles ?? []).map((p) => {
@@ -60,8 +61,9 @@ export default async function MetricsPage() {
     const brokerSentCount = mySends.filter((s) => s.sent_by === p.id || s.sent_by === null).length;
     const assistantSentCount = mySends.filter((s) => s.sent_by !== null && s.sent_by !== p.id).length;
 
-    // Self-uploaded listings (no YachtPics shoot linked)
-    const selfUploadCount = myListings.filter((l) => !shootListingIds.has(l.id)).length;
+    // Listings where a broker or assistant uploaded at least one photo themselves
+    const selfUploadListings = myListings.filter((l) => selfUploadListingIds.has(l.id));
+    const selfUploadCount = selfUploadListings.length;
 
     return {
       id: p.id,
@@ -77,6 +79,7 @@ export default async function MetricsPage() {
       assistantSentCount,
       slideshowViews: myViews.length,
       selfUploadCount,
+      selfUploadListings: selfUploadListings.map((l) => ({ id: l.id, name: (l as { id: string; broker_id: string; slideshow_published: boolean; vessel_name: string | null }).vessel_name ?? "Untitled" })),
       lastSend,
     };
   });
@@ -156,7 +159,7 @@ export default async function MetricsPage() {
           { label: "Total Listings", value: totalListings },
           { label: "Live Slideshows", value: totalSlideshows },
           { label: "Emails Sent", value: totalEmails },
-          { label: "Self-Uploads", value: totalSelfUploads, note: "No YachtPics shoot" },
+          { label: "Broker Uploads", value: totalSelfUploads, note: "Broker-uploaded photos" },
         ].map((stat) => (
           <div key={stat.label} className="bg-white border border-gray-200 rounded-xl p-4">
             <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">{stat.label}</p>
@@ -179,7 +182,7 @@ export default async function MetricsPage() {
                 <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Login</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Listings</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Self-Upload</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker Upload</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Slideshows</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Views</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sends</th>
@@ -206,9 +209,20 @@ export default async function MetricsPage() {
                     <span className="font-medium text-gray-900">{b.listingCount}</span>
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className={`font-medium text-sm ${b.selfUploadCount > 0 ? "text-amber-600" : "text-gray-300"}`}>
-                      {b.selfUploadCount}
-                    </span>
+                    {b.selfUploadCount === 0 ? (
+                      <span className="font-medium text-sm text-gray-300">—</span>
+                    ) : (
+                      <div className="flex flex-col items-center gap-1">
+                        <span className="font-semibold text-sm text-amber-600">{b.selfUploadCount}</span>
+                        <div className="flex flex-col gap-0.5">
+                          {b.selfUploadListings.map((l) => (
+                            <a key={l.id} href={`/admin/listings/${l.id}`} className="text-xs text-amber-500 hover:text-amber-700 hover:underline transition-colors leading-tight">
+                              {l.name}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-4 text-center">
                     <span className={`font-medium ${b.publishedSlideshows > 0 ? "text-green-600" : "text-gray-300"}`}>
