@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import ListingRow from "./_components/ListingRow";
 
 export default async function ListingsPage() {
   const supabase = await createClient();
@@ -127,57 +128,5 @@ export default async function ListingsPage() {
         </>
       )}
     </div>
-  );
-}
-
-function ListingRow({ listing, showBroker }: {
-  listing: {
-    id: string;
-    vessel_name: string | null;
-    vessel_type: string | null;
-    year: number | null;
-    length_ft: number | null;
-    location: string | null;
-    status: string;
-    updated_at: string;
-    broker_name?: string | null;
-  };
-  showBroker?: boolean;
-}) {
-  const updated = new Date(listing.updated_at).toLocaleDateString("en-US", {
-    month: "short", day: "numeric", year: "numeric",
-  });
-
-  return (
-    <Link href={`/dashboard/listings/${listing.id}`} className="bg-white border border-gray-200 rounded-xl px-6 py-4 flex items-center justify-between hover:border-[#d4a843] transition-colors">
-      <div>
-        <p className="text-sm font-semibold text-gray-900">
-          {listing.vessel_name ?? "Untitled vessel"}
-        </p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {[
-            listing.year,
-            listing.vessel_type,
-            listing.length_ft ? `${listing.length_ft}′` : null,
-            listing.location,
-          ].filter(Boolean).join(" · ")}
-        </p>
-        {showBroker && listing.broker_name && (
-          <p className="text-xs text-[#c49a35] mt-1">{listing.broker_name}</p>
-        )}
-      </div>
-      <div className="flex items-center gap-4">
-        <p className="text-xs text-gray-400 hidden sm:block">Updated {updated}</p>
-        <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-          listing.status === "active"
-            ? "bg-green-50 text-green-700"
-            : listing.status === "sold"
-            ? "bg-blue-50 text-blue-700"
-            : "bg-gray-100 text-gray-500"
-        }`}>
-          {listing.status}
-        </span>
-      </div>
-    </Link>
   );
 }
