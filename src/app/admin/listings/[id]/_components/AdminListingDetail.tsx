@@ -190,14 +190,28 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   async function notifyBroker() {
     setNotifying(true);
     try {
-      const res = await fetch("/api/email/notify-broker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Failed to send");
-      setMessage(`Notification sent to ${broker?.display_email ?? brokerName}.`);
+      const [brokerRes, assistantRes] = await Promise.all([
+        fetch("/api/email/notify-broker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id }),
+        }),
+        fetch("/api/email/notify-assistant", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id }),
+        }),
+      ]);
+
+      const brokerData = await brokerRes.json();
+      if (!brokerRes.ok) throw new Error(brokerData.error ?? "Failed to notify broker");
+
+      const assistantData = await assistantRes.json();
+      const assistantMsg = assistantData.sent > 0
+        ? ` + ${assistantData.sent} assistant${assistantData.sent !== 1 ? "s" : ""}`
+        : "";
+
+      setMessage(`Notification sent to ${broker?.display_email ?? brokerName}${assistantMsg}.`);
     } catch (err) {
       setMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
