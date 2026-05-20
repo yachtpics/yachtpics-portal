@@ -16,8 +16,8 @@ export default function DownloadLicenseModal({ onAccept, onCancel }: Props) {
       <div className="bg-white rounded-2xl shadow-xl max-w-lg w-full p-6">
         <h2 className="text-base font-bold text-gray-900 mb-1">Photo &amp; Video License Agreement</h2>
         <p className="text-sm text-gray-500 mb-4">
-          All photos and videos delivered through YachtPics Portal are the intellectual property of YachtPics.
-          Please review your license terms before downloading.
+          All photos and videos produced and delivered by YachtPics are the intellectual property of YachtPics.
+          Please review your license terms before downloading. Content you uploaded yourself is not subject to these terms.
         </p>
 
         <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 space-y-2.5 text-sm text-gray-700">
@@ -27,7 +27,7 @@ export default function DownloadLicenseModal({ onAccept, onCancel }: Props) {
           </div>
           <div className="flex items-start gap-2.5">
             <span className="text-red-400 mt-0.5 shrink-0">✕</span>
-            <p><strong>What is not permitted:</strong> Transferring, sharing, sublicensing, or selling these files to any other broker, brokerage, or third party for their own advertising use — including co-listing brokers — without a separate written license from YachtPics.</p>
+            <p><strong>What is not permitted:</strong> Transferring, sharing, sublicensing, or selling these files to any other broker, brokerage, or third party for their own advertising use without a separate written license from YachtPics.</p>
           </div>
           <div className="flex items-start gap-2.5">
             <span className="text-red-400 mt-0.5 shrink-0">✕</span>
@@ -55,7 +55,7 @@ export default function DownloadLicenseModal({ onAccept, onCancel }: Props) {
             >
               Photo &amp; Video License Terms
             </Link>
-            . I understand that these files are the copyright of YachtPics and may not be shared with or transferred to other parties without a separate license.
+            . I understand that YachtPics-produced files are copyright of YachtPics and may not be shared with or transferred to other parties without a separate license.
           </span>
         </label>
 
