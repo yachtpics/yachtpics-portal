@@ -18,6 +18,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
+import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 
 interface Photo {
   id: string;
@@ -40,6 +41,9 @@ export default function BrokerListingPage() {
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("trial_active");
   const [showRightsModal, setShowRightsModal] = useState(false);
   const [rightsAccepted, setRightsAccepted] = useState(false);
+  const [showDownloadLicense, setShowDownloadLicense] = useState(false);
+  const [downloadLicenseAccepted, setDownloadLicenseAccepted] = useState(false);
+  const pendingDownloadRef = useRef<(() => void) | null>(null);
   const pendingActionRef = useRef<(() => void) | null>(null);
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
@@ -69,6 +73,7 @@ export default function BrokerListingPage() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setRightsAccepted(localStorage.getItem("yp_content_rights_v1") === "accepted");
+      setDownloadLicenseAccepted(localStorage.getItem("yp_download_license_v1") === "accepted");
     }
   }, []);
   const dragCounter = useRef(0);
@@ -89,6 +94,23 @@ export default function BrokerListingPage() {
   function handleRightsCancel() {
     setShowRightsModal(false);
     pendingActionRef.current = null;
+  }
+
+  function requireDownloadLicense(action: () => void) {
+    if (downloadLicenseAccepted) { action(); return; }
+    pendingDownloadRef.current = action;
+    setShowDownloadLicense(true);
+  }
+  function handleDownloadLicenseAccept() {
+    localStorage.setItem("yp_download_license_v1", "accepted");
+    setDownloadLicenseAccepted(true);
+    setShowDownloadLicense(false);
+    pendingDownloadRef.current?.();
+    pendingDownloadRef.current = null;
+  }
+  function handleDownloadLicenseCancel() {
+    setShowDownloadLicense(false);
+    pendingDownloadRef.current = null;
   }
   const docInputRef = useRef<HTMLInputElement>(null);
 
@@ -760,7 +782,7 @@ export default function BrokerListingPage() {
                 Select
               </button>
               <button
-                onClick={() => downloadPhotos(visiblePhotos)}
+                onClick={() => requireDownloadLicense(() => downloadPhotos(visiblePhotos))}
                 disabled={downloading}
                 className="bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
               >
@@ -809,7 +831,7 @@ export default function BrokerListingPage() {
                     )}
                   </div>
                   <button
-                    onClick={() => downloadPhotos(selectedPhotos)}
+                    onClick={() => requireDownloadLicense(() => downloadPhotos(selectedPhotos))}
                     disabled={downloading}
                     className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
                   >
@@ -926,7 +948,7 @@ export default function BrokerListingPage() {
                 downloading={downloading}
                 tapStart={tapStart}
                 onTap={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
-                onDownload={() => downloadPhotos([photo])}
+                onDownload={() => requireDownloadLicense(() => downloadPhotos([photo]))}
                 onToggleVisibility={() => toggleVisibility(photo.id, photo.is_visible)}
                 onUpdateCategory={(cat) => updateCategory(photo.id, cat)}
                 onDelete={() => deletePhoto(photo.id, photo.storage_path)}
@@ -1465,6 +1487,12 @@ export default function BrokerListingPage() {
           onCancel={handleRightsCancel}
         />
       )}
+      {showDownloadLicense && (
+        <DownloadLicenseModal
+          onAccept={handleDownloadLicenseAccept}
+          onCancel={handleDownloadLicenseCancel}
+        />
+      )}
     </div>
   );
 }
@@ -1654,12 +1682,6 @@ function SortablePhotoCard({
             onTouchStart={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            {photo.url && (
-              <button onClick={(e) => { e.stopPropagation(); onDownload(); }}
-                className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
-                ⬇ Download
-              </button>
-            )}
             <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
               className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
               {photo.is_visible ? "Hide" : "Show"}
