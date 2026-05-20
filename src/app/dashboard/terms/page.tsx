@@ -14,7 +14,7 @@ export default function TermsPage() {
             All photographs, videos, virtual tours, and other visual media produced by YachtPics
             (&ldquo;Content&rdquo;) are and remain the exclusive intellectual property of YachtPics.
             All rights not expressly granted in these terms are reserved by YachtPics. Your payment
-            for photography services does not transfer copyright ownership — it grants you a limited
+            for photography services does not transfer copyright ownership &mdash; it grants you a limited
             license to use the Content as described below.
           </p>
         </section>
@@ -25,7 +25,7 @@ export default function TermsPage() {
             Upon full payment of the applicable service fee, YachtPics grants you a{" "}
             <strong>non-exclusive, non-transferable, royalty-free license</strong> to use the
             Content solely for the purpose of advertising the specific vessel for which the Content
-            was created. This license is unlimited in duration and platform — you may use the
+            was created. This license is unlimited in duration and platform &mdash; you may use the
             Content on your website, MLS listings, social media, print materials, and any other
             advertising channel for as long as the vessel remains in your active listing inventory.
           </p>
@@ -37,7 +37,7 @@ export default function TermsPage() {
             You may <strong>not</strong>, without prior written authorization from YachtPics:
           </p>
           <ul className="text-sm text-gray-600 space-y-2 list-none pl-0">
-            <li className="flex items-start gap-2"><span className="text-red-400 shrink-0 mt-0.5">✕</span><span><strong>Transfer or share</strong> the Content with any other broker, brokerage, co-listing agent, or third party for their own advertising or commercial use — regardless of whether the vessel is co-listed.</span></li>
+            <li className="flex items-start gap-2"><span className="text-red-400 shrink-0 mt-0.5">✕</span><span><strong>Transfer or share</strong> the Content with any other broker, brokerage, co-listing agent, or third party for their own advertising or commercial use.</span></li>
             <li className="flex items-start gap-2"><span className="text-red-400 shrink-0 mt-0.5">✕</span><span><strong>Sublicense or resell</strong> the Content to any individual, company, stock photo library, or marketing agency.</span></li>
             <li className="flex items-start gap-2"><span className="text-red-400 shrink-0 mt-0.5">✕</span><span><strong>Use the Content for a different vessel</strong> than the one it was created for, or represent it as depicting a vessel other than the one photographed.</span></li>
             <li className="flex items-start gap-2"><span className="text-red-400 shrink-0 mt-0.5">✕</span><span><strong>Remove or alter</strong> any copyright watermarks, metadata, or attribution embedded in or associated with the Content.</span></li>
@@ -46,7 +46,25 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-2">4. Credit &amp; Attribution</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-2">4. Broker-Uploaded Content</h2>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            YachtPics Portal allows you to upload your own photos, videos, and documents in addition
+            to content produced by YachtPics. For any content you upload that was not created by
+            YachtPics, you represent and warrant that you own the copyright or have obtained all
+            necessary rights, licenses, and permissions to upload, store, display, and share that
+            content through the Portal.
+          </p>
+          <p className="text-sm text-gray-600 leading-relaxed mt-2">
+            YachtPics claims no ownership over content you upload independently, and accepts no
+            liability for any third-party intellectual property claims arising from content you
+            provide. You assume sole responsibility for ensuring that any self-uploaded content does
+            not infringe the rights of any third party. YachtPics reserves the right to remove any
+            uploaded content that it reasonably believes violates applicable law or third-party rights.
+          </p>
+        </section>
+
+        <section>
+          <h2 className="text-base font-semibold text-gray-900 mb-2">5. Credit &amp; Attribution</h2>
           <p className="text-sm text-gray-600 leading-relaxed">
             While not required, YachtPics appreciates photo credit wherever practical (e.g.,
             &ldquo;Photos by YachtPics&rdquo;). You may not credit the Content to any other
@@ -55,7 +73,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-2">5. Termination</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-2">6. Termination</h2>
           <p className="text-sm text-gray-600 leading-relaxed">
             YachtPics reserves the right to terminate your license immediately and without notice
             if you breach any of these terms. Upon termination, you must cease all use of the
@@ -65,7 +83,7 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-2">6. Enforcement</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-2">7. Enforcement</h2>
           <p className="text-sm text-gray-600 leading-relaxed">
             Unauthorized use of YachtPics Content may constitute copyright infringement under
             applicable law and may subject you to civil and/or criminal liability. YachtPics
@@ -75,10 +93,9 @@ export default function TermsPage() {
         </section>
 
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-2">7. Contact</h2>
+          <h2 className="text-base font-semibold text-gray-900 mb-2">8. Contact</h2>
           <p className="text-sm text-gray-600 leading-relaxed">
-            For licensing inquiries, co-listing arrangements, or questions about these terms, please
-            contact YachtPics at{" "}
+            For licensing inquiries or questions about these terms, please contact YachtPics at{" "}
             <a href="mailto:hello@yachtpics.com" className="text-[#c49a35] hover:text-[#b08c2a] underline">
               hello@yachtpics.com
             </a>.
