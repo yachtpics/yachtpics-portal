@@ -42,7 +42,15 @@ interface Video {
   url: string | null;
 }
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[] }) {
+interface DownloadRecord {
+  id: string;
+  photo_count: number;
+  downloaded_at: string;
+  downloader_name: string;
+  downloader_email: string | null;
+}
+
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[] }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -314,6 +322,43 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           {message}
         </div>
       )}
+
+      {/* Download Activity */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-1">Download Activity</h2>
+        {downloads.length === 0 ? (
+          <p className="text-sm text-gray-400">No downloads yet.</p>
+        ) : (
+          <table className="w-full text-sm mt-2">
+            <thead>
+              <tr className="text-left text-xs text-gray-400 font-medium border-b border-gray-100">
+                <th className="pb-2 pr-4">Downloaded by</th>
+                <th className="pb-2 pr-4">Photos</th>
+                <th className="pb-2">When</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {downloads.map((d) => (
+                <tr key={d.id}>
+                  <td className="py-2 pr-4 text-gray-800">
+                    {d.downloader_name}
+                    {d.downloader_email && (
+                      <span className="ml-1 text-gray-400 text-xs">({d.downloader_email})</span>
+                    )}
+                  </td>
+                  <td className="py-2 pr-4 text-gray-600">{d.photo_count}</td>
+                  <td className="py-2 text-gray-500 text-xs whitespace-nowrap">
+                    {new Date(d.downloaded_at).toLocaleString("en-US", {
+                      month: "short", day: "numeric", year: "numeric",
+                      hour: "numeric", minute: "2-digit",
+                    })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
 
       {/* Photos section */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">

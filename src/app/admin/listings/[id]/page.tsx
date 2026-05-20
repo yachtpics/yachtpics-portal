@@ -3,6 +3,15 @@ import { notFound } from "next/navigation";
 import AdminListingDetail from "./_components/AdminListingDetail";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 
+type DownloadProfile = { first_name: string | null; last_name: string | null; display_email: string | null };
+type DownloadRecord = {
+  id: string;
+  photo_count: number;
+  downloaded_at: string;
+  downloader_name: string;
+  downloader_email: string | null;
+};
+
 export default async function AdminListingPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
 
@@ -64,12 +73,32 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     )
   ).sort((a, b) => a.localeCompare(b));
 
+  // Photo download history for this listing
+  const { data: downloadRows } = await supabase
+    .from("photo_downloads")
+    .select("id, photo_count, downloaded_at, profiles:downloaded_by(first_name, last_name, display_email)")
+    .eq("listing_id", params.id)
+    .order("downloaded_at", { ascending: false })
+    .limit(20);
+
+  const downloads: DownloadRecord[] = (downloadRows ?? []).map((r) => {
+    const p = (r.profiles as unknown) as DownloadProfile | null;
+    return {
+      id: r.id,
+      photo_count: r.photo_count,
+      downloaded_at: r.downloaded_at,
+      downloader_name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : "Unknown",
+      downloader_email: p?.display_email ?? null,
+    };
+  });
+
   return (
     <AdminListingDetail
       listing={listing as any}
       photos={photosWithUrls}
       videos={videosWithUrls}
       globalCustomCategories={globalCustomCategories}
+      downloads={downloads}
     />
   );
 }

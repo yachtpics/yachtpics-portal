@@ -436,6 +436,12 @@ export default function BrokerListingPage() {
       const ext = targets[0].filename?.split(".").pop() ?? "jpg";
       const filename = `${targets[0].category ?? "photo"}.${ext}`;
       triggerDownload(blob, filename);
+      // Log download silently (fire-and-forget)
+      fetch(`/api/listings/${id}/log-download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoCount: 1 }),
+      }).catch(() => {});
       setDownloading(false);
       setDownloadProgress(0);
       clearSelection();
@@ -460,6 +466,14 @@ export default function BrokerListingPage() {
     const zipBlob = await zip.generateAsync({ type: "blob" });
     const zipName = `${folderName}-photos.zip`;
 
+    const logZip = () => {
+      fetch(`/api/listings/${id}/log-download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoCount: targets.length }),
+      }).catch(() => {});
+    };
+
     if ("showSaveFilePicker" in window) {
       try {
         const handle = await (window as any).showSaveFilePicker({
@@ -469,6 +483,7 @@ export default function BrokerListingPage() {
         const writable = await handle.createWritable();
         await writable.write(zipBlob);
         await writable.close();
+        logZip();
         setDownloading(false);
         setDownloadProgress(0);
         clearSelection();
@@ -477,6 +492,7 @@ export default function BrokerListingPage() {
     }
 
     triggerDownload(zipBlob, zipName);
+    logZip();
     setDownloading(false);
     setDownloadProgress(0);
     clearSelection();
