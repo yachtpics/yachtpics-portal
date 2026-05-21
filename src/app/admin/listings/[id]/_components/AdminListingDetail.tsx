@@ -224,7 +224,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setNotifying(false);
-      setTimeout(() => setMessage(""), 5000);
+      // No auto-dismiss — user closes manually so they can confirm who was notified
     }
   }
 
@@ -318,8 +318,15 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {message && (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-700">
-          {message}
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-700 flex items-start justify-between gap-3">
+          <span>{message}</span>
+          <button
+            onClick={() => setMessage("")}
+            className="shrink-0 text-green-500 hover:text-green-700 leading-none text-base font-bold"
+            aria-label="Dismiss"
+          >
+            ×
+          </button>
         </div>
       )}
 
