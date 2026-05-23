@@ -135,31 +135,31 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   if (photos.length === 0 && videos.length === 0) {
     return (
-      <div className="min-h-screen bg-[#050b14] flex items-center justify-center">
-        <p className="text-gray-500 text-sm">No photos available.</p>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <p className="text-gray-400 text-sm">No photos available.</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#050b14] flex flex-col">
+    <div className="min-h-screen bg-white flex flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-[#1e3a5f] gap-4">
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 gap-4">
         <div className="min-w-0">
-          <h1 className="text-white font-semibold text-base sm:text-lg truncate">
+          <h1 className="text-gray-900 font-semibold text-base sm:text-lg truncate">
             {vesselTitle || "Vessel"}
           </h1>
           {vesselDetails && (
-            <p className="text-gray-400 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
+            <p className="text-gray-500 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0 bg-[#0a1628] rounded-lg p-1">
+        <div className="flex items-center gap-1 shrink-0 bg-gray-100 rounded-lg p-1">
           <button
             onClick={() => setView("slideshow")}
             className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
               view === "slideshow"
-                ? "bg-[#d4a843] text-[#050b14]"
-                : "text-gray-400 hover:text-white"
+                ? "bg-[#d4a843] text-white"
+                : "text-gray-500 hover:text-gray-900"
             }`}
           >
             Slideshow
@@ -168,8 +168,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             onClick={() => setView("grid")}
             className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
               view === "grid"
-                ? "bg-[#d4a843] text-[#050b14]"
-                : "text-gray-400 hover:text-white"
+                ? "bg-[#d4a843] text-white"
+                : "text-gray-500 hover:text-gray-900"
             }`}
           >
             All Photos
@@ -179,7 +179,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
       {/* Videos — shown above the slideshow when present */}
       {videos.length > 0 && view === "slideshow" && (
-        <div className="border-b border-[#1e3a5f] px-4 py-4 space-y-3 bg-[#070e1c]">
+        <div className="border-b border-gray-200 px-4 py-4 space-y-3 bg-gray-50">
           {videos.map((video) => video.url && (
             <div key={video.id} className="rounded-xl overflow-hidden">
               <video
@@ -198,7 +198,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         <>
           {/* Main photo area */}
           <div
-            className="flex-1 relative flex items-center justify-center select-none overflow-hidden"
+            className="flex-1 relative flex items-center justify-center select-none overflow-hidden bg-gray-50"
             style={{ minHeight: "calc(100vh - 240px)" }}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
@@ -241,7 +241,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {current > 0 && (
               <button
                 onClick={prev}
-                className="absolute left-3 bg-black/40 hover:bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
+                className="absolute left-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
                 style={{ zIndex: 2 }}
               >
                 ‹
@@ -252,7 +252,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {current < photos.length - 1 && (
               <button
                 onClick={next}
-                className="absolute right-3 bg-black/40 hover:bg-black/70 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
+                className="absolute right-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
                 style={{ zIndex: 2 }}
               >
                 ›
@@ -261,8 +261,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           </div>
 
           {/* Caption + counter */}
-          <div className="text-center py-2 px-4">
-            <p className="text-gray-400 text-sm">
+          <div className="text-center py-2 px-4 bg-white">
+            <p className="text-gray-500 text-sm">
               {photos[current]?.category
                 ? `${photos[current].category} · `
                 : ""}
@@ -271,7 +271,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           </div>
 
           {/* Thumbnail strip */}
-          <div className="flex gap-2 px-4 pb-4 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-2 px-4 pb-4 overflow-x-auto scrollbar-hide bg-white">
             {photos.map((photo, i) => (
               <button
                 key={photo.id}
@@ -296,12 +296,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         </>
       ) : (
         /* Grid view */
-        <div className="flex-1 p-4 sm:p-6 overflow-auto">
+        <div className="flex-1 p-4 sm:p-6 overflow-auto bg-white">
           {/* Videos appear first in grid view */}
           {videos.length > 0 && (
             <div className="mb-6 space-y-4">
               {videos.map((video) => video.url && (
-                <div key={video.id} className="rounded-xl overflow-hidden border border-[#1e3a5f]">
+                <div key={video.id} className="rounded-xl overflow-hidden border border-gray-200">
                   <video
                     src={video.url}
                     controls
@@ -310,8 +310,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     className="w-full max-h-[420px] bg-black"
                   />
                   {video.filename && (
-                    <div className="px-4 py-2 bg-[#0a1628]">
-                      <p className="text-gray-400 text-xs truncate">{video.filename}</p>
+                    <div className="px-4 py-2 bg-gray-50">
+                      <p className="text-gray-500 text-xs truncate">{video.filename}</p>
                     </div>
                   )}
                 </div>
@@ -326,7 +326,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   setCurrent(i);
                   setView("slideshow");
                 }}
-                className="cursor-pointer rounded-lg overflow-hidden border border-[#1e3a5f] hover:border-[#d4a843] transition-colors"
+                className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:border-[#d4a843] transition-colors"
               >
                 {photo.url && (
                   // eslint-disable-next-line @next/next/no-img-element
@@ -337,8 +337,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     className={`w-full object-cover ${verticalIds.has(photo.id) ? "aspect-[3/4]" : "aspect-[4/3]"}`}
                   />
                 )}
-                <div className="p-2 bg-[#0a1628]">
-                  <p className="text-gray-400 text-xs">
+                <div className="p-2 bg-gray-50">
+                  <p className="text-gray-500 text-xs">
                     {String(i + 1).padStart(2, "0")} · {photo.category ?? "Other"}
                   </p>
                 </div>
@@ -349,10 +349,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       )}
 
       {/* Broker footer */}
-      <div className="border-t border-[#1e3a5f] px-5 py-4 flex items-center justify-between gap-4">
+      <div className="border-t border-gray-200 px-5 py-4 flex items-center justify-between gap-4 bg-white">
         <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
-            <div className="shrink-0 h-10 w-24 bg-white rounded flex items-center justify-center p-1.5 overflow-hidden">
+            <div className="shrink-0 h-10 w-24 border border-gray-200 rounded flex items-center justify-center p-1.5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={broker.logoUrl}
@@ -363,9 +363,9 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-white text-sm font-semibold truncate">{broker.name}</p>
+            <p className="text-gray-900 text-sm font-semibold truncate">{broker.name}</p>
             {broker.brokerage && (
-              <p className="text-gray-400 text-xs mt-0.5 truncate">{broker.brokerage}</p>
+              <p className="text-gray-500 text-xs mt-0.5 truncate">{broker.brokerage}</p>
             )}
           </div>
         </div>
@@ -383,7 +383,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               href={broker.website.startsWith("http") ? broker.website : `https://${broker.website}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-400 text-xs hover:text-gray-200 transition-colors"
+              className="text-gray-500 text-xs hover:text-gray-700 transition-colors"
             >
               {broker.website.replace(/^https?:\/\//, "")}
             </a>

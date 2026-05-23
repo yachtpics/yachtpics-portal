@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: NextRequest) {
   try {
-    const { firstName, lastName, email, brokerage, vesselName, photosReady, assistantEmail } = await req.json();
+    const { firstName, lastName, email, brokerage, vesselName, photosReady, assistantEmail, assistantFirstName, assistantLastName } = await req.json();
 
     if (!firstName || !lastName || !email) {
       return NextResponse.json({ error: "First name, last name, and email are required." }, { status: 400 });
@@ -70,11 +70,13 @@ export async function POST(req: NextRequest) {
 
         assistantId = existingUser.id;
 
-        // Ensure role is assistant
+        // Ensure role is assistant and save name if provided
         await supabase.from("profiles").upsert({
           id: assistantId,
           role: "assistant",
           display_email: assistantEmail,
+          ...(assistantFirstName ? { first_name: assistantFirstName } : {}),
+          ...(assistantLastName ? { last_name: assistantLastName } : {}),
         });
 
         // Send notification email to existing assistant
@@ -142,6 +144,8 @@ export async function POST(req: NextRequest) {
           id: assistantId,
           role: "assistant",
           display_email: assistantEmail,
+          ...(assistantFirstName ? { first_name: assistantFirstName } : {}),
+          ...(assistantLastName ? { last_name: assistantLastName } : {}),
         });
 
         const hasVessel = vesselName?.trim();

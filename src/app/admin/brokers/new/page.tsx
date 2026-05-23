@@ -18,6 +18,8 @@ export default function InviteBrokerPage() {
     email: "",
     brokerage: "",
     assistantEmail: "",
+    assistantFirstName: "",
+    assistantLastName: "",
   });
 
   const [customVesselType, setCustomVesselType] = useState(false);
@@ -75,6 +77,8 @@ export default function InviteBrokerPage() {
           vesselName: vessel.vesselName,
           photosReady: photos.length > 0,
           assistantEmail: broker.assistantEmail || undefined,
+          assistantFirstName: broker.assistantFirstName || undefined,
+          assistantLastName: broker.assistantLastName || undefined,
         }),
       });
       const inviteData = await inviteRes.json();
@@ -194,14 +198,24 @@ export default function InviteBrokerPage() {
           </div>
           <div className="mt-4 pt-4 border-t border-gray-100">
             <label className={labelClass}>
-              Assistant Email <span className="text-gray-400 normal-case font-normal tracking-normal">(optional)</span>
+              Assistant <span className="text-gray-400 normal-case font-normal tracking-normal">(optional)</span>
             </label>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <input type="text" value={broker.assistantFirstName}
+                onChange={(e) => setBroker({ ...broker, assistantFirstName: e.target.value })}
+                placeholder="First name"
+                className={inputClass} />
+              <input type="text" value={broker.assistantLastName}
+                onChange={(e) => setBroker({ ...broker, assistantLastName: e.target.value })}
+                placeholder="Last name"
+                className={inputClass} />
+            </div>
             <input type="email" value={broker.assistantEmail}
               onChange={(e) => setBroker({ ...broker, assistantEmail: e.target.value })}
               placeholder="assistant@brokerage.com"
               className={inputClass} />
             <p className="text-xs text-gray-400 mt-1.5">
-              If this broker has an assistant who manages their portal, add their email here. They&apos;ll be linked automatically and notified when photos are ready.
+              If this broker has an assistant who manages their portal, add their details here. They&apos;ll be linked automatically and notified when photos are ready.
             </p>
           </div>
         </div>
