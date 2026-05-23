@@ -74,11 +74,20 @@ export default function InviteBrokerPage() {
           lastName: broker.lastName,
           email: broker.email,
           brokerage: broker.brokerage,
-          vesselName: vessel.vesselName,
           photosReady: photos.length > 0,
           assistantEmail: broker.assistantEmail || undefined,
           assistantFirstName: broker.assistantFirstName || undefined,
           assistantLastName: broker.assistantLastName || undefined,
+          // Vessel — create listing server-side to bypass RLS
+          vesselName: vessel.vesselName || undefined,
+          vesselType: vessel.vesselType || undefined,
+          year: vessel.year ? parseInt(vessel.year) : undefined,
+          lengthFt: vessel.lengthFt ? parseFloat(vessel.lengthFt) : undefined,
+          make: vessel.make || undefined,
+          model: vessel.model || undefined,
+          askingPrice: vessel.askingPrice ? parseFloat(vessel.askingPrice) : undefined,
+          location: vessel.location || undefined,
+          createListing: !!(vessel.vesselName || photos.length > 0),
         }),
       });
       const inviteData = await inviteRes.json();
@@ -87,36 +96,9 @@ export default function InviteBrokerPage() {
         return;
       }
       const brokerId = inviteData.brokerId;
+      const listingId: string | null = inviteData.listingId ?? null;
 
-      // Step 2: Create listing if vessel info provided
-      let listingId: string | null = null;
-      if (vessel.vesselName || photos.length > 0) {
-        setProgress("Creating listing…");
-        const { data: listing, error: listingError } = await supabase
-          .from("listings")
-          .insert({
-            broker_id: brokerId,
-            vessel_name: vessel.vesselName || null,
-            vessel_type: vessel.vesselType || null,
-            year: vessel.year ? parseInt(vessel.year) : null,
-            length_ft: vessel.lengthFt ? parseFloat(vessel.lengthFt) : null,
-            make: vessel.make || null,
-            model: vessel.model || null,
-            asking_price: vessel.askingPrice ? parseFloat(vessel.askingPrice) : null,
-            location: vessel.location || null,
-            status: "active",
-          })
-          .select("id")
-          .single();
-
-        if (listingError || !listing) {
-          setError(listingError?.message ?? "Failed to create listing.");
-          return;
-        }
-        listingId = listing.id;
-      }
-
-      // Step 3: Upload photos
+      // Step 2: Upload photos
       if (photos.length > 0 && listingId) {
         for (let i = 0; i < photos.length; i++) {
           setProgress(`Uploading photo ${i + 1} of ${photos.length}…`);

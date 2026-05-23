@@ -3,7 +3,12 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: NextRequest) {
   try {
-    const { firstName, lastName, email, brokerage, vesselName, photosReady, assistantEmail, assistantFirstName, assistantLastName } = await req.json();
+    const {
+      firstName, lastName, email, brokerage, photosReady,
+      assistantEmail, assistantFirstName, assistantLastName,
+      vesselName, vesselType, year, lengthFt, make, model, askingPrice, location,
+      createListing,
+    } = await req.json();
 
     if (!firstName || !lastName || !email) {
       return NextResponse.json({ error: "First name, last name, and email are required." }, { status: 400 });
@@ -45,7 +50,35 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── 2. Handle optional assistant ─────────────────────────────────────────
+    // ── 2. Create listing (service role bypasses RLS) ────────────────────────
+
+    let listingId: string | null = null;
+
+    if (createListing) {
+      const { data: listing, error: listingError } = await supabase
+        .from("listings")
+        .insert({
+          broker_id: brokerId,
+          vessel_name: vesselName || null,
+          vessel_type: vesselType || null,
+          year: year ?? null,
+          length_ft: lengthFt ?? null,
+          make: make || null,
+          model: model || null,
+          asking_price: askingPrice ?? null,
+          location: location || null,
+          status: "active",
+        })
+        .select("id")
+        .single();
+
+      if (listingError || !listing) {
+        return NextResponse.json({ error: listingError?.message ?? "Failed to create listing." }, { status: 500 });
+      }
+      listingId = listing.id;
+    }
+
+    // ── 3. Handle optional assistant ─────────────────────────────────────────
 
     let assistantId: string | null = null;
 
@@ -199,7 +232,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── 3. Send broker invite email ───────────────────────────────────────────
+    // ── 4. Send broker invite email ───────────────────────────────────────────
 
     const brokerFirst = firstName;
     const hasVessel = vesselName?.trim();
@@ -270,7 +303,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: resendData.message ?? "Invite created but email failed to send." }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true, brokerId, assistantId });
+    return NextResponse.json({ success: true, brokerId, listingId, assistantId });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });
