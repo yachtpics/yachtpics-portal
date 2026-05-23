@@ -15,7 +15,7 @@ export default async function AdminUsersPage() {
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Admin Users</h1>
         <p className="text-gray-500 text-sm mt-1">
-          Manage admin accounts. Use "Set temp password" if someone is locked out.
+          Manage admin accounts. Use &ldquo;Set temp password&rdquo; if someone is locked out.
         </p>
       </div>
 
