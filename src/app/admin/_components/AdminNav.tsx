@@ -12,6 +12,7 @@ const navItems = [
   { label: "Listings", href: "/admin/listings", icon: "🚢" },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: "📋" },
   { label: "Metrics", href: "/admin/metrics", icon: "📊" },
+  { label: "Admin Users", href: "/admin/users", icon: "🔐" },
 ];
 
 export default function AdminNav() {
