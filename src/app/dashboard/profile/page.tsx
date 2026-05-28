@@ -180,10 +180,19 @@ export default function ProfilePage() {
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
               <label className="text-gray-700 text-sm font-medium">Contact Email</label>
-              <HelpTip text="Shown to YachtPics. Separate from your login email." detail="To change your login email, scroll to the bottom of this page." position="below" width={270} />
+              <HelpTip
+                text={isAssistant ? "Your contact email — may not be the same as your login email." : "Shown to YachtPics. Separate from your login email."}
+                detail="To change the email you use to sign in, scroll to the bottom of this page."
+                position="below"
+                width={270}
+              />
             </div>
             <input className={inputClass} type="email" value={profile.display_email} onChange={(e) => setProfile({ ...profile, display_email: e.target.value })} placeholder="jane@brokerage.com" />
-            <p className="text-gray-400 text-xs mt-1">Displayed to YachtPics -- not your login email.</p>
+            <p className="text-gray-400 text-xs mt-1">
+              {isAssistant
+                ? "Your contact email — may not be the same as your login email."
+                : "Used by YachtPics to contact you — not your login email."}
+            </p>
           </div>
           <div>
             <label className={labelClass}>Phone</label>
@@ -317,7 +326,7 @@ export default function ProfilePage() {
       <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
         <div className="flex items-center gap-2 mb-1">
           <h2 className="font-semibold text-gray-900">Change Login Email</h2>
-          <HelpTip text="Changes the email you use to sign in -- separate from your contact email shown to YachtPics." detail="A confirmation link goes to the new address. Your login will not change until you click it." position="above" width={280} />
+          <HelpTip text="Changes the email you use to sign in — separate from your contact email above." detail="A confirmation link goes to the new address. Your login will not change until you click it." position="above" width={280} />
         </div>
         <p className="text-gray-500 text-sm mb-5">Changing your login email will send a confirmation to the new address.</p>
         <div className="flex gap-3">
