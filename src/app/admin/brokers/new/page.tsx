@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
@@ -35,9 +35,32 @@ export default function InviteBrokerPage() {
   });
 
   const [photos, setPhotos] = useState<{ file: File; category: string; preview: string }[]>([]);
+  const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/photo-categories")
+      .then((r) => r.json())
+      .then((d) => { if (d.categories) setCustomCategories(d.categories.map((c: { name: string }) => c.name)); })
+      .catch(() => {});
+  }, []);
+
+  async function saveCustomCategory(name: string) {
+    if ((PHOTO_CATEGORIES as readonly string[]).includes(name)) return;
+    if (customCategories.includes(name)) return;
+    try {
+      await fetch("/api/photo-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      setCustomCategories((prev) => [...prev, name].sort());
+    } catch {}
+  }
+
+  const allCategories = [...(PHOTO_CATEGORIES as readonly string[]), ...customCategories.filter(c => !(PHOTO_CATEGORIES as readonly string[]).includes(c))];
 
 
   function handleFiles(files: FileList | null) {
@@ -308,17 +331,19 @@ export default function InviteBrokerPage() {
                     ×
                   </button>
                   <div className="p-2 space-y-1">
-                    {(PHOTO_CATEGORIES as readonly string[]).includes(photo.category) ? (
+                    {allCategories.includes(photo.category) ? (
                       <select value={photo.category}
                         onChange={(e) => updateCategory(i, e.target.value === "__custom__" ? "" : e.target.value)}
                         className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]">
                         <option value="__custom__">+ Custom...</option>
-                        {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                        {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     ) : (
                       <div className="flex items-center gap-1">
                         <input type="text" value={photo.category} autoFocus
                           onChange={(e) => updateCategory(i, e.target.value)}
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v) saveCustomCategory(v); }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); const v = photo.category.trim(); if (v) saveCustomCategory(v); } }}
                           placeholder="Enter category..."
                           className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]" />
                         <button type="button" onClick={() => updateCategory(i, "Other")}

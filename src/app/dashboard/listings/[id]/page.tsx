@@ -36,6 +36,7 @@ export default function BrokerListingPage() {
   const router = useRouter();
   const id = params.id as string;
 
+  const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean } | null>(null);
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("trial_active");
@@ -76,6 +77,30 @@ export default function BrokerListingPage() {
       setDownloadLicenseAccepted(localStorage.getItem("yp_download_license_v1") === "accepted");
     }
   }, []);
+
+  // Load custom photo categories
+  useEffect(() => {
+    fetch("/api/photo-categories")
+      .then((r) => r.json())
+      .then((d) => { if (d.categories) setCustomCategories(d.categories); })
+      .catch(() => {});
+  }, []);
+
+  async function saveCustomCategory(name: string) {
+    if ((PHOTO_CATEGORIES as readonly string[]).includes(name)) return;
+    if (customCategories.some((c) => c.name === name)) return;
+    try {
+      const res = await fetch("/api/photo-categories", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (res.ok && !data.skipped) {
+        setCustomCategories((prev) => [...prev, { id: data.id ?? name, name }].sort((a, b) => a.name.localeCompare(b.name)));
+      }
+    } catch {}
+  }
   const dragCounter = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -947,10 +972,12 @@ export default function BrokerListingPage() {
                 selectMode={selectMode}
                 downloading={downloading}
                 tapStart={tapStart}
+                extraCategories={customCategories.map((c) => c.name)}
                 onTap={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
                 onDownload={() => requireDownloadLicense(() => downloadPhotos([photo]))}
                 onToggleVisibility={() => toggleVisibility(photo.id, photo.is_visible)}
                 onUpdateCategory={(cat) => updateCategory(photo.id, cat)}
+                onSaveCategory={saveCustomCategory}
                 onDelete={() => deletePhoto(photo.id, photo.storage_path)}
               />
             );
@@ -1514,8 +1541,8 @@ function relativeTime(date: Date): string {
 
 // ─── Sortable photo card ───────────────────────────────────────────────────────
 function SortablePhotoCard({
-  photo, index, isSelected, selectMode, downloading, tapStart,
-  onTap, onDownload, onToggleVisibility, onUpdateCategory, onDelete,
+  photo, index, isSelected, selectMode, downloading, tapStart, extraCategories,
+  onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
 }: {
   photo: { id: string; url: string | null; filename: string | null; category: string | null; is_visible: boolean };
   index: number;
@@ -1523,16 +1550,19 @@ function SortablePhotoCard({
   selectMode: boolean;
   downloading: boolean;
   tapStart: React.MutableRefObject<{ x: number; y: number } | null>;
+  extraCategories: string[];
   onTap: () => void;
   onDownload: () => void;
   onToggleVisibility: () => void;
   onUpdateCategory: (cat: string) => void;
+  onSaveCategory: (cat: string) => void;
   onDelete: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isVertical, setIsVertical] = useState(false);
-  const inStandardList = (PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "");
+  const allCategories = [...(PHOTO_CATEGORIES as readonly string[]), ...extraCategories.filter(c => !(PHOTO_CATEGORIES as readonly string[]).includes(c))];
+  const inStandardList = allCategories.includes(photo.category ?? "");
   const [showCustomInput, setShowCustomInput] = useState(!inStandardList);
   const [customValue, setCustomValue] = useState(!inStandardList ? (photo.category ?? "") : "");
 
@@ -1540,6 +1570,7 @@ function SortablePhotoCard({
     const trimmed = customValue.trim();
     if (trimmed) {
       onUpdateCategory(trimmed);
+      onSaveCategory(trimmed); // auto-save to master list
     } else {
       setShowCustomInput(false);
       setCustomValue("");
@@ -1646,7 +1677,7 @@ function SortablePhotoCard({
               className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
             >
               <option value="__custom__">+ Custom...</option>
-              {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
             </select>
           ) : (
             <div className="flex items-center gap-1 flex-1 min-w-0">
