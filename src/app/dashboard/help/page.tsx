@@ -24,7 +24,7 @@ const sections = [
     num: "03",
     title: "Managing Your Listings",
     steps: [
-      "Listings appear automatically once YachtPics delivers your photos. Click any listing to open it.",
+      "Create a new listing and upload photos yourself, or listings appear automatically when YachtPics delivers. Click any listing to open it.",
       "Drag and drop photos to reorder them. Click a photo to open the full-screen lightbox.",
       "Use categories (Exterior, Interior, Cockpit, etc.) to organize photos — clients see these labels in the slideshow.",
       "Toggle the eye icon on any photo to hide it from the client view without deleting it.",
@@ -198,7 +198,6 @@ export default function HelpPage() {
           information. We will respond promptly.
         </p>
       </div>
-
     </div>
   );
 }

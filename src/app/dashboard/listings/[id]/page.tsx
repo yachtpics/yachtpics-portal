@@ -964,7 +964,7 @@ export default function BrokerListingPage() {
           {hasAccess(accessStatus) ? (
             <>
               <p className="text-gray-400 text-sm">No photos yet — drag here or click to upload</p>
-              <p className="text-gray-300 text-xs mt-1">YachtPics professional photos will also appear here after your shoot</p>
+              <p className="text-gray-300 text-xs mt-1">JPG, PNG · Any source — your own or YachtPics delivered</p>
             </>
           ) : (
             <>

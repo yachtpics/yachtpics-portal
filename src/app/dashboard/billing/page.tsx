@@ -145,10 +145,10 @@ export default function BillingPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <p className="text-sm font-semibold text-gray-800">Photo downloads are always free</p>
-            <HelpTip text="You never need a subscription to view or download photos that YachtPics delivers." detail="A paid plan is only required to upload photos or build client slideshows." position="below" width={280} />
+            <HelpTip text="Viewing and downloading photos is always free — whether uploaded by you or delivered by YachtPics." detail="A paid plan is only required to upload your own photos or build client slideshows." position="below" width={280} />
           </div>
           <p className="text-sm text-gray-500">
-            When YachtPics delivers your photos, you can view and download them at no cost. A paid plan unlocks photo uploading and the slideshow builder.
+            Viewing and downloading photos is always free. A paid plan unlocks uploading your own photos and the slideshow builder — whether or not you've booked a shoot.
           </p>
         </div>
       </div>

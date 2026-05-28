@@ -93,7 +93,7 @@ export default async function ListingsPage() {
           <p className="text-gray-400 text-sm mt-1">
             {isAssistant
               ? "Listings will appear here once a broker you assist has active listings."
-              : "Your listings will appear here once YachtPics delivers your photos."}
+              : "Click '+ New Listing' to upload your own photos, or listings will appear here after a YachtPics shoot."}
           </p>
         </div>
       ) : (
