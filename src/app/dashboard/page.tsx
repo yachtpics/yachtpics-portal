@@ -256,7 +256,7 @@ export default async function DashboardPage() {
         ) : (
           <div className="text-center py-12 text-gray-400">
             <p className="text-sm">No listings yet.</p>
-            <p className="text-sm mt-1">Upload your own photos or they'll appear here after a YachtPics shoot.</p>
+            <p className="text-sm mt-1">Upload your own photos or they&apos;ll appear here after a YachtPics shoot.</p>
           </div>
         )}
       </div>

@@ -148,7 +148,7 @@ export default function BillingPage() {
             <HelpTip text="Viewing and downloading photos is always free — whether uploaded by you or delivered by YachtPics." detail="A paid plan is only required to upload your own photos or build client slideshows." position="below" width={280} />
           </div>
           <p className="text-sm text-gray-500">
-            Viewing and downloading photos is always free. A paid plan unlocks uploading your own photos and the slideshow builder — whether or not you've booked a shoot.
+            Viewing and downloading photos is always free. A paid plan unlocks uploading your own photos and the slideshow builder — whether or not you&apos;ve booked a shoot.
           </p>
         </div>
       </div>
