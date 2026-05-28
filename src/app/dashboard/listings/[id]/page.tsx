@@ -496,21 +496,38 @@ export default function BrokerListingPage() {
     }
 
     // Multiple photos — ZIP
+    // Fetch in parallel batches of 8; use STORE (no compression) since JPEGs
+    // are already compressed — this makes zip generation 5-10x faster.
     const zip = new JSZip();
-    for (let i = 0; i < targets.length; i++) {
-      const photo = targets[i];
-      if (!photo.url) continue;
-      try {
-        const response = await fetch(photo.url);
-        const blob = await response.blob();
-        const ext = photo.filename?.split(".").pop() ?? "jpg";
-        const filename = `${String(i + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
-        zip.file(filename, blob);
-      } catch { /* skip */ }
-      setDownloadProgress(Math.round(((i + 1) / targets.length) * 100));
+    const BATCH = 8;
+    let fetched = 0;
+
+    for (let b = 0; b < targets.length; b += BATCH) {
+      const batch = targets.slice(b, b + BATCH);
+      await Promise.all(
+        batch.map(async (photo, bi) => {
+          const globalIndex = b + bi;
+          if (!photo.url) return;
+          try {
+            const response = await fetch(photo.url);
+            const blob = await response.blob();
+            const ext = photo.filename?.split(".").pop() ?? "jpg";
+            const filename = `${String(globalIndex + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
+            zip.file(filename, blob);
+          } catch { /* skip failed photo */ }
+          fetched++;
+          // Fetch phase = 0–85% of progress
+          setDownloadProgress(Math.round((fetched / targets.length) * 85));
+        })
+      );
     }
 
-    const zipBlob = await zip.generateAsync({ type: "blob" });
+    // Zip generation phase = 85–100%
+    setDownloadProgress(88);
+    const zipBlob = await zip.generateAsync(
+      { type: "blob", compression: "STORE" },
+      (meta) => setDownloadProgress(88 + Math.round(meta.percent * 0.12))
+    );
     const zipName = `${folderName}-photos.zip`;
 
     const logZip = () => {
