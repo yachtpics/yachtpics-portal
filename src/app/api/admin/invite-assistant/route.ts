@@ -2,6 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 
+function generateTempPassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let suffix = "";
+  for (let i = 0; i < 6; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+  return `Portal-${suffix}`;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const { email, brokerId, firstName, lastName } = await req.json();
@@ -66,7 +73,6 @@ export async function POST(req: NextRequest) {
 
       assistantId = existingUser.id;
 
-      // Ensure their role is assistant
       await supabase.from("profiles").upsert({
         id: assistantId,
         role: "assistant",
@@ -75,26 +81,23 @@ export async function POST(req: NextRequest) {
         last_name: existingProfile?.last_name ?? lastName ?? null,
       });
     } else {
-      // New user — generate invite
+      // New user — create account with temp password
       isNewUser = true;
 
-      const { data: linkData, error: linkError } = await supabase.auth.admin.generateLink({
-        type: "invite",
+      const tempPassword = generateTempPassword();
+
+      const { data: newUserData, error: createError } = await supabase.auth.admin.createUser({
         email,
-        options: {
-          redirectTo: "https://portal.yachtpics.com/auth/set-password",
-          data: { role: "assistant" },
-        },
+        password: tempPassword,
+        email_confirm: true,
       });
 
-      if (linkError || !linkData?.user) {
-        return NextResponse.json({ error: linkError?.message ?? "Failed to generate invite link." }, { status: 500 });
+      if (createError || !newUserData?.user) {
+        return NextResponse.json({ error: createError?.message ?? "Failed to create assistant account." }, { status: 500 });
       }
 
-      assistantId = linkData.user.id;
-      const inviteLink = linkData.properties?.action_link ?? "https://portal.yachtpics.com";
+      assistantId = newUserData.user.id;
 
-      // Create profile
       await supabase.from("profiles").upsert({
         id: assistantId,
         role: "assistant",
@@ -103,35 +106,36 @@ export async function POST(req: NextRequest) {
         last_name: lastName ?? null,
       });
 
-      // Send invite email
-      const html = `<!DOCTYPE html>
-<html>
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
-  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-    <div style="background:#050b14;padding:32px 40px;">
-      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
-    </div>
-    <div style="padding:40px;">
-      <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">You've been added as an assistant</h1>
-      <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">
-        <strong style="color:#111827;">${brokerName}</strong> has invited you to manage their listings on YachtPics Portal.
-        Set up your account below to get started.
-      </p>
-      <a href="${inviteLink}" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:24px;">Set Up Your Account &rarr;</a>
-      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;">
-        As an assistant, you'll have full access to ${brokerName}'s listings — you can upload photos and videos, manage listing details, and send slideshows to clients on their behalf.
-      </p>
-      <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">
-        If you're already assisting other brokers on the portal, this account will give you access to all of them in one place.
-      </p>
-    </div>
-    <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">
-      <p style="margin:0;font-size:12px;color:#c4c9d4;">Powered by <a href="https://yachtpics.com" style="color:#c4c9d4;text-decoration:none;">YachtPics</a></p>
-    </div>
-  </div>
-</body>
-</html>`;
+      const htmlLines = [
+        "<!DOCTYPE html>",
+        "<html>",
+        "<head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"></head>",
+        "<body style=\"font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;\">",
+        "  <div style=\"max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);\">",
+        "    <div style=\"background:#050b14;padding:32px 40px;\">",
+        "      <p style=\"margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;\">YachtPics <span style=\"color:#d4a843;\">Portal</span></p>",
+        "    </div>",
+        "    <div style=\"padding:40px;\">",
+        "      <h1 style=\"margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;\">You've been added as an assistant</h1>",
+        `      <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">${brokerName}</strong> has set you up on YachtPics Portal to manage their listings. Use the details below to log in.</p>`,
+        "      <div style=\"background:#f9f5ec;border:1px solid #e8d9a0;border-radius:10px;padding:20px 24px;margin:0 0 28px;\">",
+        "        <p style=\"margin:0 0 12px;font-size:13px;font-weight:600;color:#92721a;text-transform:uppercase;letter-spacing:0.5px;\">Your Login Details</p>",
+        "        <p style=\"margin:0 0 6px;font-size:13px;color:#6b7280;\"><strong style=\"color:#111827;\">Login:</strong> portal.yachtpics.com/auth/login</p>",
+        `        <p style="margin:0 0 6px;font-size:13px;color:#6b7280;"><strong style="color:#111827;">Email:</strong> ${email}</p>`,
+        `        <p style="margin:0;font-size:13px;color:#6b7280;"><strong style="color:#111827;">Temporary password:</strong> <span style="font-family:monospace;font-size:14px;color:#111827;">${tempPassword}</span></p>`,
+        "      </div>",
+        "      <a href=\"https://portal.yachtpics.com/auth/login\" style=\"display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:24px;\">Log In to Your Account &rarr;</a>",
+        `      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;">As an assistant, you'll have full access to ${brokerName}'s listings.</p>`,
+        "      <p style=\"margin:0;font-size:13px;color:#9ca3af;line-height:1.6;\">Once logged in, you can update your password from your profile settings.</p>",
+        "    </div>",
+        "    <div style=\"padding:24px 40px;border-top:1px solid #f3f4f6;\">",
+        "      <p style=\"margin:0;font-size:12px;color:#c4c9d4;\">Powered by <a href=\"https://yachtpics.com\" style=\"color:#c4c9d4;text-decoration:none;\">YachtPics</a></p>",
+        "    </div>",
+        "  </div>",
+        "</body>",
+        "</html>",
+      ];
+      const html = htmlLines.join("\n");
 
       const resendRes = await fetch("https://api.resend.com/emails", {
         method: "POST",
@@ -142,13 +146,12 @@ export async function POST(req: NextRequest) {
         body: JSON.stringify({
           from: "YachtPics <hello@yachtpics.com>",
           to: email,
-          subject: `${brokerName} has invited you to YachtPics Portal`,
+          subject: `${brokerName} has set you up on YachtPics Portal`,
           html,
         }),
       });
 
       if (!resendRes.ok) {
-        // Non-fatal — account created, email failed
         console.error("Email send failed:", await resendRes.text());
       }
     }

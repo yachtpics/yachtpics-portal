@@ -39,6 +39,8 @@ export default function InviteBrokerPage() {
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<{ brokerId: string; tempPassword: string; assistantTempPassword?: string } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     fetch("/api/photo-categories")
@@ -146,7 +148,11 @@ export default function InviteBrokerPage() {
         }
       }
 
-      router.push(`/admin/brokers/${brokerId}?invited=true`);
+      setSuccess({
+        brokerId,
+        tempPassword: inviteData.brokerTempPassword ?? "",
+        assistantTempPassword: inviteData.assistantTempPassword ?? undefined,
+      });
     } catch {
       setError("Unexpected error. Please try again.");
     } finally {
@@ -155,8 +161,75 @@ export default function InviteBrokerPage() {
     }
   };
 
+  function handleCopy(text: string) {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   const inputClass = "w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30";
   const labelClass = "block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5";
+
+  if (success) {
+    return (
+      <div className="px-6 py-8 max-w-3xl mx-auto">
+        <div className="bg-white border border-gray-200 rounded-xl p-8">
+          <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center mb-4">
+            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+          <h1 className="text-xl font-bold text-gray-900 mb-1">Broker invited</h1>
+          <p className="text-gray-500 text-sm mb-6">
+            Account created and login details sent to {broker.email}. Share the temporary password with them if needed.
+          </p>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 mb-4">
+            <p className="text-xs font-semibold text-amber-700 uppercase tracking-wide mb-3">Broker Login Details</p>
+            <div className="space-y-1.5 text-sm text-gray-700 mb-3">
+              <p><span className="text-gray-400">Email:</span> <span className="font-medium">{broker.email}</span></p>
+              <p className="flex items-center gap-2">
+                <span className="text-gray-400">Temp password:</span>
+                <span className="font-mono font-semibold text-gray-900">{success.tempPassword}</span>
+                <button
+                  onClick={() => handleCopy(success.tempPassword)}
+                  className="text-xs text-[#c49a35] hover:text-[#b08c2a] transition-colors"
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </p>
+            </div>
+            <p className="text-xs text-gray-400">The broker can update their password from profile settings after logging in.</p>
+          </div>
+
+          {success.assistantTempPassword && broker.assistantEmail && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-5 mb-6">
+              <p className="text-xs font-semibold text-blue-700 uppercase tracking-wide mb-3">Assistant Login Details</p>
+              <div className="space-y-1.5 text-sm text-gray-700">
+                <p><span className="text-gray-400">Email:</span> <span className="font-medium">{broker.assistantEmail}</span></p>
+                <p><span className="text-gray-400">Temp password:</span> <span className="font-mono font-semibold text-gray-900">{success.assistantTempPassword}</span></p>
+              </div>
+            </div>
+          )}
+
+          <div className="flex gap-3">
+            <button
+              onClick={() => router.push(`/admin/brokers/${success.brokerId}`)}
+              className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] font-semibold text-sm px-5 py-2.5 rounded-lg transition-colors"
+            >
+              View broker profile
+            </button>
+            <button
+              onClick={() => router.push("/admin/brokers/new")}
+              className="text-sm text-gray-400 hover:text-gray-600 transition-colors px-2"
+            >
+              Invite another
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
@@ -328,7 +401,7 @@ export default function InviteBrokerPage() {
                   <img src={photo.preview} alt={photo.file.name} className="w-full h-28 object-cover" />
                   <button type="button" onClick={() => removePhoto(i)}
                     className="absolute top-1.5 right-1.5 bg-black/60 hover:bg-black/80 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs transition-colors">
-                    ×
+                    &times;
                   </button>
                   <div className="p-2 space-y-1">
                     {allCategories.includes(photo.category) ? (
@@ -347,7 +420,7 @@ export default function InviteBrokerPage() {
                           placeholder="Enter category..."
                           className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]" />
                         <button type="button" onClick={() => updateCategory(i, "Other")}
-                          className="text-gray-400 hover:text-gray-600 text-xs px-1">✕</button>
+                          className="text-gray-400 hover:text-gray-600 text-xs px-1">&times;</button>
                       </div>
                     )}
                     <p className="text-[10px] text-gray-400 truncate">{photo.file.name}</p>
@@ -366,7 +439,7 @@ export default function InviteBrokerPage() {
           <button type="submit" disabled={loading}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-60 text-[#050b14] font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors min-w-[160px]">
             {loading
-              ? (progress ?? "Working…")
+              ? (progress ?? "Working...")
               : photos.length > 0
                 ? `Send Invite & Upload ${photos.length} Photo${photos.length !== 1 ? "s" : ""}`
                 : "Send Invite"}

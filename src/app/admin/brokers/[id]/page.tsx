@@ -60,9 +60,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
         <div className="mb-6 flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
           <span className="text-green-500 text-lg leading-none mt-0.5">✓</span>
           <div>
-            <p className="text-sm font-semibold text-green-800">All done — broker invited and photos delivered</p>
+            <p className="text-sm font-semibold text-green-800">All done — broker account created</p>
             <p className="text-sm text-green-700 mt-0.5">
-              {name} received an invite email with a link to set their password, plus a second email confirming their photos are ready.
+              {name} received an email with their login credentials. You can resend or reset their password below if needed.
             </p>
           </div>
         </div>
