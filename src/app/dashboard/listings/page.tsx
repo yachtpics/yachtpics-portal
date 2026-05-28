@@ -26,6 +26,8 @@ export default async function ListingsPage() {
     status: string;
     updated_at: string;
     broker_name?: string | null;
+    slideshow_slug?: string | null;
+    slideshow_published?: boolean | null;
   }[] = [];
 
   if (isAssistant) {
@@ -40,7 +42,7 @@ export default async function ListingsPage() {
     if (brokerIds.length > 0) {
       const { data: allListings } = await supabase
         .from("listings")
-        .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, broker_id, profiles:broker_id(first_name, last_name, display_email)")
+        .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
         .in("broker_id", brokerIds)
         .order("updated_at", { ascending: false });
 
@@ -55,7 +57,7 @@ export default async function ListingsPage() {
   } else {
     const { data } = await supabase
       .from("listings")
-      .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at")
+      .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, slideshow_slug, slideshow_published")
       .eq("broker_id", user.id)
       .order("updated_at", { ascending: false });
     listings = data ?? [];
