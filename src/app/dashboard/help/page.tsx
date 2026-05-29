@@ -39,9 +39,9 @@ const sections = [
     title: "Videos",
     steps: [
       "Open any listing and scroll to the Videos section below your photos.",
-      "Click Add Video and select an MP4 or MOV file from your computer.",
-      "Videos appear in the client slideshow after all photos — buyers can play them directly in the browser.",
-      "To remove a video, click the delete button on its card. There's no limit on video count.",
+      "Click Upload MP4 and select an MP4 or MOV file from your computer.",
+      "Videos appear as the first slides in the client slideshow — buyers can play them full-screen, just like photos.",
+      "To remove a video, click the delete button on its card. There is no limit on video count.",
     ],
   },
   {
@@ -69,7 +69,7 @@ const sections = [
     title: "Billing & Subscription",
     steps: [
       "Photo downloads are always free — no subscription required.",
-      "A paid plan unlocks video uploads and the slideshow builder.",
+      "A paid plan unlocks uploading your own photos, video uploads, and the slideshow builder.",
       "All plans include a 30-day free trial. Cancel anytime from the Billing page.",
     ],
   },
@@ -88,6 +88,8 @@ const sections = [
 
 const quickRef = [
   ["Share a listing with a client", "My Listings → listing → Share Slideshow"],
+  ["Quickly send a listing to a client", "My Listings → Send button on listing row"],
+  ["Download all photos for a listing", "My Listings → Download button on listing row"],
   ["View who opened your slideshow", "My Listings → listing → Sent History"],
   ["Reorder photos", "My Listings → listing → drag and drop"],
   ["Hide a photo from clients", "My Listings → listing → eye icon on photo"],
