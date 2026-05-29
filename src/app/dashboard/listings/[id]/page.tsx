@@ -584,15 +584,38 @@ export default function BrokerListingPage() {
   async function handleVideoFiles(files: FileList | null) {
     if (!files) return;
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!user || !session) return;
     setUploadingVideo(true);
     setVideoUploadProgress(0);
-    const fileArr = Array.from(files).filter(f => f.type === "video/mp4" || f.name.endsWith(".mp4"));
+    const fileArr = Array.from(files).filter(f =>
+      f.type === "video/mp4" || f.type === "video/quicktime" ||
+      f.name.toLowerCase().endsWith(".mp4") || f.name.toLowerCase().endsWith(".mov")
+    );
+    if (fileArr.length === 0) { setUploadingVideo(false); return; }
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     for (let i = 0; i < fileArr.length; i++) {
       const file = fileArr[i];
       const path = `${user.id}/${id}/${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("listing-videos").upload(path, file, { upsert: false });
-      if (!error) {
+      // Use XHR so we get real byte-level upload progress (fetch has no progress API)
+      const ok = await new Promise<boolean>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const base = (i / fileArr.length) * 100;
+            const slice = (e.loaded / e.total) * (100 / fileArr.length);
+            setVideoUploadProgress(Math.round(base + slice));
+          }
+        };
+        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+        xhr.onerror = () => resolve(false);
+        xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+        xhr.setRequestHeader("cache-control", "max-age=3600");
+        xhr.setRequestHeader("content-type", file.type || "video/mp4");
+        xhr.send(file);
+      });
+      if (ok) {
         const { data: newVideo } = await supabase.from("videos").insert({
           listing_id: id,
           storage_path: path,
@@ -1200,7 +1223,7 @@ export default function BrokerListingPage() {
           >
             {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload MP4"}
           </button>
-          <input ref={videoInputRef} type="file" accept="video/mp4,.mp4" multiple className="hidden" onChange={(e) => handleVideoFiles(e.target.files)} />
+          <input ref={videoInputRef} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple className="hidden" onChange={(e) => handleVideoFiles(e.target.files)} />
         </div>
 
         {uploadingVideo && (
