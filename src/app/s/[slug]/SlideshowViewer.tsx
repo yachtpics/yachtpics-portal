@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 interface Photo {
   id: string;
@@ -14,6 +14,10 @@ interface Video {
   url: string | null;
   filename: string | null;
 }
+
+type Slide =
+  | { type: "photo"; id: string; url: string | null; category: string | null; filename: string | null }
+  | { type: "video"; id: string; url: string | null; filename: string | null };
 
 interface Listing {
   vessel_name: string | null;
@@ -45,6 +49,14 @@ interface Props {
 }
 
 export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId }: Props) {
+  // Videos first, then photos — unified slide array
+  const slides = useMemo<Slide[]>(() => [
+    ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
+    ...photos.map(p => ({ type: "photo" as const, ...p })),
+  ], [videos, photos]);
+
+  const videoCount = videos.filter(v => v.url).length;
+
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
@@ -93,7 +105,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   }, [brokerId]);
 
   const goTo = useCallback((idx: number) => {
-    if (idx === current || idx < 0 || idx >= photos.length) return;
+    if (idx === current || idx < 0 || idx >= slides.length) return;
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     setOutgoing(current);
     setIncomingReady(false);
@@ -104,7 +116,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       });
     });
     fadeTimerRef.current = setTimeout(() => setOutgoing(null), 600);
-  }, [current, photos.length]);
+  }, [current, slides.length]);
 
   const prev = useCallback(() => goTo(current - 1), [goTo, current]);
   const next = useCallback(() => goTo(current + 1), [goTo, current]);
@@ -133,13 +145,21 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     .filter(Boolean)
     .join(" · ");
 
-  if (photos.length === 0 && videos.length === 0) {
+  if (slides.length === 0) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
         <p className="text-gray-400 text-sm">No photos available.</p>
       </div>
     );
   }
+
+  const currentSlide = slides[current];
+  const outgoingSlide = outgoing !== null ? slides[outgoing] : null;
+  const isVideoSlide = currentSlide.type === "video";
+
+  const caption = isVideoSlide
+    ? "Video"
+    : (currentSlide as { category: string | null }).category ?? "";
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
@@ -177,28 +197,11 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         </div>
       </div>
 
-      {/* Videos — shown above the slideshow when present */}
-      {videos.length > 0 && view === "slideshow" && (
-        <div className="border-b border-gray-200 px-4 py-4 space-y-3 bg-gray-50">
-          {videos.map((video) => video.url && (
-            <div key={video.id} className="rounded-xl overflow-hidden">
-              <video
-                src={video.url}
-                controls
-                playsInline
-                preload="metadata"
-                className="w-full max-h-[360px] bg-black"
-              />
-            </div>
-          ))}
-        </div>
-      )}
-
       {view === "slideshow" ? (
         <>
-          {/* Main photo area */}
+          {/* Main slide area — video and photo use the same full-height container */}
           <div
-            className="flex-1 relative flex items-center justify-center select-none overflow-hidden bg-gray-50"
+            className={`flex-1 relative flex items-center justify-center select-none overflow-hidden transition-colors duration-300 ${isVideoSlide ? "bg-black" : "bg-gray-50"}`}
             style={{ minHeight: "calc(100vh - 240px)" }}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
@@ -208,36 +211,54 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               setTouchStart(null);
             }}
           >
-            {/* Outgoing photo */}
-            {outgoing !== null && photos[outgoing]?.url && (
+            {/* Outgoing photo (don't show outgoing video to avoid audio overlap) */}
+            {outgoingSlide?.type === "photo" && outgoingSlide.url && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={`out-${outgoing}`}
-                src={photos[outgoing].url!}
+                src={outgoingSlide.url}
                 alt=""
                 className="absolute max-w-full object-contain px-16"
                 style={{ maxHeight: "calc(100vh - 240px)", zIndex: 0 }}
               />
             )}
 
-            {/* Current photo */}
-            {photos[current]?.url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={`in-${current}`}
-                src={photos[current].url!}
-                alt={photos[current].category ?? ""}
-                className="absolute max-w-full object-contain px-16"
-                style={{
-                  maxHeight: "calc(100vh - 240px)",
-                  zIndex: 1,
-                  opacity: incomingReady ? 1 : 0,
-                  transition: "opacity 0.5s ease",
-                }}
-              />
+            {/* Current slide */}
+            {currentSlide.url && (
+              currentSlide.type === "photo" ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  key={`in-${current}`}
+                  src={currentSlide.url}
+                  alt={currentSlide.category ?? ""}
+                  className="absolute max-w-full object-contain px-16"
+                  style={{
+                    maxHeight: "calc(100vh - 240px)",
+                    zIndex: 1,
+                    opacity: incomingReady ? 1 : 0,
+                    transition: "opacity 0.5s ease",
+                  }}
+                />
+              ) : (
+                <video
+                  key={`video-${current}`}
+                  src={currentSlide.url}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  className="absolute w-full"
+                  style={{
+                    maxHeight: "calc(100vh - 240px)",
+                    zIndex: 1,
+                    opacity: incomingReady ? 1 : 0,
+                    transition: "opacity 0.5s ease",
+                    objectFit: "contain",
+                  }}
+                />
+              )
             )}
 
-            {/* Prev button */}
+            {/* Prev */}
             {current > 0 && (
               <button
                 onClick={prev}
@@ -248,8 +269,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               </button>
             )}
 
-            {/* Next button */}
-            {current < photos.length - 1 && (
+            {/* Next */}
+            {current < slides.length - 1 && (
               <button
                 onClick={next}
                 className="absolute right-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
@@ -263,18 +284,16 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           {/* Caption + counter */}
           <div className="text-center py-2 px-4 bg-white">
             <p className="text-gray-500 text-sm">
-              {photos[current]?.category
-                ? `${photos[current].category} · `
-                : ""}
-              {current + 1} / {photos.length}
+              {caption ? `${caption} · ` : ""}
+              {current + 1} / {slides.length}
             </p>
           </div>
 
-          {/* Thumbnail strip */}
+          {/* Thumbnail strip — videos show as dark tile with play icon */}
           <div className="flex gap-2 px-4 pb-4 overflow-x-auto scrollbar-hide bg-white">
-            {photos.map((photo, i) => (
+            {slides.map((slide, i) => (
               <button
-                key={photo.id}
+                key={slide.id}
                 onClick={() => goTo(i)}
                 className={`shrink-0 rounded-md overflow-hidden transition-all ${
                   i === current
@@ -282,13 +301,15 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     : "opacity-40 hover:opacity-70"
                 }`}
               >
-                {photo.url && (
+                {slide.type === "photo" && slide.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={photo.url}
-                    alt=""
-                    className="w-16 h-10 object-cover"
-                  />
+                  <img src={slide.url} alt="" className="w-16 h-10 object-cover" />
+                ) : (
+                  <div className="w-16 h-10 bg-gray-900 flex items-center justify-center">
+                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                    </svg>
+                  </div>
                 )}
               </button>
             ))}
@@ -297,23 +318,17 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       ) : (
         /* Grid view */
         <div className="flex-1 p-4 sm:p-6 overflow-auto bg-white">
-          {/* Videos appear first in grid view */}
           {videos.length > 0 && (
             <div className="mb-6 space-y-4">
               {videos.map((video) => video.url && (
-                <div key={video.id} className="rounded-xl overflow-hidden border border-gray-200">
+                <div key={video.id} className="rounded-xl overflow-hidden bg-black">
                   <video
                     src={video.url}
                     controls
                     playsInline
                     preload="metadata"
-                    className="w-full max-h-[420px] bg-black"
+                    className="w-full max-h-[480px] bg-black"
                   />
-                  {video.filename && (
-                    <div className="px-4 py-2 bg-gray-50">
-                      <p className="text-gray-500 text-xs truncate">{video.filename}</p>
-                    </div>
-                  )}
                 </div>
               ))}
             </div>
@@ -323,7 +338,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               <div
                 key={photo.id}
                 onClick={() => {
-                  setCurrent(i);
+                  setCurrent(videoCount + i);
                   setView("slideshow");
                 }}
                 className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:border-[#d4a843] transition-colors"
