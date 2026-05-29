@@ -201,7 +201,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         <>
           {/* Main slide area — video and photo use the same full-height container */}
           <div
-            className={`flex-1 relative flex items-center justify-center select-none overflow-hidden transition-colors duration-300 ${isVideoSlide ? "bg-black" : "bg-gray-50"}`}
+            className="flex-1 relative flex items-center justify-center select-none overflow-hidden bg-gray-50"
             style={{ minHeight: "calc(100vh - 240px)" }}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
@@ -253,6 +253,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     opacity: incomingReady ? 1 : 0,
                     transition: "opacity 0.5s ease",
                     objectFit: "contain",
+                    background: "transparent",
                   }}
                 />
               )
