@@ -284,14 +284,19 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         xhr.send(file);
       });
       if (ok) {
-        const { data: newVideo } = await supabase.from("videos").insert({
+        const { data: newVideo, error: insertError } = await supabase.from("videos").insert({
           listing_id: listing.id,
           storage_path: path,
           filename: file.name,
           uploaded_by: user.id,
           display_order: videos.length + i,
         }).select().single();
-        if (newVideo) {
+        if (insertError || !newVideo) {
+          // File reached storage but the database record was rejected (e.g. permissions).
+          // Count it as a failure so the user sees an error instead of a silent vanish.
+          console.error("Video record insert failed:", insertError);
+          failures++;
+        } else {
           const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
           setVideos(prev => [...prev, { ...newVideo as Video, url: signed?.signedUrl ?? null }]);
         }
