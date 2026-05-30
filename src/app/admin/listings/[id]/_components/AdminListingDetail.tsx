@@ -77,6 +77,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [deletingVideoIds, setDeletingVideoIds] = useState<Set<string>>(new Set());
+  const [videoError, setVideoError] = useState<string | null>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { setMounted(true); }, []);
@@ -238,28 +239,74 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
   async function handleVideoFiles(files: FileList | null) {
     if (!files) return;
+    setVideoError(null);
+    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!user || !session) {
+      setVideoError("Your session has expired. Please refresh the page and sign in again.");
+      return;
+    }
+
+    const selected = Array.from(files);
+    const fileArr = selected.filter(f =>
+      f.type === "video/mp4" || f.type === "video/quicktime" ||
+      f.name.toLowerCase().endsWith(".mp4") || f.name.toLowerCase().endsWith(".mov")
+    );
+    if (fileArr.length === 0) {
+      setVideoError("Unsupported file type. Please upload an MP4 or MOV video.");
+      return;
+    }
+    const rejected = selected.length - fileArr.length;
+
     setUploadingVideo(true);
     setVideoUploadProgress(0);
-    const fileArr = Array.from(files).filter(f => f.type === "video/mp4" || f.name.endsWith(".mp4"));
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    let failures = 0;
     for (let i = 0; i < fileArr.length; i++) {
       const file = fileArr[i];
       const path = `${listing.broker_id}/${listing.id}/${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("listing-videos").upload(path, file, { upsert: false });
-      if (!error) {
+      // Use XHR so we get real byte-level upload progress (fetch has no progress API)
+      const ok = await new Promise<boolean>((resolve) => {
+        const xhr = new XMLHttpRequest();
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const base = (i / fileArr.length) * 100;
+            const slice = (e.loaded / e.total) * (100 / fileArr.length);
+            setVideoUploadProgress(Math.round(base + slice));
+          }
+        };
+        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+        xhr.onerror = () => resolve(false);
+        xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
+        xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+        xhr.setRequestHeader("cache-control", "max-age=3600");
+        xhr.setRequestHeader("content-type", file.type || "video/mp4");
+        xhr.send(file);
+      });
+      if (ok) {
         const { data: newVideo } = await supabase.from("videos").insert({
           listing_id: listing.id,
           storage_path: path,
           filename: file.name,
+          uploaded_by: user.id,
           display_order: videos.length + i,
         }).select().single();
         if (newVideo) {
           const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
           setVideos(prev => [...prev, { ...newVideo as Video, url: signed?.signedUrl ?? null }]);
         }
+      } else {
+        failures++;
       }
       setVideoUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
     }
     setUploadingVideo(false);
+    if (videoInputRef.current) videoInputRef.current.value = "";
+    if (failures > 0) {
+      setVideoError(`${failures} video${failures > 1 ? "s" : ""} failed to upload. Please check your connection and try again.`);
+    } else if (rejected > 0) {
+      setVideoError(`${rejected} file${rejected > 1 ? "s were" : " was"} skipped — only MP4 and MOV videos are supported.`);
+    }
   }
 
   async function deleteVideo(videoId: string, storagePath: string) {
@@ -603,16 +650,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
             <h2 className="font-semibold text-gray-900">Listing Videos</h2>
-            <p className="text-gray-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
+            <p className="text-gray-500 text-sm mt-0.5">Upload MP4 or MOV video for this listing. Videos appear first in the client slideshow.</p>
           </div>
           <button
             onClick={() => videoInputRef.current?.click()}
             disabled={uploadingVideo}
             className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
-            {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload MP4"}
+            {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload Video"}
           </button>
-          <input ref={videoInputRef} type="file" accept="video/mp4,.mp4" multiple className="hidden" onChange={(e) => handleVideoFiles(e.target.files)} />
+          <input ref={videoInputRef} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple className="hidden" onChange={(e) => handleVideoFiles(e.target.files)} />
         </div>
 
         {uploadingVideo && (
@@ -621,6 +668,12 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
             </div>
             <p className="text-xs text-gray-400 mt-1">Uploading large files may take a moment…</p>
+          </div>
+        )}
+
+        {videoError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {videoError}
           </div>
         )}
 
