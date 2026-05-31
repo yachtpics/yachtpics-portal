@@ -58,6 +58,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [status, setStatus] = useState(listing.status);
   const [saving, setSaving] = useState(false);
   const [notifying, setNotifying] = useState(false);
+  const [notifyMediaType, setNotifyMediaType] = useState<"photos" | "video" | "both">("photos");
   const [message, setMessage] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
@@ -203,12 +204,12 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         fetch("/api/email/notify-broker", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id }),
+          body: JSON.stringify({ listingId: listing.id, mediaType: notifyMediaType }),
         }),
         fetch("/api/email/notify-assistant", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id }),
+          body: JSON.stringify({ listingId: listing.id, mediaType: notifyMediaType }),
         }),
       ]);
 
@@ -351,6 +352,17 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <option value="active">Active</option>
             <option value="archived">Archived</option>
             <option value="sold">Sold</option>
+          </select>
+          <select
+            value={notifyMediaType}
+            onChange={(e) => setNotifyMediaType(e.target.value as "photos" | "video" | "both")}
+            disabled={notifying}
+            title="What to tell the broker is ready"
+            className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+          >
+            <option value="photos">Photos</option>
+            <option value="video">Video</option>
+            <option value="both">Photos &amp; Video</option>
           </select>
           <button
             onClick={notifyBroker}

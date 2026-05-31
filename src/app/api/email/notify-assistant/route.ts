@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId } = await req.json();
+    const { listingId, mediaType = "photos" } = await req.json();
     if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
 
     const supabase = createClient(
@@ -45,6 +45,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, sent: 0, message: "No assistant emails on file." });
     }
 
+    // Tailor wording to what was delivered: photos, video, or both.
+    const copy =
+      mediaType === "video"
+        ? {
+            subjectLabel: "Video",
+            headingPrefix: "Video ready for",
+            blurb: `Professional video for <strong style="color:#111827;">${vesselName}</strong> has been delivered to <strong style="color:#111827;">${brokerName}</strong>'s portal and is ready to share with clients.`,
+          }
+        : mediaType === "both"
+        ? {
+            subjectLabel: "Photos &amp; video",
+            headingPrefix: "Photos &amp; video ready for",
+            blurb: `Professional photos and video for <strong style="color:#111827;">${vesselName}</strong> have been delivered to <strong style="color:#111827;">${brokerName}</strong>'s portal and are ready to share with clients.`,
+          }
+        : {
+            subjectLabel: "Photos",
+            headingPrefix: "Photos ready for",
+            blurb: `Professional photos for <strong style="color:#111827;">${vesselName}</strong> have been delivered to <strong style="color:#111827;">${brokerName}</strong>'s portal and are ready to share with clients.`,
+          };
+
     const year = new Date().getFullYear();
 
     // Send to each assistant
@@ -54,7 +74,7 @@ export async function POST(req: NextRequest) {
           ? `${assistant.first_name} ${assistant.last_name ?? ""}`.trim()
           : "there";
 
-        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;"><div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);"><div style="background:#050b14;padding:32px 40px;"><p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p></div><div style="padding:40px;"><h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">Photos ready for ${brokerName}, ${assistantName}</h1><p style="margin:0 0 24px;font-size:15px;color:#6b7280;line-height:1.6;">Professional photos for <strong style="color:#111827;">${vesselName}</strong> have been delivered to <strong style="color:#111827;">${brokerName}</strong>'s portal and are ready to share with clients.</p><p style="margin:0 0 32px;font-size:15px;color:#6b7280;line-height:1.6;">You can view, organize, and send the slideshow directly from the listing.</p><a href="${portalUrl}" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">View Listing &rarr;</a></div><div style="padding:24px 40px;border-top:1px solid #f3f4f6;"><p style="margin:0 0 8px;font-size:13px;color:#9ca3af;">YachtPics &middot; Professional Yacht Photography<br>Questions? Reply to this email or visit <a href="https://yachtpics.com" style="color:#d4a843;">yachtpics.com</a></p><p style="margin:0;font-size:11px;color:#d1d5db;line-height:1.5;">&copy; ${year} YachtPics. All photos and videos remain the intellectual property of YachtPics. Your payment grants a non-exclusive, non-transferable license to advertise the specific vessel shown. Sharing or transferring these files to any third party without a separate written license from YachtPics is prohibited.</p></div></div></body></html>`;
+        const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;"><div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);"><div style="background:#050b14;padding:32px 40px;"><p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p></div><div style="padding:40px;"><h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">${copy.headingPrefix} ${brokerName}, ${assistantName}</h1><p style="margin:0 0 24px;font-size:15px;color:#6b7280;line-height:1.6;">${copy.blurb}</p><p style="margin:0 0 32px;font-size:15px;color:#6b7280;line-height:1.6;">You can view, organize, and send the slideshow directly from the listing.</p><a href="${portalUrl}" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">View Listing &rarr;</a></div><div style="padding:24px 40px;border-top:1px solid #f3f4f6;"><p style="margin:0 0 8px;font-size:13px;color:#9ca3af;">YachtPics &middot; Professional Yacht Photography<br>Questions? Reply to this email or visit <a href="https://yachtpics.com" style="color:#d4a843;">yachtpics.com</a></p><p style="margin:0;font-size:11px;color:#d1d5db;line-height:1.5;">&copy; ${year} YachtPics. All photos and videos remain the intellectual property of YachtPics. Your payment grants a non-exclusive, non-transferable license to advertise the specific vessel shown. Sharing or transferring these files to any third party without a separate written license from YachtPics is prohibited.</p></div></div></body></html>`;
 
         const resendRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
@@ -65,7 +85,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: "YachtPics <hello@yachtpics.com>",
             to: assistant.display_email!,
-            subject: `Photos ready for ${vesselName} — ${brokerName}'s listing`,
+            subject: `${copy.subjectLabel} ready for ${vesselName} — ${brokerName}'s listing`,
             html,
           }),
         });

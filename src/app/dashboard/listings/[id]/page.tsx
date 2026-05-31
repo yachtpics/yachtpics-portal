@@ -148,6 +148,7 @@ export default function BrokerListingPage() {
   interface Document { id: string; storage_path: string; filename: string | null; created_at: string; }
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [docError, setDocError] = useState<string | null>(null);
   const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
@@ -284,24 +285,40 @@ export default function BrokerListingPage() {
 
   async function handleDocFiles(files: FileList | null) {
     if (!files) return;
+    setDocError(null);
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) { setDocError("Your session has expired. Please refresh the page and sign in again."); return; }
+    const selected = Array.from(files);
+    const fileArr = selected.filter(f => f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"));
+    if (fileArr.length === 0) { setDocError("Only PDF documents are supported."); return; }
+    const rejected = selected.length - fileArr.length;
     setUploadingDoc(true);
-    const fileArr = Array.from(files).filter(f => f.type === "application/pdf");
+    let failures = 0;
     for (const file of fileArr) {
       const path = `${user.id}/${id}/${Date.now()}-${file.name}`;
-      const { error } = await supabase.storage.from("listing-documents").upload(path, file, { upsert: false });
-      if (!error) {
-        const { data: newDoc } = await supabase.from("documents").insert({
-          listing_id: id,
-          storage_path: path,
-          filename: file.name,
-          uploaded_by: user.id,
-        }).select().single();
-        if (newDoc) setDocuments(prev => [...prev, newDoc as Document]);
+      const { error: uploadError } = await supabase.storage.from("listing-documents").upload(path, file, { upsert: false });
+      if (uploadError) { failures++; continue; }
+      const { data: newDoc, error: insertError } = await supabase.from("documents").insert({
+        listing_id: id,
+        storage_path: path,
+        filename: file.name,
+        uploaded_by: user.id,
+      }).select().single();
+      if (insertError || !newDoc) {
+        // File reached storage but the record was rejected — surface it instead of failing silently.
+        console.error("Document record insert failed:", insertError);
+        failures++;
+      } else {
+        setDocuments(prev => [...prev, newDoc as Document]);
       }
     }
     setUploadingDoc(false);
+    if (docInputRef.current) docInputRef.current.value = "";
+    if (failures > 0) {
+      setDocError(`${failures} document${failures > 1 ? "s" : ""} failed to upload. Please try again.`);
+    } else if (rejected > 0) {
+      setDocError(`${rejected} file${rejected > 1 ? "s were" : " was"} skipped — only PDF documents are supported.`);
+    }
   }
 
   async function deleteDocument(docId: string, storagePath: string) {
@@ -1420,6 +1437,12 @@ export default function BrokerListingPage() {
           </button>
           <input ref={docInputRef} type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => handleDocFiles(e.target.files)} />
         </div>
+
+        {docError && (
+          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {docError}
+          </div>
+        )}
 
         {documents.length === 0 ? (
           <div
