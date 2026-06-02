@@ -320,7 +320,7 @@ export default function InviteBrokerPage() {
                   className={inputClass}>
                   <option value="">Select type...</option>
                   <option value="__custom__">+ Custom...</option>
-                  {["Billfish","Bowrider","Catamaran","Center Console","Convertible","Cruiser","Cuddy Cabin","Dinghy","Downeast","Dual Console","Express Cruiser","Flybridge","Motor Yacht","Runabout","Sailing Yacht","Sportfish","Sports Cruiser","Tender","Trawler","Walkaround","Other"].map((t) => (
+                  {["Billfish","Bowrider","Catamaran","Center Console","Convertible","Cruiser","Cuddy Cabin","Dinghy","Downeast","Dual Console","Express","Express Cruiser","Flybridge","Motor Yacht","Runabout","Sailing Yacht","Sportfish","Sports Cruiser","Tender","Trawler","Walkaround","Other"].map((t) => (
                     <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
