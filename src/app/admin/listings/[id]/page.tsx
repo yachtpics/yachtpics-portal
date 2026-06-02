@@ -65,11 +65,17 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .from("photos")
     .select("category")
     .not("category", "is", null);
+  // Saved custom categories (from the Photo Categories admin page) — these should
+  // appear in the dropdown even before any photo uses them.
+  const { data: savedCustomRows } = await supabase
+    .from("custom_photo_categories")
+    .select("name");
   const globalCustomCategories = Array.from(
     new Set(
-      (allCatRows ?? [])
-        .map((r) => r.category as string)
-        .filter((c) => !(PHOTO_CATEGORIES as readonly string[]).includes(c))
+      [
+        ...(allCatRows ?? []).map((r) => r.category as string),
+        ...(savedCustomRows ?? []).map((r) => r.name as string),
+      ].filter((c) => c && !(PHOTO_CATEGORIES as readonly string[]).includes(c))
     )
   ).sort((a, b) => a.localeCompare(b));
 
