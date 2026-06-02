@@ -88,6 +88,7 @@ export default function SignupPage() {
             YachtPics<span className="text-[#d4a843]"> Portal</span>
           </Link>
           <p className="text-gray-400 mt-2 text-sm">Create your broker account</p>
+          <p className="text-gray-500 mt-1 text-xs">Signing up is for brokers. Assistants don&apos;t sign up here &mdash; your broker adds you to their team and you&apos;ll get an email to log in.</p>
         </div>
 
         <form onSubmit={handleSubmit} className="bg-[#0a1628] rounded-xl p-8 space-y-4">
