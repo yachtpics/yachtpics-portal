@@ -58,9 +58,10 @@ export default function ListingRow({ listing, showBroker }: { listing: Listing; 
     if (!listing.slideshow_slug) return;
     const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
     const title = listing.vessel_name ?? "Yacht listing";
-    if (typeof navigator !== "undefined" && "share" in navigator) {
+    const nav: Navigator | undefined = typeof navigator !== "undefined" ? navigator : undefined;
+    if (nav && typeof nav.share === "function") {
       // Native share sheet (mobile): text, email, AirDrop, etc.
-      try { await navigator.share({ title, text: `View the photos for ${title}`, url }); } catch { /* cancelled */ }
+      try { await nav.share({ title, text: `View the photos for ${title}`, url }); } catch { /* cancelled */ }
       return;
     }
     // Desktop fallback: copy the link
