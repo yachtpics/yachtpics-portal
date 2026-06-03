@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import HelpTip from "@/components/HelpTip";
+import EnableNotifications from "@/components/EnableNotifications";
 
 interface ProfileData {
   first_name: string;
@@ -157,6 +158,10 @@ export default function ProfilePage() {
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
         <p className="text-gray-500 mt-1 text-sm">Keep your contact info up to date.</p>
+      </div>
+
+      <div className="mb-5">
+        <EnableNotifications />
       </div>
 
       {message && (

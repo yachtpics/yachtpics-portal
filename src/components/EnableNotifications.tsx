@@ -1,0 +1,122 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const arr = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+  return arr;
+}
+
+type State = "unsupported" | "off" | "on" | "denied" | "working";
+
+export default function EnableNotifications() {
+  const [state, setState] = useState<State>("off");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setState("denied");
+      return;
+    }
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setState(sub ? "on" : "off"))
+      .catch(() => setState("off"));
+  }, []);
+
+  async function enable() {
+    setError("");
+    setState("working");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setState(permission === "denied" ? "denied" : "off");
+        return;
+      }
+      const reg = await navigator.serviceWorker.ready;
+      const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      if (!key) throw new Error("Notifications aren't configured yet.");
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(key),
+      });
+      const res = await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub),
+      });
+      if (!res.ok) throw new Error("Couldn't save your subscription. Try again.");
+      setState("on");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setState("off");
+    }
+  }
+
+  async function disable() {
+    setState("working");
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub) {
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        });
+        await sub.unsubscribe();
+      }
+      setState("off");
+    } catch {
+      setState("on");
+    }
+  }
+
+  if (state === "unsupported") return null;
+
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900">Push notifications</h3>
+          <p className="text-xs text-gray-500 mt-0.5 max-w-md">
+            Get an alert on this device when a client opens one of your slideshows — so you know the moment a buyer is looking.
+          </p>
+          {state === "denied" && (
+            <p className="text-xs text-amber-600 mt-2">
+              Notifications are blocked in your browser settings for this site. Enable them there, then reload.
+            </p>
+          )}
+          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+        </div>
+        <div className="shrink-0">
+          {state === "on" ? (
+            <button
+              onClick={disable}
+              className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-gray-300 transition-colors"
+            >
+              Turn off
+            </button>
+          ) : (
+            <button
+              onClick={enable}
+              disabled={state === "working" || state === "denied"}
+              className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            >
+              {state === "working" ? "Enabling…" : "Enable"}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
