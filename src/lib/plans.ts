@@ -25,7 +25,7 @@ export const PLANS = [
     id: "elite",
     name: "Elite",
     description: "21+ active listings",
-    price: 99,
-    priceId: "price_1TQCZzK5G1w3hzIsVgTmBvRR",
+    price: 149,
+    priceId: "price_1Te6f1K5G1w3hzIsGm6Wnola",
   },
 ];
