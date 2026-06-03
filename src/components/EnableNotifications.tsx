@@ -11,6 +11,13 @@ function urlBase64ToUint8Array(base64String: string) {
   return arr;
 }
 
+function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), ms)),
+  ]);
+}
+
 type State = "unsupported" | "off" | "on" | "denied" | "working";
 
 export default function EnableNotifications() {
@@ -42,13 +49,23 @@ export default function EnableNotifications() {
         setState(permission === "denied" ? "denied" : "off");
         return;
       }
-      const reg = await navigator.serviceWorker.ready;
+      let reg = await navigator.serviceWorker.getRegistration();
+      if (!reg) reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      reg = await withTimeout(
+        navigator.serviceWorker.ready,
+        12000,
+        "The app's background worker didn't start. Please reload the page and try again."
+      );
       const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!key) throw new Error("Notifications aren't configured yet.");
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(key),
-      });
+      if (!key) throw new Error("Notifications aren't set up on the server yet.");
+      const sub = await withTimeout(
+        reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(key),
+        }),
+        15000,
+        "Couldn't reach the notification service — a VPN or firewall may be blocking it."
+      );
       const res = await fetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -57,6 +74,7 @@ export default function EnableNotifications() {
       if (!res.ok) throw new Error("Couldn't save your subscription. Try again.");
       setState("on");
     } catch (err) {
+      console.error("Enable notifications failed:", err);
       setError(err instanceof Error ? err.message : "Something went wrong.");
       setState("off");
     }

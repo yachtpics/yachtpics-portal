@@ -10,7 +10,7 @@
  *
  * Bump CACHE_VERSION whenever the precache list or strategy changes.
  */
-const CACHE_VERSION = "v2";
+const CACHE_VERSION = "v3";
 const PRECACHE = `yachtpics-precache-${CACHE_VERSION}`;
 const RUNTIME = `yachtpics-runtime-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline";
@@ -26,7 +26,9 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     caches
       .open(PRECACHE)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
+      // Cache each URL individually so one missing/invalid asset never blocks
+      // the whole install (which would prevent the SW from ever activating).
+      .then((cache) => Promise.all(PRECACHE_URLS.map((u) => cache.add(u).catch(() => {}))))
       .then(() => self.skipWaiting())
   );
 });
