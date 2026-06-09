@@ -26,6 +26,7 @@ export const PHOTO_CATEGORIES = [
   "Laundry",
   "Lazarette",
   "Lower Companionway",
+  "Main Deck Foyer",
   "Master Stateroom",
   "Master Stateroom Head",
   "Mechanical Room",
