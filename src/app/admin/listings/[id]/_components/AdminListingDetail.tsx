@@ -7,6 +7,7 @@ import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import DeleteListingButton from "./DeleteListingButton";
+import DownloadLinkManager from "./DownloadLinkManager";
 
 interface Photo {
   id: string;
@@ -430,6 +431,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </table>
         )}
       </div>
+
+      {/* Public download links (admin only) */}
+      <DownloadLinkManager listingId={listing.id} />
 
       {/* Photos section */}
       <div className="bg-white border border-gray-200 rounded-xl p-6">
