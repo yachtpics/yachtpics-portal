@@ -29,6 +29,7 @@ export const PHOTO_CATEGORIES = [
   "Master Stateroom",
   "Master Stateroom Head",
   "Mechanical Room",
+  "On Deck Master Stateroom",
   "Pantry",
   "Port",
   "Port Guest Stateroom",
