@@ -58,5 +58,7 @@ export const PHOTO_CATEGORIES = [
   "Stern",
   "Swim Platform",
   "Tower",
+  "VIP Stateroom",
+  "VIP Stateroom Head",
   "Other",
 ] as const;
