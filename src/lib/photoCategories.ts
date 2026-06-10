@@ -25,6 +25,7 @@ export const PHOTO_CATEGORIES = [
   "Fwd Starboard Guest Stateroom",
   "Fwd Starboard Guest Stateroom Head",
   "Galley",
+  "Generator Room",
   "Guest Stateroom",
   "Guest Stateroom Head",
   "Head",
