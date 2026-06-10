@@ -49,6 +49,7 @@ interface DownloadRecord {
   downloaded_at: string;
   downloader_name: string;
   downloader_email: string | null;
+  source?: "portal" | "link";
 }
 
 export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[] }) {
@@ -413,6 +414,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               {downloads.map((d) => (
                 <tr key={d.id}>
                   <td className="py-2 pr-4 text-gray-800">
+                    {d.source === "link" && (
+                      <span className="mr-1.5 align-middle text-[10px] font-semibold uppercase bg-[#d4a843]/15 text-[#9a7a1f] border border-[#d4a843]/30 rounded px-1.5 py-0.5">
+                        Public link
+                      </span>
+                    )}
                     {d.downloader_name}
                     {d.downloader_email && (
                       <span className="ml-1 text-gray-400 text-xs">({d.downloader_email})</span>

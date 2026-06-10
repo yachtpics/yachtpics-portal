@@ -10,6 +10,7 @@ type DownloadRecord = {
   downloaded_at: string;
   downloader_name: string;
   downloader_email: string | null;
+  source: "portal" | "link";
 };
 
 export default async function AdminListingPage({ params }: { params: { id: string } }) {
@@ -87,7 +88,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .order("downloaded_at", { ascending: false })
     .limit(20);
 
-  const downloads: DownloadRecord[] = (downloadRows ?? []).map((r) => {
+  const portalDownloads: DownloadRecord[] = (downloadRows ?? []).map((r) => {
     const p = (r.profiles as unknown) as DownloadProfile | null;
     return {
       id: r.id,
@@ -95,8 +96,33 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       downloaded_at: r.downloaded_at,
       downloader_name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : "Unknown",
       downloader_email: p?.display_email ?? null,
+      source: "portal" as const,
     };
   });
+
+  // External downloads via public download links (no portal login)
+  const { data: linkDownloadRows } = await supabase
+    .from("download_link_downloads")
+    .select("id, photo_count, downloaded_at, download_links(label)")
+    .eq("listing_id", params.id)
+    .order("downloaded_at", { ascending: false })
+    .limit(20);
+
+  const linkDownloads: DownloadRecord[] = (linkDownloadRows ?? []).map((r) => {
+    const dl = (r.download_links as unknown) as { label: string | null } | null;
+    return {
+      id: r.id,
+      photo_count: r.photo_count,
+      downloaded_at: r.downloaded_at,
+      downloader_name: dl?.label ? dl.label : "Recipient",
+      downloader_email: null,
+      source: "link" as const,
+    };
+  });
+
+  const downloads: DownloadRecord[] = [...portalDownloads, ...linkDownloads]
+    .sort((a, b) => new Date(b.downloaded_at).getTime() - new Date(a.downloaded_at).getTime())
+    .slice(0, 20);
 
   return (
     <AdminListingDetail
