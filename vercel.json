@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/storage-report",
+      "schedule": "0 12 * * 1,4"
+    }
+  ]
+}
