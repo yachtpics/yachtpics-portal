@@ -12,6 +12,7 @@ export const PHOTO_CATEGORIES = [
   "Day Head",
   "Dinette",
   "Electrical Room",
+  "Enclosed Flybridge",
   "Engine Room",
   "Engines",
   "Flybridge",
