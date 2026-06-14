@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
   try {
@@ -106,6 +107,19 @@ export async function POST(req: NextRequest) {
     });
 
     const resendData = await resendRes.json();
+
+    await logEmail({
+      emailType: "welcome",
+      recipientEmail: email,
+      recipientRole: "broker",
+      recipientId: userId,
+      brokerId: userId,
+      listingId: hasListing ? listings[0].id : null,
+      subject: "Welcome to YachtPics Portal — here's how to get started",
+      status: resendRes.ok ? "sent" : "failed",
+      error: resendRes.ok ? null : (resendData.message ?? "Failed to send"),
+    });
+
     if (!resendRes.ok) {
       return NextResponse.json({ error: resendData.message ?? "Failed to send" }, { status: 500 });
     }

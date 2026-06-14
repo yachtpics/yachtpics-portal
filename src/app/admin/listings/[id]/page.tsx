@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import AdminListingDetail from "./_components/AdminListingDetail";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
@@ -12,9 +13,21 @@ type DownloadRecord = {
   downloader_email: string | null;
   source: "portal" | "link";
 };
+type SentEmail = {
+  id: string;
+  sent_at: string;
+  email_type: string;
+  recipient_email: string;
+  recipient_role: string | null;
+  status: string;
+};
 
 export default async function AdminListingPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
+  const serviceSupabase = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
 
   const { data: listing } = await supabase
     .from("listings")
@@ -101,7 +114,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
   });
 
   // External downloads via public download links (no portal login)
-  const { data: linkDownloadRows } = await supabase
+  const { data: linkDownloadRows } = await serviceSupabase
     .from("download_link_downloads")
     .select("id, photo_count, downloaded_at, download_links(label)")
     .eq("listing_id", params.id)
@@ -124,6 +137,15 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .sort((a, b) => new Date(b.downloaded_at).getTime() - new Date(a.downloaded_at).getTime())
     .slice(0, 20);
 
+  // Emails the system has sent for this listing
+  const { data: sentEmailRows } = await serviceSupabase
+    .from("email_log")
+    .select("id, sent_at, email_type, recipient_email, recipient_role, status")
+    .eq("listing_id", params.id)
+    .order("sent_at", { ascending: false })
+    .limit(50);
+  const sentEmails = (sentEmailRows ?? []) as SentEmail[];
+
   return (
     <AdminListingDetail
       listing={listing as any}
@@ -131,6 +153,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       videos={videosWithUrls}
       globalCustomCategories={globalCustomCategories}
       downloads={downloads}
+      sentEmails={sentEmails}
     />
   );
 }

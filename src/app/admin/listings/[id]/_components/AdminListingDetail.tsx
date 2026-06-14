@@ -52,7 +52,29 @@ interface DownloadRecord {
   source?: "portal" | "link";
 }
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[] }) {
+interface SentEmail {
+  id: string;
+  sent_at: string;
+  email_type: string;
+  recipient_email: string;
+  recipient_role: string | null;
+  status: string;
+}
+
+const EMAIL_TYPE_LABELS: Record<string, string> = {
+  broker_invite: "Broker invite",
+  assistant_invite: "Assistant invite",
+  assistant_added: "Assistant added",
+  resend_invite: "Resent login",
+  photos_ready: "Photos ready",
+  video_ready: "Video ready",
+  media_ready: "Photos & video ready",
+  welcome: "Welcome",
+  download_link: "Download link",
+  client_send: "Sent to client",
+};
+
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[] }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -430,6 +452,50 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                       month: "short", day: "numeric", year: "numeric",
                       hour: "numeric", minute: "2-digit",
                     })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* Emails sent for this listing */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <h2 className="text-sm font-semibold text-gray-700 mb-1">Emails sent for this listing</h2>
+        {sentEmails.length === 0 ? (
+          <p className="text-sm text-gray-400">No emails sent yet for this listing.</p>
+        ) : (
+          <table className="w-full text-sm mt-2">
+            <thead>
+              <tr className="text-left text-xs text-gray-400 font-medium border-b border-gray-100">
+                <th className="pb-2 pr-4">Type</th>
+                <th className="pb-2 pr-4">Recipient</th>
+                <th className="pb-2 pr-4">When</th>
+                <th className="pb-2">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {sentEmails.map((e) => (
+                <tr key={e.id}>
+                  <td className="py-2 pr-4">
+                    <span className="text-[11px] font-medium bg-gray-100 text-gray-700 rounded px-2 py-0.5 whitespace-nowrap">
+                      {EMAIL_TYPE_LABELS[e.email_type] ?? e.email_type}
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-gray-800">
+                    {e.recipient_email}
+                    {e.recipient_role && <span className="ml-1 text-gray-400 text-xs capitalize">({e.recipient_role})</span>}
+                  </td>
+                  <td className="py-2 pr-4 text-gray-500 text-xs whitespace-nowrap">
+                    {new Date(e.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  </td>
+                  <td className="py-2">
+                    {e.status === "failed" ? (
+                      <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">Failed</span>
+                    ) : (
+                      <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded px-2 py-0.5">Sent</span>
+                    )}
                   </td>
                 </tr>
               ))}

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { logEmail } from "@/lib/logEmail";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -141,6 +142,18 @@ export async function POST(req: NextRequest) {
     });
 
     const resendData = await resendRes.json();
+
+    await logEmail({
+      emailType: "broker_invite",
+      recipientEmail: email,
+      recipientRole: "broker",
+      recipientId: brokerId,
+      brokerId,
+      subject: "You've been invited to YachtPics Portal",
+      status: resendRes.ok ? "sent" : "failed",
+      sentBy: user.id,
+    });
+
     if (!resendRes.ok) {
       return NextResponse.json({ error: resendData.message ?? "Account created but invite email failed to send." }, { status: 500 });
     }

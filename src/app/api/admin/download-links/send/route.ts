@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
+import { logEmail } from "@/lib/logEmail";
 
 export const runtime = "nodejs";
 
@@ -8,7 +9,7 @@ const SITE_URL = "https://portal.yachtpics.com";
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
   if (auth.error) return auth.error;
-  const { admin } = auth;
+  const { admin, userId } = auth;
 
   let body: { linkId?: string; email?: string; message?: string };
   try {
@@ -86,6 +87,17 @@ export async function POST(req: NextRequest) {
   });
 
   const data = await res.json();
+
+  await logEmail({
+    emailType: "download_link",
+    recipientEmail: email,
+    listingId: link.listing_id,
+    subject: `${vesselName} — Photo Download`,
+    status: res.ok ? "sent" : "failed",
+    error: res.ok ? null : (data.message ?? "Failed to send"),
+    sentBy: userId,
+  });
+
   if (!res.ok) {
     return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
   }

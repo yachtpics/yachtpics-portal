@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { logEmail } from "@/lib/logEmail";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -99,6 +100,17 @@ export async function POST(req: NextRequest) {
       subject: "Your YachtPics Portal login details",
       html,
     }),
+  });
+
+  await logEmail({
+    emailType: "resend_invite",
+    recipientEmail: email,
+    recipientRole: "broker",
+    recipientId: brokerId,
+    brokerId,
+    subject: "Your YachtPics Portal login details",
+    status: resendRes.ok ? "sent" : "failed",
+    sentBy: user.id,
   });
 
   if (!resendRes.ok) {

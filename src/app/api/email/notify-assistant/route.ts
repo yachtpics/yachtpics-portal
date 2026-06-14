@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
   try {
@@ -90,10 +91,26 @@ export async function POST(req: NextRequest) {
           }),
         });
 
-        if (!resendRes.ok) {
-          const errData = await resendRes.json();
-          throw new Error(errData.message ?? "Failed to send");
+        const ok = resendRes.ok;
+        let errMsg: string | null = null;
+        if (!ok) {
+          const errData = await resendRes.json().catch(() => ({}));
+          errMsg = errData.message ?? "Failed to send";
         }
+
+        await logEmail({
+          emailType: mediaType === "video" ? "video_ready" : mediaType === "both" ? "media_ready" : "photos_ready",
+          recipientEmail: assistant.display_email!,
+          recipientRole: "assistant",
+          brokerId: listing.broker_id,
+          listingId: listing.id,
+          subject: `${copy.subjectLabel} ready for ${vesselName} — ${brokerName}'s listing`,
+          status: ok ? "sent" : "failed",
+          error: errMsg,
+          metadata: { mediaType, broker: brokerName },
+        });
+
+        if (!ok) throw new Error(errMsg ?? "Failed to send");
       })
     );
 

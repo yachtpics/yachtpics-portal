@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
+import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
   try {
@@ -133,6 +134,19 @@ export async function POST(req: NextRequest) {
     });
 
     const data = await res.json();
+
+    await logEmail({
+      emailType: "client_send",
+      recipientEmail: clientEmail,
+      recipientRole: "client",
+      brokerId: listing.broker_id,
+      listingId,
+      subject: `${vesselName} — from ${brokerName}`,
+      status: res.ok ? "sent" : "failed",
+      error: res.ok ? null : (data.message ?? "Failed to send"),
+      sentBy: user.id,
+    });
+
     if (!res.ok) return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
 
     // Log the send for history tracking (broker_id = listing owner, sent_by = actual sender)

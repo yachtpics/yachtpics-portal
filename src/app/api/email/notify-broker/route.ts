@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
   try {
@@ -68,6 +69,20 @@ export async function POST(req: NextRequest) {
     });
 
     const resendData = await resendRes.json();
+
+    await logEmail({
+      emailType: mediaType === "video" ? "video_ready" : mediaType === "both" ? "media_ready" : "photos_ready",
+      recipientEmail: brokerEmail,
+      recipientRole: "broker",
+      recipientId: listing.broker_id,
+      brokerId: listing.broker_id,
+      listingId: listing.id,
+      subject: copy.subject,
+      status: resendRes.ok ? "sent" : "failed",
+      error: resendRes.ok ? null : (resendData.message ?? "Failed to send"),
+      metadata: { mediaType },
+    });
+
     if (!resendRes.ok) return NextResponse.json({ error: resendData.message ?? "Failed to send" }, { status: 500 });
 
     return NextResponse.json({ success: true, emailId: resendData.id });

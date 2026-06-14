@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logEmail } from "@/lib/logEmail";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid confusion
@@ -143,7 +144,7 @@ export async function POST(req: NextRequest) {
           "</html>",
         ].join("\n");
 
-        await fetch("https://api.resend.com/emails", {
+        const assistantNotifyRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
@@ -155,6 +156,17 @@ export async function POST(req: NextRequest) {
             subject: `Photos ready — ${firstName} ${lastName}${hasVessel ? `, ${vesselName}` : ""}`,
             html: notifyHtml,
           }),
+        });
+
+        await logEmail({
+          emailType: "assistant_added",
+          recipientEmail: assistantEmail,
+          recipientRole: "assistant",
+          recipientId: assistantId,
+          brokerId,
+          listingId,
+          subject: `Photos ready — ${firstName} ${lastName}${hasVessel ? `, ${vesselName}` : ""}`,
+          status: assistantNotifyRes.ok ? "sent" : "failed",
         });
 
       } else {
@@ -212,7 +224,7 @@ export async function POST(req: NextRequest) {
           "</html>",
         ].join("\n");
 
-        await fetch("https://api.resend.com/emails", {
+        const assistantInviteRes = await fetch("https://api.resend.com/emails", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${process.env.RESEND_API_KEY}`,
@@ -224,6 +236,17 @@ export async function POST(req: NextRequest) {
             subject: `You've been set up as an assistant — ${firstName} ${lastName}`,
             html: assistantHtml,
           }),
+        });
+
+        await logEmail({
+          emailType: "assistant_invite",
+          recipientEmail: assistantEmail,
+          recipientRole: "assistant",
+          recipientId: assistantId,
+          brokerId,
+          listingId,
+          subject: `You've been set up as an assistant — ${firstName} ${lastName}`,
+          status: assistantInviteRes.ok ? "sent" : "failed",
         });
       }
 
@@ -310,6 +333,17 @@ export async function POST(req: NextRequest) {
         subject,
         html,
       }),
+    });
+
+    await logEmail({
+      emailType: "broker_invite",
+      recipientEmail: email,
+      recipientRole: "broker",
+      recipientId: brokerId,
+      brokerId,
+      listingId,
+      subject,
+      status: resendRes.ok ? "sent" : "failed",
     });
 
     if (!resendRes.ok) {
