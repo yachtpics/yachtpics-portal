@@ -40,6 +40,11 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/auth/login', request.url))
     }
 
+    // Protect client gallery routes
+    if (!user && request.nextUrl.pathname.startsWith('/client')) {
+      return NextResponse.redirect(new URL('/auth/login', request.url))
+    }
+
     // Redirect logged-in users away from auth pages
     if (user && (
       request.nextUrl.pathname.startsWith('/auth/login') ||
@@ -57,5 +62,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/auth/login', '/auth/signup'],
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/client/:path*', '/auth/login', '/auth/signup'],
 }

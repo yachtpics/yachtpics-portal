@@ -18,6 +18,9 @@ export default async function DashboardLayout({ children }: { children: React.Re
     .eq("id", user.id)
     .single();
 
+  // Gallery clients don't belong in the broker dashboard
+  if (profile?.role === "client") redirect("/client");
+
   // Send welcome email on first login (welcomed_at is null)
   if (profile && !profile.welcomed_at) {
     const serviceClient = createServiceClient(

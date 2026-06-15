@@ -9,6 +9,7 @@ const navItems = [
   { label: "Brokers", href: "/admin/brokers", icon: "👥" },
   { label: "Assistants", href: "/admin/assistants", icon: "🤝" },
   { label: "Listings", href: "/admin/listings", icon: "🚢" },
+  { label: "Galleries", href: "/admin/galleries", icon: "🖼️" },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: "📋" },
   { label: "Metrics", href: "/admin/metrics", icon: "📊" },
   { label: "Email Log", href: "/admin/emails", icon: "✉️" },
