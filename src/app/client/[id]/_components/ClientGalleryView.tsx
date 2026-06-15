@@ -3,7 +3,7 @@
 import { useState } from "react";
 import JSZip from "jszip";
 
-type Photo = { id: string; filename: string | null; category: string | null; url: string | null };
+type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null };
 type Video = { id: string; filename: string | null; url: string | null };
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -20,7 +20,7 @@ function triggerDownload(blob: Blob, filename: string) {
 export default function ClientGalleryView({
   galleryId,
   title,
-  photos,
+  photos: initialPhotos,
   videos,
   expired,
   expiresAt,
@@ -34,6 +34,8 @@ export default function ClientGalleryView({
   expiresAt: string | null;
   slideshowUrl: string | null;
 }) {
+  const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -85,6 +87,33 @@ export default function ClientGalleryView({
     } finally {
       setSending(false);
     }
+  }
+
+  function toggleVisible(photo: Photo) {
+    const nv = !(photo.is_visible ?? true);
+    setPhotos((prev) => prev.map((x) => (x.id === photo.id ? { ...x, is_visible: nv } : x)));
+    fetch(`/api/client/galleries/${galleryId}/photos`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "visibility", photoId: photo.id, isVisible: nv }),
+    }).catch(() => {});
+  }
+
+  function onPhotoDrop(toIndex: number) {
+    const from = dragIndex;
+    setDragIndex(null);
+    if (from === null || from === toIndex) return;
+    setPhotos((prev) => {
+      const arr = [...prev];
+      const [moved] = arr.splice(from, 1);
+      arr.splice(toIndex, 0, moved);
+      fetch(`/api/client/galleries/${galleryId}/photos`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reorder", orderedIds: arr.map((p) => p.id) }),
+      }).catch(() => {});
+      return arr;
+    });
   }
 
   async function downloadOne(photo: Photo) {
@@ -280,26 +309,52 @@ export default function ClientGalleryView({
 
       {/* Photo grid */}
       <div className="mt-8">
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Photos</h2>
-        {available.length === 0 ? (
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+          <h2 className="text-sm font-semibold text-gray-700">Photos</h2>
+          {slideshowUrl && photos.length > 1 && (
+            <p className="text-xs text-gray-400">Drag to reorder · 👁 to hide from the slideshow (still downloadable)</p>
+          )}
+        </div>
+        {photos.length === 0 ? (
           <p className="text-sm text-gray-500">No photos in this gallery yet.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {available.map((photo) => (
-              <div key={photo.id} className="group relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-200">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={photo.url!} alt={photo.category ?? "Photo"} loading="lazy" className="w-full h-full object-cover" />
-                {!expired && (
+            {photos.map((photo, i) => (
+              <div
+                key={photo.id}
+                draggable={!!slideshowUrl}
+                onDragStart={() => setDragIndex(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => onPhotoDrop(i)}
+                className={`group relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-200 ${slideshowUrl ? "cursor-move" : ""} ${dragIndex === i ? "ring-2 ring-[#d4a843]" : ""} ${photo.is_visible === false ? "opacity-50" : ""}`}
+              >
+                {photo.url && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={photo.url} alt={photo.category ?? "Photo"} loading="lazy" className="w-full h-full object-cover pointer-events-none" />
+                )}
+
+                {slideshowUrl && (
+                  <button
+                    onClick={() => toggleVisible(photo)}
+                    className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-100 bg-black/60 hover:bg-black/80 text-white text-xs w-7 h-7 rounded-full transition-opacity flex items-center justify-center"
+                    title={photo.is_visible === false ? "Show in slideshow" : "Hide from slideshow"}
+                  >
+                    {photo.is_visible === false ? "🚫" : "👁"}
+                  </button>
+                )}
+
+                {!expired && photo.url && (
                   <button
                     onClick={() => downloadOne(photo)}
                     disabled={busy || downloadingId === photo.id}
-                    className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors"
-                    aria-label="Download photo"
+                    className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-white text-[#050b14] text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity"
                   >
-                    <span className="opacity-0 group-hover:opacity-100 bg-white text-[#050b14] text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity">
-                      {downloadingId === photo.id ? "Downloading…" : "⬇ Download"}
-                    </span>
+                    {downloadingId === photo.id ? "…" : "⬇ Download"}
                   </button>
+                )}
+
+                {photo.is_visible === false && (
+                  <span className="absolute bottom-1.5 left-1.5 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded">Hidden from slideshow</span>
                 )}
               </div>
             ))}

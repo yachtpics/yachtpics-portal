@@ -33,9 +33,8 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
 
   const { data: photos } = await service
     .from("photos")
-    .select("id, storage_path, filename, category, display_order")
+    .select("id, storage_path, filename, category, display_order, is_visible")
     .eq("gallery_id", params.id)
-    .eq("is_visible", true)
     .order("display_order");
   const photoPaths = (photos ?? []).map((p) => p.storage_path);
   const { data: ps } = photoPaths.length > 0
@@ -46,6 +45,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
     id: p.id,
     filename: p.filename,
     category: p.category,
+    is_visible: p.is_visible,
     url: pmap.get(p.storage_path) ?? null,
   }));
 
