@@ -21,7 +21,7 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
   // Photos
   const { data: photos } = await supabase
     .from("photos")
-    .select("id, storage_path, filename, category, display_order")
+    .select("id, storage_path, filename, category, display_order, is_visible")
     .eq("gallery_id", params.id)
     .order("display_order");
   const photoPaths = (photos ?? []).map((p) => p.storage_path);

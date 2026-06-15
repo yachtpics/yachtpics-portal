@@ -1,121 +1,202 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 
-type Slide = { url: string; category: string | null };
+type Slide =
+  | { type: "photo"; url: string; category: string | null }
+  | { type: "video"; url: string; filename: string | null };
 
 export default function GallerySlideshow({
   slug,
   title,
-  slides,
+  photos,
+  videos,
 }: {
   slug: string;
   title: string;
-  slides: Slide[];
+  photos: { url: string; category: string | null }[];
+  videos: { url: string; filename: string | null }[];
 }) {
-  const [index, setIndex] = useState(0);
+  const slides = useMemo<Slide[]>(
+    () => [
+      ...photos.map((p) => ({ type: "photo" as const, url: p.url, category: p.category })),
+      ...videos.map((v) => ({ type: "video" as const, url: v.url, filename: v.filename })),
+    ],
+    [photos, videos]
+  );
+
+  const [view, setView] = useState<"slideshow" | "grid">("slideshow");
+  const [current, setCurrent] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [touchStart, setTouchStart] = useState<number | null>(null);
   const logged = useRef(false);
 
-  // Log one view on mount
   useEffect(() => {
     if (logged.current) return;
     logged.current = true;
     fetch(`/api/g/${slug}/view`, { method: "POST" }).catch(() => {});
   }, [slug]);
 
-  const next = useCallback(() => setIndex((i) => (slides.length ? (i + 1) % slides.length : 0)), [slides.length]);
-  const prev = useCallback(() => setIndex((i) => (slides.length ? (i - 1 + slides.length) % slides.length : 0)), [slides.length]);
+  const next = useCallback(() => setCurrent((c) => (slides.length ? (c + 1) % slides.length : 0)), [slides.length]);
+  const prev = useCallback(() => setCurrent((c) => (slides.length ? (c - 1 + slides.length) % slides.length : 0)), [slides.length]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") prev();
-      else if (e.key === " ") {
-        e.preventDefault();
-        setPlaying((p) => !p);
-      }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [next, prev]);
 
   useEffect(() => {
-    if (!playing || slides.length < 2) return;
+    if (!playing || slides.length < 2 || view !== "slideshow") return;
     const t = setInterval(next, 4000);
     return () => clearInterval(t);
-  }, [playing, next, slides.length]);
+  }, [playing, next, slides.length, view]);
 
   if (slides.length === 0) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-[#050b14] px-6 text-center">
+      <div className="min-h-screen bg-white flex items-center justify-center px-6 text-center">
         <div>
-          <p className="text-lg font-semibold text-white mb-1">YachtPics <span className="text-[#d4a843]">Gallery</span></p>
-          <p className="text-sm text-gray-400 mt-3">This gallery doesn&apos;t have any photos yet.</p>
+          <p className="text-sm font-semibold text-[#d4a843] uppercase tracking-wide">YachtPics</p>
+          <p className="text-gray-500 mt-2">This gallery doesn&apos;t have any photos yet.</p>
         </div>
       </div>
     );
   }
 
-  const current = slides[index];
+  const slide = slides[current];
+  const caption = slide.type === "video" ? "Video" : slide.category ?? "";
+
+  const videoTile = (size: string) => (
+    <div className={`${size} bg-gray-900 flex items-center justify-center`}>
+      <svg className="w-1/4 h-1/4 text-white" fill="currentColor" viewBox="0 0 20 20">
+        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+      </svg>
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-[#050b14] flex flex-col">
-      {/* Top bar */}
-      <div className="flex items-center justify-between px-5 py-4">
-        <div>
-          <p className="text-sm font-semibold text-white tracking-wide">
-            YachtPics <span className="text-[#d4a843]">Gallery</span>
-          </p>
-          <p className="text-xs text-gray-400 mt-0.5">{title}</p>
+    <div className="min-h-screen bg-white flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 gap-4">
+        <div className="min-w-0">
+          <p className="text-[11px] font-semibold text-[#d4a843] tracking-wide uppercase">YachtPics</p>
+          <h1 className="text-gray-900 font-semibold text-base sm:text-lg truncate">{title}</h1>
         </div>
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-400">{index + 1} / {slides.length}</span>
-          {slides.length > 1 && (
+        <div className="flex items-center gap-2 shrink-0">
+          {slides.length > 1 && view === "slideshow" && (
             <button
               onClick={() => setPlaying((p) => !p)}
-              className="text-xs font-medium text-[#050b14] bg-[#d4a843] hover:bg-[#c49a35] px-3 py-1.5 rounded-lg transition-colors"
+              className="text-xs px-3 py-1.5 rounded-md font-medium border border-gray-200 text-gray-600 hover:text-gray-900 transition-colors"
             >
               {playing ? "❚❚ Pause" : "▶ Play"}
             </button>
           )}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+            <button
+              onClick={() => setView("slideshow")}
+              className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${view === "slideshow" ? "bg-[#d4a843] text-white" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              Slideshow
+            </button>
+            <button
+              onClick={() => setView("grid")}
+              className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${view === "grid" ? "bg-[#d4a843] text-white" : "text-gray-500 hover:text-gray-900"}`}
+            >
+              All Photos
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Stage */}
-      <div className="relative flex-1 flex items-center justify-center px-4 pb-6 select-none">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={current.url}
-          alt={current.category ?? "Photo"}
-          className="max-h-[80vh] max-w-full object-contain rounded-lg"
-        />
+      {view === "slideshow" ? (
+        <>
+          <div
+            className="flex-1 relative flex items-center justify-center overflow-hidden bg-gray-50 select-none"
+            style={{ minHeight: "calc(100vh - 240px)" }}
+            onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
+            onTouchEnd={(e) => {
+              if (touchStart === null) return;
+              const d = touchStart - e.changedTouches[0].clientX;
+              if (Math.abs(d) > 50) (d > 0 ? next() : prev());
+              setTouchStart(null);
+            }}
+          >
+            {slide.type === "photo" ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={current}
+                src={slide.url}
+                alt={slide.category ?? ""}
+                className="absolute max-w-full object-contain px-4 sm:px-16"
+                style={{ maxHeight: "calc(100vh - 240px)" }}
+              />
+            ) : (
+              <video
+                key={current}
+                src={slide.url}
+                controls
+                playsInline
+                preload="metadata"
+                className="absolute w-full"
+                style={{ maxHeight: "calc(100vh - 240px)", objectFit: "contain" }}
+              />
+            )}
 
-        {slides.length > 1 && (
-          <>
-            <button
-              onClick={prev}
-              aria-label="Previous"
-              className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white text-xl flex items-center justify-center transition-colors"
-            >
-              ‹
-            </button>
-            <button
-              onClick={next}
-              aria-label="Next"
-              className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-white/10 hover:bg-white/20 text-white text-xl flex items-center justify-center transition-colors"
-            >
-              ›
-            </button>
-          </>
-        )}
+            {slides.length > 1 && (
+              <>
+                <button onClick={prev} aria-label="Previous" className="absolute left-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors" style={{ zIndex: 2 }}>‹</button>
+                <button onClick={next} aria-label="Next" className="absolute right-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors" style={{ zIndex: 2 }}>›</button>
+              </>
+            )}
+          </div>
 
-        {current.category && (
-          <span className="absolute bottom-8 left-1/2 -translate-x-1/2 bg-black/50 text-white text-xs px-3 py-1 rounded-full">
-            {current.category}
-          </span>
-        )}
-      </div>
+          <div className="text-center py-2 px-4 bg-white">
+            <p className="text-gray-500 text-sm">
+              {caption ? `${caption} · ` : ""}
+              {current + 1} / {slides.length}
+            </p>
+          </div>
+
+          <div className="flex gap-2 px-4 pb-4 overflow-x-auto bg-white">
+            {slides.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => setCurrent(i)}
+                className={`shrink-0 rounded-md overflow-hidden transition-all ${i === current ? "ring-2 ring-[#d4a843] opacity-100" : "opacity-40 hover:opacity-70"}`}
+              >
+                {s.type === "photo" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={s.url} alt="" className="w-16 h-10 object-cover" />
+                ) : (
+                  videoTile("w-16 h-10")
+                )}
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <div className="flex-1 p-4 sm:p-6 overflow-auto bg-white">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-w-5xl mx-auto">
+            {slides.map((s, i) => (
+              <button
+                key={i}
+                onClick={() => { setView("slideshow"); setCurrent(i); }}
+                className="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100"
+              >
+                {s.type === "photo" ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={s.url} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  videoTile("w-full h-full")
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

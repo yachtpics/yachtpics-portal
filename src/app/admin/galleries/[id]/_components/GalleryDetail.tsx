@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 
-type Photo = { id: string; storage_path: string; filename: string | null; category: string | null; display_order: number | null; url: string | null };
+type Photo = { id: string; storage_path: string; filename: string | null; category: string | null; display_order: number | null; is_visible: boolean | null; url: string | null };
 type Video = { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null };
 type Recipient = { userId: string; name: string | null; email: string | null };
 type Gallery = { id: string; title: string; gallery_type: string; slug: string; expires_at: string | null; slideshow_published: boolean; created_at: string };
@@ -36,6 +36,7 @@ export default function GalleryDetail({
 
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadingVideos, setUploadingVideos] = useState(false);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
   const [copied, setCopied] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
@@ -73,7 +74,7 @@ export default function GalleryDetail({
         const { data: row, error: insErr } = await supabase
           .from("photos")
           .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name, display_order: order++, is_visible: true })
-          .select("id, storage_path, filename, category, display_order")
+          .select("id, storage_path, filename, category, display_order, is_visible")
           .single();
         if (insErr) throw insErr;
         const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrl(path, 3600);
@@ -115,6 +116,26 @@ export default function GalleryDetail({
     await supabase.storage.from("listing-photos").remove([p.storage_path]);
     await supabase.from("photos").delete().eq("id", p.id);
     setPhotos((prev) => prev.filter((x) => x.id !== p.id));
+  }
+
+  async function toggleVisible(p: Photo) {
+    const nv = !(p.is_visible ?? true);
+    setPhotos((prev) => prev.map((x) => (x.id === p.id ? { ...x, is_visible: nv } : x)));
+    await supabase.from("photos").update({ is_visible: nv }).eq("id", p.id);
+  }
+
+  function onPhotoDrop(toIndex: number) {
+    const from = dragIndex;
+    setDragIndex(null);
+    if (from === null || from === toIndex) return;
+    const arr = [...photos];
+    const [moved] = arr.splice(from, 1);
+    arr.splice(toIndex, 0, moved);
+    setPhotos(arr);
+    // Persist new order
+    arr.forEach((p, i) => {
+      supabase.from("photos").update({ display_order: i }).eq("id", p.id).then(() => {});
+    });
   }
 
   async function deleteVideo(v: Video) {
@@ -202,8 +223,6 @@ export default function GalleryDetail({
       setSending(false);
     }
   }
-
-  const availablePhotos = photos.filter((p) => p.url);
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
@@ -370,18 +389,46 @@ export default function GalleryDetail({
             <input type="file" accept="image/*" multiple className="hidden" disabled={uploadingPhotos} onChange={(e) => handlePhotos(e.target.files)} />
           </label>
         </div>
-        {availablePhotos.length === 0 ? (
+        {photos.length === 0 ? (
           <p className="text-sm text-gray-400">No photos yet.</p>
         ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-            {availablePhotos.map((p) => (
-              <div key={p.id} className="group relative aspect-square rounded-lg overflow-hidden bg-gray-100">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.url!} alt={p.filename ?? "Photo"} loading="lazy" className="w-full h-full object-cover" />
-                <button onClick={() => deletePhoto(p)} className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-black/60 text-white text-xs w-6 h-6 rounded-full transition-opacity" aria-label="Remove photo">×</button>
-              </div>
-            ))}
-          </div>
+          <>
+            <p className="text-xs text-gray-400 mb-3">Drag to reorder · click the eye to hide a photo from the slideshow and downloads.</p>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+              {photos.map((p, i) => (
+                <div
+                  key={p.id}
+                  draggable
+                  onDragStart={() => setDragIndex(i)}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={() => onPhotoDrop(i)}
+                  className={`group relative aspect-square rounded-lg overflow-hidden bg-gray-100 cursor-move ${dragIndex === i ? "ring-2 ring-[#d4a843]" : ""} ${p.is_visible === false ? "opacity-40" : ""}`}
+                >
+                  {p.url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.url} alt={p.filename ?? "Photo"} loading="lazy" className="w-full h-full object-cover pointer-events-none" />
+                  )}
+                  <button
+                    onClick={() => toggleVisible(p)}
+                    className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 bg-black/60 text-white text-xs w-6 h-6 rounded-full transition-opacity flex items-center justify-center"
+                    title={p.is_visible === false ? "Show in slideshow" : "Hide from slideshow"}
+                  >
+                    {p.is_visible === false ? "🚫" : "👁"}
+                  </button>
+                  <button
+                    onClick={() => deletePhoto(p)}
+                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-black/60 text-white text-xs w-6 h-6 rounded-full transition-opacity"
+                    aria-label="Remove photo"
+                  >
+                    ×
+                  </button>
+                  {p.is_visible === false && (
+                    <span className="absolute bottom-1 left-1 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded">Hidden</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 

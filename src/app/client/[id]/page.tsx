@@ -35,6 +35,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
     .from("photos")
     .select("id, storage_path, filename, category, display_order")
     .eq("gallery_id", params.id)
+    .eq("is_visible", true)
     .order("display_order");
   const photoPaths = (photos ?? []).map((p) => p.storage_path);
   const { data: ps } = photoPaths.length > 0
