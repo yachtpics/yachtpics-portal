@@ -38,6 +38,10 @@ export default function GalleryDetail({
   const [uploadingVideos, setUploadingVideos] = useState(false);
   const [msg, setMsg] = useState("");
   const [copied, setCopied] = useState(false);
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendEmail, setSendEmail] = useState("");
+  const [sendMessage, setSendMessage] = useState("");
+  const [sending, setSending] = useState(false);
 
   const [newEmail, setNewEmail] = useState("");
   const [newFirst, setNewFirst] = useState("");
@@ -177,6 +181,28 @@ export default function GalleryDetail({
     }).catch(() => {});
   }
 
+  async function sendSlideshow() {
+    if (!sendEmail.trim()) return;
+    setSending(true);
+    try {
+      const res = await fetch(`/api/admin/galleries/${gallery.id}/send-slideshow`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: sendEmail.trim(), message: sendMessage.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send");
+      setMsg(`Slideshow sent to ${sendEmail.trim()}.`);
+      setSendEmail("");
+      setSendMessage("");
+      setSendOpen(false);
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Failed to send");
+    } finally {
+      setSending(false);
+    }
+  }
+
   const availablePhotos = photos.filter((p) => p.url);
 
   return (
@@ -214,6 +240,42 @@ export default function GalleryDetail({
             <button onClick={copyLink} className="text-sm font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-300 transition-colors shrink-0">
               {copied ? "Copied ✓" : "Copy"}
             </button>
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            {!sendOpen ? (
+              <button onClick={() => setSendOpen(true)} className="text-xs font-medium text-[#9a7a1f] hover:text-[#7d6219]">
+                ✉ Email this slideshow link
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <input
+                  type="email"
+                  value={sendEmail}
+                  onChange={(e) => setSendEmail(e.target.value)}
+                  placeholder="recipient@email.com"
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+                />
+                <textarea
+                  value={sendMessage}
+                  onChange={(e) => setSendMessage(e.target.value)}
+                  placeholder="Optional message…"
+                  rows={2}
+                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843] resize-none"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={sendSlideshow}
+                    disabled={sending || !sendEmail.trim()}
+                    className="bg-[#050b14] hover:bg-[#0c1626] disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {sending ? "Sending…" : "Send link"}
+                  </button>
+                  <button onClick={() => setSendOpen(false)} className="text-xs font-medium px-3 py-2 rounded-lg text-gray-500 hover:text-gray-700">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <div className="bg-white border border-gray-200 rounded-xl p-5">
