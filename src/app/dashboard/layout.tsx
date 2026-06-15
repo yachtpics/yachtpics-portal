@@ -43,7 +43,34 @@ export default async function DashboardLayout({ children }: { children: React.Re
     ? await supabase.from("subscriptions").select("plan, status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single()
     : { data: null };
 
-  const accessStatus = role === "broker" ? getAccessStatus(subscription ?? null) : "active";
+  // Start the 30-day trial on first login: if this broker's trial hasn't been
+  // seeded yet (trial_ends_at is null) and they aren't already paying, start it now.
+  let trialEndsAt = subscription?.trial_ends_at ?? null;
+  if (
+    role === "broker" &&
+    subscription &&
+    !trialEndsAt &&
+    subscription.status !== "active" &&
+    !subscription.stripe_subscription_id
+  ) {
+    const newEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const serviceClient = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    // Only set when still null, so a race can't shorten an already-started trial.
+    await serviceClient
+      .from("subscriptions")
+      .update({ trial_ends_at: newEnd })
+      .eq("broker_id", user.id)
+      .is("trial_ends_at", null);
+    trialEndsAt = newEnd;
+  }
+
+  const effectiveSubscription = subscription
+    ? { ...subscription, trial_ends_at: trialEndsAt }
+    : null;
+  const accessStatus = role === "broker" ? getAccessStatus(effectiveSubscription) : "active";
 
   const userName =
     profile?.first_name
@@ -56,12 +83,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
         brokerName={userName}
         role={role}
         plan={subscription?.status ?? "trialing"}
-        trialEndsAt={subscription?.trial_ends_at ?? null}
+        trialEndsAt={trialEndsAt}
         accessStatus={accessStatus}
       />
       <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">
         {role === "broker" && (
-          <TrialBanner accessStatus={accessStatus} trialEndsAt={subscription?.trial_ends_at ?? null} />
+          <TrialBanner accessStatus={accessStatus} trialEndsAt={trialEndsAt} />
         )}
         {children}
       </main>
