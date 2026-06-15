@@ -35,14 +35,14 @@ export default async function AdminAssistantsPage() {
           <p className="text-gray-400 text-sm">No assistants yet.</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left">
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Email</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Linked Brokers</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Email</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Linked Brokers</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -56,20 +56,20 @@ export default async function AdminAssistantsPage() {
 
                 return (
                   <tr key={assistant.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-900">
+                    <td className="px-4 sm:px-6 py-4 font-medium text-gray-900">
                       {assistant.first_name
                         ? (assistant.first_name + " " + (assistant.last_name ?? "")).trim()
                         : "—"}
                     </td>
-                    <td className="px-6 py-4 text-gray-500 hidden sm:table-cell">{assistant.display_email ?? "—"}</td>
-                    <td className="px-6 py-4 hidden md:table-cell">
+                    <td className="px-4 sm:px-6 py-4 text-gray-500 hidden sm:table-cell">{assistant.display_email ?? "—"}</td>
+                    <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
                       {brokerNames.length === 0 ? (
                         <span className="text-gray-300 text-xs">None yet</span>
                       ) : (
                         <span className="text-gray-600 text-xs">{brokerNames.join(", ")}</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 sm:px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-4">
                         <DeleteAssistantButton
                           assistantId={assistant.id}

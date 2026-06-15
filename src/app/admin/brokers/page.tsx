@@ -36,15 +36,15 @@ export default async function AdminBrokersPage() {
           <p className="text-gray-400 text-sm">No brokers yet.</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 text-left">
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Brokerage</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Contact</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Brokerage</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Contact</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -61,7 +61,7 @@ export default async function AdminBrokersPage() {
 
                 return (
                   <tr key={broker.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4">
                       <div className="flex items-center gap-2">
                         <p className="font-medium text-gray-900">
                           {broker.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : "—"}
@@ -73,12 +73,12 @@ export default async function AdminBrokersPage() {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-gray-500 hidden sm:table-cell">{brokerage}</td>
-                    <td className="px-6 py-4 text-gray-500 hidden md:table-cell">
+                    <td className="px-4 sm:px-6 py-4 text-gray-500 hidden sm:table-cell">{brokerage}</td>
+                    <td className="px-4 sm:px-6 py-4 text-gray-500 hidden md:table-cell">
                       <p>{broker.display_email ?? "—"}</p>
                       <p className="text-xs text-gray-400">{broker.phone ?? ""}</p>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-4 sm:px-6 py-4">
                       <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
                         status === "active" ? "bg-green-50 text-green-700"
                         : status === "trialing" ? "bg-yellow-50 text-yellow-700"
@@ -87,7 +87,7 @@ export default async function AdminBrokersPage() {
                         {status === "trialing" && trialDays !== null ? `Trial · ${trialDays}d` : status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-4 sm:px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-4">
                         <DeleteBrokerButton
                           brokerId={broker.id}
