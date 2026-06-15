@@ -262,8 +262,11 @@ export default function GalleryDetail({
           </div>
           <div className="mt-3 pt-3 border-t border-gray-100">
             {!sendOpen ? (
-              <button onClick={() => setSendOpen(true)} className="text-xs font-medium text-[#9a7a1f] hover:text-[#7d6219]">
-                ✉ Email this slideshow link
+              <button
+                onClick={() => setSendOpen(true)}
+                className="w-full text-sm font-semibold px-4 py-2 rounded-lg border border-[#d4a843] text-[#9a7a1f] hover:bg-[#d4a843]/10 transition-colors"
+              >
+                ✉ Email this slideshow to someone
               </button>
             ) : (
               <div className="space-y-2">

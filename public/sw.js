@@ -10,7 +10,7 @@
  *
  * Bump CACHE_VERSION whenever the precache list or strategy changes.
  */
-const CACHE_VERSION = "v3";
+const CACHE_VERSION = "v4";
 const PRECACHE = `yachtpics-precache-${CACHE_VERSION}`;
 const RUNTIME = `yachtpics-runtime-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline";

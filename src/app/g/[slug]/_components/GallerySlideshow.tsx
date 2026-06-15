@@ -27,6 +27,8 @@ export default function GallerySlideshow({
 
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
+  const [outgoing, setOutgoing] = useState<number | null>(null);
+  const [incomingReady, setIncomingReady] = useState(true);
   const [playing, setPlaying] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const logged = useRef(false);
@@ -37,8 +39,51 @@ export default function GallerySlideshow({
     fetch(`/api/g/${slug}/view`, { method: "POST" }).catch(() => {});
   }, [slug]);
 
-  const next = useCallback(() => setCurrent((c) => (slides.length ? (c + 1) % slides.length : 0)), [slides.length]);
-  const prev = useCallback(() => setCurrent((c) => (slides.length ? (c - 1 + slides.length) % slides.length : 0)), [slides.length]);
+  const goTo = useCallback((i: number) => {
+    setCurrent((cur) => {
+      if (i === cur) return cur;
+      setOutgoing(cur);
+      setIncomingReady(false);
+      return i;
+    });
+  }, []);
+
+  const next = useCallback(() => {
+    setCurrent((c) => {
+      const n = slides.length ? (c + 1) % slides.length : 0;
+      if (n !== c) {
+        setOutgoing(c);
+        setIncomingReady(false);
+      }
+      return n;
+    });
+  }, [slides.length]);
+
+  const prev = useCallback(() => {
+    setCurrent((c) => {
+      const n = slides.length ? (c - 1 + slides.length) % slides.length : 0;
+      if (n !== c) {
+        setOutgoing(c);
+        setIncomingReady(false);
+      }
+      return n;
+    });
+  }, [slides.length]);
+
+  // Fade the incoming slide in
+  useEffect(() => {
+    if (incomingReady) return;
+    const id = requestAnimationFrame(() => setIncomingReady(true));
+    return () => cancelAnimationFrame(id);
+  }, [incomingReady, current]);
+
+  // Drop the outgoing slide once the fade finishes
+  useEffect(() => {
+    if (incomingReady && outgoing !== null) {
+      const t = setTimeout(() => setOutgoing(null), 550);
+      return () => clearTimeout(t);
+    }
+  }, [incomingReady, outgoing]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -67,6 +112,7 @@ export default function GallerySlideshow({
   }
 
   const slide = slides[current];
+  const outSlide = outgoing !== null ? slides[outgoing] : null;
   const caption = slide.type === "video" ? "Video" : slide.category ?? "";
 
   const videoTile = (size: string) => (
@@ -79,7 +125,6 @@ export default function GallerySlideshow({
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
       <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 gap-4">
         <div className="min-w-0">
           <p className="text-[11px] font-semibold text-[#d4a843] tracking-wide uppercase">YachtPics</p>
@@ -124,24 +169,37 @@ export default function GallerySlideshow({
               setTouchStart(null);
             }}
           >
+            {/* Outgoing photo (stays underneath while the new one fades in) */}
+            {outSlide?.type === "photo" && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                key={`out-${outgoing}`}
+                src={outSlide.url}
+                alt=""
+                className="absolute max-w-full object-contain px-4 sm:px-16"
+                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 0 }}
+              />
+            )}
+
+            {/* Current slide */}
             {slide.type === "photo" ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                key={current}
+                key={`in-${current}`}
                 src={slide.url}
                 alt={slide.category ?? ""}
                 className="absolute max-w-full object-contain px-4 sm:px-16"
-                style={{ maxHeight: "calc(100vh - 240px)" }}
+                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 1, opacity: incomingReady ? 1 : 0, transition: "opacity 0.5s ease" }}
               />
             ) : (
               <video
-                key={current}
+                key={`v-${current}`}
                 src={slide.url}
                 controls
                 playsInline
                 preload="metadata"
                 className="absolute w-full"
-                style={{ maxHeight: "calc(100vh - 240px)", objectFit: "contain" }}
+                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 1, objectFit: "contain", opacity: incomingReady ? 1 : 0, transition: "opacity 0.5s ease" }}
               />
             )}
 
@@ -164,7 +222,7 @@ export default function GallerySlideshow({
             {slides.map((s, i) => (
               <button
                 key={i}
-                onClick={() => setCurrent(i)}
+                onClick={() => goTo(i)}
                 className={`shrink-0 rounded-md overflow-hidden transition-all ${i === current ? "ring-2 ring-[#d4a843] opacity-100" : "opacity-40 hover:opacity-70"}`}
               >
                 {s.type === "photo" ? (
@@ -183,7 +241,7 @@ export default function GallerySlideshow({
             {slides.map((s, i) => (
               <button
                 key={i}
-                onClick={() => { setView("slideshow"); setCurrent(i); }}
+                onClick={() => { setView("slideshow"); goTo(i); }}
                 className="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100"
               >
                 {s.type === "photo" ? (
