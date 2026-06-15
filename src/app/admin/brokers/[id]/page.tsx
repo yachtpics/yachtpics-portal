@@ -5,6 +5,7 @@ import DeleteBrokerButton from "./DeleteBrokerButton";
 import AssistantsPanel from "./_components/AssistantsPanel";
 import ResendInviteButton from "./_components/ResendInviteButton";
 import SetTempPasswordButton from "./_components/SetTempPasswordButton";
+import BrokerContactEditor from "./_components/BrokerContactEditor";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
@@ -71,9 +72,13 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
         {/* Contact */}
         <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Contact</p>
-          <p className="text-sm text-gray-900">{profile.display_email ?? "—"}</p>
-          <p className="text-sm text-gray-500 mt-1">{profile.phone ?? "—"}</p>
+          <BrokerContactEditor
+            brokerId={params.id}
+            firstName={profile.first_name}
+            lastName={profile.last_name}
+            email={profile.display_email}
+            phone={profile.phone}
+          />
           {details?.brokerage_address && (
             <p className="text-sm text-gray-500 mt-1">
               {details.brokerage_address}, {details.brokerage_city ?? ""} {details.brokerage_state ?? ""}
