@@ -5,6 +5,7 @@ import AssistantBrokerPanel from "./_components/AssistantBrokerPanel";
 import DeleteAssistantButton from "./_components/DeleteAssistantButton";
 import ResendInviteButton from "./_components/ResendInviteButton";
 import SetTempPasswordButton from "./_components/SetTempPasswordButton";
+import AssistantContactEditor from "./_components/AssistantContactEditor";
 
 export default async function AdminAssistantDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
@@ -74,8 +75,12 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
 
       {/* Contact card */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Contact</p>
-        <p className="text-sm text-gray-900">{assistant.display_email ?? "—"}</p>
+        <AssistantContactEditor
+          assistantId={params.id}
+          firstName={assistant.first_name}
+          lastName={assistant.last_name}
+          email={assistant.display_email}
+        />
         <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
           <ResendInviteButton assistantId={params.id} />
           <SetTempPasswordButton assistantId={params.id} />
