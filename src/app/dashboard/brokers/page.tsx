@@ -17,16 +17,14 @@ export default async function MyBrokersPage() {
 
   if (profile?.role !== "assistant") redirect("/dashboard");
 
-  // Fetch linked broker IDs + profile info
-  const { data: links } = await supabase
-    .from("broker_assistants")
-    .select("broker_id, profiles:broker_id(first_name, last_name, display_email, phone)")
-    .eq("assistant_id", user.id);
+  // All brokers this assistant can access (explicit links + everyone in their brokerage)
+  const { data: brokerIdRows } = await supabase.rpc("accessible_broker_ids");
+  const brokerIds = ((brokerIdRows ?? []) as { broker_id: string }[]).map((r) => r.broker_id);
 
-  const brokerIds = (links ?? []).map((l) => l.broker_id as string);
-
-  // Fetch all brokers + broker_details + listings in parallel
-  const [{ data: details }, { data: allListings }, { data: allBrokers }] = await Promise.all([
+  const [{ data: brokerProfiles }, { data: details }, { data: allListings }, { data: allBrokers }] = await Promise.all([
+    brokerIds.length > 0
+      ? supabase.from("profiles").select("id, first_name, last_name, display_email, phone").in("id", brokerIds)
+      : Promise.resolve({ data: [] as { id: string; first_name: string | null; last_name: string | null; display_email: string | null; phone: string | null }[] }),
     brokerIds.length > 0
       ? supabase.from("broker_details").select("id, brokerage_name, brokerage_website").in("id", brokerIds)
       : Promise.resolve({ data: [] }),
@@ -46,17 +44,16 @@ export default async function MyBrokersPage() {
     listingsByBroker[listing.broker_id]!.push(listing as ListingRow);
   }
 
-  const brokers = (links ?? []).map((l) => {
-    const p = l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null; phone: string | null } | null;
-    const d = detailsMap[l.broker_id as string];
+  const brokers = (brokerProfiles ?? []).map((p) => {
+    const d = detailsMap[p.id];
     return {
-      id: l.broker_id as string,
-      name: p?.first_name ? (p.first_name + " " + (p.last_name ?? "")).trim() : p?.display_email ?? "Broker",
-      email: p?.display_email ?? null,
-      phone: p?.phone ?? null,
+      id: p.id,
+      name: p.first_name ? (p.first_name + " " + (p.last_name ?? "")).trim() : p.display_email ?? "Broker",
+      email: p.display_email ?? null,
+      phone: p.phone ?? null,
       brokerage_name: d?.brokerage_name ?? null,
       brokerage_website: d?.brokerage_website ?? null,
-      listings: listingsByBroker[l.broker_id as string] ?? [],
+      listings: listingsByBroker[p.id] ?? [],
     };
   });
 

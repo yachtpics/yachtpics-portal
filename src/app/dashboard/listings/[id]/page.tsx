@@ -216,7 +216,12 @@ export default function BrokerListingPage() {
     let listingQuery = supabase.from("listings")
       .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id")
       .eq("id", id);
-    if (!isAssistant) listingQuery = listingQuery.eq("broker_id", user.id);
+    if (!isAssistant) {
+      // Brokers: own boats plus shared "house"/new-inventory in their brokerage
+      const { data: rows } = await supabase.rpc("accessible_broker_ids");
+      const ids = ((rows ?? []) as { broker_id: string }[]).map((r) => r.broker_id);
+      listingQuery = listingQuery.in("broker_id", ids.length ? ids : [user.id]);
+    }
     const { data: l } = await listingQuery.single();
 
     if (!l) { router.push("/dashboard/listings"); return; }

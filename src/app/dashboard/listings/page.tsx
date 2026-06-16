@@ -16,7 +16,7 @@ export default async function ListingsPage() {
 
   const isAssistant = profile?.role === "assistant";
 
-  let listings: {
+  type ListingItem = {
     id: string;
     vessel_name: string | null;
     vessel_type: string | null;
@@ -25,42 +25,32 @@ export default async function ListingsPage() {
     location: string | null;
     status: string;
     updated_at: string;
+    broker_id?: string | null;
     broker_name?: string | null;
     slideshow_slug?: string | null;
     slideshow_published?: boolean | null;
-  }[] = [];
+  };
 
-  if (isAssistant) {
-    // Fetch all broker IDs this assistant is linked to
-    const { data: links } = await supabase
-      .from("broker_assistants")
-      .select("broker_id, profiles:broker_id(first_name, last_name, display_email)")
-      .eq("assistant_id", user.id);
+  // Which brokers' boats can this user see? (own, explicitly linked,
+  // everyone in their brokerage if an assistant, plus shared "house" inventory)
+  const { data: brokerIdRows } = await supabase.rpc("accessible_broker_ids");
+  const brokerIds = ((brokerIdRows ?? []) as { broker_id: string }[]).map((r) => r.broker_id);
 
-    const brokerIds = (links ?? []).map((l) => l.broker_id as string);
-
-    if (brokerIds.length > 0) {
-      const { data: allListings } = await supabase
-        .from("listings")
-        .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
-        .in("broker_id", brokerIds)
-        .order("updated_at", { ascending: false });
-
-      listings = (allListings ?? []).map((l) => {
-        const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
-        const brokerName = p?.first_name
-          ? `${p.first_name} ${p.last_name ?? ""}`.trim()
-          : p?.display_email ?? null;
-        return { ...l, broker_name: brokerName };
-      });
-    }
-  } else {
+  let listings: ListingItem[] = [];
+  if (brokerIds.length > 0) {
     const { data } = await supabase
       .from("listings")
-      .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, slideshow_slug, slideshow_published")
-      .eq("broker_id", user.id)
+      .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
+      .in("broker_id", brokerIds)
       .order("updated_at", { ascending: false });
-    listings = data ?? [];
+
+    listings = (data ?? []).map((l) => {
+      const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
+      const brokerName = p?.first_name
+        ? `${p.first_name} ${p.last_name ?? ""}`.trim()
+        : p?.display_email ?? null;
+      return { ...l, broker_name: brokerName };
+    });
   }
 
   const active = listings.filter((l) => l.status === "active");
@@ -108,7 +98,7 @@ export default async function ListingsPage() {
             ) : (
               <div className="space-y-3">
                 {active.map((listing) => (
-                  <ListingRow key={listing.id} listing={listing} showBroker={isAssistant} />
+                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} />
                 ))}
               </div>
             )}
@@ -122,7 +112,7 @@ export default async function ListingsPage() {
               </h2>
               <div className="space-y-3">
                 {archived.map((listing) => (
-                  <ListingRow key={listing.id} listing={listing} showBroker={isAssistant} />
+                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} />
                 ))}
               </div>
             </div>
