@@ -32,6 +32,7 @@ interface Listing {
   description: string | null;
   status: string;
   broker_id: string;
+  is_shared?: boolean | null;
   profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null;
 }
 
@@ -74,12 +75,14 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   client_send: "Sent to client",
 };
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[] }) {
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(listing.status);
+  const [isShared, setIsShared] = useState(listing.is_shared === true);
+  const [sharingBusy, setSharingBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notifying, setNotifying] = useState(false);
   const [notifyMediaType, setNotifyMediaType] = useState<"photos" | "video" | "both">("photos");
@@ -262,6 +265,29 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setTimeout(() => setMessage(""), 3000);
   }
 
+  async function toggleShare() {
+    if (sharingBusy) return;
+    const next = !isShared;
+    setSharingBusy(true);
+    setIsShared(next); // optimistic
+    try {
+      const res = await fetch(`/api/listings/${listing.id}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shared: next }),
+      });
+      if (!res.ok) throw new Error();
+      setMessage(next ? "Shared with the brokerage." : "Removed from brokerage sharing.");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setIsShared(!next); // revert
+      setMessage("Couldn't update sharing. Please try again.");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setSharingBusy(false);
+    }
+  }
+
   async function handleVideoFiles(files: FileList | null) {
     if (!files) return;
     setVideoError(null);
@@ -365,6 +391,23 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
           </p>
           <p className="text-gray-400 text-xs mt-1">Broker: {brokerName}</p>
+          {canShare && (
+            <button
+              onClick={toggleShare}
+              disabled={sharingBusy}
+              title={isShared ? "Visible to every broker in this brokerage" : "Share this boat with every broker in this brokerage"}
+              className={`mt-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
+                isShared
+                  ? "border-[#d4a843] bg-[#d4a843]/10 text-[#a07820]"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843]"
+              }`}
+            >
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${isShared ? "bg-[#d4a843]" : "bg-gray-300"}`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isShared ? "translate-x-3.5" : "translate-x-0.5"}`} />
+              </span>
+              {isShared ? "Shared with brokerage" : "Share with brokerage"}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

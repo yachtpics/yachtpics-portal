@@ -27,31 +27,26 @@ export default async function ListingsPage() {
     updated_at: string;
     broker_id?: string | null;
     broker_name?: string | null;
+    is_shared?: boolean | null;
     slideshow_slug?: string | null;
     slideshow_published?: boolean | null;
   };
 
-  // Which brokers' boats can this user see? (own, explicitly linked,
-  // everyone in their brokerage if an assistant, plus shared "house" inventory)
-  const { data: brokerIdRows } = await supabase.rpc("accessible_broker_ids");
-  const brokerIds = ((brokerIdRows ?? []) as { broker_id: string }[]).map((r) => r.broker_id);
+  // Row-level security decides what this user can see: their own boats, the
+  // boats of brokers they assist / manage, plus any listing individually shared
+  // into their brokerage. We just read listings and let RLS do the filtering.
+  const { data } = await supabase
+    .from("listings")
+    .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, is_shared, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
+    .order("updated_at", { ascending: false });
 
-  let listings: ListingItem[] = [];
-  if (brokerIds.length > 0) {
-    const { data } = await supabase
-      .from("listings")
-      .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
-      .in("broker_id", brokerIds)
-      .order("updated_at", { ascending: false });
-
-    listings = (data ?? []).map((l) => {
-      const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
-      const brokerName = p?.first_name
-        ? `${p.first_name} ${p.last_name ?? ""}`.trim()
-        : p?.display_email ?? null;
-      return { ...l, broker_name: brokerName };
-    });
-  }
+  const listings: ListingItem[] = (data ?? []).map((l) => {
+    const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
+    const brokerName = p?.first_name
+      ? `${p.first_name} ${p.last_name ?? ""}`.trim()
+      : p?.display_email ?? null;
+    return { ...l, broker_name: brokerName };
+  });
 
   const active = listings.filter((l) => l.status === "active");
   const archived = listings.filter((l) => l.status !== "active");

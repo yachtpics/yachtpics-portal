@@ -15,6 +15,7 @@ type Listing = {
   status: string;
   updated_at: string;
   broker_name?: string | null;
+  is_shared?: boolean | null;
   slideshow_slug?: string | null;
   slideshow_published?: boolean | null;
 };
@@ -267,8 +268,13 @@ export default function ListingRow({ listing, showBroker }: { listing: Listing; 
     <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 flex items-center justify-between hover:border-[#d4a843] transition-colors">
       {/* Left — link to the listing */}
       <Link href={`/dashboard/listings/${listing.id}`} className="flex-1 min-w-0 pr-4">
-        <p className="text-sm font-semibold text-gray-900">
+        <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
           {listing.vessel_name ?? "Untitled vessel"}
+          {listing.is_shared && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[#d4a843]/15 text-[#a07820] uppercase tracking-wide">
+              Shared
+            </span>
+          )}
         </p>
         <p className="text-xs text-gray-400 mt-0.5">
           {[

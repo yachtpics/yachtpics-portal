@@ -33,14 +33,17 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .from("listings")
     .select(`
       id, vessel_name, vessel_type, year, length_ft, make, model,
-      asking_price, location, description, status, listing_pdf_url,
+      asking_price, location, description, status, listing_pdf_url, is_shared,
       broker_id,
-      profiles:broker_id(first_name, last_name, display_email)
+      profiles:broker_id(first_name, last_name, display_email, brokerage_id)
     `)
     .eq("id", params.id)
     .single();
 
   if (!listing) notFound();
+
+  // Only boats whose broker belongs to a brokerage can be shared into one.
+  const ownerBrokerageId = (listing.profiles as unknown as { brokerage_id: string | null } | null)?.brokerage_id ?? null;
 
   const { data: photos } = await supabase
     .from("photos")
@@ -154,6 +157,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       globalCustomCategories={globalCustomCategories}
       downloads={downloads}
       sentEmails={sentEmails}
+      canShare={ownerBrokerageId != null}
     />
   );
 }

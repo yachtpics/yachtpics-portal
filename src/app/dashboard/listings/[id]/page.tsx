@@ -37,7 +37,10 @@ export default function BrokerListingPage() {
   const id = params.id as string;
 
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
-  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean } | null>(null);
+  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean } | null>(null);
+  const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
+  const [isShared, setIsShared] = useState(false);
+  const [sharingBusy, setSharingBusy] = useState(false);
   const [subStatus, setSubStatus] = useState<string | null>(null);
   const [accessStatus, setAccessStatus] = useState<AccessStatus>("trial_active");
   const [showRightsModal, setShowRightsModal] = useState(false);
@@ -210,22 +213,19 @@ export default function BrokerListingPage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: profileData } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-    const isAssistant = profileData?.role === "assistant";
+    const { data: profileData } = await supabase.from("profiles").select("role, is_brokerage_admin").eq("id", user.id).single();
+    setIsBrokerageAdmin(profileData?.is_brokerage_admin === true);
 
-    let listingQuery = supabase.from("listings")
-      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id")
-      .eq("id", id);
-    if (!isAssistant) {
-      // Brokers: own boats plus shared "house"/new-inventory in their brokerage
-      const { data: rows } = await supabase.rpc("accessible_broker_ids");
-      const ids = ((rows ?? []) as { broker_id: string }[]).map((r) => r.broker_id);
-      listingQuery = listingQuery.in("broker_id", ids.length ? ids : [user.id]);
-    }
-    const { data: l } = await listingQuery.single();
+    // Row-level security governs access: own boats, boats of brokers you assist
+    // or manage, and any listing individually shared into your brokerage.
+    const { data: l } = await supabase.from("listings")
+      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared")
+      .eq("id", id)
+      .single();
 
     if (!l) { router.push("/dashboard/listings"); return; }
     setListing(l);
+    setIsShared((l as unknown as { is_shared: boolean }).is_shared === true);
 
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
     // Use the API (service role) so RLS doesn't block assistants from reading
@@ -727,6 +727,31 @@ export default function BrokerListingPage() {
     setSlideshowWorking(false);
   }
 
+  async function toggleShare() {
+    if (sharingBusy) return;
+    const next = !isShared;
+    setSharingBusy(true);
+    setIsShared(next); // optimistic
+    setListing((prev) => prev ? { ...prev, is_shared: next } : prev);
+    try {
+      const res = await fetch(`/api/listings/${id}/share`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shared: next }),
+      });
+      if (!res.ok) throw new Error();
+      setMessage(next ? "Shared with the brokerage." : "Removed from brokerage sharing.");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setIsShared(!next); // revert
+      setListing((prev) => prev ? { ...prev, is_shared: !next } : prev);
+      setMessage("Couldn't update sharing. Please try again.");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setSharingBusy(false);
+    }
+  }
+
   function copyLink() {
     if (!listing?.slideshow_slug) return;
     const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
@@ -849,6 +874,23 @@ export default function BrokerListingPage() {
             </Link>
           </div>
           <p className="text-gray-500 text-sm mt-0.5">{listing.location ?? ""}</p>
+          {isBrokerageAdmin && (
+            <button
+              onClick={toggleShare}
+              disabled={sharingBusy}
+              title={isShared ? "This boat is visible to every broker in your brokerage" : "Share this boat with every broker in your brokerage"}
+              className={`mt-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
+                isShared
+                  ? "border-[#d4a843] bg-[#d4a843]/10 text-[#a07820]"
+                  : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843]"
+              }`}
+            >
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${isShared ? "bg-[#d4a843]" : "bg-gray-300"}`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isShared ? "translate-x-3.5" : "translate-x-0.5"}`} />
+              </span>
+              {isShared ? "Shared with brokerage" : "Share with brokerage"}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
