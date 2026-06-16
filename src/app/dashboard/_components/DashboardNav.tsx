@@ -29,9 +29,10 @@ interface Props {
   plan: string;
   trialEndsAt: string | null;
   accessStatus: AccessStatus;
+  isBrokerageAdmin?: boolean;
 }
 
-export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus }: Props) {
+export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus, isBrokerageAdmin }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -46,7 +47,10 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86400000))
     : null;
 
-  const navItems = role === "assistant" ? assistantNavItems : brokerNavItems;
+  const baseNavItems = role === "assistant" ? assistantNavItems : brokerNavItems;
+  const navItems = isBrokerageAdmin
+    ? [baseNavItems[0], { label: "Brokerage", href: "/dashboard/brokerage", icon: "🏢" }, ...baseNavItems.slice(1)]
+    : baseNavItems;
 
   return (
     <>

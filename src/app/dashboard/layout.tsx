@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Fetch profile + subscription
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, role, welcomed_at")
+    .select("first_name, last_name, role, welcomed_at, is_brokerage_admin")
     .eq("id", user.id)
     .single();
 
@@ -88,6 +88,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
         plan={subscription?.status ?? "trialing"}
         trialEndsAt={trialEndsAt}
         accessStatus={accessStatus}
+        isBrokerageAdmin={profile?.is_brokerage_admin ?? false}
       />
       <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">
         {role === "broker" && (
