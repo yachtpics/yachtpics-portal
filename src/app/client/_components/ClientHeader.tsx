@@ -56,6 +56,9 @@ export default function ClientHeader({ name }: { name: string | null }) {
           </span>
           <div className="flex items-center gap-3">
             {name && <span className="text-xs text-gray-400 hidden sm:inline">{name}</span>}
+            <a href="/client/help" className="text-xs text-gray-300 hover:text-white transition-colors">
+              Help
+            </a>
             <button onClick={() => setPwOpen(true)} className="text-xs text-gray-300 hover:text-white transition-colors">
               Change password
             </button>
