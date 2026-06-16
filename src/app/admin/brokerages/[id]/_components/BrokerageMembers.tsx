@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-type Member = { id: string; name: string; email: string | null; role: string; isShared: boolean };
+type Member = { id: string; name: string; email: string | null; role: string; isShared: boolean; isBrokerageAdmin: boolean };
 type Available = { id: string; name: string; email: string | null; role: string; inOtherBrokerage: boolean };
 
 export default function BrokerageMembers({
@@ -53,7 +53,7 @@ export default function BrokerageMembers({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to add");
-      setMembers((prev) => [...prev, { id: person.id, name: person.name, email: person.email, role: person.role, isShared: false }]);
+      setMembers((prev) => [...prev, { id: person.id, name: person.name, email: person.email, role: person.role, isShared: false, isBrokerageAdmin: false }]);
       setAvailable((prev) => prev.filter((a) => a.id !== addId));
       setAddId("");
     } catch (e) {
@@ -80,6 +80,16 @@ export default function BrokerageMembers({
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: m.id, isShared: nv }),
+    }).catch(() => {});
+  }
+
+  async function toggleBrokerageAdmin(m: Member) {
+    const nv = !m.isBrokerageAdmin;
+    setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, isBrokerageAdmin: nv } : x)));
+    await fetch(`/api/admin/brokerages/${brokerageId}/members`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: m.id, brokerageAdmin: nv }),
     }).catch(() => {});
   }
 
@@ -152,6 +162,10 @@ export default function BrokerageMembers({
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                   <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" checked={m.isBrokerageAdmin} onChange={() => toggleBrokerageAdmin(m)} className="w-4 h-4 accent-[#d4a843]" />
+                    Brokerage admin
+                  </label>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
                     <input type="checkbox" checked={m.isShared} onChange={() => toggleShared(m)} className="w-4 h-4 accent-[#d4a843]" />
                     Shared inventory
                   </label>
@@ -172,12 +186,18 @@ export default function BrokerageMembers({
         ) : (
           <div className="space-y-2">
             {assistants.map((m) => (
-              <div key={m.id} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2">
+              <div key={m.id} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2 flex-wrap">
                 <div className="min-w-0">
                   <span className="text-sm font-medium text-gray-800">{m.name}</span>
                   {m.email && <span className="ml-1 text-gray-400 text-xs">{m.email}</span>}
                 </div>
-                <button onClick={() => removeMember(m)} className="text-xs font-medium text-red-600 hover:text-red-700 shrink-0">Remove</button>
+                <div className="flex items-center gap-3 shrink-0">
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
+                    <input type="checkbox" checked={m.isBrokerageAdmin} onChange={() => toggleBrokerageAdmin(m)} className="w-4 h-4 accent-[#d4a843]" />
+                    Brokerage admin
+                  </label>
+                  <button onClick={() => removeMember(m)} className="text-xs font-medium text-red-600 hover:text-red-700">Remove</button>
+                </div>
               </div>
             ))}
           </div>

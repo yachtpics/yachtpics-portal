@@ -13,6 +13,7 @@ type Row = {
   role: string;
   brokerage_id: string | null;
   is_shared_inventory: boolean | null;
+  is_brokerage_admin: boolean | null;
 };
 
 export default async function BrokerageDetailPage({ params }: { params: { id: string } }) {
@@ -26,7 +27,7 @@ export default async function BrokerageDetailPage({ params }: { params: { id: st
 
   const { data: allRaw } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, display_email, role, brokerage_id, is_shared_inventory")
+    .select("id, first_name, last_name, display_email, role, brokerage_id, is_shared_inventory, is_brokerage_admin")
     .in("role", ["broker", "assistant"])
     .order("last_name");
   const all = (allRaw ?? []) as Row[];
@@ -36,7 +37,7 @@ export default async function BrokerageDetailPage({ params }: { params: { id: st
 
   const members = all
     .filter((p) => p.brokerage_id === params.id)
-    .map((p) => ({ id: p.id, name: fmtName(p), email: p.display_email, role: p.role, isShared: !!p.is_shared_inventory }));
+    .map((p) => ({ id: p.id, name: fmtName(p), email: p.display_email, role: p.role, isShared: !!p.is_shared_inventory, isBrokerageAdmin: !!p.is_brokerage_admin }));
 
   const available = all
     .filter((p) => p.brokerage_id !== params.id)
