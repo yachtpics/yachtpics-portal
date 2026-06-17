@@ -494,6 +494,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     {new Date(d.downloaded_at).toLocaleString("en-US", {
                       month: "short", day: "numeric", year: "numeric",
                       hour: "numeric", minute: "2-digit",
+                      timeZone: "America/New_York", timeZoneName: "short",
                     })}
                   </td>
                 </tr>
@@ -531,7 +532,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     {e.recipient_role && <span className="ml-1 text-gray-400 text-xs capitalize">({e.recipient_role})</span>}
                   </td>
                   <td className="py-2 pr-4 text-gray-500 text-xs whitespace-nowrap">
-                    {new Date(e.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    {new Date(e.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" })}
                   </td>
                   <td className="py-2">
                     {e.status === "failed" ? (
@@ -837,7 +838,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
                     <p className="text-xs text-gray-400 mt-0.5">
-                      {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
                     </p>
                   </div>
                   <button

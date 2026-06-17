@@ -49,7 +49,7 @@ export default async function AdminGalleriesPage() {
 
   const now = Date.now();
   function fmt(d: string) {
-    return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return new Date(d).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
   }
 
   return (

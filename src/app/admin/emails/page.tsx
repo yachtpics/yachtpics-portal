@@ -176,6 +176,7 @@ export default async function EmailLogPage({
                       {new Date(r.sent_at).toLocaleString("en-US", {
                         month: "short", day: "numeric", year: "numeric",
                         hour: "numeric", minute: "2-digit",
+                        timeZone: "America/New_York", timeZoneName: "short",
                       })}
                     </td>
                     <td className="py-2.5 px-4">

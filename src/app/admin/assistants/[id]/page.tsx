@@ -49,7 +49,7 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
     : assistant.display_email ?? "Assistant";
 
   const joinedDate = new Date(assistant.created_at).toLocaleDateString("en-US", {
-    month: "long", day: "numeric", year: "numeric",
+    month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York",
   });
 
   return (

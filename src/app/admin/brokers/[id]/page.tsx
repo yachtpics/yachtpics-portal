@@ -108,7 +108,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           <p className="text-sm text-gray-500 mt-2 capitalize">Plan: {subscription?.plan ?? "free"}</p>
           {subscription?.current_period_end && (
             <p className="text-xs text-gray-400 mt-1">
-              Renews {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              Renews {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
             </p>
           )}
         </div>
@@ -119,7 +119,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           <p className="text-sm text-gray-900"><span className="text-2xl font-bold">{listings?.length ?? 0}</span> listings</p>
           <p className="text-sm text-gray-500 mt-1"><span className="font-semibold text-gray-900">{shoots?.length ?? 0}</span> shoots on record</p>
           <p className="text-xs text-gray-400 mt-2">
-            Member since {new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric" })}
+            Member since {new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "America/New_York" })}
           </p>
         </div>
       </div>

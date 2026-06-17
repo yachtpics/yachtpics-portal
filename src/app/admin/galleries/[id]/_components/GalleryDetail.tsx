@@ -54,10 +54,10 @@ export default function GalleryDetail({
   const expired = expiresAt ? new Date(expiresAt).getTime() < Date.now() : false;
 
   function fmtDate(s: string) {
-    return new Date(s).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
+    return new Date(s).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" });
   }
   function fmtDay(s: string) {
-    return new Date(s).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    return new Date(s).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York" });
   }
 
   async function handlePhotos(fileList: FileList | null) {

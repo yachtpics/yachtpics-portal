@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import HelpTip from "@/components/HelpTip";
+import EnableNotifications from "@/components/EnableNotifications";
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -190,6 +191,11 @@ export default async function DashboardPage() {
           </Link>
         </div>
       )}
+
+      {/* Nudge brokers to enable buyer-view + photo-ready push alerts (hides once on) */}
+      <div className="mb-6">
+        <EnableNotifications onlyWhenOff />
+      </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
         <div className="bg-white border border-gray-200 rounded-xl p-5">

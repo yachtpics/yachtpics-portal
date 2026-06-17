@@ -29,7 +29,7 @@ export default async function AdminUsersPage() {
                 ? `${admin.first_name} ${admin.last_name ?? ""}`.trim()
                 : admin.display_email ?? "—";
               const joined = admin.created_at
-                ? new Date(admin.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+                ? new Date(admin.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })
                 : null;
 
               return (

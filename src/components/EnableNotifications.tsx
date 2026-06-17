@@ -20,7 +20,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, message: string): Promise<T> 
 
 type State = "unsupported" | "off" | "on" | "denied" | "working";
 
-export default function EnableNotifications() {
+export default function EnableNotifications({ onlyWhenOff = false }: { onlyWhenOff?: boolean }) {
   const [state, setState] = useState<State>("off");
   const [error, setError] = useState("");
 
@@ -100,6 +100,8 @@ export default function EnableNotifications() {
   }
 
   if (state === "unsupported") return null;
+  // In nudge mode, only show the prompt when notifications are actually off.
+  if (onlyWhenOff && (state === "on" || state === "denied")) return null;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5">
