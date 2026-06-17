@@ -8,7 +8,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "YachtPics",
     description: "Professional photo delivery and slideshow platform for yacht brokers.",
     id: "/",
-    start_url: "/dashboard",
+    start_url: "/launch",
     scope: "/",
     display: "standalone",
     orientation: "portrait",
