@@ -83,6 +83,25 @@ export async function POST(req: NextRequest) {
       metadata: { mediaType },
     });
 
+    // Push the broker (and any assistants) that their media is ready — best effort.
+    try {
+      const { sendPushToUser } = await import("@/lib/sendPush");
+      const payload = {
+        title: copy.heading,
+        body: `${vesselName} — view, download, and share from your portal.`,
+        url: `/dashboard/listings/${listing.id}`,
+        tag: `ready-${listing.id}`,
+      };
+      await sendPushToUser(listing.broker_id, payload);
+      const { data: links } = await supabase
+        .from("broker_assistants")
+        .select("assistant_id")
+        .eq("broker_id", listing.broker_id);
+      await Promise.all((links ?? []).map((l) => sendPushToUser(l.assistant_id, payload)));
+    } catch {
+      // push not configured / failed — never block the delivery email
+    }
+
     if (!resendRes.ok) return NextResponse.json({ error: resendData.message ?? "Failed to send" }, { status: 500 });
 
     return NextResponse.json({ success: true, emailId: resendData.id });
