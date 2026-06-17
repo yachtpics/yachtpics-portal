@@ -35,7 +35,7 @@ function p(text: string): string {
 function featureList(intro: string): string {
   const items: [string, string][] = [
     ["Branded client slideshows", "your logo on a clean, full-screen gallery buyers open on any device — no login."],
-    ["See who's looking", "track every time a buyer opens your slideshow, so you know which listings are landing."],
+    ["Know the moment they look", "we email you the instant a buyer opens your slideshow — perfect timing for a follow-up."],
     ["Add walkthrough videos", "let a buyer feel the boat before they ever step aboard."],
     ["Upload any listing", "keep your whole portfolio camera-ready, not just the boats we shoot."],
     ["One-tap send to clients", "a polished presentation in their inbox in seconds."],

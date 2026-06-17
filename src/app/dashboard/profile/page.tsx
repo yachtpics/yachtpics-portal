@@ -10,6 +10,7 @@ interface ProfileData {
   last_name: string;
   display_email: string;
   phone: string;
+  notify_on_view: boolean;
 }
 
 interface BrokerData {
@@ -38,7 +39,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [role, setRole] = useState<string>("broker");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "" });
+  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "", notify_on_view: true });
   const [broker, setBroker] = useState<BrokerData>({ brokerage_name: "", brokerage_address: "", brokerage_city: "", brokerage_state: "", brokerage_zip: "", brokerage_website: "", license_number: "", bio: "" });
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -56,11 +57,11 @@ export default function ProfilePage() {
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, role").eq("id", user.id).single();
+    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, role, notify_on_view").eq("id", user.id).single();
     const { data: b } = await supabase.from("broker_details").select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url").eq("id", user.id).single();
     const { data: a } = await supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)").eq("broker_id", user.id);
     if (p) {
-      setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "" });
+      setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "", notify_on_view: p.notify_on_view ?? true });
       setRole(p.role ?? "broker");
     }
     if (b) {
@@ -103,6 +104,13 @@ export default function ProfilePage() {
     if (e1 || e2) { setMessage({ type: "error", text: "Something went wrong. Please try again." }); }
     else { setMessage({ type: "success", text: "Profile saved successfully." }); }
     setSaving(false);
+  }
+
+  async function toggleViewAlerts(next: boolean) {
+    setProfile((prev) => ({ ...prev, notify_on_view: next }));
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("profiles").update({ notify_on_view: next }).eq("id", user.id);
   }
 
   async function changeLoginEmail() {
@@ -205,6 +213,26 @@ export default function ProfilePage() {
           </div>
         </div>
       </section>
+
+      {/* Notifications — brokers only */}
+      {!isAssistant && (
+        <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
+          <h2 className="font-semibold text-gray-900 mb-1">Notifications</h2>
+          <p className="text-gray-500 text-sm mb-4">Get a heads-up the moment a buyer opens one of your slideshows.</p>
+          <div className="flex items-center justify-between gap-4">
+            <span className="text-sm text-gray-700">Email me when a buyer opens my slideshow</span>
+            <button
+              type="button"
+              onClick={() => toggleViewAlerts(!profile.notify_on_view)}
+              aria-pressed={profile.notify_on_view}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${profile.notify_on_view ? "bg-[#d4a843]" : "bg-gray-300"}`}
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${profile.notify_on_view ? "translate-x-5" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+          <p className="text-gray-400 text-xs mt-3">We&rsquo;ll only alert you on a fresh open — at most once every few hours per listing, so it never gets noisy.</p>
+        </section>
+      )}
 
       {/* Company Logo — brokers only */}
       {!isAssistant && (
