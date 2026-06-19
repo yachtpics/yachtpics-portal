@@ -45,6 +45,25 @@ export default async function AdminListingPage({ params }: { params: { id: strin
   // Only boats whose broker belongs to a brokerage can be shared into one.
   const ownerBrokerageId = (listing.profiles as unknown as { brokerage_id: string | null } | null)?.brokerage_id ?? null;
 
+  // Co-brokers: all brokers (for the picker) + who's already attached.
+  const { data: allBrokers } = await serviceSupabase
+    .from("profiles")
+    .select("id, first_name, last_name, display_email")
+    .eq("role", "broker")
+    .order("last_name", { ascending: true });
+  const brokerOptions = (allBrokers ?? [])
+    .filter((b) => b.id !== listing.broker_id)
+    .map((b) => ({ id: b.id as string, name: b.first_name ? `${b.first_name} ${b.last_name ?? ""}`.trim() : (b.display_email ?? "Broker") }));
+
+  const { data: coBrokerRows } = await serviceSupabase
+    .from("listing_co_brokers")
+    .select("broker_id, profiles:broker_id(first_name, last_name, display_email)")
+    .eq("listing_id", params.id);
+  const coBrokers = (coBrokerRows ?? []).map((r) => {
+    const p = r.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null;
+    return { id: r.broker_id as string, name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : (p?.display_email ?? "Broker") };
+  });
+
   const { data: photos } = await supabase
     .from("photos")
     .select("id, storage_path, filename, category, display_order, is_visible")
@@ -158,6 +177,8 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       downloads={downloads}
       sentEmails={sentEmails}
       canShare={ownerBrokerageId != null}
+      brokerOptions={brokerOptions}
+      coBrokers={coBrokers}
     />
   );
 }

@@ -48,6 +48,13 @@ export default async function ListingsPage() {
     return { ...l, broker_name: brokerName };
   });
 
+  // Which of these listings is the current user a co-broker on (vs. owner)?
+  const { data: coRows } = await supabase
+    .from("listing_co_brokers")
+    .select("listing_id")
+    .eq("broker_id", user.id);
+  const coBrokerIds = new Set((coRows ?? []).map((r) => r.listing_id as string));
+
   const active = listings.filter((l) => l.status === "active");
   const archived = listings.filter((l) => l.status !== "active");
 
@@ -93,7 +100,7 @@ export default async function ListingsPage() {
             ) : (
               <div className="space-y-3">
                 {active.map((listing) => (
-                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} />
+                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} isCoBroker={coBrokerIds.has(listing.id)} />
                 ))}
               </div>
             )}
@@ -107,7 +114,7 @@ export default async function ListingsPage() {
               </h2>
               <div className="space-y-3">
                 {archived.map((listing) => (
-                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} />
+                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} isCoBroker={coBrokerIds.has(listing.id)} />
                 ))}
               </div>
             </div>

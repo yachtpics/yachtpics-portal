@@ -39,7 +39,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function ListingRow({ listing, showBroker }: { listing: Listing; showBroker?: boolean }) {
+export default function ListingRow({ listing, showBroker, isCoBroker }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean }) {
   // Status dropdown state
   const [status, setStatus] = useState(listing.status);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -273,6 +273,11 @@ export default function ListingRow({ listing, showBroker }: { listing: Listing; 
           {listing.is_shared && (
             <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[#d4a843]/15 text-[#a07820] uppercase tracking-wide">
               Shared
+            </span>
+          )}
+          {isCoBroker && (
+            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 uppercase tracking-wide">
+              Co-broker
             </span>
           )}
         </p>

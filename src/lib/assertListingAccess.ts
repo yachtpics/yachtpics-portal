@@ -11,7 +11,8 @@ import { NextResponse } from "next/server";
 export async function assertListingAccess(
   supabase: SupabaseClient,
   listingId: string,
-  userId: string
+  userId: string,
+  opts: { includeCoBroker?: boolean } = {}
 ): Promise<{ brokerId: string } | NextResponse> {
   const { data: listing } = await supabase
     .from("listings")
@@ -37,10 +38,19 @@ export async function assertListingAccess(
     .eq("broker_id", brokerId)
     .eq("assistant_id", userId)
     .maybeSingle();
+  if (link) return { brokerId };
 
-  if (!link) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  // Co-broker access — opt-in, only for routes that should allow it (e.g. sending).
+  // Delete routes deliberately omit this so co-brokers can't remove content.
+  if (opts.includeCoBroker) {
+    const { data: co } = await supabase
+      .from("listing_co_brokers")
+      .select("broker_id")
+      .eq("listing_id", listingId)
+      .eq("broker_id", userId)
+      .maybeSingle();
+    if (co) return { brokerId };
   }
 
-  return { brokerId };
+  return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
