@@ -6,18 +6,20 @@ import AssistantsPanel from "./_components/AssistantsPanel";
 import ResendInviteButton from "./_components/ResendInviteButton";
 import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 import BrokerContactEditor from "./_components/BrokerContactEditor";
+import AddedByEditor from "./_components/AddedByEditor";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
 
-  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }] =
+  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }] =
     await Promise.all([
-      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at").eq("id", params.id).single(),
+      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("plan, status, trial_ends_at, current_period_end").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at").eq("broker_id", params.id).order("updated_at", { ascending: false }),
       supabase.from("shoots").select("id, shoot_date, amount_cents, payment_status, invoice_number, listings:listing_id(vessel_name)").eq("broker_id", params.id).order("shoot_date", { ascending: false }).limit(10),
       supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
+      supabase.from("profiles").select("id, first_name, last_name").eq("role", "admin").order("first_name", { ascending: true }),
     ]);
 
   if (!profile) notFound();
@@ -26,6 +28,11 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   const trialDays = subscription?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(subscription.trial_ends_at).getTime() - Date.now()) / 86400000))
     : null;
+
+  const admins = (adminProfiles ?? []).map((a) => ({
+    id: a.id as string,
+    name: a.first_name ? `${a.first_name} ${a.last_name ?? ""}`.trim() : "Admin",
+  }));
 
   const assistantList = (assistants ?? []).map((a) => {
     const p = (a.profiles as unknown as { id: string; first_name: string | null; last_name: string | null; display_email: string | null } | null);
@@ -90,6 +97,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
             <ResendInviteButton brokerId={params.id} />
             <SetTempPasswordButton brokerId={params.id} />
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100">
+            <AddedByEditor brokerId={params.id} admins={admins} initialAdminId={profile.invited_by ?? null} />
           </div>
         </div>
 

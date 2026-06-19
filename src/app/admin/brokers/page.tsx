@@ -8,13 +8,24 @@ export default async function AdminBrokersPage() {
   const { data: brokers } = await supabase
     .from("profiles")
     .select(`
-      id, first_name, last_name, display_email, phone, created_at, welcomed_at,
+      id, first_name, last_name, display_email, phone, created_at, welcomed_at, invited_by,
       broker_details(brokerage_name),
       subscriptions(plan, status, trial_ends_at)
     `)
     .eq("role", "broker")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
+
+  const { data: adminProfiles } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name")
+    .eq("role", "admin");
+  const adminNameById = new Map(
+    (adminProfiles ?? []).map((a) => [
+      a.id as string,
+      a.first_name ? `${a.first_name} ${a.last_name ?? ""}`.trim() : "Admin",
+    ])
+  );
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
@@ -43,6 +54,7 @@ export default async function AdminBrokersPage() {
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Brokerage</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Contact</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Added By</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
               </tr>
@@ -77,6 +89,9 @@ export default async function AdminBrokersPage() {
                     <td className="px-4 sm:px-6 py-4 text-gray-500 hidden md:table-cell">
                       <p>{broker.display_email ?? "—"}</p>
                       <p className="text-xs text-gray-400">{broker.phone ?? ""}</p>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 text-gray-500 hidden lg:table-cell">
+                      {broker.invited_by ? (adminNameById.get(broker.invited_by as string) ?? "—") : "—"}
                     </td>
                     <td className="px-4 sm:px-6 py-4">
                       <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${

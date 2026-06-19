@@ -71,6 +71,7 @@ export async function POST(req: NextRequest) {
       first_name: firstName,
       last_name: lastName,
       display_email: email,
+      invited_by: user.id,
     });
 
     if (profileError) {

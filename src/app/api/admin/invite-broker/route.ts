@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid confusion
@@ -21,6 +22,12 @@ export async function POST(req: NextRequest) {
     if (!firstName || !lastName || !email) {
       return NextResponse.json({ error: "First name, last name, and email are required." }, { status: 400 });
     }
+
+    // Identify (and authorize) the admin making the request, so we can record
+    // who added this broker.
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+    const adminUserId = auth.userId;
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -45,7 +52,7 @@ export async function POST(req: NextRequest) {
     const loginLink = "https://portal.yachtpics.com/auth/login";
 
     const { error: profileError } = await supabase.from("profiles").upsert(
-      { id: brokerId, role: "broker", first_name: firstName, last_name: lastName, display_email: email },
+      { id: brokerId, role: "broker", first_name: firstName, last_name: lastName, display_email: email, invited_by: adminUserId },
       { onConflict: "id" }
     );
 

@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     last_name: lastName || null,
     display_email: email,
     brokerage_id: brokerageId,
+    invited_by: userId,
   });
 
   const { data: bk } = await admin.from("brokerages").select("name").eq("id", brokerageId).single();
