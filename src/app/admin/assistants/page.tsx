@@ -9,11 +9,22 @@ export default async function AdminAssistantsPage() {
     .from("profiles")
     .select(`
       id, first_name, last_name, display_email, created_at,
-      broker_assistants!assistant_id(broker_id, profiles:broker_id(first_name, last_name, display_email))
+      broker_assistants!assistant_id(broker_id, profiles:broker_id(first_name, last_name, display_email, invited_by))
     `)
     .eq("role", "assistant")
     .order("last_name", { ascending: true })
     .order("first_name", { ascending: true });
+
+  const { data: adminProfiles } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name")
+    .eq("role", "admin");
+  const adminNameById = new Map(
+    (adminProfiles ?? []).map((a) => [
+      a.id as string,
+      a.first_name ? `${a.first_name} ${a.last_name ?? ""}`.trim() : "Admin",
+    ])
+  );
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
@@ -42,17 +53,27 @@ export default async function AdminAssistantsPage() {
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Email</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Linked Brokers</th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Added By</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
               {assistants.map((assistant) => {
-                type LinkRow = { broker_id: string; profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null };
+                type LinkRow = { broker_id: string; profiles: { first_name: string | null; last_name: string | null; display_email: string | null; invited_by: string | null } | null };
                 const links = (assistant.broker_assistants as unknown) as LinkRow[] | null;
                 const brokerNames = (links ?? []).map((l) => {
                   const p = l.profiles;
                   return p?.first_name ? (p.first_name + " " + (p.last_name ?? "")).trim() : p?.display_email ?? "Unknown";
                 });
+                // Derive the owning admin(s) from the assistant's linked brokers.
+                const ownerIds = Array.from(
+                  new Set((links ?? []).map((l) => l.profiles?.invited_by).filter(Boolean) as string[])
+                );
+                const ownerLabel = ownerIds.length === 0
+                  ? "—"
+                  : ownerIds.length === 1
+                  ? (adminNameById.get(ownerIds[0]) ?? "—")
+                  : "Multiple";
 
                 return (
                   <tr key={assistant.id} className="hover:bg-gray-50 transition-colors">
@@ -69,6 +90,7 @@ export default async function AdminAssistantsPage() {
                         <span className="text-gray-600 text-xs">{brokerNames.join(", ")}</span>
                       )}
                     </td>
+                    <td className="px-4 sm:px-6 py-4 text-gray-500 text-xs hidden lg:table-cell">{ownerLabel}</td>
                     <td className="px-4 sm:px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-4">
                         <DeleteAssistantButton
