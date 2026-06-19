@@ -43,6 +43,22 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     };
   });
 
+  // Listings this broker co-brokers (owned by someone else).
+  const { data: coBrokeredRows } = await supabase
+    .from("listing_co_brokers")
+    .select("listing_id, listings:listing_id(id, vessel_name, status, profiles:broker_id(first_name, last_name, display_email))")
+    .eq("broker_id", params.id);
+  const coBrokered = (coBrokeredRows ?? []).map((r) => {
+    const l = r.listings as unknown as { id: string; vessel_name: string | null; status: string; profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null } | null;
+    const owner = l?.profiles;
+    return {
+      id: l?.id ?? (r.listing_id as string),
+      vessel_name: l?.vessel_name ?? "Untitled",
+      status: l?.status ?? "—",
+      ownerName: owner?.first_name ? `${owner.first_name} ${owner.last_name ?? ""}`.trim() : (owner?.display_email ?? "—"),
+    };
+  });
+
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       {/* Header */}
@@ -172,6 +188,32 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           </ul>
         )}
       </div>
+
+      {/* Co-brokered listings (owned by another broker) */}
+      {coBrokered.length > 0 && (
+        <div className="bg-white border border-gray-200 rounded-xl mb-6">
+          <div className="px-6 py-4 border-b border-gray-100">
+            <h2 className="font-semibold text-gray-900">Co-brokered Listings ({coBrokered.length})</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Boats owned by another broker that this broker shares access to.</p>
+          </div>
+          <ul className="divide-y divide-gray-100">
+            {coBrokered.map((l) => (
+              <li key={l.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                <div>
+                  <p className="text-sm font-medium text-gray-900">{l.vessel_name}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">Owned by {l.ownerName}</p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 uppercase tracking-wide">Co-broker</span>
+                  <Link href={`/admin/listings/${l.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                    Manage →
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Shoot history */}
       <div className="bg-white border border-gray-200 rounded-xl mb-6">
