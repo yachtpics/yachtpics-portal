@@ -4,12 +4,22 @@ import { useState } from "react";
 
 const NAVY = "#050b14";
 
-// Shows the hero photo in full — never cropped — whatever its shape.
-// The image is scaled to fit, centered on the brand navy. Height is capped per
-// orientation so the flyer always stays on one page: portraits can run a little
-// taller (they're narrow), landscapes are kept a touch shorter.
-export default function HeroImage({ src, alt }: { src: string; alt: string }) {
+// Renders the flyer hero in one of two modes:
+//  • "fit"  — shows the whole photo, never cropped, centered on the brand navy.
+//             Height is capped per orientation so the flyer stays one page.
+//  • "fill" — fills the band edge-to-edge (cropping as needed). Best when you'd
+//             rather a vertical photo use the full width than show a matte.
+export default function HeroImage({ src, alt, fit = "fit" }: { src: string; alt: string; fit?: "fit" | "fill" }) {
   const [aspect, setAspect] = useState<number | null>(null);
+
+  if (fit === "fill") {
+    return (
+      <div style={{ background: NAVY, width: "100%" }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={alt} style={{ width: "100%", height: "4in", objectFit: "cover", display: "block" }} />
+      </div>
+    );
+  }
 
   // Until measured, assume landscape (the common case) to avoid a layout flash.
   const tall = aspect !== null && aspect < 1;

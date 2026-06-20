@@ -40,6 +40,7 @@ export default function BrokerListingPage() {
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean } | null>(null);
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
+  const [heroFit, setHeroFit] = useState<"fit" | "fill">("fit");
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -229,7 +230,7 @@ export default function BrokerListingPage() {
     // Row-level security governs access: own boats, boats of brokers you assist
     // or manage, and any listing individually shared into your brokerage.
     const { data: l } = await supabase.from("listings")
-      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, hero_photo_id")
+      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, hero_photo_id, hero_fit")
       .eq("id", id)
       .single();
 
@@ -237,6 +238,7 @@ export default function BrokerListingPage() {
     setListing(l);
     setIsShared((l as unknown as { is_shared: boolean }).is_shared === true);
     setHeroPhotoId((l as unknown as { hero_photo_id: string | null }).hero_photo_id ?? null);
+    setHeroFit((l as unknown as { hero_fit: string | null }).hero_fit === "fill" ? "fill" : "fit");
 
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
     // Use the API (service role) so RLS doesn't block assistants from reading
@@ -629,6 +631,16 @@ export default function BrokerListingPage() {
     }
     setMessage(next ? "Cover photo set." : "Cover photo cleared.");
     setTimeout(() => setMessage(""), 2500);
+  }
+
+  // How the cover photo sits on the flyer: "fit" shows the whole photo,
+  // "fill" crops it to fill the band edge-to-edge.
+  async function updateHeroFit(mode: "fit" | "fill") {
+    if (mode === heroFit) return;
+    const prev = heroFit;
+    setHeroFit(mode); // optimistic
+    const { error } = await supabase.from("listings").update({ hero_fit: mode }).eq("id", id);
+    if (error) { setHeroFit(prev); }
   }
 
   async function updateCategory(photoId: string, category: string) {
@@ -1102,9 +1114,28 @@ export default function BrokerListingPage() {
       ) : (
         <div>
           {!selectMode && (
-            <p className="text-xs text-gray-400 mb-3">
-              Tap the <span className="text-[#d4a843]">★</span> on a photo to make it the cover — that&apos;s the image used on the spec sheet and social posts. If none is set, the first photo is used.
-            </p>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs text-gray-400 flex-1 min-w-[220px]">
+                Tap the <span className="text-[#d4a843]">★</span> on a photo to make it the cover — that&apos;s the image used on the spec sheet and social posts. If none is set, the first photo is used.
+              </p>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-gray-400">Flyer cover:</span>
+                <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                  {(["fit", "fill"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => updateHeroFit(m)}
+                      title={m === "fit" ? "Show the whole photo (no cropping)" : "Fill the space edge-to-edge (may crop)"}
+                      className={`text-xs font-medium px-3 py-1.5 transition-colors ${
+                        heroFit === m ? "bg-[#050b14] text-white" : "bg-white text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      {m === "fit" ? "Fit (show all)" : "Fill (crop)"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>

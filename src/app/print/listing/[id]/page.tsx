@@ -131,7 +131,7 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
           </div>
 
           {/* Hero */}
-          {heroUrl && <HeroImage src={heroUrl} alt={listing.vessel_name ?? ""} />}
+          {heroUrl && <HeroImage src={heroUrl} alt={listing.vessel_name ?? ""} fit={listing.hero_fit === "fill" ? "fill" : "fit"} />}
 
           {/* Title + price */}
           <div style={{ padding: "24px 32px 8px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
