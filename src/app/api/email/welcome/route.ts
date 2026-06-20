@@ -80,9 +80,15 @@ export async function POST(req: NextRequest) {
           </td>
         </tr>
         <tr>
-          <td style="padding:14px 0;vertical-align:top;">
+          <td style="padding:14px 0;border-bottom:1px solid #f3f4f6;vertical-align:top;">
             <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">5</span>
             <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Download anytime</strong> — grab full-resolution files individually or all at once using the Download All button on your listing page.</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:14px 0;vertical-align:top;">
+            <span style="display:inline-block;background:#d4a843;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">6</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Market it everywhere</strong> — print a branded spec sheet, generate a ready-to-post social image with caption, and share a QR code that opens your slideshow on any phone. Buyers can request info right from the slideshow, and every inquiry lands in your inbox.</span>
           </td>
         </tr>
       </table>
