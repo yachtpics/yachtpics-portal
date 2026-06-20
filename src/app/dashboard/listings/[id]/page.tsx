@@ -887,6 +887,9 @@ export default function BrokerListingPage() {
             <Link href={`/dashboard/listings/${id}/edit`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
               Edit
             </Link>
+            <a href={`/print/listing/${id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
+              📄 Spec Sheet
+            </a>
           </div>
           <p className="text-gray-500 text-sm mt-0.5">{listing.location ?? ""}</p>
           {isBrokerageAdmin && (

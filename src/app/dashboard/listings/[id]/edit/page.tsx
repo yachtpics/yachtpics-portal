@@ -28,6 +28,16 @@ export default function EditListingPage() {
     location: "",
     description: "",
     status: "active",
+    beam_ft: "",
+    draft_ft: "",
+    staterooms: "",
+    heads: "",
+    engines: "",
+    engine_hours: "",
+    fuel_type: "",
+    cruising_speed_kn: "",
+    max_speed_kn: "",
+    hull_material: "",
   });
 
   useEffect(() => {
@@ -39,7 +49,7 @@ export default function EditListingPage() {
       // brokers and linked assistants. RLS allows reads by authenticated users.
       const { data } = await supabase
         .from("listings")
-        .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status")
+        .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material")
         .eq("id", id)
         .single();
 
@@ -58,6 +68,16 @@ export default function EditListingPage() {
         location: data.location ?? "",
         description: data.description ?? "",
         status: data.status ?? "active",
+        beam_ft: data.beam_ft?.toString() ?? "",
+        draft_ft: data.draft_ft?.toString() ?? "",
+        staterooms: data.staterooms?.toString() ?? "",
+        heads: data.heads?.toString() ?? "",
+        engines: data.engines ?? "",
+        engine_hours: data.engine_hours?.toString() ?? "",
+        fuel_type: data.fuel_type ?? "",
+        cruising_speed_kn: data.cruising_speed_kn?.toString() ?? "",
+        max_speed_kn: data.max_speed_kn?.toString() ?? "",
+        hull_material: data.hull_material ?? "",
       });
       setLoading(false);
     }
@@ -86,6 +106,16 @@ export default function EditListingPage() {
         location: form.location || null,
         description: form.description || null,
         status: form.status,
+        beam_ft: form.beam_ft ? parseFloat(form.beam_ft) : null,
+        draft_ft: form.draft_ft ? parseFloat(form.draft_ft) : null,
+        staterooms: form.staterooms ? parseInt(form.staterooms) : null,
+        heads: form.heads ? parseInt(form.heads) : null,
+        engines: form.engines || null,
+        engine_hours: form.engine_hours ? parseInt(form.engine_hours) : null,
+        fuel_type: form.fuel_type || null,
+        cruising_speed_kn: form.cruising_speed_kn ? parseFloat(form.cruising_speed_kn) : null,
+        max_speed_kn: form.max_speed_kn ? parseFloat(form.max_speed_kn) : null,
+        hull_material: form.hull_material || null,
       }),
     });
 
@@ -185,6 +215,53 @@ export default function EditListingPage() {
                 <option value="sold">Sold</option>
                 <option value="archived">Archived</option>
               </select>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white border border-gray-200 rounded-xl p-6">
+          <h2 className="font-semibold text-gray-900 mb-1">Specifications <span className="text-gray-400 font-normal text-sm">(optional)</span></h2>
+          <p className="text-gray-500 text-sm mb-4">These appear on the public listing and the printable flyer.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Beam (ft)</label>
+              <input className={inputClass} type="number" step="any" value={form.beam_ft} onChange={(e) => setForm({ ...form, beam_ft: e.target.value })} placeholder="15.5" />
+            </div>
+            <div>
+              <label className={labelClass}>Draft (ft)</label>
+              <input className={inputClass} type="number" step="any" value={form.draft_ft} onChange={(e) => setForm({ ...form, draft_ft: e.target.value })} placeholder="4.2" />
+            </div>
+            <div>
+              <label className={labelClass}>Staterooms</label>
+              <input className={inputClass} type="number" value={form.staterooms} onChange={(e) => setForm({ ...form, staterooms: e.target.value })} placeholder="3" />
+            </div>
+            <div>
+              <label className={labelClass}>Heads</label>
+              <input className={inputClass} type="number" value={form.heads} onChange={(e) => setForm({ ...form, heads: e.target.value })} placeholder="2" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Engines</label>
+              <input className={inputClass} value={form.engines} onChange={(e) => setForm({ ...form, engines: e.target.value })} placeholder="Twin Volvo Penta IPS 600" />
+            </div>
+            <div>
+              <label className={labelClass}>Engine Hours</label>
+              <input className={inputClass} type="number" value={form.engine_hours} onChange={(e) => setForm({ ...form, engine_hours: e.target.value })} placeholder="450" />
+            </div>
+            <div>
+              <label className={labelClass}>Fuel Type</label>
+              <input className={inputClass} value={form.fuel_type} onChange={(e) => setForm({ ...form, fuel_type: e.target.value })} placeholder="Diesel" />
+            </div>
+            <div>
+              <label className={labelClass}>Cruising Speed (kn)</label>
+              <input className={inputClass} type="number" step="any" value={form.cruising_speed_kn} onChange={(e) => setForm({ ...form, cruising_speed_kn: e.target.value })} placeholder="22" />
+            </div>
+            <div>
+              <label className={labelClass}>Max Speed (kn)</label>
+              <input className={inputClass} type="number" step="any" value={form.max_speed_kn} onChange={(e) => setForm({ ...form, max_speed_kn: e.target.value })} placeholder="30" />
+            </div>
+            <div className="sm:col-span-2">
+              <label className={labelClass}>Hull Material</label>
+              <input className={inputClass} value={form.hull_material} onChange={(e) => setForm({ ...form, hull_material: e.target.value })} placeholder="Fiberglass" />
             </div>
           </div>
         </section>

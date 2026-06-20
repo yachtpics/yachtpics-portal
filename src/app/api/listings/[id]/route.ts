@@ -39,6 +39,16 @@ export async function PATCH(
       "location",
       "description",
       "status",
+      "beam_ft",
+      "draft_ft",
+      "staterooms",
+      "heads",
+      "engines",
+      "engine_hours",
+      "fuel_type",
+      "cruising_speed_kn",
+      "max_speed_kn",
+      "hull_material",
     ];
 
     const updates: Record<string, unknown> = {};
