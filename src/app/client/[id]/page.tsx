@@ -33,7 +33,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
 
   const { data: photos } = await service
     .from("photos")
-    .select("id, storage_path, filename, category, display_order, is_visible")
+    .select("id, storage_path, filename, category, display_order, is_visible, uploaded_by")
     .eq("gallery_id", params.id)
     .order("display_order");
   const photoPaths = (photos ?? []).map((p) => p.storage_path);
@@ -51,9 +51,22 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
 
   const { data: videos } = await service
     .from("videos")
-    .select("id, storage_path, filename, created_at")
+    .select("id, storage_path, filename, created_at, uploaded_by")
     .eq("gallery_id", params.id)
     .order("created_at");
+
+  // Only claim YachtPics ownership in the footer when ALL media is ours
+  // (delivered/no uploader, or uploaded by an admin) — not broker uploads.
+  const uploaderIds = Array.from(new Set([
+    ...(photos ?? []).map((p) => p.uploaded_by),
+    ...(videos ?? []).map((v) => v.uploaded_by),
+  ].filter(Boolean) as string[]));
+  let mediaByYachtPics = true;
+  if (uploaderIds.length > 0) {
+    const { data: uploaders } = await service.from("profiles").select("id, role").in("id", uploaderIds);
+    const adminIds = new Set((uploaders ?? []).filter((u) => u.role === "admin").map((u) => u.id));
+    mediaByYachtPics = uploaderIds.every((id) => adminIds.has(id));
+  }
   const vidPaths = (videos ?? []).map((v) => v.storage_path);
   const { data: vs } = vidPaths.length > 0
     ? await service.storage.from("listing-videos").createSignedUrls(vidPaths, 7200)
@@ -77,6 +90,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
       expired={expired}
       expiresAt={gallery.expires_at}
       slideshowUrl={slideshowUrl}
+      mediaByYachtPics={mediaByYachtPics}
     />
   );
 }

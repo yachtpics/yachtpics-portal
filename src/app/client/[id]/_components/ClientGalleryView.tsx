@@ -25,6 +25,7 @@ export default function ClientGalleryView({
   expired,
   expiresAt,
   slideshowUrl,
+  mediaByYachtPics = true,
 }: {
   galleryId: string;
   title: string;
@@ -33,6 +34,7 @@ export default function ClientGalleryView({
   expired: boolean;
   expiresAt: string | null;
   slideshowUrl: string | null;
+  mediaByYachtPics?: boolean;
 }) {
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -364,7 +366,9 @@ export default function ClientGalleryView({
 
       <div className="mt-10 border-t border-gray-200 pt-5">
         <p className="text-xs text-gray-400 leading-relaxed max-w-2xl">
-          Photos and videos are provided by YachtPics for your use. © {new Date().getFullYear()} YachtPics. All rights reserved.
+          {mediaByYachtPics
+            ? `Photos and videos are provided by YachtPics for your use. © ${new Date().getFullYear()} YachtPics. All rights reserved.`
+            : "Photos and videos are provided for your use. Please don't share or redistribute them without permission."}
         </p>
       </div>
     </div>
