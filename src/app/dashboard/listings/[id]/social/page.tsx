@@ -33,6 +33,32 @@ function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: numb
   ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
 }
 
+const BADGES = ["For Sale", "Just Listed", "Price Reduced", "Open House", "Sold"];
+
+type ListingData = {
+  vessel_name: string | null; year: number | null; make: string | null; model: string | null;
+  vessel_type: string | null; length_ft: number | null; location: string | null; asking_price: number | null;
+};
+
+function buildCaption(l: ListingData): string {
+  const title = [l.year, l.make, l.model, l.vessel_name].filter(Boolean).join(" ");
+  const lines: string[] = [];
+  lines.push(`🛥️ ${title || l.vessel_name || "Now Available"}`);
+  const spec = [l.length_ft ? `${l.length_ft}′` : null, l.vessel_type].filter(Boolean).join(" · ");
+  if (spec) lines.push(spec);
+  if (l.location) lines.push(`📍 ${l.location}`);
+  if (l.asking_price) lines.push(`💰 $${Number(l.asking_price).toLocaleString("en-US")}`);
+  lines.push("");
+  lines.push("Now available — message or call for full details, more photos, or a private showing.");
+  lines.push("");
+  const tags = new Set<string>();
+  if (l.make) tags.add(`#${l.make.replace(/[^a-z0-9]/gi, "").toLowerCase()}`);
+  ["#yachtsforsale", "#yachtlife", "#yachting", "#boatsforsale", "#luxuryyachts", "#yachtbroker", "#boatlife", "#forsale"].forEach((t) => tags.add(t));
+  if (l.location) { const loc = l.location.split(",")[0].replace(/[^a-z0-9]/gi, "").toLowerCase(); if (loc) tags.add(`#${loc}`); }
+  lines.push(Array.from(tags).join(" "));
+  return lines.join("\n");
+}
+
 export default function SocialGraphicPage() {
   const supabase = createClient();
   const id = useParams().id as string;
@@ -41,18 +67,22 @@ export default function SocialGraphicPage() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [format, setFormat] = useState<Format>("square");
-  const [listing, setListing] = useState<{ vessel_name: string | null; year: number | null; make: string | null; length_ft: number | null; asking_price: number | null } | null>(null);
+  const [listing, setListing] = useState<ListingData | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rendering, setRendering] = useState(false);
+  const [badge, setBadge] = useState("For Sale");
+  const [caption, setCaption] = useState("");
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     (async () => {
       const { data: l } = await supabase.from("listings")
-        .select("vessel_name, year, make, length_ft, asking_price, broker_id")
+        .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, broker_id")
         .eq("id", id).single();
       if (!l) { setLoading(false); return; }
       setListing(l);
+      setCaption(buildCaption(l));
       const { data: det } = await supabase.from("broker_details").select("logo_url").eq("id", l.broker_id).maybeSingle();
       setLogoUrl(det?.logo_url ?? null);
       const { data: ph } = await supabase.from("photos")
@@ -90,11 +120,11 @@ export default function SocialGraphicPage() {
     ctx.fillStyle = grad;
     ctx.fillRect(0, h - gradH, w, gradH);
 
-    // FOR SALE tag (top-left)
+    // Status tag (top-left)
     ctx.fillStyle = GOLD;
     ctx.font = "700 34px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
     ctx.textBaseline = "top";
-    ctx.fillText("FOR SALE", 64, 60);
+    ctx.fillText(badge.toUpperCase(), 64, 60);
 
     // Vessel name + details + price (bottom-left)
     const pad = 64;
@@ -140,7 +170,7 @@ export default function SocialGraphicPage() {
       } catch { /* skip logo */ }
     }
     setRendering(false);
-  }, [selected, listing, format, logoUrl]);
+  }, [selected, listing, format, logoUrl, badge]);
 
   useEffect(() => { render(); }, [render]);
 
@@ -157,6 +187,14 @@ export default function SocialGraphicPage() {
     }, "image/png");
   }
 
+  async function copyCaption() {
+    try {
+      await navigator.clipboard.writeText(caption);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { /* clipboard blocked */ }
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading…</div>;
   if (!listing) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Listing not found.</div>;
 
@@ -165,7 +203,7 @@ export default function SocialGraphicPage() {
       <div className="mb-6">
         <Link href={`/dashboard/listings/${id}`} className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← Back to Listing</Link>
         <h1 className="text-2xl font-bold text-gray-900 mt-1">Social Post</h1>
-        <p className="text-gray-500 mt-1 text-sm">Make a branded, post-ready image for Instagram, Facebook, or Stories — pick a photo and download.</p>
+        <p className="text-gray-500 mt-1 text-sm">Make a branded, post-ready image for Instagram, Facebook, or Stories — pick a photo, choose a tag, and grab the matching caption.</p>
       </div>
 
       {/* Format toggle */}
@@ -176,6 +214,19 @@ export default function SocialGraphicPage() {
             {f === "square" ? "Square (feed)" : "Story (9:16)"}
           </button>
         ))}
+      </div>
+
+      {/* Status tag */}
+      <div className="mb-5">
+        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tag</p>
+        <div className="flex flex-wrap gap-2">
+          {BADGES.map((b) => (
+            <button key={b} onClick={() => setBadge(b)}
+              className={`text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors ${badge === b ? "bg-[#d4a843] text-[#050b14] border-[#d4a843]" : "bg-white text-gray-600 border-gray-200 hover:border-gray-300"}`}>
+              {b}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Preview */}
@@ -205,6 +256,23 @@ export default function SocialGraphicPage() {
           </div>
         </>
       )}
+
+      {/* Caption + hashtags */}
+      <div className="mt-8">
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Caption &amp; hashtags</p>
+          <button onClick={copyCaption} className="text-xs font-semibold text-[#c49a35] hover:underline">
+            {copied ? "✓ Copied" : "Copy"}
+          </button>
+        </div>
+        <textarea
+          value={caption}
+          onChange={(e) => setCaption(e.target.value)}
+          rows={9}
+          className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2.5 focus:outline-none focus:border-[#d4a843] resize-y leading-relaxed"
+        />
+        <p className="text-xs text-gray-400 mt-1.5">Tweak it however you like, then copy and paste into your post.</p>
+      </div>
     </div>
   );
 }
