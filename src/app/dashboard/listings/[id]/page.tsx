@@ -18,6 +18,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
+import ListingQRCode from "@/components/ListingQRCode";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 
 interface Photo {
@@ -146,6 +147,14 @@ export default function BrokerListingPage() {
   interface ClientSend { id: string; client_email: string; sent_at: string; included_slideshow: boolean; document_count: number; message: string | null; }
   const [clientSends, setClientSends] = useState<ClientSend[]>([]);
   const [viewTimestamps, setViewTimestamps] = useState<Date[]>([]);
+
+  interface Lead { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; source: string | null; created_at: string; }
+  const [leads, setLeads] = useState<Lead[]>([]);
+
+  async function markLead(leadId: string, status: string) {
+    setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, status } : l));
+    await supabase.from("listing_leads").update({ status }).eq("id", leadId);
+  }
 
   // Documents
   interface Document { id: string; storage_path: string; filename: string | null; created_at: string; }
@@ -284,6 +293,12 @@ export default function BrokerListingPage() {
       .eq("listing_id", id)
       .order("viewed_at", { ascending: false });
     setViewTimestamps((viewRows ?? []).map(r => new Date(r.viewed_at)));
+
+    const { data: leadRows } = await supabase.from("listing_leads")
+      .select("id, name, email, phone, message, status, source, created_at")
+      .eq("listing_id", id)
+      .order("created_at", { ascending: false });
+    setLeads((leadRows ?? []) as Lead[]);
 
     setLoading(false);
   }
@@ -1468,6 +1483,13 @@ export default function BrokerListingPage() {
         )}
       </div>
 
+      {/* QR code — only when the slideshow is live */}
+      {listing.slideshow_published && listing.slideshow_slug && (
+        <div className="mt-8">
+          <ListingQRCode url={`https://portal.yachtpics.com/s/${listing.slideshow_slug}?src=qr`} vesselName={listing.vessel_name} />
+        </div>
+      )}
+
       {/* Documents section */}
       <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
@@ -1542,6 +1564,54 @@ export default function BrokerListingPage() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      {/* Inquiries section */}
+      <div className="mt-8 bg-white border border-gray-200 rounded-xl">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div>
+            <h2 className="text-base font-semibold text-gray-900">Inquiries ({leads.length})</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Buyers who reached out from this boat&apos;s slideshow.</p>
+          </div>
+          {leads.some((l) => l.status === "new") && (
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              {leads.filter((l) => l.status === "new").length} new
+            </span>
+          )}
+        </div>
+        {leads.length === 0 ? (
+          <div className="px-6 py-8 text-center text-gray-400 text-sm">No inquiries yet. When a buyer hits &ldquo;Request Info&rdquo; on your slideshow, they&apos;ll appear here.</div>
+        ) : (
+          <ul className="divide-y divide-gray-100">
+            {leads.map((l) => (
+              <li key={l.id} className="px-6 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                      {l.name ?? "Buyer"}
+                      {l.status === "new" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 uppercase tracking-wide">New</span>}
+                    </p>
+                    <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                      {l.email && <a href={`mailto:${l.email}`} className="hover:text-[#c49a35]">{l.email}</a>}
+                      {l.phone && <a href={`tel:${l.phone}`} className="hover:text-[#c49a35]">{l.phone}</a>}
+                      <span className="text-gray-400">{new Date(l.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                      {l.source && !["slideshow", "link"].includes(l.source) && (
+                        <span className="text-[#a07820] font-medium uppercase">via {l.source}</span>
+                      )}
+                    </div>
+                    {l.message && <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{l.message}</p>}
+                  </div>
+                  <button
+                    onClick={() => markLead(l.id, l.status === "new" ? "contacted" : "new")}
+                    className={`shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${l.status === "new" ? "border-gray-200 text-gray-600 hover:border-[#d4a843]" : "border-green-200 bg-green-50 text-green-700"}`}
+                  >
+                    {l.status === "new" ? "Mark contacted" : "✓ Contacted"}
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 

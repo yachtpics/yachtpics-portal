@@ -10,8 +10,9 @@ const THROTTLE_MS = 6 * 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId, slug } = await req.json();
+    const { listingId, slug, source } = await req.json();
     if (!listingId || !slug) return NextResponse.json({ ok: true });
+    const src = typeof source === "string" ? source.slice(0, 24).replace(/[^a-z0-9_-]/gi, "") || null : null;
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -29,6 +30,7 @@ export async function POST(req: NextRequest) {
     await supabase.from("slideshow_views").insert({
       listing_id: listingId,
       slideshow_slug: slug,
+      source: src,
     });
 
     const isFreshOpen = (recentViews ?? 0) === 0;

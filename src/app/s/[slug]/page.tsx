@@ -8,10 +8,15 @@ export const revalidate = 0;
 
 export default async function PublicSlideshowPage({
   params,
+  searchParams,
 }: {
   params: { slug: string };
+  searchParams: { src?: string };
 }) {
   headers();
+
+  // Where did this view come from? (qr, send, share, social… defaults to link)
+  const source = (searchParams.src ?? "link").toString().slice(0, 24).replace(/[^a-z0-9_-]/gi, "") || "link";
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -94,6 +99,7 @@ export default async function PublicSlideshowPage({
       photos={withUrls}
       videos={videos}
       brokerId={listing.broker_id}
+      source={source}
     />
   );
 }

@@ -46,9 +46,10 @@ interface Props {
   photos: Photo[];
   videos?: Video[];
   brokerId?: string;
+  source?: string;
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId, source = "link" }: Props) {
   // Videos first, then photos — unified slide array
   const slides = useMemo<Slide[]>(() => [
     ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
@@ -66,6 +67,34 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const [broker, setBroker] = useState<BrokerInfo>(initialBroker);
   const [verticalIds, setVerticalIds] = useState<Set<string>>(new Set());
 
+  // Inquiry form
+  const [inquireOpen, setInquireOpen] = useState(false);
+  const [inq, setInq] = useState({ name: "", email: "", phone: "", message: "" });
+  const [inqBusy, setInqBusy] = useState(false);
+  const [inqSent, setInqSent] = useState(false);
+  const [inqError, setInqError] = useState("");
+
+  async function submitInquiry(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inq.name.trim() || !inq.email.trim()) return;
+    setInqBusy(true);
+    setInqError("");
+    try {
+      const res = await fetch(`/api/s/${slug}/inquire`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...inq, source }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Something went wrong.");
+      setInqSent(true);
+    } catch (err) {
+      setInqError(err instanceof Error ? err.message : "Something went wrong.");
+    } finally {
+      setInqBusy(false);
+    }
+  }
+
   function handleImgLoad(e: React.SyntheticEvent<HTMLImageElement>, id: string) {
     const img = e.currentTarget;
     if (img.naturalHeight > img.naturalWidth) {
@@ -81,7 +110,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       fetch("/api/slideshow/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, slug }),
+        body: JSON.stringify({ listingId, slug, source }),
       }).catch(() => {});
     }
   }, [listingId, slug]);
@@ -385,27 +414,74 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
           </div>
         </div>
-        <div className="text-right shrink-0">
-          {broker.phone && (
-            <a
-              href={`tel:${broker.phone}`}
-              className="text-[#d4a843] text-sm font-medium block hover:text-[#c49a35] transition-colors"
-            >
-              {broker.phone}
-            </a>
-          )}
-          {broker.website && (
-            <a
-              href={broker.website.startsWith("http") ? broker.website : `https://${broker.website}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-gray-500 text-xs hover:text-gray-700 transition-colors"
-            >
-              {broker.website.replace(/^https?:\/\//, "")}
-            </a>
-          )}
+        <div className="flex items-center gap-3 shrink-0">
+          <button
+            onClick={() => { setInquireOpen(true); setInqSent(false); setInqError(""); }}
+            className="bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+          >
+            Request Info
+          </button>
+          <div className="text-right">
+            {broker.phone && (
+              <a
+                href={`tel:${broker.phone}`}
+                className="text-[#d4a843] text-sm font-medium block hover:text-[#c49a35] transition-colors"
+              >
+                {broker.phone}
+              </a>
+            )}
+            {broker.website && (
+              <a
+                href={broker.website.startsWith("http") ? broker.website : `https://${broker.website}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-gray-500 text-xs hover:text-gray-700 transition-colors"
+              >
+                {broker.website.replace(/^https?:\/\//, "")}
+              </a>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Inquiry modal */}
+      {inquireOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setInquireOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-gray-100">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Request information</h2>
+                <p className="text-xs text-gray-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
+              </div>
+              <button onClick={() => setInquireOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+            </div>
+            {inqSent ? (
+              <div className="px-6 py-10 text-center">
+                <p className="text-green-600 text-2xl mb-2">✓</p>
+                <p className="text-gray-900 font-semibold text-sm">Thanks — your message is on its way.</p>
+                <p className="text-gray-500 text-xs mt-1">{broker.name} will be in touch shortly.</p>
+                <button onClick={() => setInquireOpen(false)} className="mt-5 text-sm text-gray-500 hover:text-gray-700">Close</button>
+              </div>
+            ) : (
+              <form onSubmit={submitInquiry} className="px-6 py-5 space-y-3">
+                <input value={inq.name} onChange={(e) => setInq({ ...inq, name: e.target.value })} required placeholder="Your name"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843]" />
+                <input type="email" value={inq.email} onChange={(e) => setInq({ ...inq, email: e.target.value })} required placeholder="Email"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843]" />
+                <input value={inq.phone} onChange={(e) => setInq({ ...inq, phone: e.target.value })} placeholder="Phone (optional)"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843]" />
+                <textarea value={inq.message} onChange={(e) => setInq({ ...inq, message: e.target.value })} rows={3} placeholder={`I'm interested in ${listing.vessel_name ?? "this yacht"}…`}
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] resize-none" />
+                {inqError && <p className="text-xs text-red-600">{inqError}</p>}
+                <button type="submit" disabled={inqBusy || !inq.name.trim() || !inq.email.trim()}
+                  className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold py-2.5 rounded-lg transition-colors">
+                  {inqBusy ? "Sending…" : "Send to broker"}
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

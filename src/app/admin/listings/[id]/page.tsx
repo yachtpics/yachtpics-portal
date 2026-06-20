@@ -55,6 +55,13 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .filter((b) => b.id !== listing.broker_id)
     .map((b) => ({ id: b.id as string, name: b.first_name ? `${b.first_name} ${b.last_name ?? ""}`.trim() : (b.display_email ?? "Broker") }));
 
+  const { data: leadRows } = await serviceSupabase
+    .from("listing_leads")
+    .select("id, name, email, phone, message, status, created_at")
+    .eq("listing_id", params.id)
+    .order("created_at", { ascending: false });
+  const leads = (leadRows ?? []) as { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; created_at: string }[];
+
   const { data: coBrokerRows } = await serviceSupabase
     .from("listing_co_brokers")
     .select("broker_id, profiles:broker_id(first_name, last_name, display_email)")
@@ -179,6 +186,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       canShare={ownerBrokerageId != null}
       brokerOptions={brokerOptions}
       coBrokers={coBrokers}
+      leads={leads}
     />
   );
 }

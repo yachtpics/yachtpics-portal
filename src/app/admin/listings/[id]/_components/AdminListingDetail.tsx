@@ -76,7 +76,9 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
   client_send: "Sent to client",
 };
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], coBrokers = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; coBrokers?: { id: string; name: string }[] }) {
+type Lead = { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; created_at: string };
+
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], coBrokers = [], leads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[] }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -463,6 +465,32 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       )}
 
       <CoBrokerManager listingId={listing.id} brokers={brokerOptions} initialCoBrokers={coBrokers} />
+
+      {/* Inquiries (leads from the public slideshow) */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <p className="text-sm font-semibold text-gray-900 mb-1">Inquiries ({leads.length})</p>
+        <p className="text-xs text-gray-500 mb-4">Buyers who reached out from this boat&rsquo;s slideshow.</p>
+        {leads.length === 0 ? (
+          <p className="text-sm text-gray-400">No inquiries yet.</p>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {leads.map((l) => (
+              <div key={l.id} className="py-3">
+                <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                  {l.name ?? "Buyer"}
+                  {l.status === "new" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 uppercase tracking-wide">New</span>}
+                </p>
+                <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3">
+                  {l.email && <a href={`mailto:${l.email}`} className="hover:text-[#c49a35]">{l.email}</a>}
+                  {l.phone && <a href={`tel:${l.phone}`} className="hover:text-[#c49a35]">{l.phone}</a>}
+                  <span className="text-gray-400">{new Date(l.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}</span>
+                </div>
+                {l.message && <p className="text-sm text-gray-600 mt-1">{l.message}</p>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Download Activity */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
