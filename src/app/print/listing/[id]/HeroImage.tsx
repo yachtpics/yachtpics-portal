@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 
-const NAVY = "#050b14";
+const MATTE = "#ffffff";
 
 // Renders the flyer hero in one of two modes:
-//  • "fit"  — shows the whole photo, never cropped, centered on the brand navy.
+//  • "fit"  — shows the whole photo, never cropped, centered on a white matte.
 //             Height is capped per orientation so the flyer stays one page.
 //  • "fill" — fills the band edge-to-edge (cropping as needed). Best when you'd
 //             rather a vertical photo use the full width than show a matte.
@@ -14,7 +14,7 @@ export default function HeroImage({ src, alt, fit = "fit" }: { src: string; alt:
 
   if (fit === "fill") {
     return (
-      <div style={{ background: NAVY, width: "100%" }}>
+      <div style={{ background: MATTE, width: "100%" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={src} alt={alt} style={{ width: "100%", height: "4in", objectFit: "cover", display: "block" }} />
       </div>
@@ -26,7 +26,7 @@ export default function HeroImage({ src, alt, fit = "fit" }: { src: string; alt:
   const maxH = tall ? "4.9in" : "4.5in";
 
   return (
-    <div style={{ background: NAVY, display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
+    <div style={{ background: MATTE, display: "flex", justifyContent: "center", alignItems: "center", width: "100%" }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
