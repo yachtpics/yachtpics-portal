@@ -1,7 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import ListingRow from "./_components/ListingRow";
+import ListingsBrowser from "./_components/ListingsBrowser";
 
 export default async function ListingsPage() {
   const supabase = await createClient();
@@ -25,6 +25,8 @@ export default async function ListingsPage() {
     location: string | null;
     status: string;
     updated_at: string;
+    make?: string | null;
+    model?: string | null;
     broker_id?: string | null;
     broker_name?: string | null;
     is_shared?: boolean | null;
@@ -37,7 +39,7 @@ export default async function ListingsPage() {
   // into their brokerage. We just read listings and let RLS do the filtering.
   const { data } = await supabase
     .from("listings")
-    .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, is_shared, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
+    .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, make, model, is_shared, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
     .order("updated_at", { ascending: false });
 
   const listings: ListingItem[] = (data ?? []).map((l) => {
@@ -54,9 +56,6 @@ export default async function ListingsPage() {
     .select("listing_id")
     .eq("broker_id", user.id);
   const coBrokerIds = new Set((coRows ?? []).map((r) => r.listing_id as string));
-
-  const active = listings.filter((l) => l.status === "active");
-  const archived = listings.filter((l) => l.status !== "active");
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
@@ -89,37 +88,11 @@ export default async function ListingsPage() {
           </p>
         </div>
       ) : (
-        <>
-          {/* Active */}
-          <div className="mb-8">
-            <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-              Active ({active.length})
-            </h2>
-            {active.length === 0 ? (
-              <p className="text-gray-400 text-sm">No active listings.</p>
-            ) : (
-              <div className="space-y-3">
-                {active.map((listing) => (
-                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} isCoBroker={coBrokerIds.has(listing.id)} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Archived / Sold */}
-          {archived.length > 0 && (
-            <div>
-              <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">
-                Archived / Sold ({archived.length})
-              </h2>
-              <div className="space-y-3">
-                {archived.map((listing) => (
-                  <ListingRow key={listing.id} listing={listing} showBroker={listing.broker_id !== user.id} isCoBroker={coBrokerIds.has(listing.id)} />
-                ))}
-              </div>
-            </div>
-          )}
-        </>
+        <ListingsBrowser
+          listings={listings}
+          currentUserId={user.id}
+          coBrokerIds={Array.from(coBrokerIds)}
+        />
       )}
     </div>
   );
