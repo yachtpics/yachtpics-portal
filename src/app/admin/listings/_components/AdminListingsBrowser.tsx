@@ -84,7 +84,7 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Broker</th>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Location</th>
                 <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Status</th>
-                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
+                <th className="px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide sticky right-0 bg-white"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -107,7 +107,7 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                       {listing.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-6 py-4 text-right sticky right-0 bg-white whitespace-nowrap shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                     <div className="flex items-center justify-end gap-4">
                       <DeleteListingButton
                         listingId={listing.id}
