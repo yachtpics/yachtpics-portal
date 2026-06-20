@@ -14,7 +14,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   // Fetch profile + subscription
   const { data: profile } = await supabase
     .from("profiles")
-    .select("first_name, last_name, role, welcomed_at, is_brokerage_admin")
+    .select("first_name, last_name, role, welcomed_at, is_brokerage_admin, brokerage_id")
     .eq("id", user.id)
     .single();
 
@@ -73,7 +73,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const effectiveSubscription = subscription
     ? { ...subscription, trial_ends_at: trialEndsAt }
     : null;
-  const accessStatus = role === "broker" ? getAccessStatus(effectiveSubscription) : "active";
+  let accessStatus = role === "broker" ? getAccessStatus(effectiveSubscription) : "active";
+
+  // A broker whose office (brokerage) carries an active Office plan is unlocked,
+  // regardless of their own trial status.
+  if (role === "broker" && accessStatus !== "active" && profile?.brokerage_id) {
+    const svc = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data: office } = await svc
+      .from("brokerages")
+      .select("subscription_status")
+      .eq("id", profile.brokerage_id)
+      .single();
+    if (office && (office.subscription_status === "active" || office.subscription_status === "trialing")) {
+      accessStatus = "active";
+    }
+  }
 
   const userName =
     profile?.first_name

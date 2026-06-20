@@ -22,7 +22,26 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  function periodEndIso(subscription: Stripe.Subscription): string | null {
+    const raw = (subscription as any).current_period_end
+      ?? (subscription as any).items?.data?.[0]?.current_period_end
+      ?? null;
+    return raw ? new Date(raw * 1000).toISOString() : null;
+  }
+
   async function upsertSubscription(subscription: Stripe.Subscription) {
+    // Office (brokerage) subscription? Route it to the brokerages table instead.
+    const brokerageId = subscription.metadata?.brokerage_id;
+    if (brokerageId) {
+      await supabase.from("brokerages").update({
+        stripe_subscription_id: subscription.id,
+        subscription_status: subscription.status,
+        current_period_end: periodEndIso(subscription),
+        trial_used: true,
+      }).eq("id", brokerageId);
+      return;
+    }
+
     let userId = subscription.metadata?.supabase_user_id;
 
     // Fallback: look up broker by stripe_customer_id if metadata is missing
@@ -71,6 +90,14 @@ export async function POST(req: NextRequest) {
     }
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
+      const brokerageId = subscription.metadata?.brokerage_id;
+      if (brokerageId) {
+        await supabase.from("brokerages").update({
+          subscription_status: "canceled",
+          stripe_subscription_id: null,
+        }).eq("id", brokerageId);
+        break;
+      }
       let userId = subscription.metadata?.supabase_user_id;
       if (!userId && subscription.customer) {
         const { data } = await supabase.from("subscriptions").select("broker_id").eq("stripe_customer_id", subscription.customer as string).single();

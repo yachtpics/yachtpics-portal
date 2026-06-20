@@ -79,12 +79,20 @@ export default function BrokerageTeam({ brokerageName, members: initialMembers }
           <h1 className="text-2xl font-bold text-gray-900">{brokerageName} — Team</h1>
           <p className="text-gray-500 mt-1 text-sm">Add brokers and assistants to your brokerage. You see and manage every broker&apos;s boats here.</p>
         </div>
-        <Link
-          href="/dashboard/brokerage/help"
-          className="shrink-0 text-xs font-medium text-gray-500 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
-        >
-          ? Help
-        </Link>
+        <div className="shrink-0 flex gap-2">
+          <Link
+            href="/dashboard/brokerage/billing"
+            className="text-xs font-medium text-gray-500 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+          >
+            💳 Billing
+          </Link>
+          <Link
+            href="/dashboard/brokerage/help"
+            className="text-xs font-medium text-gray-500 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+          >
+            ? Help
+          </Link>
+        </div>
       </div>
 
       {/* Invite broker */}

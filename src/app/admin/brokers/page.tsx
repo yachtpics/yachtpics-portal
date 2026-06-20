@@ -56,7 +56,7 @@ export default async function AdminBrokersPage() {
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Contact</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Added By</th>
                 <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Plan</th>
-                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide"></th>
+                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide sticky right-0 bg-white"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
@@ -102,7 +102,7 @@ export default async function AdminBrokersPage() {
                         {status === "trialing" && trialDays !== null ? `Trial · ${trialDays}d` : status}
                       </span>
                     </td>
-                    <td className="px-4 sm:px-6 py-4 text-right">
+                    <td className="px-4 sm:px-6 py-4 text-right sticky right-0 bg-white whitespace-nowrap shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                       <div className="flex items-center justify-end gap-4">
                         <DeleteBrokerButton
                           brokerId={broker.id}

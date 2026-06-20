@@ -29,3 +29,14 @@ export const PLANS = [
     priceId: "price_1Te6f1K5G1w3hzIsGm6Wnola",
   },
 ];
+
+// Per-location plan for a whole brokerage office. Billed to the brokerage
+// (not an individual broker) and unlocks every broker at that location.
+export const OFFICE_PLAN = {
+  id: "office",
+  name: "Office",
+  description: "Per location — up to 8 brokers + their assistants",
+  price: 249,
+  brokerCap: 8,
+  priceId: "price_1TkUDuK5G1w3hzIsSBIAigXP",
+};

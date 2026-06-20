@@ -12,7 +12,7 @@ export default async function AdminBrokeragesPage() {
 
   const { data: brokerages } = await supabase
     .from("brokerages")
-    .select("id, name, created_at")
+    .select("id, name, created_at, subscription_status")
     .order("name");
 
   const ids = (brokerages ?? []).map((b) => b.id);
@@ -54,7 +54,14 @@ export default async function AdminBrokeragesPage() {
                 className="flex items-center justify-between bg-white border border-gray-200 rounded-xl px-5 py-4 hover:border-[#d4a843] transition-colors"
               >
                 <div>
-                  <p className="font-semibold text-gray-900">{b.name}</p>
+                  <p className="font-semibold text-gray-900 flex items-center gap-2">
+                    {b.name}
+                    {(b.subscription_status === "active" || b.subscription_status === "trialing") && (
+                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 uppercase tracking-wide">
+                        Office {b.subscription_status === "trialing" ? "Trial" : "Plan"}
+                      </span>
+                    )}
+                  </p>
                   <p className="text-xs text-gray-400 mt-0.5">
                     {c.brokers} broker{c.brokers !== 1 ? "s" : ""} · {c.assistants} assistant{c.assistants !== 1 ? "s" : ""}
                   </p>
