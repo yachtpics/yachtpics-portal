@@ -51,11 +51,26 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
     .single();
   if (!listing) notFound();
 
-  const [{ data: heroPhoto }, { data: profile }, { data: details }] = await Promise.all([
-    service.from("photos").select("storage_path, uploaded_by").eq("listing_id", params.id).eq("is_visible", true).order("display_order").limit(1).maybeSingle(),
+  const [{ data: profile }, { data: details }] = await Promise.all([
     service.from("profiles").select("first_name, last_name, phone, display_email").eq("id", listing.broker_id).single(),
     service.from("broker_details").select("brokerage_name, brokerage_website, logo_url").eq("id", listing.broker_id).maybeSingle(),
   ]);
+
+  // Hero photo: the broker-chosen cover if set & still visible, otherwise the
+  // first visible photo by display order.
+  let heroPhoto: { storage_path: string; uploaded_by: string | null } | null = null;
+  if (listing.hero_photo_id) {
+    const { data: chosen } = await service.from("photos")
+      .select("storage_path, uploaded_by, is_visible")
+      .eq("id", listing.hero_photo_id).maybeSingle();
+    if (chosen && chosen.is_visible) heroPhoto = { storage_path: chosen.storage_path, uploaded_by: chosen.uploaded_by };
+  }
+  if (!heroPhoto) {
+    const { data: first } = await service.from("photos")
+      .select("storage_path, uploaded_by")
+      .eq("listing_id", params.id).eq("is_visible", true).order("display_order").limit(1).maybeSingle();
+    heroPhoto = first ?? null;
+  }
 
   let heroUrl: string | null = null;
   if (heroPhoto?.storage_path) {

@@ -39,6 +39,7 @@ export default function BrokerListingPage() {
 
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean } | null>(null);
+  const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -228,13 +229,14 @@ export default function BrokerListingPage() {
     // Row-level security governs access: own boats, boats of brokers you assist
     // or manage, and any listing individually shared into your brokerage.
     const { data: l } = await supabase.from("listings")
-      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared")
+      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, hero_photo_id")
       .eq("id", id)
       .single();
 
     if (!l) { router.push("/dashboard/listings"); return; }
     setListing(l);
     setIsShared((l as unknown as { is_shared: boolean }).is_shared === true);
+    setHeroPhotoId((l as unknown as { hero_photo_id: string | null }).hero_photo_id ?? null);
 
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
     // Use the API (service role) so RLS doesn't block assistants from reading
@@ -611,6 +613,22 @@ export default function BrokerListingPage() {
   async function toggleVisibility(photoId: string, current: boolean) {
     await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
+  }
+
+  // Mark a photo as the hero — the image used on the spec sheet & social posts.
+  // Clicking the current hero clears it (falls back to first photo).
+  async function setHero(photoId: string) {
+    const next = heroPhotoId === photoId ? null : photoId;
+    setHeroPhotoId(next); // optimistic
+    const { error } = await supabase.from("listings").update({ hero_photo_id: next }).eq("id", id);
+    if (error) {
+      setHeroPhotoId(heroPhotoId); // revert
+      setMessage("Couldn't update the cover photo. Please try again.");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+    setMessage(next ? "Cover photo set." : "Cover photo cleared.");
+    setTimeout(() => setMessage(""), 2500);
   }
 
   async function updateCategory(photoId: string, category: string) {
@@ -1083,6 +1101,11 @@ export default function BrokerListingPage() {
         </div>
       ) : (
         <div>
+          {!selectMode && (
+            <p className="text-xs text-gray-400 mb-3">
+              Tap the <span className="text-[#d4a843]">★</span> on a photo to make it the cover — that&apos;s the image used on the spec sheet and social posts. If none is set, the first photo is used.
+            </p>
+          )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -1098,6 +1121,8 @@ export default function BrokerListingPage() {
                 downloading={downloading}
                 tapStart={tapStart}
                 extraCategories={customCategories.map((c) => c.name)}
+                isHero={heroPhotoId === photo.id}
+                onSetHero={() => setHero(photo.id)}
                 onTap={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
                 onDownload={() => requireDownloadLicense(() => downloadPhotos([photo]))}
                 onToggleVisibility={() => toggleVisibility(photo.id, photo.is_visible)}
@@ -1727,8 +1752,8 @@ function relativeTime(date: Date): string {
 
 // ─── Sortable photo card ───────────────────────────────────────────────────────
 function SortablePhotoCard({
-  photo, index, isSelected, selectMode, downloading, tapStart, extraCategories,
-  onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
+  photo, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
+  onSetHero, onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
 }: {
   photo: { id: string; url: string | null; filename: string | null; category: string | null; is_visible: boolean };
   index: number;
@@ -1737,6 +1762,8 @@ function SortablePhotoCard({
   downloading: boolean;
   tapStart: React.MutableRefObject<{ x: number; y: number } | null>;
   extraCategories: string[];
+  isHero: boolean;
+  onSetHero: () => void;
   onTap: () => void;
   onDownload: () => void;
   onToggleVisibility: () => void;
@@ -1794,6 +1821,20 @@ function SortablePhotoCard({
             <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
           </svg>
         </div>
+      )}
+
+      {/* Hero (cover) star — top-left when not selecting */}
+      {!selectMode && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onSetHero(); }}
+          onPointerDown={(e) => e.stopPropagation()}
+          title={isHero ? "Cover photo — used on the spec sheet & social posts. Tap to clear." : "Set as cover photo (spec sheet & social posts)"}
+          className={`absolute top-1.5 left-1.5 z-10 rounded-full w-7 h-7 flex items-center justify-center text-sm transition-colors ${
+            isHero ? "bg-[#d4a843] text-[#050b14] shadow" : "bg-black/40 hover:bg-black/60 text-white"
+          }`}
+        >
+          {isHero ? "★" : "☆"}
+        </button>
       )}
 
       {/* Photo */}

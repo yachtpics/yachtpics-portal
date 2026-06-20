@@ -78,7 +78,7 @@ export default function SocialGraphicPage() {
   useEffect(() => {
     (async () => {
       const { data: l } = await supabase.from("listings")
-        .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, broker_id")
+        .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, broker_id, hero_photo_id")
         .eq("id", id).single();
       if (!l) { setLoading(false); return; }
       setListing(l);
@@ -91,7 +91,9 @@ export default function SocialGraphicPage() {
       const { data: signed } = paths.length ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 7200) : { data: [] };
       const withUrls: Photo[] = (ph ?? []).map((p, i) => ({ id: p.id, url: signed?.[i]?.signedUrl ?? null }));
       setPhotos(withUrls);
-      setSelected(withUrls.find((p) => p.url)?.url ?? null);
+      // Default to the broker-chosen cover photo if set & visible, else the first photo.
+      const hero = l.hero_photo_id ? withUrls.find((p) => p.id === l.hero_photo_id && p.url) : null;
+      setSelected(hero?.url ?? withUrls.find((p) => p.url)?.url ?? null);
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
