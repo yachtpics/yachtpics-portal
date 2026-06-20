@@ -1,9 +1,12 @@
 // Branded HTML for trial lifecycle emails. Styling mirrors the welcome email:
 // dark header bar, gold accent, single clear call to action.
 
+import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
+
 const PORTAL = "https://portal.yachtpics.com";
 
-function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string): string {
+function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string, unsubToken?: string): string {
+  const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -21,7 +24,7 @@ function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: st
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
       <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Questions? Just reply to this email.</p>
-    </div>
+    </div>${unsubFooter}
   </div>
 </body>
 </html>`;
@@ -54,24 +57,24 @@ function featureList(intro: string): string {
 }
 
 /** Sent in the final days of a broker's free trial. */
-export function trialExpiringHtml(opts: { firstName: string; daysLeft: number }): string {
-  const { firstName, daysLeft } = opts;
+export function trialExpiringHtml(opts: { firstName: string; daysLeft: number; unsubToken?: string }): string {
+  const { firstName, daysLeft, unsubToken } = opts;
   const dayWord = daysLeft === 1 ? "day" : "days";
   const headline = daysLeft <= 1 ? `Your trial ends tomorrow, ${firstName}` : `${daysLeft} ${dayWord} left on your trial, ${firstName}`;
   const body =
     p(`Your free trial of the YachtPics Portal wraps up in <strong style="color:#111827;">${daysLeft} ${dayWord}</strong> — and with it, the tools that make your listings stand out.`) +
     featureList("What stays in your hands with a plan") +
     p(`Your delivered photos always stay free to download. A plan simply keeps the presentation tools above switched on.`);
-  return shell(headline, body, "Choose a plan", `${PORTAL}/dashboard/billing`);
+  return shell(headline, body, "Choose a plan", `${PORTAL}/dashboard/billing`, unsubToken);
 }
 
 /** Sent shortly after a broker's free trial has ended without subscribing. */
-export function trialLapsedHtml(opts: { firstName: string }): string {
-  const { firstName } = opts;
+export function trialLapsedHtml(opts: { firstName: string; unsubToken?: string }): string {
+  const { firstName, unsubToken } = opts;
   const headline = `Your trial has ended, ${firstName}`;
   const body =
     p(`Your free trial of the YachtPics Portal has wrapped up. Your photos are safe and still free to download anytime.`) +
     featureList("What switches back on the moment you upgrade") +
     p(`Pick a plan whenever you're ready — it takes about a minute. Have a question first? Just reply to this email and we'll help.`);
-  return shell(headline, body, "Reactivate my tools", `${PORTAL}/dashboard/billing`);
+  return shell(headline, body, "Reactivate my tools", `${PORTAL}/dashboard/billing`, unsubToken);
 }

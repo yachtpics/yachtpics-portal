@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { trialExpiringHtml, trialLapsedHtml } from "@/lib/trialEmails";
+import { unsubscribeHeaders } from "@/lib/unsubscribe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -9,13 +10,13 @@ export const dynamic = "force-dynamic";
 const FROM = "YachtPics <hello@yachtpics.com>";
 const DAY = 86_400_000;
 
-type ProfileLite = { first_name: string | null; display_email: string | null; role: string | null };
+type ProfileLite = { first_name: string | null; display_email: string | null; role: string | null; email_opt_out: boolean | null; unsubscribe_token: string | null };
 
 function daysLeft(iso: string): number {
   return Math.ceil((new Date(iso).getTime() - Date.now()) / DAY);
 }
 
-async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
+async function sendEmail(to: string, subject: string, html: string, headers?: Record<string, string>): Promise<boolean> {
   try {
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -23,7 +24,7 @@ async function sendEmail(to: string, subject: string, html: string): Promise<boo
         Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ from: FROM, to, subject, html }),
+      body: JSON.stringify({ from: FROM, to, subject, html, ...(headers ? { headers } : {}) }),
     });
     return res.ok;
   } catch {
@@ -50,13 +51,14 @@ export async function GET(req: NextRequest) {
   // DB-trial brokers only: no Stripe subscription, a trial end date set, not paying.
   const { data: subs } = await supabase
     .from("subscriptions")
-    .select("broker_id, status, trial_ends_at, stripe_subscription_id, profiles:broker_id(first_name, display_email, role)")
+    .select("broker_id, status, trial_ends_at, stripe_subscription_id, profiles:broker_id(first_name, display_email, role, email_opt_out, unsubscribe_token)")
     .is("stripe_subscription_id", null)
     .not("trial_ends_at", "is", null);
 
   const candidates = (subs ?? []).filter((s) => {
     const p = s.profiles as unknown as ProfileLite | null;
-    return s.status !== "active" && !!p && p.role === "broker" && !!p.display_email;
+    // Honor the marketing opt-out — trial reminders are promotional.
+    return s.status !== "active" && !!p && p.role === "broker" && !!p.display_email && p.email_opt_out !== true;
   });
 
   // Pull recent reminder logs once, for in-memory dedup.
@@ -82,13 +84,15 @@ export async function GET(req: NextRequest) {
     const p = s.profiles as unknown as ProfileLite;
     const firstName = p.first_name ?? "there";
     const email = p.display_email as string;
+    const unsubToken = p.unsubscribe_token ?? undefined;
+    const unsubHeaders = unsubToken ? unsubscribeHeaders(unsubToken) : undefined;
     const endMs = new Date(s.trial_ends_at as string).getTime();
     const dl = daysLeft(s.trial_ends_at as string);
 
     // Expiring: in the final 1–3 days, sent once per trial window.
     if (dl >= 1 && dl <= 3 && !alreadySent(s.broker_id, "trial_expiring", endMs - 31 * DAY)) {
       const subject = dl <= 1 ? "Your YachtPics trial ends tomorrow" : `${dl} days left on your YachtPics trial`;
-      const ok = await sendEmail(email, subject, trialExpiringHtml({ firstName, daysLeft: dl }));
+      const ok = await sendEmail(email, subject, trialExpiringHtml({ firstName, daysLeft: dl, unsubToken }), unsubHeaders);
       await logEmail({
         emailType: "trial_expiring",
         recipientEmail: email,
@@ -105,7 +109,7 @@ export async function GET(req: NextRequest) {
     // Lapsed: ended within the last 3 days, sent once.
     if (endMs <= Date.now() && endMs >= Date.now() - 3 * DAY && !alreadySent(s.broker_id, "trial_lapsed", endMs - DAY)) {
       const subject = "Your YachtPics trial has ended";
-      const ok = await sendEmail(email, subject, trialLapsedHtml({ firstName }));
+      const ok = await sendEmail(email, subject, trialLapsedHtml({ firstName, unsubToken }), unsubHeaders);
       await logEmail({
         emailType: "trial_lapsed",
         recipientEmail: email,

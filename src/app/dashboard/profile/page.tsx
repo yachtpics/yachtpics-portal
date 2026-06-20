@@ -11,6 +11,7 @@ interface ProfileData {
   display_email: string;
   phone: string;
   notify_on_view: boolean;
+  email_opt_out: boolean;
 }
 
 interface BrokerData {
@@ -39,7 +40,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [role, setRole] = useState<string>("broker");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "", notify_on_view: true });
+  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "", notify_on_view: true, email_opt_out: false });
   const [broker, setBroker] = useState<BrokerData>({ brokerage_name: "", brokerage_address: "", brokerage_city: "", brokerage_state: "", brokerage_zip: "", brokerage_website: "", license_number: "", bio: "" });
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -57,11 +58,11 @@ export default function ProfilePage() {
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, role, notify_on_view").eq("id", user.id).single();
+    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, role, notify_on_view, email_opt_out").eq("id", user.id).single();
     const { data: b } = await supabase.from("broker_details").select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url").eq("id", user.id).single();
     const { data: a } = await supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)").eq("broker_id", user.id);
     if (p) {
-      setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "", notify_on_view: p.notify_on_view ?? true });
+      setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "", notify_on_view: p.notify_on_view ?? true, email_opt_out: p.email_opt_out ?? false });
       setRole(p.role ?? "broker");
     }
     if (b) {
@@ -111,6 +112,14 @@ export default function ProfilePage() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
     await supabase.from("profiles").update({ notify_on_view: next }).eq("id", user.id);
+  }
+
+  // "Receive product news" is the inverse of the email_opt_out flag.
+  async function toggleProductEmails(receive: boolean) {
+    setProfile((prev) => ({ ...prev, email_opt_out: !receive }));
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+    await supabase.from("profiles").update({ email_opt_out: !receive }).eq("id", user.id);
   }
 
   async function changeLoginEmail() {
@@ -233,6 +242,24 @@ export default function ProfilePage() {
           <p className="text-gray-400 text-xs mt-3">We&rsquo;ll only alert you on a fresh open — at most once every few hours per listing, so it never gets noisy.</p>
         </section>
       )}
+
+      {/* Email preferences — everyone */}
+      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
+        <h2 className="font-semibold text-gray-900 mb-1">Email preferences</h2>
+        <p className="text-gray-500 text-sm mb-4">Occasional product news, new features, and trial reminders.</p>
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm text-gray-700">Send me product news &amp; updates</span>
+          <button
+            type="button"
+            onClick={() => toggleProductEmails(profile.email_opt_out)}
+            aria-pressed={!profile.email_opt_out}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${!profile.email_opt_out ? "bg-[#d4a843]" : "bg-gray-300"}`}
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${!profile.email_opt_out ? "translate-x-5" : "translate-x-0.5"}`} />
+          </button>
+        </div>
+        <p className="text-gray-400 text-xs mt-3">Essential account emails — client delivery confirmations, password resets, and billing — are always sent.</p>
+      </section>
 
       {/* Company Logo — brokers only */}
       {!isAssistant && (
