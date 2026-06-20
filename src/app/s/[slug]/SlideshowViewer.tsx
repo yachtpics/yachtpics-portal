@@ -28,6 +28,17 @@ interface Listing {
   model: string | null;
   asking_price: number | null;
   location: string | null;
+  description?: string | null;
+  beam_ft?: number | null;
+  draft_ft?: number | null;
+  staterooms?: number | null;
+  heads?: number | null;
+  engines?: string | null;
+  engine_hours?: number | null;
+  fuel_type?: string | null;
+  cruising_speed_kn?: number | null;
+  max_speed_kn?: number | null;
+  hull_material?: string | null;
 }
 
 interface BrokerInfo {
@@ -58,7 +69,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   const videoCount = videos.filter(v => v.url).length;
 
-  const [view, setView] = useState<"slideshow" | "grid">("slideshow");
+  const [view, setView] = useState<"slideshow" | "grid" | "details">("slideshow");
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
   const [incomingReady, setIncomingReady] = useState(true);
@@ -174,6 +185,25 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     .filter(Boolean)
     .join(" · ");
 
+  const specRows: [string, string][] = [];
+  const addSpec = (label: string, val: unknown, suffix = "") => {
+    if (val !== null && val !== undefined && val !== "") specRows.push([label, `${val}${suffix}`]);
+  };
+  addSpec("Year", listing.year);
+  addSpec("Length", listing.length_ft, "′");
+  addSpec("Beam", listing.beam_ft, "′");
+  addSpec("Draft", listing.draft_ft, "′");
+  addSpec("Staterooms", listing.staterooms);
+  addSpec("Heads", listing.heads);
+  addSpec("Engines", listing.engines);
+  addSpec("Engine Hours", listing.engine_hours != null ? Number(listing.engine_hours).toLocaleString("en-US") : null);
+  addSpec("Fuel", listing.fuel_type);
+  addSpec("Cruising", listing.cruising_speed_kn, " kn");
+  addSpec("Max Speed", listing.max_speed_kn, " kn");
+  addSpec("Hull", listing.hull_material);
+  addSpec("Location", listing.location);
+  const hasDetails = specRows.length > 0 || !!listing.description;
+
   if (slides.length === 0) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
@@ -223,6 +253,18 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           >
             All Photos
           </button>
+          {hasDetails && (
+            <button
+              onClick={() => setView("details")}
+              className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
+                view === "details"
+                  ? "bg-[#d4a843] text-white"
+                  : "text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              Details
+            </button>
+          )}
         </div>
       </div>
 
@@ -345,7 +387,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             ))}
           </div>
         </>
-      ) : (
+      ) : view === "grid" ? (
         /* Grid view */
         <div className="flex-1 p-4 sm:p-6 overflow-auto bg-white">
           {videos.length > 0 && (
@@ -389,6 +431,31 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      ) : (
+        /* Details view */
+        <div className="flex-1 p-5 sm:p-8 overflow-auto bg-white">
+          <div className="max-w-2xl mx-auto">
+            {specRows.length > 0 && (
+              <>
+                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Specifications</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 mb-8">
+                  {specRows.map(([label, val]) => (
+                    <div key={label} className="border-t-2 border-[#d4a843] pt-2">
+                      <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold">{label}</p>
+                      <p className="text-sm text-gray-900 font-semibold mt-0.5">{val}</p>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+            {listing.description && (
+              <>
+                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">About this yacht</h2>
+                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
+              </>
+            )}
           </div>
         </div>
       )}

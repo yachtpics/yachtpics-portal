@@ -25,7 +25,7 @@ export default async function PublicSlideshowPage({
 
   const { data: listing } = await supabase
     .from("listings")
-    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id")
+    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id, description, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material")
     .eq("slideshow_slug", params.slug)
     .eq("slideshow_published", true)
     .single();
