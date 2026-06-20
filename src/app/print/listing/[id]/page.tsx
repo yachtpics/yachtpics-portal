@@ -3,6 +3,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
 import PrintButton from "./PrintButton";
+import HeroImage from "./HeroImage";
 
 export const dynamic = "force-dynamic";
 
@@ -130,10 +131,7 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
           </div>
 
           {/* Hero */}
-          {heroUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={heroUrl} alt={listing.vessel_name ?? ""} style={{ width: "100%", height: "3.6in", objectFit: "cover", display: "block" }} />
-          )}
+          {heroUrl && <HeroImage src={heroUrl} alt={listing.vessel_name ?? ""} />}
 
           {/* Title + price */}
           <div style={{ padding: "24px 32px 8px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
