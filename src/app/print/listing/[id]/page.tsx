@@ -52,7 +52,7 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
   if (!listing) notFound();
 
   const [{ data: heroPhoto }, { data: profile }, { data: details }] = await Promise.all([
-    service.from("photos").select("storage_path").eq("listing_id", params.id).eq("is_visible", true).order("display_order").limit(1).maybeSingle(),
+    service.from("photos").select("storage_path, uploaded_by").eq("listing_id", params.id).eq("is_visible", true).order("display_order").limit(1).maybeSingle(),
     service.from("profiles").select("first_name, last_name, phone, display_email").eq("id", listing.broker_id).single(),
     service.from("broker_details").select("brokerage_name, brokerage_website, logo_url").eq("id", listing.broker_id).maybeSingle(),
   ]);
@@ -61,6 +61,18 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
   if (heroPhoto?.storage_path) {
     const { data: signed } = await service.storage.from("listing-photos").createSignedUrl(heroPhoto.storage_path, 3600);
     heroUrl = signed?.signedUrl ?? null;
+  }
+
+  // Only credit YachtPics when the hero photo is ours — delivered (no uploader)
+  // or uploaded by an admin. A broker's own upload gets no credit.
+  let heroByYachtPics = false;
+  if (heroPhoto) {
+    if (!heroPhoto.uploaded_by) {
+      heroByYachtPics = true;
+    } else {
+      const { data: up } = await service.from("profiles").select("role").eq("id", heroPhoto.uploaded_by).single();
+      heroByYachtPics = up?.role === "admin";
+    }
   }
 
   let qrDataUrl: string | null = null;
@@ -160,9 +172,11 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
             )}
           </div>
 
-          <div style={{ background: NAVY, padding: "8px 32px", textAlign: "center" }}>
-            <span style={{ color: "#c4c9d4", fontSize: 10 }}>Photography by YachtPics</span>
-          </div>
+          {heroByYachtPics && (
+            <div style={{ background: NAVY, padding: "8px 32px", textAlign: "center" }}>
+              <span style={{ color: "#c4c9d4", fontSize: 10 }}>Photography by YachtPics</span>
+            </div>
+          )}
         </div>
       </div>
 
