@@ -8,7 +8,7 @@ import { runAnnouncementSend } from "@/lib/sendAnnouncement";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export const APPROVE_KEY = `${ANNOUNCEMENT_TYPE}_approved`;
+const APPROVE_KEY = `${ANNOUNCEMENT_TYPE}_approved`;
 const FROM = "YachtPics <hello@yachtpics.com>";
 
 export async function POST(req: NextRequest) {
