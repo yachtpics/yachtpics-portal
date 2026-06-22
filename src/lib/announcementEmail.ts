@@ -30,15 +30,19 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
   const features = [
     feature(
       "One-click spec sheet",
-      "generate a clean, branded flyer for any listing — full specs, your logo, and a scannable QR code — ready to print or email."
+      "generate a clean, branded flyer for any listing — full specs and your logo — ready to print or email."
     ),
     feature(
       "Social posts, done for you",
       "turn any photo into a polished, post-ready image with a caption and hashtags already written. Drop it straight onto Instagram or Facebook."
     ),
     feature(
-      "QR codes on everything",
-      "every listing has its own QR code. Add it to a flyer or a dock sign and a buyer scans straight to your full slideshow."
+      "QR codes for your listings",
+      "publish a slideshow and the listing gets its own QR code. Add it to a flyer or a dock sign and a buyer scans straight to the full gallery."
+    ),
+    feature(
+      "Know the moment they look",
+      "we email you the instant a buyer opens your slideshow — so you can follow up while you&rsquo;re right on their mind."
     ),
     feature(
       "Buyer inquiries come to you",
