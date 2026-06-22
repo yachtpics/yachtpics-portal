@@ -143,6 +143,7 @@ export function tipEmailHtml(tip: Tip, opts: { firstName: string; unsubToken?: s
       <p style="margin:24px 0 0;font-size:14px;color:#374151;line-height:1.6;">— Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
+      <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;line-height:1.5;"><a href="${PORTAL}/dashboard/tips" style="color:#a07820;text-decoration:none;font-weight:600;">Browse all tips &rarr;</a></p>
       <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Questions? Just reply to this email.</p>
     </div>${unsubFooter}
   </div>

@@ -13,6 +13,7 @@ const brokerNavItems = [
   { label: "Team", href: "/dashboard/team", icon: "👥" },
   { label: "Billing", href: "/dashboard/billing", icon: "💳" },
   { label: "My Profile", href: "/dashboard/profile", icon: "👤" },
+  { label: "Tips", href: "/dashboard/tips", icon: "💡" },
   { label: "Help", href: "/dashboard/help", icon: "?" },
 ];
 
@@ -20,6 +21,7 @@ const assistantNavItems = [
   { label: "Listings", href: "/dashboard/listings", icon: "🚢" },
   { label: "My Brokers", href: "/dashboard/brokers", icon: "👥" },
   { label: "My Profile", href: "/dashboard/profile", icon: "👤" },
+  { label: "Tips", href: "/dashboard/tips", icon: "💡" },
   { label: "Help", href: "/dashboard/help", icon: "?" },
 ];
 
