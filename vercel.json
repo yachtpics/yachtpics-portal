@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/announce",
       "schedule": "0 13 * * 1"
+    },
+    {
+      "path": "/api/cron/tips",
+      "schedule": "0 13 * * 2"
     }
   ]
 }

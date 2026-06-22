@@ -16,6 +16,7 @@ const navItems = [
   { label: "Metrics", href: "/admin/metrics", icon: "📊" },
   { label: "Email Log", href: "/admin/emails", icon: "✉️" },
   { label: "Announce", href: "/admin/announce", icon: "📣" },
+  { label: "Tips", href: "/admin/tips", icon: "💡" },
   { label: "Admin Users", href: "/admin/users", icon: "🔐" },
 ];
 
