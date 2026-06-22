@@ -3,7 +3,7 @@ import { logEmail } from "@/lib/logEmail";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
 import { announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT } from "@/lib/announcementEmail";
 
-const FROM = "YachtPics <hello@yachtpics.com>";
+const FROM = "Charlie & Samantha at YachtPics <hello@yachtpics.com>";
 
 type Recipient = {
   id: string;

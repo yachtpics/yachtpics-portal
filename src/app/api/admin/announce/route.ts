@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const APPROVE_KEY = `${ANNOUNCEMENT_TYPE}_approved`;
-const FROM = "YachtPics <hello@yachtpics.com>";
+const FROM = "Charlie & Samantha at YachtPics <hello@yachtpics.com>";
 
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
