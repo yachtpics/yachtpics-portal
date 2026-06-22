@@ -66,7 +66,9 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
         <a href="${PORTAL}/dashboard" style="display:inline-block;background:#d4a843;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">See what&rsquo;s new</a>
       </div>
 
-      <p style="margin:0;font-size:14px;color:#6b7280;line-height:1.6;">Open any listing and you&rsquo;ll find these waiting. As always, your delivered photos stay free to download — and if you have a question or an idea for what we should build next, just reply to this email. We read every one.</p>
+      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">Open any listing and you&rsquo;ll find these waiting. As always, your delivered photos stay free to download — and if you have a question or an idea for what we should build next, just reply to this email. We read every one.</p>
+
+      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">— Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
       <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Questions? Just reply to this email.</p>
