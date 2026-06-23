@@ -34,6 +34,8 @@ interface Listing {
   status: string;
   broker_id: string;
   is_shared?: boolean | null;
+  slideshow_slug?: string | null;
+  slideshow_published?: boolean | null;
   profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null;
 }
 
@@ -86,6 +88,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [status, setStatus] = useState(listing.status);
   const [isShared, setIsShared] = useState(listing.is_shared === true);
   const [sharingBusy, setSharingBusy] = useState(false);
+  const [slideshowPublished, setSlideshowPublished] = useState(listing.slideshow_published === true);
+  const [slideshowSlug, setSlideshowSlug] = useState<string | null>(listing.slideshow_slug ?? null);
+  const [slideshowBusy, setSlideshowBusy] = useState(false);
+  const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notifying, setNotifying] = useState(false);
   const [notifyMediaType, setNotifyMediaType] = useState<"photos" | "video" | "both">("photos");
@@ -266,6 +272,28 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setSaving(false);
     setMessage("Status updated.");
     setTimeout(() => setMessage(""), 3000);
+  }
+
+  async function publishSlideshow() {
+    setSlideshowBusy(true);
+    const slug = slideshowSlug ?? Math.random().toString(36).substring(2, 10);
+    const { error } = await supabase.from("listings").update({ slideshow_slug: slug, slideshow_published: true }).eq("id", listing.id);
+    if (!error) { setSlideshowSlug(slug); setSlideshowPublished(true); }
+    setSlideshowBusy(false);
+  }
+
+  async function unpublishSlideshow() {
+    setSlideshowBusy(true);
+    const { error } = await supabase.from("listings").update({ slideshow_published: false }).eq("id", listing.id);
+    if (!error) setSlideshowPublished(false);
+    setSlideshowBusy(false);
+  }
+
+  function copySlideshowLink() {
+    if (!slideshowSlug) return;
+    navigator.clipboard.writeText(`${window.location.origin}/s/${slideshowSlug}`);
+    setSlideshowCopied(true);
+    setTimeout(() => setSlideshowCopied(false), 2000);
   }
 
   async function toggleShare() {
@@ -465,6 +493,42 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       )}
 
       <CoBrokerManager listingId={listing.id} brokers={brokerOptions} initialCoBrokers={coBrokers} />
+
+      {/* Client Slideshow — publish so the broker can share / send to client */}
+      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h2 className="font-semibold text-gray-900">Client Slideshow</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              {slideshowPublished
+                ? "Published — the broker can share the link, send it to a client, or use the QR code."
+                : "Not published. Publish it so this listing can be shared with clients."}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            {slideshowPublished ? (
+              <>
+                <button onClick={copySlideshowLink} className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-2 rounded-lg transition-colors">
+                  {slideshowCopied ? "Copied ✓" : "Copy link"}
+                </button>
+                <a href={`/s/${slideshowSlug}`} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-2 rounded-lg transition-colors">
+                  Open
+                </a>
+                <button onClick={unpublishSlideshow} disabled={slideshowBusy} className="text-sm text-gray-500 border border-gray-200 hover:border-red-300 hover:text-red-500 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+                  {slideshowBusy ? "…" : "Unpublish"}
+                </button>
+              </>
+            ) : (
+              <button onClick={publishSlideshow} disabled={slideshowBusy} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+                {slideshowBusy ? "Publishing…" : "Publish slideshow"}
+              </button>
+            )}
+          </div>
+        </div>
+        {slideshowPublished && slideshowSlug && (
+          <p className="text-xs text-gray-400 mt-3 break-all">{typeof window !== "undefined" ? window.location.origin : ""}/s/{slideshowSlug}</p>
+        )}
+      </div>
 
       {/* Inquiries (leads from the public slideshow) */}
       <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">

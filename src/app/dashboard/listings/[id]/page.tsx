@@ -808,6 +808,9 @@ export default function BrokerListingPage() {
   const visiblePhotos = photos.filter(p => p.is_visible);
   const selectedPhotos = photos.filter(p => selectedIds.has(p.id));
 
+  // Send to Client needs something to deliver: a published slideshow or a document.
+  const canSendToClient = !!listing && (listing.slideshow_published || documents.length > 0);
+
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
@@ -948,7 +951,9 @@ export default function BrokerListingPage() {
           {!selectMode && (
             <button
               onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendModal(true); }}
-              className="bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+              disabled={!canSendToClient}
+              title={canSendToClient ? "Email this listing to a client" : "Publish your slideshow first to send it to a client"}
+              className="bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#050b14] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
             >
               ✉ Send to Client
             </button>
@@ -1044,6 +1049,13 @@ export default function BrokerListingPage() {
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
       </div>
+
+      {!listing.slideshow_published && (
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-amber-50 border border-amber-200 text-amber-800">
+          <span className="font-semibold">Publish your slideshow to send this listing to a client.</span>{" "}
+          Scroll to the <span className="font-medium">Client Slideshow</span> section below and click Create Slideshow — then the Send to Client button turns on.
+        </div>
+      )}
 
       {message && (
         <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-700">{message}</div>

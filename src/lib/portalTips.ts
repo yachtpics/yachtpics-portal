@@ -24,6 +24,17 @@ export const tipApprovalKey = (slug: string) => `tip_approved:${slug}`;
 
 export const TIPS: Tip[] = [
   {
+    slug: "publish-slideshow",
+    subject: "Tip: the one step before you can send a listing",
+    headline: "Publish, then share in seconds",
+    body: [
+      "Before you can send a listing to a client, publish its slideshow. Open the listing, find the Client Slideshow section, and click Create Slideshow — that turns your photos and video into a clean, full-screen gallery with its own link.",
+      "Once it's published, Send to Client lights up: email it (branded, with documents), copy the link, or share the QR code. No publish, no link — so this is always step one.",
+    ],
+    ctaLabel: "Publish a slideshow",
+    ctaPath: "/dashboard/listings",
+  },
+  {
     slug: "cover-photo",
     subject: "Tip: pick the photo that sells the boat",
     headline: "Lead with your best shot",
