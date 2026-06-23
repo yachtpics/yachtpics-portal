@@ -29,6 +29,7 @@ export const TIPS: Tip[] = [
     headline: "Publish, then share in seconds",
     body: [
       "Before you can send a listing to a client, publish its slideshow. Open the listing, find the Client Slideshow section, and click Create Slideshow — that turns your photos and video into a clean, full-screen gallery with its own link.",
+      "Take a minute to set it up first: drag the photos into the order you want, hide any you'd rather not show, and tap the ★ on your best shot to make it the cover. That's the gallery — and the first impression — your buyer sees.",
       "Once it's published, Send to Client lights up: email it (branded, with documents), copy the link, or share the QR code. No publish, no link — so this is always step one.",
     ],
     ctaLabel: "Publish a slideshow",
