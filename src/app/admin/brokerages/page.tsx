@@ -1,6 +1,7 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import NewBrokerageForm from "./_components/NewBrokerageForm";
+import RefreshOnMount from "./_components/RefreshOnMount";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function AdminBrokeragesPage() {
 
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
+      <RefreshOnMount />
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Brokerages</h1>
         <p className="text-gray-500 mt-1 text-sm">

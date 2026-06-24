@@ -2,6 +2,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import BrokerageMembers from "./_components/BrokerageMembers";
+import RefreshOnMount from "../_components/RefreshOnMount";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +46,7 @@ export default async function BrokerageDetailPage({ params }: { params: { id: st
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
+      <RefreshOnMount />
       <Link href="/admin/brokerages" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">&larr; All brokerages</Link>
       <BrokerageMembers
         brokerageId={brokerage.id}

@@ -23,6 +23,7 @@ export default function NewBrokerageForm() {
       if (!res.ok) throw new Error(data.error ?? "Failed to create");
       setName("");
       router.push(`/admin/brokerages/${data.brokerage.id}`);
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create");
       setSaving(false);
