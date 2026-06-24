@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { findExistingUser } from "@/lib/findExistingUser";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -50,36 +51,30 @@ export async function POST(req: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Check if this email already exists
-    const { data: { users } } = await supabase.auth.admin.listUsers();
-    const existingUser = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    // Resolve any existing account for this email (reliable regardless of how
+    // many accounts exist — see findExistingUser).
+    const existing = await findExistingUser(supabase, email);
 
     let assistantId: string;
     let isNewUser = false;
 
-    if (existingUser) {
+    if (existing) {
       // Existing user — verify they're an assistant (not broker/admin)
-      const { data: existingProfile } = await supabase
-        .from("profiles")
-        .select("role, first_name, last_name")
-        .eq("id", existingUser.id)
-        .single();
-
-      if (existingProfile?.role === "broker" || existingProfile?.role === "admin") {
+      if (existing.role === "broker" || existing.role === "admin") {
         return NextResponse.json(
           { error: "This email belongs to a broker or admin account and cannot be added as an assistant." },
           { status: 400 }
         );
       }
 
-      assistantId = existingUser.id;
+      assistantId = existing.id;
 
       await supabase.from("profiles").upsert({
         id: assistantId,
         role: "assistant",
         display_email: email,
-        first_name: existingProfile?.first_name ?? firstName ?? null,
-        last_name: existingProfile?.last_name ?? lastName ?? null,
+        first_name: existing.first_name ?? firstName ?? null,
+        last_name: existing.last_name ?? lastName ?? null,
       });
     } else {
       // New user — create account with temp password

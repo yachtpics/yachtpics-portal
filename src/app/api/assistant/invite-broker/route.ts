@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { findExistingUser } from "@/lib/findExistingUser";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -43,9 +44,8 @@ export async function POST(req: NextRequest) {
     );
 
     // Check if a user with this email already exists
-    const { data: existingUsers } = await supabase.auth.admin.listUsers();
-    const alreadyExists = existingUsers?.users?.some((u) => u.email === email);
-    if (alreadyExists) {
+    const existing = await findExistingUser(supabase, email);
+    if (existing) {
       return NextResponse.json({ error: "An account with that email already exists. Use the Connect panel to link to them instead." }, { status: 409 });
     }
 

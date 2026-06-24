@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { requireAdmin } from "@/lib/requireAdmin";
+import { findExistingUser } from "@/lib/findExistingUser";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no 0/O/1/I to avoid confusion
@@ -101,24 +102,17 @@ export async function POST(req: NextRequest) {
     let assistantTempPassword: string | undefined;
 
     if (assistantEmail?.trim()) {
-      const { data: { users } } = await supabase.auth.admin.listUsers();
-      const existingUser = users.find(u => u.email?.toLowerCase() === assistantEmail.toLowerCase());
+      const existingAssistant = await findExistingUser(supabase, assistantEmail);
 
-      if (existingUser) {
-        const { data: existingProfile } = await supabase
-          .from("profiles")
-          .select("role")
-          .eq("id", existingUser.id)
-          .single();
-
-        if (existingProfile?.role === "broker" || existingProfile?.role === "admin") {
+      if (existingAssistant) {
+        if (existingAssistant.role === "broker" || existingAssistant.role === "admin") {
           return NextResponse.json(
             { error: `The assistant email (${assistantEmail}) belongs to a broker or admin account.` },
             { status: 400 }
           );
         }
 
-        assistantId = existingUser.id;
+        assistantId = existingAssistant.id;
 
         await supabase.from("profiles").upsert({
           id: assistantId,
