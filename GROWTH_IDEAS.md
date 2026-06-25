@@ -77,6 +77,63 @@ Things to explore:
 
 ---
 
+## 6. Revenue ideas (new angles)
+
+Ranked for YachtPics specifically. #1 and #2 lean on assets no competitor has (the camera + the fabrication shop).
+
+1. **Photography upsell ladder (core, highest margin).** The portal sits downstream of every shoot — use it to sell more shooting. In-app "Book a shoot / add-on" button: drone, twilight reshoot, walkthrough video, lifestyle/at-sea, "Sold!" reshoot. Captures the next booking at the moment the broker is in the tool.
+2. **Branded physical products tied to a listing (laser / CNC / UV — the moat).** Portal already knows vessel name, hero photo, specs, broker → auto-personalize a product in one click. Closing/keepsake gifts (engraved plaque, half-hull, UV-printed cutting board/coasters with the yacht profile), engraved QR dock signs, "Owner since [date]" boards. Merges the existing gift business with the portal. See section 7 for the feature design.
+3. **Print fulfillment of marketing collateral.** Already generate the flyer digitally — sell the physical print: spec sheets, foam-core boat-show boards, large-format banners, business cards (UV printing), produced + shipped. Recurring per-listing / per-boat-show orders.
+4. **Premium single-listing microsites.** Branded standalone luxury web page (own URL) for flagship/million-dollar boats. Data's already in the portal; premium upsell.
+5. **White-label / enterprise tier.** License the whole portal to a large brokerage under their brand + domain for a higher monthly fee.
+6. **Managed marketing service tier.** Done-for-you social/marketing for a monthly retainer, on top of the self-serve tools. Higher margin than software alone.
+
+## 7. Portal feature: branded keepsakes / gifts (laser · CNC · UV)
+
+**The idea:** a broker opens a listing, clicks "Order a Gift," picks a product, the portal auto-personalizes it from the listing data (vessel name, hero photo, specs, broker logo), shows a live preview, takes payment + shipping — and the order drops into Charlie's fabrication queue as a print/engrave-ready file. Turns the laser/CNC/UV shop into a one-click portal feature and merges the two businesses.
+
+**Why it's a moat:** personalization is automatic because the portal already holds the photo + specs. No one competing on listing software has a fabrication shop; no one competing on engraved gifts has the listing data. Only YachtPics has both.
+
+**Broker-side flow:**
+1. New "Order a Gift" button on a listing (next to Spec Sheet / Social Post).
+2. Product catalog (start with 2–3 SKUs): e.g., engraved plaque, UV-printed cutting board, profile half-hull board, coaster set, QR dock sign.
+3. Live personalization preview (reuse the social-post canvas approach) — auto-fills vessel name + hero photo + date; broker adds recipient name / message.
+4. Shipping address + checkout.
+5. Confirmation + order status.
+
+**Charlie-side (fabrication):**
+- Admin "Orders" dashboard: incoming orders, status (new → in production → shipped), tracking.
+- Each order auto-generates a **production file**: the personalization rendered at print/engrave resolution + the full-res vessel photo + the engraving text — ready to drop into LightBurn / CNC toolpath / UV RIP.
+
+**Build phasing:**
+- **Phase A — MVP / validate demand (small build):** "Order a Gift" button → product picker → auto-generated production artwork emailed to Charlie + order captured. Payment handled by manual invoice at first (skip Stripe product setup + shipping math). Proves demand with minimal work.
+- **Phase B:** full catalog, Stripe one-time checkout, shipping, order-status dashboard + broker notifications.
+- **Phase C:** more SKUs, reorder, brokerage gift programs (bulk closing-gift accounts), richer previews.
+
+**DECIDED:**
+- Product line (Charlie already makes these): tumblers, coasters, koozies, Sea-Grip bar key, cutting boards — plus **gift sets / bundles**.
+- Approach: **full build** up front — Stripe one-time checkout + admin order dashboard (not the lean/invoice MVP).
+
+**Per-product personalization (varies by item):**
+- Photo items (cutting board, coasters): UV-print the vessel hero/profile photo.
+- Text items (tumbler, koozie, bar key): engrave vessel name + optional date / recipient.
+- Production file = full-res photo + personalization data sheet (vessel name, recipient, date, qty, product); Charlie does final layout in LightBurn/CNC/UV RIP. (Full auto-layout per geometry is a later refinement.)
+
+**Inputs still needed from Charlie before/while building:**
+- Price per product + per gift set.
+- Catalog photos of each product (for the store UI).
+- Per-product personalization spec (photo vs text, which fields).
+- Shipping approach (flat rate, by product, or free + baked into price).
+
+**Build order (even for "full"):**
+1. DB: `products` (+ bundles) and `gift_orders` tables; seed the 5 SKUs.
+2. Broker UI: "Order a Gift" button → catalog → personalization preview (reuse social-post canvas) → cart.
+3. Stripe one-time checkout (dynamic price_data) + webhook → mark order paid.
+4. Admin Orders dashboard: list, status (new → in production → shipped + tracking), production-asset download.
+5. Broker order history + status; email confirmations.
+
+---
+
 ### Notes
 - These connect: blog (content) → SEO traffic → public listing pages → broker signups (self-serve) → more public listings → more traffic. The flywheel is the real prize.
 - When ready, next step is to pick ONE to scope first (recommend: nail the public-page SEO foundation before the blog, so blog traffic has somewhere to convert).

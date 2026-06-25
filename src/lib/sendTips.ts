@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
 import { TIPS, tipEmailType, tipApprovalKey, tipEmailHtml } from "@/lib/portalTips";
+import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
 
 const FROM = "Charlie & Samantha at YachtPics <hello@yachtpics.com>";
 const DAY = 86_400_000;
@@ -16,19 +17,6 @@ type Recipient = {
   role: string | null;
   unsubscribe_token: string | null;
 };
-
-async function sendOne(to: string, subject: string, html: string, headers: Record<string, string>): Promise<boolean> {
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: FROM, to, subject, html, headers }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 export type TipsResult = {
   recipients: number;
@@ -94,30 +82,39 @@ export async function runTipsDrip(admin: SupabaseClient, sentBy: string): Promis
     jobs.push({ r, tipIndex: nextIndex });
   }
 
-  const BATCH = 5;
-  for (let i = 0; i < jobs.length; i += BATCH) {
-    const batch = jobs.slice(i, i + BATCH);
-    await Promise.all(
-      batch.map(async ({ r, tipIndex }) => {
-        const tip = TIPS[tipIndex];
-        const email = r.display_email as string;
-        const token = r.unsubscribe_token ?? undefined;
-        const html = tipEmailHtml(tip, { firstName: r.first_name ?? "there", unsubToken: token });
-        const ok = await sendOne(email, tip.subject, html, token ? unsubscribeHeaders(token) : {});
-        await logEmail({
-          emailType: tipEmailType(tip.slug),
-          recipientEmail: email,
-          recipientRole: r.role === "assistant" ? "assistant" : "broker",
-          recipientId: r.id,
-          subject: tip.subject,
-          status: ok ? "sent" : "failed",
-          sentBy,
-        });
-        if (ok) result.sent++;
-        else result.failed++;
-      })
-    );
-  }
+  // One batched send for all due recipients (Resend batch API, ≤100/request).
+  const messages: BatchEmail[] = jobs.map(({ r, tipIndex }) => {
+    const tip = TIPS[tipIndex];
+    const token = r.unsubscribe_token ?? undefined;
+    return {
+      from: FROM,
+      to: r.display_email as string,
+      subject: tip.subject,
+      html: tipEmailHtml(tip, { firstName: r.first_name ?? "there", unsubToken: token }),
+      headers: token ? unsubscribeHeaders(token) : undefined,
+    };
+  });
+
+  const batchResults = await sendResendBatch(messages);
+
+  await Promise.all(
+    jobs.map(({ r, tipIndex }, i) => {
+      const tip = TIPS[tipIndex];
+      const ok = batchResults[i]?.ok ?? false;
+      if (ok) result.sent++;
+      else result.failed++;
+      return logEmail({
+        emailType: tipEmailType(tip.slug),
+        recipientEmail: r.display_email as string,
+        recipientRole: r.role === "assistant" ? "assistant" : "broker",
+        recipientId: r.id,
+        subject: tip.subject,
+        status: ok ? "sent" : "failed",
+        error: ok ? null : (batchResults[i]?.error ?? "Send failed"),
+        sentBy,
+      });
+    })
+  );
 
   return result;
 }

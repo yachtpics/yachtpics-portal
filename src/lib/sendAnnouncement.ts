@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
 import { announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT } from "@/lib/announcementEmail";
+import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
 
 const FROM = "Charlie & Samantha at YachtPics <hello@yachtpics.com>";
 
@@ -12,22 +13,6 @@ type Recipient = {
   role: string | null;
   unsubscribe_token: string | null;
 };
-
-async function sendOne(to: string, html: string, headers: Record<string, string>): Promise<boolean> {
-  try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ from: FROM, to, subject: ANNOUNCEMENT_SUBJECT, html, headers }),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 export type AnnouncementResult = { eligible: number; sent: number; skipped: number; failed: number };
 
@@ -55,33 +40,39 @@ export async function runAnnouncementSend(admin: SupabaseClient, sentBy: string)
 
   const queue = recipients.filter((r) => !alreadySent.has(r.id));
 
+  // One batched send for the whole queue (Resend batch API, ≤100 per request).
+  const messages: BatchEmail[] = queue.map((r) => {
+    const token = r.unsubscribe_token ?? undefined;
+    return {
+      from: FROM,
+      to: r.display_email as string,
+      subject: ANNOUNCEMENT_SUBJECT,
+      html: announcementHtml({ firstName: r.first_name ?? "there", unsubToken: token }),
+      headers: token ? unsubscribeHeaders(token) : undefined,
+    };
+  });
+
+  const batchResults = await sendResendBatch(messages);
+
   let sent = 0;
   let failed = 0;
-  const BATCH = 5;
-
-  for (let i = 0; i < queue.length; i += BATCH) {
-    const batch = queue.slice(i, i + BATCH);
-    await Promise.all(
-      batch.map(async (r) => {
-        const email = r.display_email as string;
-        const token = r.unsubscribe_token ?? undefined;
-        const html = announcementHtml({ firstName: r.first_name ?? "there", unsubToken: token });
-        const headers = token ? unsubscribeHeaders(token) : {};
-        const ok = await sendOne(email, html, headers);
-        await logEmail({
-          emailType: ANNOUNCEMENT_TYPE,
-          recipientEmail: email,
-          recipientRole: r.role === "assistant" ? "assistant" : "broker",
-          recipientId: r.id,
-          subject: ANNOUNCEMENT_SUBJECT,
-          status: ok ? "sent" : "failed",
-          sentBy,
-        });
-        if (ok) sent++;
-        else failed++;
-      })
-    );
-  }
+  await Promise.all(
+    queue.map((r, i) => {
+      const ok = batchResults[i]?.ok ?? false;
+      if (ok) sent++;
+      else failed++;
+      return logEmail({
+        emailType: ANNOUNCEMENT_TYPE,
+        recipientEmail: r.display_email as string,
+        recipientRole: r.role === "assistant" ? "assistant" : "broker",
+        recipientId: r.id,
+        subject: ANNOUNCEMENT_SUBJECT,
+        status: ok ? "sent" : "failed",
+        error: ok ? null : (batchResults[i]?.error ?? "Send failed"),
+        sentBy,
+      });
+    })
+  );
 
   return { eligible: recipients.length, sent, skipped: recipients.length - queue.length, failed };
 }
