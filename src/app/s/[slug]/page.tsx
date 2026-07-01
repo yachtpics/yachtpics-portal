@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
@@ -35,11 +36,20 @@ export default async function PublicSlideshowPage({
   if (!listing) notFound();
 
   // The live client slideshow is a paid feature. If the owning broker's plan has
-  // lapsed (and no office plan covers them), the link goes dark until they
-  // resubscribe. Buyers see a neutral message — no billing details exposed.
+  // lapsed (and no office plan covers them), the public link goes dark until they
+  // resubscribe — EXCEPT the owner / their team / an admin can still preview it
+  // themselves (so they see what they're missing). Buyers see a neutral message.
   const { status: ownerAccess } = await getEffectiveAccessStatus(supabase, listing.broker_id);
   if (!hasAccess(ownerAccess)) {
-    return (
+    let ownerPreview = false;
+    const supabaseUser = await createServerClient();
+    const { data: { user } } = await supabaseUser.auth.getUser();
+    if (user) {
+      // RLS lets the owner, their assistants, co-brokers, and admins read the row.
+      const { data: canView } = await supabaseUser.from("listings").select("id").eq("id", listing.id).maybeSingle();
+      ownerPreview = !!canView;
+    }
+    if (!ownerPreview) return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050b14", padding: 40, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
         <div style={{ maxWidth: 460, textAlign: "center" }}>
           <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "0.5px" }}>YachtPics <span style={{ color: "#d4a843" }}>Portal</span></p>

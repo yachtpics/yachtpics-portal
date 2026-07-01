@@ -1518,7 +1518,9 @@ export default function BrokerListingPage() {
                   Unpublish
                 </button>
               </>
-            ) : hasAccess(accessStatus) ? (
+            ) : (
+              // Publishing + previewing stays open even after the trial — brokers
+              // can build and view their slideshow; sharing it is what's gated.
               <button
                 onClick={publishSlideshow}
                 disabled={slideshowWorking || photos.filter(p => p.is_visible).length === 0}
@@ -1526,13 +1528,6 @@ export default function BrokerListingPage() {
               >
                 {slideshowWorking ? "Creating..." : "Create Slideshow"}
               </button>
-            ) : (
-              <Link
-                href="/dashboard/billing"
-                className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-              >
-                {accessStatus === "trial_expired" ? "Subscribe to Unlock" : "Upgrade to Unlock"}
-              </Link>
             )}
           </div>
         </div>
@@ -1613,8 +1608,8 @@ export default function BrokerListingPage() {
 
         {listing.slideshow_published && !hasAccess(accessStatus) && (
           <div className="mt-4 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
-            <span className="font-semibold">Your plan has ended — this slideshow is paused.</span>{" "}
-            Sharing links and the QR code are turned off, and the link won&rsquo;t open for clients until you resubscribe.{" "}
+            <span className="font-semibold">Your plan has ended.</span>{" "}
+            You can still <span className="font-medium">Preview</span> your slideshow to see how it looks — but sending, sharing links, and the QR code are off, and the link won&rsquo;t open for clients until you resubscribe.{" "}
             <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
             <span className="text-red-600">Downloading your delivered photos always stays free.</span>
           </div>
