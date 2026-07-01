@@ -2,6 +2,8 @@ import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
+import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { hasAccess } from "@/lib/subscriptionAccess";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -31,6 +33,21 @@ export default async function PublicSlideshowPage({
     .single();
 
   if (!listing) notFound();
+
+  // The live client slideshow is a paid feature. If the owning broker's plan has
+  // lapsed (and no office plan covers them), the link goes dark until they
+  // resubscribe. Buyers see a neutral message — no billing details exposed.
+  const { status: ownerAccess } = await getEffectiveAccessStatus(supabase, listing.broker_id);
+  if (!hasAccess(ownerAccess)) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050b14", padding: 40, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
+        <div style={{ maxWidth: 460, textAlign: "center" }}>
+          <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "0.5px" }}>YachtPics <span style={{ color: "#d4a843" }}>Portal</span></p>
+          <p style={{ margin: "20px 0 0", fontSize: 15, color: "#c4c9d4", lineHeight: 1.6 }}>This presentation is temporarily unavailable. Please contact the broker for the latest photos and details.</p>
+        </div>
+      </div>
+    );
+  }
 
   const [{ data: profile }, { data: photos }, { data: rawVideos }] =
     await Promise.all([

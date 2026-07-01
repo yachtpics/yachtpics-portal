@@ -1537,7 +1537,7 @@ export default function BrokerListingPage() {
           </div>
         </div>
 
-        {listing.slideshow_published && listing.slideshow_slug && (
+        {listing.slideshow_published && listing.slideshow_slug && hasAccess(accessStatus) && (
           <>
             {/* Link display */}
             <div className="mt-4 bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
@@ -1610,10 +1610,19 @@ export default function BrokerListingPage() {
             </div>
           </>
         )}
+
+        {listing.slideshow_published && !hasAccess(accessStatus) && (
+          <div className="mt-4 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+            <span className="font-semibold">Your plan has ended — this slideshow is paused.</span>{" "}
+            Sharing links and the QR code are turned off, and the link won&rsquo;t open for clients until you resubscribe.{" "}
+            <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
+            <span className="text-red-600">Downloading your delivered photos always stays free.</span>
+          </div>
+        )}
       </div>
 
-      {/* QR code — only when the slideshow is live */}
-      {listing.slideshow_published && listing.slideshow_slug && (
+      {/* QR code — only when the slideshow is live and the plan is active */}
+      {listing.slideshow_published && listing.slideshow_slug && hasAccess(accessStatus) && (
         <div className="mt-8">
           <ListingQRCode url={`https://portal.yachtpics.com/s/${listing.slideshow_slug}?src=qr`} vesselName={listing.vessel_name} />
         </div>
