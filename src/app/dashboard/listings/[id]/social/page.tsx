@@ -83,12 +83,14 @@ export default function SocialGraphicPage() {
         .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, broker_id, hero_photo_id")
         .eq("id", id).single();
       if (!l) { setLoading(false); return; }
-      // Social Post is a paid tool — gate on the listing owner's access.
+      // Paid tool: if the owner's plan lapsed, still show the generator + live
+      // preview (watermarked) so they see what they're missing — only the
+      // download is blocked.
       try {
         const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}`);
         const subData = subRes.ok ? await subRes.json() : null;
-        if (!hasAccess(subData?.status)) { setLocked(true); setLoading(false); return; }
-      } catch { /* fall through — don't hard-block on a status hiccup */ }
+        setLocked(!hasAccess(subData?.status));
+      } catch { /* leave unlocked on a status hiccup */ }
       setListing(l);
       setCaption(buildCaption(l));
       const { data: det } = await supabase.from("broker_details").select("logo_url").eq("id", l.broker_id).maybeSingle();
@@ -179,12 +181,30 @@ export default function SocialGraphicPage() {
         ctx.drawImage(logo, w - lw - pad, h - lh - pad, lw, lh);
       } catch { /* skip logo */ }
     }
+
+    // Watermark for expired brokers — they see the design, but the output is
+    // unusable until they subscribe.
+    if (locked) {
+      ctx.save();
+      ctx.translate(w / 2, h / 2);
+      ctx.rotate(-Math.PI / 6);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillStyle = "rgba(255,255,255,0.30)";
+      ctx.font = "800 96px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      ctx.fillText("PREVIEW", 0, -28);
+      ctx.font = "700 36px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+      ctx.fillText("Subscribe to unlock", 0, 44);
+      ctx.restore();
+    }
+
     setRendering(false);
-  }, [selected, listing, format, logoUrl, badge]);
+  }, [selected, listing, format, logoUrl, badge, locked]);
 
   useEffect(() => { render(); }, [render]);
 
   function download() {
+    if (locked) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     canvas.toBlob((blob) => {
@@ -206,16 +226,6 @@ export default function SocialGraphicPage() {
   }
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading…</div>;
-  if (locked) return (
-    <div className="px-6 py-16 max-w-md mx-auto text-center">
-      <Link href={`/dashboard/listings/${id}`} className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← Back to Listing</Link>
-      <div className="mt-6 bg-white border border-gray-200 rounded-xl p-8">
-        <p className="text-lg font-bold text-gray-900">Social posts are a paid feature</p>
-        <p className="text-sm text-gray-500 mt-2 leading-relaxed">Your plan has ended. Subscribe to create branded social posts and the rest of the portal&rsquo;s marketing tools. Downloading your delivered photos always stays free.</p>
-        <Link href="/dashboard/billing" className="inline-block mt-5 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">Choose a plan →</Link>
-      </div>
-    </div>
-  );
   if (!listing) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Listing not found.</div>;
 
   return (
@@ -225,6 +235,14 @@ export default function SocialGraphicPage() {
         <h1 className="text-2xl font-bold text-gray-900 mt-1">Social Post</h1>
         <p className="text-gray-500 mt-1 text-sm">Make a branded, post-ready image for Instagram, Facebook, or Stories — pick a photo, choose a tag, and grab the matching caption.</p>
       </div>
+
+      {locked && (
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+          <span className="font-semibold">This is a preview.</span>{" "}
+          Your plan has ended — subscribe to download clean, watermark-free social posts.{" "}
+          <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>
+        </div>
+      )}
 
       {/* Format toggle */}
       <div className="flex gap-2 mb-5">
@@ -255,10 +273,17 @@ export default function SocialGraphicPage() {
       </div>
 
       <div className="flex justify-center mb-6">
-        <button onClick={download} disabled={rendering || !selected}
-          className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors">
-          {rendering ? "Rendering…" : "⬇ Download Image"}
-        </button>
+        {locked ? (
+          <Link href="/dashboard/billing"
+            className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors">
+            🔒 Subscribe to Download
+          </Link>
+        ) : (
+          <button onClick={download} disabled={rendering || !selected}
+            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors">
+            {rendering ? "Rendering…" : "⬇ Download Image"}
+          </button>
+        )}
       </div>
 
       {/* Photo picker */}

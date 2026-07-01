@@ -55,19 +55,10 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
     .single();
   if (!listing) notFound();
 
-  // Spec sheet is a paid tool — gate on the listing owner's access.
+  // Spec sheet is a paid tool. If the owner's plan lapsed, still SHOW the flyer
+  // (so they see what they're missing) but watermark it and block printing.
   const { status: ownerAccess } = await getEffectiveAccessStatus(service, listing.broker_id);
-  if (!hasAccess(ownerAccess)) {
-    return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fa", padding: 40, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
-        <div style={{ maxWidth: 420, textAlign: "center", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 40 }}>
-          <p style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: "0 0 8px" }}>Spec sheets are a paid feature</p>
-          <p style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.6, margin: "0 0 20px" }}>Your plan has ended. Subscribe to generate branded spec sheets and the rest of the portal&rsquo;s marketing tools. Downloading your delivered photos always stays free.</p>
-          <Link href="/dashboard/billing" style={{ display: "inline-block", background: "#d4a843", color: "#050b14", fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "12px 24px", borderRadius: 8 }}>Choose a plan &rarr;</Link>
-        </div>
-      </div>
-    );
-  }
+  const locked = !hasAccess(ownerAccess);
 
   const [{ data: profile }, { data: details }] = await Promise.all([
     service.from("profiles").select("first_name, last_name, phone, display_email").eq("id", listing.broker_id).single(),
@@ -130,11 +121,21 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
           html, body { background: #fff !important; }
           .flyer-wrap { padding: 0 !important; background: #fff !important; }
           .flyer { box-shadow: none !important; margin: 0 !important; }
+          .no-print { display: none !important; }
         }
       `}</style>
 
       <div className="flyer-wrap" style={{ display: "flex", justifyContent: "center" }}>
-        <div className="flyer" style={{ width: "8.5in", minHeight: "11in", background: "#fff", boxShadow: "0 2px 16px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", color: "#1f2937" }}>
+        <div className="flyer" style={{ position: "relative", width: "8.5in", minHeight: "11in", background: "#fff", boxShadow: "0 2px 16px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", color: "#1f2937" }}>
+
+          {locked && (
+            <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
+              <div style={{ transform: "rotate(-30deg)", textAlign: "center", color: "rgba(212,168,67,0.28)", fontWeight: 800 }}>
+                <div style={{ fontSize: 96, letterSpacing: 4 }}>PREVIEW</div>
+                <div style={{ fontSize: 30, letterSpacing: 2, color: "rgba(31,41,55,0.30)" }}>Subscribe to unlock</div>
+              </div>
+            </div>
+          )}
 
           {/* Top bar */}
           <div style={{ background: NAVY, padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -210,7 +211,16 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
         </div>
       </div>
 
-      <PrintButton />
+      {locked ? (
+        <div className="no-print" style={{ maxWidth: "8.5in", margin: "16px auto 0", textAlign: "center" }}>
+          <div style={{ background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 10, padding: "16px 20px" }}>
+            <p style={{ margin: "0 0 10px", fontSize: 14, color: "#991b1b" }}><strong>This is a preview.</strong> Your plan has ended — subscribe to print or email a clean, watermark-free spec sheet.</p>
+            <Link href="/dashboard/billing" style={{ display: "inline-block", background: "#d4a843", color: "#050b14", fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "10px 22px", borderRadius: 8 }}>Choose a plan &rarr;</Link>
+          </div>
+        </div>
+      ) : (
+        <PrintButton />
+      )}
     </div>
   );
 }
