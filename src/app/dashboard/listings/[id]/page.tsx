@@ -816,8 +816,9 @@ export default function BrokerListingPage() {
   const visiblePhotos = photos.filter(p => p.is_visible);
   const selectedPhotos = photos.filter(p => selectedIds.has(p.id));
 
-  // Send to Client is a paid feature and needs something to deliver.
-  const canSendToClient = !!listing && hasAccess(accessStatus) && (listing.slideshow_published || documents.length > 0);
+  // Send to Client is a paid feature and needs something to deliver
+  // (a published slideshow, a document, or a video).
+  const canSendToClient = !!listing && hasAccess(accessStatus) && (listing.slideshow_published || documents.length > 0 || videos.length > 0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
