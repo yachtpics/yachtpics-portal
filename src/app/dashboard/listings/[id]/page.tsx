@@ -808,8 +808,8 @@ export default function BrokerListingPage() {
   const visiblePhotos = photos.filter(p => p.is_visible);
   const selectedPhotos = photos.filter(p => selectedIds.has(p.id));
 
-  // Send to Client needs something to deliver: a published slideshow or a document.
-  const canSendToClient = !!listing && (listing.slideshow_published || documents.length > 0);
+  // Send to Client is a paid feature and needs something to deliver.
+  const canSendToClient = !!listing && hasAccess(accessStatus) && (listing.slideshow_published || documents.length > 0);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -920,12 +920,16 @@ export default function BrokerListingPage() {
             <Link href={`/dashboard/listings/${id}/edit`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
               Edit
             </Link>
-            <a href={`/print/listing/${id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
-              📄 Spec Sheet
-            </a>
-            <Link href={`/dashboard/listings/${id}/social`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
-              📱 Social Post
-            </Link>
+            {hasAccess(accessStatus) && (
+              <>
+                <a href={`/print/listing/${id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
+                  📄 Spec Sheet
+                </a>
+                <Link href={`/dashboard/listings/${id}/social`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
+                  📱 Social Post
+                </Link>
+              </>
+            )}
           </div>
           <p className="text-gray-500 text-sm mt-0.5">{listing.location ?? ""}</p>
           {isBrokerageAdmin && (
@@ -952,7 +956,7 @@ export default function BrokerListingPage() {
             <button
               onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendModal(true); }}
               disabled={!canSendToClient}
-              title={canSendToClient ? "Email this listing to a client" : "Publish your slideshow first to send it to a client"}
+              title={canSendToClient ? "Email this listing to a client" : (!hasAccess(accessStatus) ? "Subscribe to send listings to clients" : "Publish your slideshow first to send it to a client")}
               className="bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#050b14] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
             >
               ✉ Send to Client
@@ -1050,7 +1054,14 @@ export default function BrokerListingPage() {
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
       </div>
 
-      {!listing.slideshow_published && (
+      {!hasAccess(accessStatus) ? (
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+          <span className="font-semibold">Your plan has ended.</span>{" "}
+          Subscribe to send listings to clients, publish slideshows, and upload photos.{" "}
+          <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
+          <span className="text-red-600">Downloading your delivered photos always stays free.</span>
+        </div>
+      ) : !listing.slideshow_published && (
         <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-amber-50 border border-amber-200 text-amber-800">
           <span className="font-semibold">Publish your slideshow to send this listing to a client.</span>{" "}
           Scroll to the <span className="font-medium">Client Slideshow</span> section below and click Create Slideshow — then the Send to Client button turns on.
@@ -1500,7 +1511,9 @@ export default function BrokerListingPage() {
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendModal(true); }}
-                className="flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                disabled={!hasAccess(accessStatus)}
+                title={hasAccess(accessStatus) ? "Email this listing to a client" : "Subscribe to send listings to clients"}
+                className="flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#d4a843] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />

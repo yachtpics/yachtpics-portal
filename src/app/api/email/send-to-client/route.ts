@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
+import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { hasAccess } from "@/lib/subscriptionAccess";
 import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
@@ -31,6 +33,17 @@ export async function POST(req: NextRequest) {
     // Verify caller is the broker, a linked assistant, or a co-broker on this listing
     const access = await assertListingAccess(supabaseAdmin, listingId, user.id, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
+
+    // Send-to-Client is a paid feature. Gate on the listing OWNER's effective
+    // access (their own plan or an office plan). Expired brokers can still
+    // download delivered photos — that's always free — but not send to clients.
+    const { status: ownerAccess } = await getEffectiveAccessStatus(supabaseAdmin, listing.broker_id);
+    if (!hasAccess(ownerAccess)) {
+      return NextResponse.json(
+        { error: "This plan has ended. Subscribe to send listings to clients — downloading delivered photos always stays free." },
+        { status: 403 }
+      );
+    }
 
     const { data: profile } = await supabaseAdmin
       .from("profiles")

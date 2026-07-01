@@ -2,8 +2,11 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
+import Link from "next/link";
 import PrintButton from "./PrintButton";
 import HeroImage from "./HeroImage";
+import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { hasAccess } from "@/lib/subscriptionAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +54,20 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
     .eq("id", params.id)
     .single();
   if (!listing) notFound();
+
+  // Spec sheet is a paid tool — gate on the listing owner's access.
+  const { status: ownerAccess } = await getEffectiveAccessStatus(service, listing.broker_id);
+  if (!hasAccess(ownerAccess)) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#f8f9fa", padding: 40, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
+        <div style={{ maxWidth: 420, textAlign: "center", background: "#fff", border: "1px solid #e5e7eb", borderRadius: 12, padding: 40 }}>
+          <p style={{ fontSize: 18, fontWeight: 700, color: "#111827", margin: "0 0 8px" }}>Spec sheets are a paid feature</p>
+          <p style={{ fontSize: 14, color: "#6b7280", lineHeight: 1.6, margin: "0 0 20px" }}>Your plan has ended. Subscribe to generate branded spec sheets and the rest of the portal&rsquo;s marketing tools. Downloading your delivered photos always stays free.</p>
+          <Link href="/dashboard/billing" style={{ display: "inline-block", background: "#d4a843", color: "#050b14", fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "12px 24px", borderRadius: 8 }}>Choose a plan &rarr;</Link>
+        </div>
+      </div>
+    );
+  }
 
   const [{ data: profile }, { data: details }] = await Promise.all([
     service.from("profiles").select("first_name, last_name, phone, display_email").eq("id", listing.broker_id).single(),

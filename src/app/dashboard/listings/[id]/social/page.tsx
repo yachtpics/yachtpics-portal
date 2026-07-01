@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { hasAccess } from "@/lib/subscriptionAccess";
 
 type Photo = { id: string; url: string | null };
 type Format = "square" | "story";
@@ -70,6 +71,7 @@ export default function SocialGraphicPage() {
   const [listing, setListing] = useState<ListingData | null>(null);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [locked, setLocked] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [badge, setBadge] = useState("For Sale");
   const [caption, setCaption] = useState("");
@@ -81,6 +83,12 @@ export default function SocialGraphicPage() {
         .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, broker_id, hero_photo_id")
         .eq("id", id).single();
       if (!l) { setLoading(false); return; }
+      // Social Post is a paid tool — gate on the listing owner's access.
+      try {
+        const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}`);
+        const subData = subRes.ok ? await subRes.json() : null;
+        if (!hasAccess(subData?.status)) { setLocked(true); setLoading(false); return; }
+      } catch { /* fall through — don't hard-block on a status hiccup */ }
       setListing(l);
       setCaption(buildCaption(l));
       const { data: det } = await supabase.from("broker_details").select("logo_url").eq("id", l.broker_id).maybeSingle();
@@ -198,6 +206,16 @@ export default function SocialGraphicPage() {
   }
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading…</div>;
+  if (locked) return (
+    <div className="px-6 py-16 max-w-md mx-auto text-center">
+      <Link href={`/dashboard/listings/${id}`} className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← Back to Listing</Link>
+      <div className="mt-6 bg-white border border-gray-200 rounded-xl p-8">
+        <p className="text-lg font-bold text-gray-900">Social posts are a paid feature</p>
+        <p className="text-sm text-gray-500 mt-2 leading-relaxed">Your plan has ended. Subscribe to create branded social posts and the rest of the portal&rsquo;s marketing tools. Downloading your delivered photos always stays free.</p>
+        <Link href="/dashboard/billing" className="inline-block mt-5 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors">Choose a plan →</Link>
+      </div>
+    </div>
+  );
   if (!listing) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Listing not found.</div>;
 
   return (
