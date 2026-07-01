@@ -39,7 +39,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function ListingRow({ listing, showBroker, isCoBroker }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean }) {
+export default function ListingRow({ listing, showBroker, isCoBroker, locked }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean; locked?: boolean }) {
   // Status dropdown state
   const [status, setStatus] = useState(listing.status);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -297,8 +297,8 @@ export default function ListingRow({ listing, showBroker, isCoBroker }: { listin
       {/* Right — quick actions + date + status */}
       <div className="flex items-center gap-2 shrink-0">
 
-        {/* Share slideshow (only when published) */}
-        {listing.slideshow_published && listing.slideshow_slug && (
+        {/* Share slideshow (only when published + active plan) */}
+        {listing.slideshow_published && listing.slideshow_slug && !locked && (
           <button
             onClick={handleShare}
             title="Share the client slideshow link"
@@ -357,7 +357,8 @@ export default function ListingRow({ listing, showBroker, isCoBroker }: { listin
           </button>
         </div>
 
-        {/* Send to Client */}
+        {/* Send to Client — active plans only */}
+        {!locked && (
         <div className="relative" ref={sendRef}>
           <button
             onClick={(e) => { e.preventDefault(); setSendOpen((o) => !o); setSendDone(false); setSendError(""); }}
@@ -420,6 +421,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker }: { listin
             </div>
           )}
         </div>
+        )}
 
         <p className="text-xs text-gray-400 hidden md:block">Updated {updated}</p>
 

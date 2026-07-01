@@ -1,7 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import ListingsBrowser from "./_components/ListingsBrowser";
+import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { hasAccess } from "@/lib/subscriptionAccess";
 
 export default async function ListingsPage() {
   const supabase = await createClient();
@@ -57,6 +60,18 @@ export default async function ListingsPage() {
     .eq("broker_id", user.id);
   const coBrokerIds = new Set((coRows ?? []).map((r) => r.listing_id as string));
 
+  // Rows whose owner's plan has lapsed get sharing/sending locked (downloads
+  // stay free). Service client so we can read other brokers' access when an
+  // assistant/admin is viewing their listings.
+  const service = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+  const ownerIds = Array.from(new Set(listings.map((l) => l.broker_id).filter(Boolean))) as string[];
+  const lockedOwners = new Set<string>();
+  await Promise.all(ownerIds.map(async (bid) => {
+    const { status } = await getEffectiveAccessStatus(service, bid);
+    if (!hasAccess(status)) lockedOwners.add(bid);
+  }));
+  const lockedListingIds = listings.filter((l) => l.broker_id && lockedOwners.has(l.broker_id)).map((l) => l.id);
+
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
@@ -92,6 +107,7 @@ export default async function ListingsPage() {
           listings={listings}
           currentUserId={user.id}
           coBrokerIds={Array.from(coBrokerIds)}
+          lockedListingIds={lockedListingIds}
         />
       )}
     </div>

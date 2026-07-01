@@ -27,14 +27,17 @@ export default function ListingsBrowser({
   listings,
   currentUserId,
   coBrokerIds,
+  lockedListingIds = [],
 }: {
   listings: ListingItem[];
   currentUserId: string;
   coBrokerIds: string[];
+  lockedListingIds?: string[];
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const coSet = useMemo(() => new Set(coBrokerIds), [coBrokerIds]);
+  const lockedSet = useMemo(() => new Set(lockedListingIds), [lockedListingIds]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -65,7 +68,7 @@ export default function ListingsBrowser({
   );
 
   const renderRow = (l: ListingItem) => (
-    <ListingRow key={l.id} listing={l} showBroker={l.broker_id !== currentUserId} isCoBroker={coSet.has(l.id)} />
+    <ListingRow key={l.id} listing={l} showBroker={l.broker_id !== currentUserId} isCoBroker={coSet.has(l.id)} locked={lockedSet.has(l.id)} />
   );
 
   return (
