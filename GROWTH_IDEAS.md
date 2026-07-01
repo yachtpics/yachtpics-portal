@@ -134,6 +134,13 @@ Ranked for YachtPics specifically. #1 and #2 lean on assets no competitor has (t
 
 ---
 
+## Parked: hi-res file delivery
+- Portal intentionally stays **web-res only** (single upload per photo — core design). Web-res is fine for most print ads.
+- Occasional hi-res requests (print ads, magazines) are handled **ad-hoc**: Charlie sends a link to the original from his own server. Few requests, so no feature needed now.
+- **Future option if requests grow:** a "Request hi-res" button on a listing/photo → notifies YachtPics → reply with a server link (or auto-link to the right folder). Could carry a **print-licensing fee** (ties to revenue ideas #2/#3).
+
+---
+
 ### Notes
 - These connect: blog (content) → SEO traffic → public listing pages → broker signups (self-serve) → more public listings → more traffic. The flywheel is the real prize.
 - When ready, next step is to pick ONE to scope first (recommend: nail the public-page SEO foundation before the blog, so blog traffic has somewhere to convert).

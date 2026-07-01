@@ -8,7 +8,7 @@ export default async function AdminBrokersPage() {
   const { data: brokers } = await supabase
     .from("profiles")
     .select(`
-      id, first_name, last_name, display_email, phone, created_at, welcomed_at, invited_by,
+      id, first_name, last_name, display_email, phone, created_at, welcomed_at, invited_by, email_bounced_at, email_bounce_reason,
       broker_details(brokerage_name),
       subscriptions(plan, status, trial_ends_at)
     `)
@@ -88,6 +88,11 @@ export default async function AdminBrokersPage() {
                     <td className="px-4 sm:px-6 py-4 text-gray-500 hidden sm:table-cell">{brokerage}</td>
                     <td className="px-4 sm:px-6 py-4 text-gray-500 hidden md:table-cell">
                       <p>{broker.display_email ?? "—"}</p>
+                      {broker.email_bounced_at && (
+                        <span title={broker.email_bounce_reason ?? "Email bounced"} className="inline-block mt-0.5 text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+                          ⚠ Email bouncing
+                        </span>
+                      )}
                       <p className="text-xs text-gray-400">{broker.phone ?? ""}</p>
                     </td>
                     <td className="px-4 sm:px-6 py-4 text-gray-500 hidden lg:table-cell">

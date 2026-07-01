@@ -13,7 +13,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
   const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }] =
     await Promise.all([
-      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by").eq("id", params.id).single(),
+      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("plan, status, trial_ends_at, current_period_end").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at").eq("broker_id", params.id).order("updated_at", { ascending: false }),
@@ -87,6 +87,18 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             <p className="text-sm font-semibold text-green-800">All done — broker account created</p>
             <p className="text-sm text-green-700 mt-0.5">
               {name} received an email with their login credentials. You can resend or reset their password below if needed.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {profile.email_bounced_at && (
+        <div className="mb-6 flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-5 py-4">
+          <span className="text-red-500 text-lg leading-none mt-0.5">⚠</span>
+          <div>
+            <p className="text-sm font-semibold text-red-800">This broker&rsquo;s email is bouncing</p>
+            <p className="text-sm text-red-700 mt-0.5">
+              Emails to <strong>{profile.display_email}</strong> aren&rsquo;t being delivered{profile.email_bounce_reason ? ` — ${profile.email_bounce_reason}` : ""}. Update their email below to the correct address; that clears this warning and re-enables delivery.
             </p>
           </div>
         </div>

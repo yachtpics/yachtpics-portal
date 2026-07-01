@@ -41,7 +41,12 @@ export async function POST(req: NextRequest) {
   }
 
   const update: Record<string, unknown> = {};
-  if (trimmedEmail) update.display_email = trimmedEmail;
+  if (trimmedEmail) {
+    update.display_email = trimmedEmail;
+    // New address — clear any bounce flag so alerts reset.
+    update.email_bounced_at = null;
+    update.email_bounce_reason = null;
+  }
   if (typeof firstName === "string") update.first_name = firstName.trim() || null;
   if (typeof lastName === "string") update.last_name = lastName.trim() || null;
   if (typeof phone === "string") update.phone = phone.trim() || null;
