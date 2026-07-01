@@ -8,7 +8,7 @@ import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId, clientEmail, message, includeSlideshow, documentIds } = await req.json();
+    const { listingId, clientEmail, message, includeSlideshow, documentIds, videoIds } = await req.json();
     if (!listingId || !clientEmail) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -85,6 +85,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    const videoLinks: { filename: string; url: string }[] = [];
+    if (videoIds?.length > 0) {
+      const { data: vids } = await supabaseAdmin
+        .from("videos")
+        .select("id, storage_path, filename")
+        .in("id", videoIds)
+        .eq("listing_id", listingId);
+      for (const v of vids ?? []) {
+        const { data: signed } = await supabaseAdmin.storage
+          .from("listing-videos")
+          .createSignedUrl(v.storage_path, 60 * 60 * 24 * 7);
+        if (signed?.signedUrl) {
+          videoLinks.push({ filename: v.filename ?? "video.mp4", url: signed.signedUrl });
+        }
+      }
+    }
+
     const messageBlock = message
       ? `<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
            <p style="margin:0;font-size:15px;color:#374151;line-height:1.6;white-space:pre-wrap;">${message}</p>
@@ -112,6 +129,19 @@ export async function POST(req: NextRequest) {
          </div>`
       : "";
 
+    const videosBlock = videoLinks.length > 0
+      ? `<div style="margin-top:20px;">
+           <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Videos</p>
+           ${videoLinks.map(v => `
+             <a href="${v.url}" style="display:flex;align-items:center;gap:10px;background:#f8f9fa;border-radius:8px;padding:12px 16px;text-decoration:none;margin-bottom:8px;">
+               <span style="font-size:18px;">&#127909;</span>
+               <span style="font-size:14px;font-weight:500;color:#111827;">${v.filename}</span>
+               <span style="margin-left:auto;font-size:12px;color:#d4a843;font-weight:600;">Watch &#8594;</span>
+             </a>
+           `).join("")}
+         </div>`
+      : "";
+
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
       <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
         <div style="background:#050b14;padding:32px 40px;">
@@ -122,6 +152,7 @@ export async function POST(req: NextRequest) {
           <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">Sent by ${brokerName}${brokerage ? ` &middot; ${brokerage}` : ""}</p>
           ${messageBlock}
           ${slideshowBlock}
+          ${videosBlock}
           ${docsBlock}
         </div>
         <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">

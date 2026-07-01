@@ -167,7 +167,7 @@ export default function BrokerListingPage() {
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
   // Videos
-  interface Video { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null; }
+  interface Video { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; }
   const [videos, setVideos] = useState<Video[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
@@ -180,6 +180,7 @@ export default function BrokerListingPage() {
   const [sendMessage, setSendMessage] = useState("");
   const [sendSlideshow, setSendSlideshow] = useState(true);
   const [sendDocIds, setSendDocIds] = useState<Set<string>>(new Set());
+  const [sendVideoIds, setSendVideoIds] = useState<Set<string>>(new Set());
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
 
@@ -274,7 +275,7 @@ export default function BrokerListingPage() {
     setDocuments(docs ?? []);
 
     const { data: vids } = await supabase.from("videos")
-      .select("id, storage_path, filename, created_at")
+      .select("id, storage_path, filename, created_at, in_slideshow")
       .eq("listing_id", id)
       .order("created_at");
     if (vids && vids.length > 0) {
@@ -711,6 +712,11 @@ export default function BrokerListingPage() {
     setDeletingVideoIds(prev => { const next = new Set(prev); next.delete(videoId); return next; });
   }
 
+  async function toggleVideoSlideshow(videoId: string, current: boolean) {
+    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, in_slideshow: !current } : v));
+    await supabase.from("videos").update({ in_slideshow: !current }).eq("id", videoId);
+  }
+
   async function downloadVideo(storagePath: string, filename: string | null) {
     const { data } = await supabase.storage.from("listing-videos").createSignedUrl(storagePath, 60);
     if (!data?.signedUrl) return;
@@ -733,6 +739,7 @@ export default function BrokerListingPage() {
           message: sendMessage,
           includeSlideshow: sendSlideshow,
           documentIds: Array.from(sendDocIds),
+          videoIds: Array.from(sendVideoIds),
         }),
       });
       const data = await res.json();
@@ -749,6 +756,7 @@ export default function BrokerListingPage() {
         setSendMessage("");
         setSendSlideshow(true);
         setSendDocIds(new Set());
+        setSendVideoIds(new Set());
       }, 2000);
     } catch (err) {
       alert(`Error: ${String(err)}`);
@@ -954,7 +962,7 @@ export default function BrokerListingPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {!selectMode && (
             <button
-              onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendModal(true); }}
+              onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
               disabled={!canSendToClient}
               title={canSendToClient ? "Email this listing to a client" : (!hasAccess(accessStatus) ? "Subscribe to send listings to clients" : "Publish your slideshow first to send it to a client")}
               className="bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#050b14] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
@@ -1289,6 +1297,30 @@ export default function BrokerListingPage() {
                       </label>
                     ))
                   )}
+
+                  {/* Videos — sent as their own links, separate from the slideshow */}
+                  {videos.map(video => (
+                    <label key={video.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
+                      sendVideoIds.has(video.id) ? "border-[#d4a843] bg-[#d4a843]/5" : "border-gray-200 hover:border-gray-300"
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={sendVideoIds.has(video.id)}
+                        onChange={(e) => {
+                          setSendVideoIds(prev => {
+                            const next = new Set(Array.from(prev));
+                            e.target.checked ? next.add(video.id) : next.delete(video.id);
+                            return next;
+                          });
+                        }}
+                        className="accent-[#d4a843] w-4 h-4 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
+                        <p className="text-xs text-gray-400">Video · sent as a direct link{!video.in_slideshow ? " · hidden from slideshow" : ""}</p>
+                      </div>
+                    </label>
+                  ))}
                 </div>
               </div>
             </div>
@@ -1302,13 +1334,13 @@ export default function BrokerListingPage() {
               ) : (
                 <button
                   onClick={sendToClient}
-                  disabled={sending || !sendEmail || (!sendSlideshow && sendDocIds.size === 0)}
+                  disabled={sending || !sendEmail || (!sendSlideshow && sendDocIds.size === 0 && sendVideoIds.size === 0)}
                   className="w-full bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-50 text-white text-sm font-semibold py-3 rounded-lg transition-colors"
                 >
                   {sending ? "Sending…" : "Send Email"}
                 </button>
               )}
-              {!sendSlideshow && sendDocIds.size === 0 && !sendSuccess && (
+              {!sendSlideshow && sendDocIds.size === 0 && sendVideoIds.size === 0 && !sendSuccess && (
                 <p className="text-xs text-center text-gray-400 mt-2">Select at least one item to include</p>
               )}
             </div>
@@ -1424,11 +1456,21 @@ export default function BrokerListingPage() {
                 )}
                 <div className="flex items-center gap-3 px-4 py-3 bg-gray-50">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
+                    <p className="text-sm font-medium text-gray-800 truncate">
+                      🎬 {video.filename ?? "video.mp4"}
+                      {!video.in_slideshow && <span className="ml-2 text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">Hidden from slideshow</span>}
+                    </p>
                     <p className="text-xs text-gray-400 mt-0.5">
                       {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </p>
                   </div>
+                  <button
+                    onClick={() => toggleVideoSlideshow(video.id, video.in_slideshow)}
+                    title={video.in_slideshow ? "Hide this video from the client slideshow" : "Show this video in the client slideshow"}
+                    className="text-xs font-medium text-gray-500 hover:text-[#c49a35] transition-colors shrink-0"
+                  >
+                    {video.in_slideshow ? "Hide from slideshow" : "Show in slideshow"}
+                  </button>
                   <button
                     onClick={() => downloadVideo(video.storage_path, video.filename)}
                     className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
@@ -1510,7 +1552,7 @@ export default function BrokerListingPage() {
             {/* Share buttons */}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendModal(true); }}
+                onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
                 disabled={!hasAccess(accessStatus)}
                 title={hasAccess(accessStatus) ? "Email this listing to a client" : "Subscribe to send listings to clients"}
                 className="flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#d4a843] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"

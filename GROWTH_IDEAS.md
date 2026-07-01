@@ -1,5 +1,17 @@
 # YachtPics Portal — Growth & Marketing Ideas
 
+## ★ NORTH STAR (the one thing everything serves)
+**Be the easiest and most professional media-delivery portal in yachting — the default brokers think of first.**
+
+- We do NOT compete with YachtWorld / Yatco on listings. We compete — and win — on **media delivery**.
+- **Ease of use is the product.** Brokers say sending photos/listings from other systems is so painful they hand it to an assistant or give up. That pain is our wedge.
+- Every feature/decision passes one test: *"Is this the fewest-taps, most professional way a broker could send their media?"* If it adds a step, a decision, or friction, it's wrong.
+- Keep the assistant workflow first-class (it already is): "so easy you won't need to hand it off — but if you do, your assistant will love it too."
+- Guardrails when building: one-tap send, one-click publish, no manual resizing, no zip files, no version confusion, no jargon, mobile-first.
+
+---
+
+
 A running list of strategic initiatives to revisit. Not scoped or scheduled yet — captured so we don't lose them.
 
 ---
@@ -133,6 +145,11 @@ Ranked for YachtPics specifically. #1 and #2 lean on assets no competitor has (t
 5. Broker order history + status; email confirmations.
 
 ---
+
+## Parked: polish the slideshow & video presentation
+- Make the client slideshow + video presentation feel more premium, with **self-serve customizations brokers control**.
+- Ideas to explore: cover/intro slide with vessel name + price + broker branding, transitions/Ken Burns pan, background music option, theme/color choices, layout templates, an outro slide with broker contact + CTA, optional captions per photo, autoplay/timing controls, branded video intro/outro bumpers.
+- Goal: the shared link should look like a designed presentation, not just a photo scroll — a differentiator and a reason brokers keep using (and paying for) the portal.
 
 ## Parked: hi-res file delivery
 - Portal intentionally stays **web-res only** (single upload per photo — core design). Web-res is fine for most print ads.
