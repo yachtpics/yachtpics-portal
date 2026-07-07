@@ -131,10 +131,16 @@ function para(text: string): string {
   return `<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">${text}</p>`;
 }
 
-export function tipEmailHtml(tip: Tip, opts: { firstName: string; unsubToken?: string }): string {
-  const { firstName, unsubToken } = opts;
+export function tipEmailHtml(
+  tip: Tip,
+  opts: { firstName: string; unsubToken?: string; notice?: string }
+): string {
+  const { firstName, unsubToken, notice } = opts;
   const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
   const bodyHtml = tip.body.map(para).join("");
+  const noticeHtml = notice
+    ? `<div style="margin:0 0 24px;padding:14px 18px;background:#fbf7ec;border:1px solid #e7d9b0;border-radius:8px;font-size:14px;color:#6b5a2a;line-height:1.6;">${notice}</div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html>
@@ -145,6 +151,7 @@ export function tipEmailHtml(tip: Tip, opts: { firstName: string; unsubToken?: s
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
     </div>
     <div style="padding:40px;">
+      ${noticeHtml}
       <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#d4a843;text-transform:uppercase;letter-spacing:1px;">Portal Tip</p>
       <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111827;">${tip.headline}</h1>
       <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">Hi ${firstName},</p>

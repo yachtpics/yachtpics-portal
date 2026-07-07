@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { logEmail } from "@/lib/logEmail";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
-import { TIP_BY_SLUG, tipApprovalKey, tipEmailHtml } from "@/lib/portalTips";
+import { TIP_BY_SLUG, tipApprovalKey, tipEmailType, tipEmailHtml } from "@/lib/portalTips";
 import { runTipsDrip } from "@/lib/sendTips";
+import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -65,6 +66,59 @@ export async function POST(req: NextRequest) {
     if (body.confirm !== true) return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
     const result = await runTipsDrip(admin, userId);
     return NextResponse.json({ ok: true, ...result });
+  }
+
+  // One-time correction blast: a system bug re-sent tip #1 instead of advancing
+  // the series. Send the given tip to every opted-in recipient once, with a
+  // short apology note, and log it as that tip so the weekly drip resumes from
+  // the next one. Bypasses pacing on purpose (it's a manual, one-off make-good).
+  if (mode === "correction") {
+    if (!tip) return NextResponse.json({ error: "Unknown tip" }, { status: 400 });
+    if (body.confirm !== true) return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
+
+    const notice =
+      "Quick note: a glitch on our end re-sent last week&rsquo;s tip instead of moving you along. " +
+      "Apologies for the repeat &mdash; here&rsquo;s the one you were meant to get next.";
+
+    const { data: profiles } = await admin
+      .from("profiles")
+      .select("id, first_name, display_email, role, unsubscribe_token")
+      .in("role", ["broker", "assistant"])
+      .eq("email_opt_out", false);
+    const recipients = (profiles ?? []).filter((p) => !!p.display_email);
+    if (recipients.length === 0) return NextResponse.json({ error: "No recipients" }, { status: 400 });
+
+    const messages: BatchEmail[] = recipients.map((r) => {
+      const token = r.unsubscribe_token ?? undefined;
+      return {
+        from: FROM,
+        to: r.display_email as string,
+        subject: tip.subject,
+        html: tipEmailHtml(tip, { firstName: r.first_name ?? "there", unsubToken: token, notice }),
+        headers: token ? unsubscribeHeaders(token) : undefined,
+      };
+    });
+
+    const results = await sendResendBatch(messages);
+    let sent = 0, failed = 0;
+    await Promise.all(
+      recipients.map((r, i) => {
+        const ok = results[i]?.ok ?? false;
+        if (ok) sent++; else failed++;
+        return logEmail({
+          emailType: tipEmailType(tip.slug),
+          recipientEmail: r.display_email as string,
+          recipientRole: r.role === "assistant" ? "assistant" : "broker",
+          recipientId: r.id,
+          subject: tip.subject,
+          status: ok ? "sent" : "failed",
+          error: ok ? null : (results[i]?.error ?? "Send failed"),
+          sentBy: userId,
+          metadata: { correction: true },
+        });
+      })
+    );
+    return NextResponse.json({ ok: true, slug: tip.slug, recipients: recipients.length, sent, failed });
   }
 
   return NextResponse.json({ error: "Unknown mode" }, { status: 400 });

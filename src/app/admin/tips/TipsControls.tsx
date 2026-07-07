@@ -51,6 +51,14 @@ export default function TipsControls({ tips, recipients }: { tips: TipRow[]; rec
     if (data) setNote({ kind: "ok", text: `Test sent to ${data.to}.` });
   }
 
+  async function sendCorrection() {
+    if (!window.confirm(
+      `Send the correction email (short apology + the cover-photo tip) to all ${recipients} opted-in recipients now?\n\nOne-time make-good — it bypasses the weekly pacing and resumes the series at tip #3 next Tuesday.`
+    )) return;
+    const data = await call("correction", "cover-photo", { confirm: true });
+    if (data) setNote({ kind: "ok", text: `Correction sent — ${data.sent} delivered${data.failed ? `, ${data.failed} failed` : ""}. The series resumes at tip #3 next Tuesday.` });
+  }
+
   const firstUnapproved = rows.find((r) => !r.approved);
 
   return (
@@ -65,6 +73,22 @@ export default function TipsControls({ tips, recipients }: { tips: TipRow[]; rec
         Tips go out <strong>weekly, Tuesday 9:00 AM ET</strong>, one per person in order — but only the ones you&rsquo;ve approved.
         Each recipient gets the next tip they haven&rsquo;t seen yet. <strong>{recipients}</strong> opted-in recipient{recipients === 1 ? "" : "s"}.
         {firstUnapproved && <> Next up: <strong>{firstUnapproved.headline}</strong> — approve it to let it send.</>}
+      </div>
+
+      <div className="bg-white border border-gray-200 rounded-xl px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900">One-time correction send</p>
+          <p className="text-xs text-gray-500 mt-0.5">
+            A system bug re-sent the first tip instead of advancing. Send everyone a short apology plus the cover-photo tip, then the weekly series resumes at #3.
+          </p>
+        </div>
+        <button
+          onClick={sendCorrection}
+          disabled={busy === "correction:cover-photo"}
+          className="text-sm font-semibold px-4 py-2 rounded-lg bg-[#050b14] text-white hover:bg-[#0b1626] transition-colors disabled:opacity-50 shrink-0"
+        >
+          {busy === "correction:cover-photo" ? "Sending…" : "Send correction"}
+        </button>
       </div>
 
       {rows.map((row, i) => (
