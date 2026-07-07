@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// Give the dispatcher real headroom. Without this, a Hobby function is killed at
+// ~10s — long enough for trial-reminders (which sends one email at a time) to
+// eat the whole budget, so the second job of the day (Tue: tips, Mon: announce)
+// never got triggered. 60s is the Hobby max.
+export const maxDuration = 60;
 
 // Single daily dispatcher. Vercel's Hobby plan caps a project at 2 cron jobs, so
 // instead of one cron per task we run ONE cron daily (13:00 UTC) and fan out to
@@ -32,17 +37,23 @@ export async function GET(req: NextRequest) {
   if (dow === 2) jobs.push("/api/cron/tips");
   if (dow === 4) jobs.push("/api/cron/storage-report");
 
+  // Fire every job in PARALLEL. Each fetch triggers its own independent
+  // serverless invocation with its own timeout, so a slow first job can never
+  // starve the others (the bug that kept Tuesday tips / Monday announce from
+  // ever firing when jobs ran sequentially).
   const results: Record<string, unknown> = {};
-  for (const path of jobs) {
-    try {
-      const res = await fetch(`${PROD}${path}${secret ? `?secret=${encodeURIComponent(secret)}` : ""}`, {
-        headers: secret ? { Authorization: `Bearer ${secret}` } : {},
-      });
-      results[path] = { status: res.status, body: await res.json().catch(() => null) };
-    } catch (e) {
-      results[path] = { error: e instanceof Error ? e.message : String(e) };
-    }
-  }
+  await Promise.allSettled(
+    jobs.map(async (path) => {
+      try {
+        const res = await fetch(`${PROD}${path}${secret ? `?secret=${encodeURIComponent(secret)}` : ""}`, {
+          headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+        });
+        results[path] = { status: res.status, body: await res.json().catch(() => null) };
+      } catch (e) {
+        results[path] = { error: e instanceof Error ? e.message : String(e) };
+      }
+    })
+  );
 
   return NextResponse.json({ ok: true, dayOfWeek: dow, ran: jobs, results });
 }
