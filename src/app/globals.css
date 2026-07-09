@@ -2,8 +2,55 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+/*
+ * Fonts are loaded via next/font in src/app/layout.tsx (self-hosted,
+ * zero layout shift) and exposed as --font-sans. Do not @import fonts here.
+ */
 
-body {
-  font-family: 'Inter', sans-serif;
+:root {
+  /* Mirrors of key tokens for inline-style contexts (canvas, portals). */
+  --ink-950: #050b14;
+  --accent: #c39e4e;
+  --accent-soft: rgba(195, 158, 78, 0.35);
+  --hairline: rgba(5, 11, 20, 0.08);
+  --hairline-inverse: rgba(255, 255, 255, 0.12);
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    text-rendering: optimizeLegibility;
+  }
+
+  ::selection {
+    background: rgba(195, 158, 78, 0.3);
+  }
+
+  /* Baseline visible focus for keyboard users; utilities may refine it. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /*
+   * Wide-tracked small-caps label — the treatment lifted directly from
+   * "Y A C H T   P H O T O G R A P H Y" in the logo. Use for section
+   * kickers, table headers, and metadata.
+   */
+  .label-caps {
+    @apply text-label uppercase tracking-caps text-ink-500;
+  }
+  .label-caps-inverse {
+    @apply text-label uppercase tracking-caps text-white/50;
+  }
+
+  /* Hairline rule — the horizontal stroke from the wordmark. */
+  .rule {
+    @apply h-px w-full bg-hairline;
+  }
+  .rule-inverse {
+    @apply h-px w-full bg-hairline-inverse;
+  }
 }

@@ -838,7 +838,7 @@ export default function BrokerListingPage() {
     );
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading...</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading...</div>;
   if (!listing) return null;
 
   return (
@@ -866,12 +866,12 @@ export default function BrokerListingPage() {
         >
           {/* Header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", flexShrink: 0 }}>
-            <span style={{ color: "#9ca3af", fontSize: 14 }}>
+            <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 14 }}>
               {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
             </span>
             <button
               onClick={() => setLightboxIndex(null)}
-              style={{ color: "#9ca3af", fontSize: 28, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}
+              style={{ color: "rgba(255,255,255,0.55)", fontSize: 28, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}
             >
               ×
             </button>
@@ -889,13 +889,13 @@ export default function BrokerListingPage() {
             )}
             {lightboxIndex > 0 && (
               <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
-                style={{ position: "absolute", left: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                style={{ position: "absolute", left: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "rgba(255,255,255,0.95)", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ‹
               </button>
             )}
             {lightboxIndex < photos.length - 1 && (
               <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
-                style={{ position: "absolute", right: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                style={{ position: "absolute", right: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "rgba(255,255,255,0.95)", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ›
               </button>
             )}
@@ -905,7 +905,7 @@ export default function BrokerListingPage() {
           <div style={{ display: "flex", gap: 8, padding: "12px 16px", overflowX: "auto", flexShrink: 0 }}>
             {photos.map((p, i) => (
               <button key={p.id} onClick={() => setLightboxIndex(i)}
-                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid #d4a843" : "none" }}>
+                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid var(--accent)" : "none" }}>
                 {p.url && <img src={p.url} alt="" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />}
               </button>
             ))}
@@ -916,27 +916,27 @@ export default function BrokerListingPage() {
 
       {/* Full-page drop overlay */}
       {dragOver && (
-        <div className="absolute inset-0 z-50 bg-amber-50/90 border-2 border-dashed border-[#d4a843] rounded-xl flex items-center justify-center pointer-events-none">
-          <p className="text-[#c49a35] text-lg font-semibold">Drop photos to upload</p>
+        <div className="absolute inset-0 z-50 bg-ink-950/85 border border-accent-500/60 rounded-card flex items-center justify-center pointer-events-none backdrop-blur-[2px]">
+          <p className="text-accent-300 text-lg font-semibold tracking-wide">Drop photos to upload</p>
         </div>
       )}
       {/* Header */}
-      <div className="mb-6 flex items-start justify-between flex-wrap gap-3">
+      <div className="mb-8 pb-6 border-b border-hairline flex items-start justify-between flex-wrap gap-3">
         <div>
-          <Link href="/dashboard/listings" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← My Listings</Link>
-          <div className="flex items-center gap-3 mt-1">
-            <h1 className="text-2xl font-bold text-gray-900">{listing.vessel_name ?? "Untitled vessel"}</h1>
-            <Link href={`/dashboard/listings/${id}/edit`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
+          <Link href="/dashboard/listings" className="label-caps text-ink-400 hover:text-ink-600 transition-colors duration-fast">← My Listings</Link>
+          <div className="flex items-center gap-3 mt-2 flex-wrap">
+            <h1 className="text-display text-ink-900">{listing.vessel_name ?? "Untitled vessel"}</h1>
+            <Link href={`/dashboard/listings/${id}/edit`} className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
               Edit
             </Link>
-            <a href={`/print/listing/${id}`} target="_blank" rel="noopener noreferrer" className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
-              📄 Spec Sheet
+            <a href={`/print/listing/${id}`} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
+              Spec Sheet
             </a>
-            <Link href={`/dashboard/listings/${id}/social`} className="text-xs text-gray-400 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-2.5 py-1 rounded-md transition-colors">
-              📱 Social Post
+            <Link href={`/dashboard/listings/${id}/social`} className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
+              Social Post
             </Link>
           </div>
-          <p className="text-gray-500 text-sm mt-0.5">{listing.location ?? ""}</p>
+          <p className="text-ink-500 text-sm mt-1">{listing.location ?? ""}</p>
           {isBrokerageAdmin && (
             <button
               onClick={toggleShare}
@@ -944,11 +944,11 @@ export default function BrokerListingPage() {
               title={isShared ? "This boat is visible to every broker in your brokerage" : "Share this boat with every broker in your brokerage"}
               className={`mt-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
                 isShared
-                  ? "border-[#d4a843] bg-[#d4a843]/10 text-[#a07820]"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843]"
+                  ? "border-accent-500 bg-accent-500/10 text-accent-700"
+                  : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500"
               }`}
             >
-              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${isShared ? "bg-[#d4a843]" : "bg-gray-300"}`}>
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${isShared ? "bg-accent-500" : "bg-ink-300"}`}>
                 <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isShared ? "translate-x-3.5" : "translate-x-0.5"}`} />
               </span>
               {isShared ? "Shared with brokerage" : "Share with brokerage"}
@@ -962,29 +962,29 @@ export default function BrokerListingPage() {
               onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
               disabled={!canSendToClient}
               title={canSendToClient ? "Email this listing to a client" : (!hasAccess(accessStatus) ? "Subscribe to send listings to clients" : "Publish your slideshow first to send it to a client")}
-              className="bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#050b14] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+              className="bg-ink-950 hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-ink-950 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
             >
-              ✉ Send to Client
+              Send to Client
             </button>
           )}
           {photos.length > 0 && !selectMode && (
             <>
               <button
                 onClick={() => { setSelectMode(true); }}
-                className="bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+                className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
               >
                 Select
               </button>
               <button
                 onClick={() => requireDownloadLicense(() => downloadPhotos(visiblePhotos))}
                 disabled={downloading}
-                className="bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+                className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
               >
-                {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download All (${visiblePhotos.length})`}
+                {downloading ? `Zipping... ${downloadProgress}%` : `Download All (${visiblePhotos.length})`}
               </button>
               <button
                 onClick={() => setConfirmDeleteAll(true)}
-                className="bg-white border border-gray-200 hover:border-red-300 text-red-500 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
+                className="bg-white border border-hairline-strong hover:border-danger-300 text-danger-600 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
               >
                 Delete All
               </button>
@@ -993,10 +993,10 @@ export default function BrokerListingPage() {
 
           {selectMode && (
             <>
-              <button onClick={selectAll} className="text-sm text-[#c49a35] hover:text-[#b08c2a] font-medium transition-colors px-2">
+              <button onClick={selectAll} className="text-sm text-accent-700 hover:text-accent-600 font-medium transition-colors px-2">
                 Select all
               </button>
-              <button onClick={clearSelection} className="text-sm text-gray-400 hover:text-gray-600 transition-colors px-2">
+              <button onClick={clearSelection} className="text-sm text-ink-400 hover:text-ink-600 transition-colors px-2">
                 Cancel
               </button>
               {selectedIds.size > 0 && (
@@ -1006,7 +1006,7 @@ export default function BrokerListingPage() {
                     <select
                       value={bulkCategory}
                       onChange={(e) => setBulkCategory(e.target.value)}
-                      className="text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#d4a843] bg-white"
+                      className="text-sm border border-hairline-strong rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-500 bg-white"
                     >
                       <option value="">Assign category…</option>
                       {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
@@ -1018,7 +1018,7 @@ export default function BrokerListingPage() {
                       <button
                         onClick={applyBulkCategory}
                         disabled={bulkCategorizing}
-                        className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+                        className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
                       >
                         {bulkCategorizing ? "Applying…" : `Apply to ${selectedIds.size}`}
                       </button>
@@ -1027,16 +1027,16 @@ export default function BrokerListingPage() {
                   <button
                     onClick={() => requireDownloadLicense(() => downloadPhotos(selectedPhotos))}
                     disabled={downloading}
-                    className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                    className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
                   >
-                    {downloading ? `Zipping... ${downloadProgress}%` : `⬇ Download ${selectedIds.size}`}
+                    {downloading ? `Zipping... ${downloadProgress}%` : `Download ${selectedIds.size}`}
                   </button>
                   <button
                     onClick={deleteSelected}
                     disabled={deleting}
-                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+                    className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
                   >
-                    {deleting ? "Deleting..." : `🗑 Delete ${selectedIds.size}`}
+                    {deleting ? "Deleting..." : `Delete ${selectedIds.size}`}
                   </button>
                 </>
               )}
@@ -1045,12 +1045,12 @@ export default function BrokerListingPage() {
 
           {hasAccess(accessStatus) ? (
             <button onClick={() => requireRights(() => fileInputRef.current?.click())}
-              className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+              className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
               + Add Photos
             </button>
           ) : (
             <Link href="/dashboard/billing"
-              className="bg-gray-100 text-gray-400 text-sm font-semibold px-4 py-2.5 rounded-lg cursor-not-allowed border border-gray-200"
+              className="bg-ink-100 text-ink-400 text-sm font-semibold px-4 py-2.5 rounded-lg cursor-not-allowed border border-hairline-strong"
               title="Subscribe to upload photos">
               + Add Photos
             </Link>
@@ -1060,46 +1060,46 @@ export default function BrokerListingPage() {
       </div>
 
       {!hasAccess(accessStatus) ? (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-danger-50 border border-danger-200 text-danger-700">
           <span className="font-semibold">Your plan has ended.</span>{" "}
           Subscribe to send listings to clients, publish slideshows, and upload photos.{" "}
           <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
-          <span className="text-red-600">Downloading your delivered photos always stays free.</span>
+          <span className="text-danger-600">Downloading your delivered photos always stays free.</span>
         </div>
       ) : !listing.slideshow_published && (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-amber-50 border border-amber-200 text-amber-800">
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-warn-50 border border-warn-200 text-warn-800">
           <span className="font-semibold">Publish your slideshow to send this listing to a client.</span>{" "}
           Scroll to the <span className="font-medium">Client Slideshow</span> section below and click Create Slideshow — then the Send to Client button turns on.
         </div>
       )}
 
       {message && (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-700">{message}</div>
+        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-success-50 border border-success-200 text-success-700">{message}</div>
       )}
 
       {uploading && (
         <div className="mb-5">
-          <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Uploading...</span><span>{uploadProgress}%</span></div>
-          <div className="bg-gray-100 rounded-full h-2">
-            <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+          <div className="flex justify-between text-xs text-ink-500 mb-1"><span>Uploading...</span><span>{uploadProgress}%</span></div>
+          <div className="bg-ink-100 rounded-full h-2">
+            <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
           </div>
         </div>
       )}
 
       {/* Category prompt — shown when photos can't be auto-categorized from filename */}
       {pendingFiles && (
-        <div className="mb-5 bg-amber-50 border border-amber-200 rounded-xl px-5 py-4">
-          <p className="text-sm font-semibold text-amber-800 mb-1">
+        <div className="mb-5 bg-warn-50 border border-warn-200 rounded-xl px-5 py-4">
+          <p className="text-sm font-semibold text-warn-800 mb-1">
             {pendingFiles.filter(f => guessCategory(f.name) === "Other").length} of {pendingFiles.length} photo{pendingFiles.length !== 1 ? "s" : ""} couldn&apos;t be auto-categorized
           </p>
-          <p className="text-xs text-amber-700 mb-3">
+          <p className="text-xs text-warn-700 mb-3">
             Pick a category to apply to those photos, or skip and assign them manually after uploading.
           </p>
           <div className="flex flex-wrap items-center gap-3">
             <select
               value={pendingCategory}
               onChange={(e) => setPendingCategory(e.target.value)}
-              className="text-sm border border-amber-200 bg-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-[#d4a843]"
+              className="text-sm border border-warn-200 bg-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
               {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
                 <option key={cat} value={cat}>{cat}</option>
@@ -1108,13 +1108,13 @@ export default function BrokerListingPage() {
             </select>
             <button
               onClick={() => doUpload(pendingFiles, pendingCategory === "Other" ? null : pendingCategory)}
-              className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
             >
               Upload {pendingFiles.length} photo{pendingFiles.length !== 1 ? "s" : ""}
             </button>
             <button
               onClick={() => setPendingFiles(null)}
-              className="text-sm text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-sm text-ink-400 hover:text-ink-600 transition-colors"
             >
               Cancel
             </button>
@@ -1125,17 +1125,17 @@ export default function BrokerListingPage() {
       {photos.length === 0 ? (
         <div
           onClick={() => hasAccess(accessStatus) && requireRights(() => fileInputRef.current?.click())}
-          className={`border-2 border-dashed rounded-xl p-16 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
+          className={`border-2 border-dashed rounded-xl p-16 text-center transition-colors ${hasAccess(accessStatus) ? "border-hairline-strong cursor-pointer hover:border-accent-500" : "border-hairline cursor-default"}`}
         >
           {hasAccess(accessStatus) ? (
             <>
-              <p className="text-gray-400 text-sm">No photos yet — drag here or click to upload</p>
-              <p className="text-gray-300 text-xs mt-1">JPG, PNG · Any source — your own or YachtPics delivered</p>
+              <p className="text-ink-400 text-sm">No photos yet — drag here or click to upload</p>
+              <p className="text-ink-300 text-xs mt-1">JPG, PNG · Any source — your own or YachtPics delivered</p>
             </>
           ) : (
             <>
-              <p className="text-gray-400 text-sm">Your trial has ended</p>
-              <Link href="/dashboard/billing" className="text-[#d4a843] text-xs font-medium hover:underline mt-1 inline-block">Subscribe to upload photos &#8594;</Link>
+              <p className="text-ink-400 text-sm">Your trial has ended</p>
+              <Link href="/dashboard/billing" className="text-accent-700 text-xs font-medium hover:underline mt-1 inline-block">Subscribe to upload photos &#8594;</Link>
             </>
           )}
         </div>
@@ -1143,19 +1143,19 @@ export default function BrokerListingPage() {
         <div>
           {!selectMode && (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-gray-400 flex-1 min-w-[220px]">
-                Tap the <span className="text-[#d4a843]">★</span> on a photo to make it the cover — that&apos;s the image used on the spec sheet and social posts. If none is set, the first photo is used.
+              <p className="text-xs text-ink-400 flex-1 min-w-[220px]">
+                Tap the <span className="text-accent-700">★</span> on a photo to make it the cover — that&apos;s the image used on the spec sheet and social posts. If none is set, the first photo is used.
               </p>
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-xs text-gray-400">Flyer cover:</span>
-                <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden">
+                <span className="text-xs text-ink-400">Flyer cover:</span>
+                <div className="inline-flex rounded-lg border border-hairline-strong overflow-hidden">
                   {(["fit", "fill"] as const).map((m) => (
                     <button
                       key={m}
                       onClick={() => updateHeroFit(m)}
                       title={m === "fit" ? "Show the whole photo (no cropping)" : "Fill the space edge-to-edge (may crop)"}
                       className={`text-xs font-medium px-3 py-1.5 transition-colors ${
-                        heroFit === m ? "bg-[#050b14] text-white" : "bg-white text-gray-500 hover:text-gray-700"
+                        heroFit === m ? "bg-ink-950 text-white" : "bg-white text-ink-500 hover:text-ink-700"
                       }`}
                     >
                       {m === "fit" ? "Fit (show all)" : "Fill (crop)"}
@@ -1198,9 +1198,9 @@ export default function BrokerListingPage() {
           {/* Drop zone strip */}
           <div
             onClick={() => requireRights(() => fileInputRef.current?.click())}
-            className="mt-3 border-2 border-dashed border-gray-200 rounded-xl py-4 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+            className="mt-3 border-2 border-dashed border-hairline-strong rounded-xl py-4 text-center cursor-pointer hover:border-accent-500 transition-colors"
           >
-            <p className="text-gray-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
+            <p className="text-ink-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
           </div>
         </div>
       )}
@@ -1210,70 +1210,70 @@ export default function BrokerListingPage() {
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md flex flex-col max-h-[90vh]">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-gray-100 shrink-0">
+            <div className="flex items-center justify-between px-6 pt-6 pb-4 border-b border-hairline shrink-0">
               <div>
-                <h2 className="text-base font-bold text-gray-900">Send to Client</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
+                <h2 className="text-base font-bold text-ink-900">Send to Client</h2>
+                <p className="text-xs text-ink-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
               </div>
-              <button onClick={() => setSendModal(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none transition-colors">✕</button>
+              <button onClick={() => setSendModal(false)} className="text-ink-400 hover:text-ink-600 text-xl leading-none transition-colors">✕</button>
             </div>
 
             <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
               {/* Client email */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Client Email <span className="text-red-400">*</span></label>
+                <label className="block text-xs font-semibold text-ink-600 mb-1.5">Client Email <span className="text-danger-500">*</span></label>
                 <input
                   type="email"
                   value={sendEmail}
                   onChange={(e) => setSendEmail(e.target.value)}
                   placeholder="client@example.com"
-                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors"
+                  className="w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 transition-colors"
                 />
               </div>
 
               {/* Personal message */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-1.5">Personal Message <span className="text-gray-400 font-normal">(optional)</span></label>
+                <label className="block text-xs font-semibold text-ink-600 mb-1.5">Personal Message <span className="text-ink-400 font-normal">(optional)</span></label>
                 <textarea
                   value={sendMessage}
                   onChange={(e) => setSendMessage(e.target.value)}
                   placeholder="Add a personal note to your client…"
                   rows={3}
-                  className="w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors resize-none"
+                  className="w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 transition-colors resize-none"
                 />
               </div>
 
               {/* What to include */}
               <div>
-                <label className="block text-xs font-semibold text-gray-600 mb-2">Include in Email</label>
+                <label className="block text-xs font-semibold text-ink-600 mb-2">Include in Email</label>
                 <div className="space-y-2">
                   {/* Slideshow */}
                   <label className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
-                    !listing.slideshow_published ? "opacity-40 cursor-not-allowed" : sendSlideshow ? "border-[#d4a843] bg-[#d4a843]/5" : "border-gray-200 hover:border-gray-300"
+                    !listing.slideshow_published ? "opacity-40 cursor-not-allowed" : sendSlideshow ? "border-accent-500 bg-accent-500/5" : "border-hairline-strong hover:border-ink-300"
                   }`}>
                     <input
                       type="checkbox"
                       checked={sendSlideshow}
                       disabled={!listing.slideshow_published}
                       onChange={(e) => setSendSlideshow(e.target.checked)}
-                      className="accent-[#d4a843] w-4 h-4 shrink-0"
+                      className="accent-accent-600 w-4 h-4 shrink-0"
                     />
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-gray-800">Photo Slideshow</p>
-                      <p className="text-xs text-gray-400">{listing.slideshow_published ? "Published · clients can view online" : "Not published yet"}</p>
+                      <p className="text-sm font-medium text-ink-800">Photo Slideshow</p>
+                      <p className="text-xs text-ink-400">{listing.slideshow_published ? "Published · clients can view online" : "Not published yet"}</p>
                     </div>
                   </label>
 
                   {/* Documents */}
                   {documents.length === 0 ? (
-                    <div className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 opacity-40">
+                    <div className="flex items-center gap-3 p-3 rounded-lg border border-hairline-strong opacity-40">
                       <input type="checkbox" disabled className="w-4 h-4 shrink-0" />
-                      <p className="text-sm text-gray-500">No documents uploaded yet</p>
+                      <p className="text-sm text-ink-500">No documents uploaded yet</p>
                     </div>
                   ) : (
                     documents.map(doc => (
                       <label key={doc.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
-                        sendDocIds.has(doc.id) ? "border-[#d4a843] bg-[#d4a843]/5" : "border-gray-200 hover:border-gray-300"
+                        sendDocIds.has(doc.id) ? "border-accent-500 bg-accent-500/5" : "border-hairline-strong hover:border-ink-300"
                       }`}>
                         <input
                           type="checkbox"
@@ -1285,11 +1285,11 @@ export default function BrokerListingPage() {
                               return next;
                             });
                           }}
-                          className="accent-[#d4a843] w-4 h-4 shrink-0"
+                          className="accent-accent-600 w-4 h-4 shrink-0"
                         />
                         <div className="min-w-0">
-                          <p className="text-sm font-medium text-gray-800 truncate">📄 {doc.filename ?? "document.pdf"}</p>
-                          <p className="text-xs text-gray-400">PDF document</p>
+                          <p className="text-sm font-medium text-ink-800 truncate">{doc.filename ?? "document.pdf"}</p>
+                          <p className="text-xs text-ink-400">PDF document</p>
                         </div>
                       </label>
                     ))
@@ -1298,7 +1298,7 @@ export default function BrokerListingPage() {
                   {/* Videos — sent as their own links, separate from the slideshow */}
                   {videos.map(video => (
                     <label key={video.id} className={`flex items-center gap-3 p-3 rounded-lg border transition-colors cursor-pointer ${
-                      sendVideoIds.has(video.id) ? "border-[#d4a843] bg-[#d4a843]/5" : "border-gray-200 hover:border-gray-300"
+                      sendVideoIds.has(video.id) ? "border-accent-500 bg-accent-500/5" : "border-hairline-strong hover:border-ink-300"
                     }`}>
                       <input
                         type="checkbox"
@@ -1310,11 +1310,11 @@ export default function BrokerListingPage() {
                             return next;
                           });
                         }}
-                        className="accent-[#d4a843] w-4 h-4 shrink-0"
+                        className="accent-accent-600 w-4 h-4 shrink-0"
                       />
                       <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
-                        <p className="text-xs text-gray-400">Video · sent as a direct link{!video.in_slideshow ? " · hidden from slideshow" : ""}</p>
+                        <p className="text-sm font-medium text-ink-800 truncate">{video.filename ?? "video.mp4"}</p>
+                        <p className="text-xs text-ink-400">Video · sent as a direct link{!video.in_slideshow ? " · hidden from slideshow" : ""}</p>
                       </div>
                     </label>
                   ))}
@@ -1323,22 +1323,22 @@ export default function BrokerListingPage() {
             </div>
 
             {/* Footer */}
-            <div className="px-6 py-4 border-t border-gray-100 shrink-0">
+            <div className="px-6 py-4 border-t border-hairline shrink-0">
               {sendSuccess ? (
-                <div className="flex items-center justify-center gap-2 py-2.5 text-green-600 font-semibold text-sm">
+                <div className="flex items-center justify-center gap-2 py-2.5 text-success-600 font-semibold text-sm">
                   <span>✓</span> Email sent successfully
                 </div>
               ) : (
                 <button
                   onClick={sendToClient}
                   disabled={sending || !sendEmail || (!sendSlideshow && sendDocIds.size === 0 && sendVideoIds.size === 0)}
-                  className="w-full bg-[#050b14] hover:bg-[#0a1628] disabled:opacity-50 text-white text-sm font-semibold py-3 rounded-lg transition-colors"
+                  className="w-full bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold py-3 rounded-lg transition-colors"
                 >
                   {sending ? "Sending…" : "Send Email"}
                 </button>
               )}
               {!sendSlideshow && sendDocIds.size === 0 && sendVideoIds.size === 0 && !sendSuccess && (
-                <p className="text-xs text-center text-gray-400 mt-2">Select at least one item to include</p>
+                <p className="text-xs text-center text-ink-400 mt-2">Select at least one item to include</p>
               )}
             </div>
           </div>
@@ -1349,18 +1349,18 @@ export default function BrokerListingPage() {
       {/* PDF Viewer modal */}
       {pdfViewer && mounted && createPortal(
         <div className="fixed inset-0 z-50 bg-black/80 flex flex-col">
-          <div className="flex items-center justify-between bg-[#050b14] px-4 py-3 shrink-0">
+          <div className="flex items-center justify-between bg-ink-950 px-4 py-3 shrink-0">
             <p className="text-white text-sm font-medium truncate max-w-xs">{pdfViewer.filename ?? "Document"}</p>
             <div className="flex items-center gap-3">
               <button
                 onClick={() => downloadDocument(pdfViewer.storagePath, pdfViewer.filename)}
-                className="text-[#d4a843] hover:text-[#c49a35] text-sm font-medium transition-colors"
+                className="text-accent-700 hover:text-accent-700 text-sm font-medium transition-colors"
               >
                 Download
               </button>
               <button
                 onClick={() => setPdfViewer(null)}
-                className="text-gray-400 hover:text-white text-sm font-medium transition-colors ml-2"
+                className="text-ink-400 hover:text-white text-sm font-medium transition-colors ml-2"
               >
                 ✕ Close
               </button>
@@ -1379,21 +1379,21 @@ export default function BrokerListingPage() {
       {confirmDeleteAll && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Delete all photos?</h3>
-            <p className="text-gray-500 text-sm mb-6">
+            <h3 className="text-lg font-bold text-ink-900 mb-2">Delete all photos?</h3>
+            <p className="text-ink-500 text-sm mb-6">
               This will permanently delete all {photos.length} photo{photos.length !== 1 ? "s" : ""}. This can&apos;t be undone.
             </p>
             <div className="flex gap-3">
               <button
                 onClick={() => setConfirmDeleteAll(false)}
-                className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium py-2.5 rounded-lg transition-colors"
+                className="flex-1 bg-white border border-hairline-strong hover:bg-ink-50 text-ink-700 text-sm font-medium py-2.5 rounded-lg transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={deleteAll}
                 disabled={deleting}
-                className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
+                className="flex-1 bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
               >
                 {deleting ? "Deleting..." : "Delete All"}
               </button>
@@ -1403,45 +1403,45 @@ export default function BrokerListingPage() {
       )}
 
       {/* Video section */}
-      <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
+      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Listing Videos</h2>
-            <p className="text-gray-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
+            <h2 className="label-caps text-ink-600">Listing Videos</h2>
+            <p className="text-ink-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
           </div>
           <button
             onClick={() => hasAccess(accessStatus) && requireRights(() => videoInputRef.current?.click())}
             disabled={uploadingVideo || !hasAccess(accessStatus)}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
-            {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload MP4"}
+            {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "Upload MP4"}
           </button>
           <input ref={videoInputRef} type="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple className="hidden" onChange={(e) => handleVideoFiles(e.target.files)} />
         </div>
 
         {uploadingVideo && (
           <div className="mb-4">
-            <div className="bg-gray-100 rounded-full h-2">
-              <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
+            <div className="bg-ink-100 rounded-full h-2">
+              <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
             </div>
-            <p className="text-xs text-gray-400 mt-1">Uploading large files may take a moment…</p>
+            <p className="text-xs text-ink-400 mt-1">Uploading large files may take a moment…</p>
           </div>
         )}
 
         {videos.length === 0 ? (
           <div
             onClick={() => hasAccess(accessStatus) && requireRights(() => videoInputRef.current?.click())}
-            className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
+            className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-hairline-strong cursor-pointer hover:border-accent-500" : "border-hairline cursor-default"}`}
           >
             {!hasAccess(accessStatus)
-              ? <p className="text-gray-400 text-sm"><Link href="/dashboard/billing" className="text-[#d4a843] font-medium hover:underline">Subscribe</Link> to upload videos</p>
-              : <p className="text-gray-400 text-sm">No videos yet — click to upload an MP4</p>
+              ? <p className="text-ink-400 text-sm"><Link href="/dashboard/billing" className="text-accent-700 font-medium hover:underline">Subscribe</Link> to upload videos</p>
+              : <p className="text-ink-400 text-sm">No videos yet — click to upload an MP4</p>
             }
           </div>
         ) : (
           <div className="space-y-4">
             {videos.filter(v => !deletingVideoIds.has(v.id)).map((video) => (
-              <div key={video.id} className="rounded-xl overflow-hidden border border-gray-200">
+              <div key={video.id} className="rounded-xl overflow-hidden border border-hairline-strong">
                 {video.url && (
                   <video
                     src={video.url}
@@ -1451,32 +1451,32 @@ export default function BrokerListingPage() {
                     className="w-full max-h-[420px] bg-black"
                   />
                 )}
-                <div className="flex items-center gap-3 px-4 py-3 bg-gray-50">
+                <div className="flex items-center gap-3 px-4 py-3 bg-ink-50">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">
-                      🎬 {video.filename ?? "video.mp4"}
-                      {!video.in_slideshow && <span className="ml-2 text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5">Hidden from slideshow</span>}
+                    <p className="text-sm font-medium text-ink-800 truncate">
+                      {video.filename ?? "video.mp4"}
+                      {!video.in_slideshow && <span className="ml-2 text-[11px] font-semibold text-ink-500 bg-ink-100 border border-hairline-strong rounded-full px-2 py-0.5">Hidden from slideshow</span>}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-xs text-ink-400 mt-0.5">
                       {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </p>
                   </div>
                   <button
                     onClick={() => toggleVideoSlideshow(video.id, video.in_slideshow)}
                     title={video.in_slideshow ? "Hide this video from the client slideshow" : "Show this video in the client slideshow"}
-                    className="text-xs font-medium text-gray-500 hover:text-[#c49a35] transition-colors shrink-0"
+                    className="text-xs font-medium text-ink-500 hover:text-accent-700 transition-colors shrink-0"
                   >
                     {video.in_slideshow ? "Hide from slideshow" : "Show in slideshow"}
                   </button>
                   <button
                     onClick={() => downloadVideo(video.storage_path, video.filename)}
-                    className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+                    className="text-xs font-medium text-ink-400 hover:text-ink-600 transition-colors shrink-0"
                   >
                     Download
                   </button>
                   <button
                     onClick={() => deleteVideo(video.id, video.storage_path)}
-                    className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors shrink-0"
+                    className="text-xs font-medium text-danger-500 hover:text-danger-600 transition-colors shrink-0"
                   >
                     Delete
                   </button>
@@ -1488,11 +1488,11 @@ export default function BrokerListingPage() {
       </div>
 
       {/* Slideshow section */}
-      <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
+      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Client Slideshow</h2>
-            <p className="text-gray-500 text-sm mt-0.5">
+            <h2 className="label-caps text-ink-600">Client Slideshow</h2>
+            <p className="text-ink-500 text-sm mt-0.5">
               Share a branded, full-screen photo presentation with your client.
             </p>
           </div>
@@ -1503,14 +1503,14 @@ export default function BrokerListingPage() {
                   href={`/s/${listing.slideshow_slug}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-sm text-[#c49a35] hover:text-[#b08c2a] font-medium transition-colors"
+                  className="text-sm text-accent-700 hover:text-accent-600 font-medium transition-colors"
                 >
                   Preview ↗
                 </a>
                 <button
                   onClick={unpublishSlideshow}
                   disabled={slideshowWorking}
-                  className="bg-white border border-gray-200 hover:border-red-300 text-gray-500 hover:text-red-500 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                  className="bg-white border border-hairline-strong hover:border-danger-300 text-ink-500 hover:text-danger-600 text-sm font-medium px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                 >
                   Unpublish
                 </button>
@@ -1521,7 +1521,7 @@ export default function BrokerListingPage() {
               <button
                 onClick={publishSlideshow}
                 disabled={slideshowWorking || photos.filter(p => p.is_visible).length === 0}
-                className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
               >
                 {slideshowWorking ? "Creating..." : "Create Slideshow"}
               </button>
@@ -1532,11 +1532,11 @@ export default function BrokerListingPage() {
         {listing.slideshow_published && listing.slideshow_slug && hasAccess(accessStatus) && (
           <>
             {/* Link display */}
-            <div className="mt-4 bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-              <p className="text-sm text-gray-500 truncate">
+            <div className="mt-4 bg-ink-50 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
+              <p className="text-sm text-ink-500 truncate">
                 {typeof window !== "undefined" ? window.location.origin : ""}/s/{listing.slideshow_slug}
               </p>
-              <span className="shrink-0 text-xs font-medium bg-green-50 text-green-700 px-2 py-0.5 rounded-full">
+              <span className="shrink-0 text-xs font-medium bg-success-50 text-success-700 px-2 py-0.5 rounded-full">
                 Live
               </span>
             </div>
@@ -1547,7 +1547,7 @@ export default function BrokerListingPage() {
                 onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
                 disabled={!hasAccess(accessStatus)}
                 title={hasAccess(accessStatus) ? "Email this listing to a client" : "Subscribe to send listings to clients"}
-                className="flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-[#d4a843] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+                className="flex items-center gap-2 bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent-500 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -1564,7 +1564,7 @@ export default function BrokerListingPage() {
                       url,
                     }).catch(() => {});
                   }}
-                  className="flex items-center gap-2 bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  className="flex items-center gap-2 bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
@@ -1574,7 +1574,7 @@ export default function BrokerListingPage() {
               )}
               <a
                 href={`sms:?body=${encodeURIComponent(`${listing.vessel_name ?? "Yacht listing"} — view photos here: ${typeof window !== "undefined" ? window.location.origin : ""}/s/${listing.slideshow_slug}`)}`}
-                className="flex items-center gap-2 bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                className="flex items-center gap-2 bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
@@ -1583,7 +1583,7 @@ export default function BrokerListingPage() {
               </a>
               <a
                 href={`mailto:?subject=${encodeURIComponent(`${listing.vessel_name ?? "Yacht"} — Photo Gallery`)}&body=${encodeURIComponent(`Please find the photo gallery for ${listing.vessel_name ?? "this vessel"} at the link below:\n\n${typeof window !== "undefined" ? window.location.origin : ""}/s/${listing.slideshow_slug}`)}`}
-                className="flex items-center gap-2 bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                className="flex items-center gap-2 bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
@@ -1592,7 +1592,7 @@ export default function BrokerListingPage() {
               </a>
               <button
                 onClick={copyLink}
-                className="flex items-center gap-2 bg-white border border-gray-200 hover:border-[#d4a843] text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                className="flex items-center gap-2 bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -1604,11 +1604,11 @@ export default function BrokerListingPage() {
         )}
 
         {listing.slideshow_published && !hasAccess(accessStatus) && (
-          <div className="mt-4 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-800">
+          <div className="mt-4 px-4 py-3 rounded-lg text-sm bg-danger-50 border border-danger-200 text-danger-700">
             <span className="font-semibold">Your plan has ended.</span>{" "}
             You can still <span className="font-medium">Preview</span> your slideshow to see how it looks — but sending, sharing links, and the QR code are off, and the link won&rsquo;t open for clients until you resubscribe.{" "}
             <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
-            <span className="text-red-600">Downloading your delivered photos always stays free.</span>
+            <span className="text-danger-600">Downloading your delivered photos always stays free.</span>
           </div>
         )}
       </div>
@@ -1621,24 +1621,24 @@ export default function BrokerListingPage() {
       )}
 
       {/* Documents section */}
-      <div className="mt-8 bg-white border border-gray-200 rounded-xl p-6">
+      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Listing Documents</h2>
-            <p className="text-gray-500 text-sm mt-0.5">Upload PDF brochures or spec sheets for this listing.</p>
+            <h2 className="label-caps text-ink-600">Listing Documents</h2>
+            <p className="text-ink-500 text-sm mt-0.5">Upload PDF brochures or spec sheets for this listing.</p>
           </div>
           <button
             onClick={() => hasAccess(accessStatus) && requireRights(() => docInputRef.current?.click())}
             disabled={uploadingDoc || !hasAccess(accessStatus)}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
           >
-            {uploadingDoc ? "Uploading…" : "＋ Upload PDF"}
+            {uploadingDoc ? "Uploading…" : "Upload PDF"}
           </button>
           <input ref={docInputRef} type="file" accept="application/pdf" multiple className="hidden" onChange={(e) => handleDocFiles(e.target.files)} />
         </div>
 
         {docError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mb-4 rounded-lg border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
             {docError}
           </div>
         )}
@@ -1646,27 +1646,29 @@ export default function BrokerListingPage() {
         {documents.length === 0 ? (
           <div
             onClick={() => hasAccess(accessStatus) && requireRights(() => docInputRef.current?.click())}
-            className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-gray-200 cursor-pointer hover:border-[#d4a843]" : "border-gray-100 cursor-default"}`}
+            className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-hairline-strong cursor-pointer hover:border-accent-500" : "border-hairline cursor-default"}`}
           >
             {!hasAccess(accessStatus)
-              ? <p className="text-gray-400 text-sm"><Link href="/dashboard/billing" className="text-[#d4a843] font-medium hover:underline">Subscribe</Link> to upload documents</p>
-              : <p className="text-gray-400 text-sm">No documents yet — click to upload a PDF</p>
+              ? <p className="text-ink-400 text-sm"><Link href="/dashboard/billing" className="text-accent-700 font-medium hover:underline">Subscribe</Link> to upload documents</p>
+              : <p className="text-ink-400 text-sm">No documents yet — click to upload a PDF</p>
             }
           </div>
         ) : (
           <div className="space-y-2">
             {documents.filter(d => !deletingDocIds.has(d.id)).map((doc) => (
-              <div key={doc.id} className="flex items-center gap-3 bg-gray-50 rounded-lg px-4 py-3">
-                <span className="text-red-500 text-lg shrink-0">📄</span>
+              <div key={doc.id} className="flex items-center gap-3 bg-ink-50 rounded-lg px-4 py-3">
+                <svg className="w-4 h-4 text-ink-400 shrink-0" fill="none" stroke="currentColor" strokeWidth={1.5} viewBox="0 0 24 24" aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m6.75 12H9m6.75 3H9m1.5-9H9M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+                </svg>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{doc.filename ?? "document.pdf"}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-sm font-medium text-ink-800 truncate">{doc.filename ?? "document.pdf"}</p>
+                  <p className="text-xs text-ink-400 mt-0.5">
                     {new Date(doc.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </div>
                 <button
                   onClick={() => openPdfViewer(doc.storage_path, doc.filename)}
-                  className="text-xs font-medium text-[#c49a35] hover:text-[#b08c2a] transition-colors shrink-0"
+                  className="text-xs font-medium text-accent-700 hover:text-accent-600 transition-colors shrink-0"
                 >
                   View
                 </button>
@@ -1675,19 +1677,19 @@ export default function BrokerListingPage() {
                     const { data } = await supabase.storage.from("listing-documents").createSignedUrl(doc.storage_path, 3600);
                     if (data?.signedUrl) window.open(data.signedUrl, "_blank");
                   }}
-                  className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+                  className="text-xs font-medium text-ink-400 hover:text-ink-600 transition-colors shrink-0"
                 >
                   Open ↗
                 </button>
                 <button
                   onClick={() => downloadDocument(doc.storage_path, doc.filename)}
-                  className="text-xs font-medium text-gray-400 hover:text-gray-600 transition-colors shrink-0"
+                  className="text-xs font-medium text-ink-400 hover:text-ink-600 transition-colors shrink-0"
                 >
                   Download
                 </button>
                 <button
                   onClick={() => deleteDocument(doc.id, doc.storage_path)}
-                  className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors shrink-0"
+                  className="text-xs font-medium text-danger-500 hover:text-danger-600 transition-colors shrink-0"
                 >
                   Delete
                 </button>
@@ -1698,43 +1700,43 @@ export default function BrokerListingPage() {
       </div>
 
       {/* Inquiries section */}
-      <div className="mt-8 bg-white border border-gray-200 rounded-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Inquiries ({leads.length})</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Buyers who reached out from this boat&apos;s slideshow.</p>
+            <h2 className="label-caps text-ink-600">Inquiries ({leads.length})</h2>
+            <p className="text-xs text-ink-400 mt-0.5">Buyers who reached out from this boat&apos;s slideshow.</p>
           </div>
           {leads.some((l) => l.status === "new") && (
-            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-warn-50 text-warn-700 border border-warn-200">
               {leads.filter((l) => l.status === "new").length} new
             </span>
           )}
         </div>
         {leads.length === 0 ? (
-          <div className="px-6 py-8 text-center text-gray-400 text-sm">No inquiries yet. When a buyer hits &ldquo;Request Info&rdquo; on your slideshow, they&apos;ll appear here.</div>
+          <div className="px-6 py-8 text-center text-ink-400 text-sm">No inquiries yet. When a buyer hits &ldquo;Request Info&rdquo; on your slideshow, they&apos;ll appear here.</div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-hairline">
             {leads.map((l) => (
               <li key={l.id} className="px-6 py-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <p className="text-sm font-semibold text-ink-900 flex items-center gap-2">
                       {l.name ?? "Buyer"}
-                      {l.status === "new" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 uppercase tracking-wide">New</span>}
+                      {l.status === "new" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-warn-50 text-warn-700 uppercase tracking-wide">New</span>}
                     </p>
-                    <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                      {l.email && <a href={`mailto:${l.email}`} className="hover:text-[#c49a35]">{l.email}</a>}
-                      {l.phone && <a href={`tel:${l.phone}`} className="hover:text-[#c49a35]">{l.phone}</a>}
-                      <span className="text-gray-400">{new Date(l.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                    <div className="text-xs text-ink-500 mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                      {l.email && <a href={`mailto:${l.email}`} className="hover:text-accent-700">{l.email}</a>}
+                      {l.phone && <a href={`tel:${l.phone}`} className="hover:text-accent-700">{l.phone}</a>}
+                      <span className="text-ink-400">{new Date(l.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
                       {l.source && !["slideshow", "link"].includes(l.source) && (
-                        <span className="text-[#a07820] font-medium uppercase">via {l.source}</span>
+                        <span className="text-accent-700 font-medium uppercase">via {l.source}</span>
                       )}
                     </div>
-                    {l.message && <p className="text-sm text-gray-600 mt-1.5 leading-relaxed">{l.message}</p>}
+                    {l.message && <p className="text-sm text-ink-600 mt-1.5 leading-relaxed">{l.message}</p>}
                   </div>
                   <button
                     onClick={() => markLead(l.id, l.status === "new" ? "contacted" : "new")}
-                    className={`shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${l.status === "new" ? "border-gray-200 text-gray-600 hover:border-[#d4a843]" : "border-green-200 bg-green-50 text-green-700"}`}
+                    className={`shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${l.status === "new" ? "border-hairline-strong text-ink-600 hover:border-accent-500" : "border-success-200 bg-success-50 text-success-700"}`}
                   >
                     {l.status === "new" ? "Mark contacted" : "✓ Contacted"}
                   </button>
@@ -1746,16 +1748,16 @@ export default function BrokerListingPage() {
       </div>
 
       {/* Sent History section */}
-      <div className="mt-8 bg-white border border-gray-200 rounded-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
           <div>
-            <h2 className="text-base font-semibold text-gray-900">Sent History</h2>
-            <p className="text-gray-500 text-xs mt-0.5">Tracks emails sent via the &ldquo;Send to Client&rdquo; button above — not the Email link below.</p>
+            <h2 className="label-caps text-ink-600">Sent History</h2>
+            <p className="text-ink-500 text-xs mt-0.5">Tracks emails sent via the &ldquo;Send to Client&rdquo; button above — not the Email link below.</p>
           </div>
           <div className="flex items-center gap-3">
             {viewTimestamps.length > 0 && (
-              <span className="flex items-center gap-1.5 text-xs font-medium text-gray-500 bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full">
-                <svg className="w-3.5 h-3.5 text-[#d4a843]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <span className="flex items-center gap-1.5 text-xs font-medium text-ink-500 bg-ink-50 border border-hairline-strong px-3 py-1.5 rounded-full">
+                <svg className="w-3.5 h-3.5 text-accent-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                 </svg>
@@ -1766,11 +1768,11 @@ export default function BrokerListingPage() {
         </div>
         {clientSends.length === 0 ? (
           <div className="px-6 py-10 text-center">
-            <p className="text-gray-400 text-sm">No emails sent yet.</p>
-            <p className="text-gray-300 text-xs mt-1">Use the &ldquo;Send to Client&rdquo; button in the Client Slideshow section to send a tracked email.</p>
+            <p className="text-ink-400 text-sm">No emails sent yet.</p>
+            <p className="text-ink-300 text-xs mt-1">Use the &ldquo;Send to Client&rdquo; button in the Client Slideshow section to send a tracked email.</p>
           </div>
         ) : (
-          <ul className="divide-y divide-gray-50">
+          <ul className="divide-y divide-hairline">
             {clientSends.map((send) => {
               const sentAt = new Date(send.sent_at);
               const viewsSince = viewTimestamps.filter(t => t >= sentAt);
@@ -1778,16 +1780,16 @@ export default function BrokerListingPage() {
               return (
                 <li key={send.id} className="px-6 py-4 flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-gray-900 truncate">{send.client_email}</p>
+                    <p className="text-sm font-medium text-ink-900 truncate">{send.client_email}</p>
                     {send.message && (
-                      <p className="text-xs text-gray-400 mt-0.5 line-clamp-1 italic">&ldquo;{send.message}&rdquo;</p>
+                      <p className="text-xs text-ink-400 mt-0.5 line-clamp-1 italic">&ldquo;{send.message}&rdquo;</p>
                     )}
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       {send.included_slideshow && (
-                        <span className="text-[10px] font-medium bg-[#d4a843]/10 text-[#b08c2a] px-2 py-0.5 rounded-full">Slideshow</span>
+                        <span className="text-[10px] font-medium bg-accent-500/10 text-accent-700 px-2 py-0.5 rounded-full">Slideshow</span>
                       )}
                       {send.document_count > 0 && (
-                        <span className="text-[10px] font-medium bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                        <span className="text-[10px] font-medium bg-ink-100 text-ink-500 px-2 py-0.5 rounded-full">
                           {send.document_count} doc{send.document_count !== 1 ? "s" : ""}
                         </span>
                       )}
@@ -1795,7 +1797,7 @@ export default function BrokerListingPage() {
                     {send.included_slideshow && (
                       <div className="mt-2">
                         {lastViewed ? (
-                          <span className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
+                          <span className="flex items-center gap-1.5 text-[11px] text-success-600 font-medium">
                             <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
@@ -1803,12 +1805,12 @@ export default function BrokerListingPage() {
                             Opened {viewsSince.length} {viewsSince.length === 1 ? "time" : "times"} · Last {relativeTime(lastViewed)}
                           </span>
                         ) : (
-                          <span className="text-[11px] text-gray-400">Not yet opened</span>
+                          <span className="text-[11px] text-ink-400">Not yet opened</span>
                         )}
                       </div>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 shrink-0 mt-0.5">
+                  <p className="text-xs text-ink-400 shrink-0 mt-0.5">
                     {sentAt.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                   </p>
                 </li>
@@ -1902,8 +1904,8 @@ function SortablePhotoCard({
       ref={setNodeRef}
       style={style}
       className={`relative rounded-lg overflow-hidden border-2 transition-colors touch-manipulation ${
-        isSelected ? "border-[#d4a843] shadow-md" :
-        photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
+        isSelected ? "border-accent-500 shadow-md" :
+        photo.is_visible ? "border-transparent" : "border-hairline-strong opacity-60"
       }`}
     >
       {/* Drag handle — top-right grip */}
@@ -1929,7 +1931,7 @@ function SortablePhotoCard({
           onPointerDown={(e) => e.stopPropagation()}
           title={isHero ? "Cover photo — used on the spec sheet & social posts. Tap to clear." : "Set as cover photo (spec sheet & social posts)"}
           className={`absolute top-1.5 left-1.5 z-10 rounded-full w-7 h-7 flex items-center justify-center text-sm transition-colors ${
-            isHero ? "bg-[#d4a843] text-[#050b14] shadow" : "bg-black/40 hover:bg-black/60 text-white"
+            isHero ? "bg-accent-500 text-ink-950 shadow" : "bg-black/40 hover:bg-black/60 text-white"
           }`}
         >
           {isHero ? "★" : "☆"}
@@ -1961,11 +1963,11 @@ function SortablePhotoCard({
             className={`w-full object-cover pointer-events-none ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
           />
         ) : (
-          <div className="w-full aspect-[4/3] bg-amber-50 border-b border-amber-200 flex flex-col items-center justify-center gap-2 pointer-events-none">
+          <div className="w-full aspect-[4/3] bg-warn-50 border-b border-warn-200 flex flex-col items-center justify-center gap-2 pointer-events-none">
             <span className="text-2xl">⚠️</span>
             <div className="text-center px-3">
-              <p className="text-amber-700 text-xs font-semibold">File missing</p>
-              <p className="text-amber-600 text-[10px] mt-0.5">Delete and re-upload</p>
+              <p className="text-warn-700 text-xs font-semibold">File missing</p>
+              <p className="text-warn-700 text-[10px] mt-0.5">Delete and re-upload</p>
             </div>
           </div>
         )}
@@ -1976,17 +1978,17 @@ function SortablePhotoCard({
         <div
           onClick={onTap}
           className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
-            isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
+            isSelected ? "bg-accent-500 border-accent-500" : "bg-white/80 border-ink-300"
           }`}
         >
-          {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
+          {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
         </div>
       )}
 
       {/* Caption row */}
       <div className="p-2 bg-white">
         <div className="flex items-center gap-1">
-          <span className="text-xs font-medium text-gray-500 shrink-0">{String(index + 1).padStart(2, "0")} ·</span>
+          <span className="text-xs font-medium text-ink-500 shrink-0">{String(index + 1).padStart(2, "0")} ·</span>
           {!showCustomInput ? (
             <select
               value={photo.category ?? "Other"}
@@ -2000,7 +2002,7 @@ function SortablePhotoCard({
                 }
               }}
               onClick={(e) => e.stopPropagation()}
-              className="text-xs font-medium text-gray-700 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors flex-1 min-w-0 truncate"
+              className="text-xs font-medium text-ink-700 bg-transparent border-none outline-none cursor-pointer hover:text-accent-700 transition-colors flex-1 min-w-0 truncate"
             >
               <option value="__custom__">+ Custom...</option>
               {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -2017,52 +2019,37 @@ function SortablePhotoCard({
                 onPointerDown={(e) => e.stopPropagation()}
                 placeholder="Type & press Enter..."
                 autoFocus
-                className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none flex-1 min-w-0 focus:border-[#d4a843]"
+                className="text-xs text-ink-700 bg-transparent border-b border-hairline-strong outline-none flex-1 min-w-0 focus:border-accent-500"
               />
               <button
                 type="button"
                 onClick={(e) => { e.stopPropagation(); setShowCustomInput(false); setCustomValue(""); onUpdateCategory("Other"); }}
-                className="text-gray-400 hover:text-gray-600 text-xs shrink-0 px-1"
+                className="text-ink-400 hover:text-ink-600 text-xs shrink-0 px-1"
                 title="Back to list"
               >✕</button>
             </div>
           )}
-          {!photo.is_visible && <span className="text-gray-400 text-xs shrink-0">· hidden</span>}
+          {!photo.is_visible && <span className="text-ink-400 text-xs shrink-0">· hidden</span>}
         </div>
         {photo.filename && (
-          <p className="text-xs text-gray-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
+          <p className="text-xs text-ink-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
         )}
         {/* Action buttons */}
         {!selectMode && (
           <div
-            className="flex items-center gap-2 mt-2 pt-2 border-t border-gray-100"
+            className="flex items-center gap-2 mt-2 pt-2 border-t border-hairline"
             onTouchStart={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
             <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
-              className="flex-1 text-center text-xs font-medium text-gray-600 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
+              className="flex-1 text-center text-xs font-medium text-ink-600 py-1.5 rounded bg-ink-50 hover:bg-ink-100 transition-colors">
               {photo.is_visible ? "Hide" : "Show"}
             </button>
             {confirmDelete ? (
               <>
                 <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                  className="flex-1 text-center text-xs font-medium text-gray-500 py-1.5 rounded bg-gray-50 hover:bg-gray-100 transition-colors">
+                  className="flex-1 text-center text-xs font-medium text-ink-500 py-1.5 rounded bg-ink-50 hover:bg-ink-100 transition-colors">
                   Cancel
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="flex-1 text-center text-xs font-bold text-white py-1.5 rounded bg-red-500 hover:bg-red-600 transition-colors">
-                  Confirm
-                </button>
-              </>
-            ) : (
-              <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-                className="flex-1 text-center text-xs font-medium text-red-500 py-1.5 rounded bg-red-50 hover:bg-red-100 transition-colors">
-                Delete
-                            </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+                  className="f
