@@ -2052,4 +2052,19 @@ function SortablePhotoCard({
                   Cancel
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="f
+                  className="flex-1 text-center text-xs font-semibold text-white py-1.5 rounded bg-danger-500 hover:bg-danger-600 transition-colors">
+                  Confirm
+                </button>
+              </>
+            ) : (
+              <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                className="flex-1 text-center text-xs font-medium text-danger-500 py-1.5 rounded bg-danger-50 hover:bg-danger-200 transition-colors">
+                Delete
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
