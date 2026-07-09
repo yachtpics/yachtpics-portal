@@ -39,7 +39,7 @@ export default function HelpTip({ text, detail, position = "above", width = 260 
         onMouseEnter={() => setOpen(true)}
         onMouseLeave={() => setOpen(false)}
         aria-label="Help"
-        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-gray-100 hover:bg-[#d4a843]/20 text-gray-400 hover:text-[#d4a843] text-[10px] font-bold transition-colors cursor-help leading-none"
+        className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-ink-100 hover:bg-accent-500/15 text-ink-500 hover:text-accent-700 text-[10px] font-bold transition-colors duration-base ease-quiet cursor-help leading-none"
       >
         ?
       </button>
@@ -49,19 +49,19 @@ export default function HelpTip({ text, detail, position = "above", width = 260 
           style={{ width }}
           onMouseEnter={() => setOpen(true)}
           onMouseLeave={() => setOpen(false)}
-          className={`absolute z-50 left-1/2 -translate-x-1/2 bg-[#0a1628] border border-[#1e3a5f] rounded-xl shadow-xl px-4 py-3 text-left pointer-events-auto
+          className={`absolute z-50 left-1/2 -translate-x-1/2 bg-ink-900 border border-hairline-inverse rounded-card shadow-elev-3 px-4 py-3 text-left pointer-events-auto
             ${position === "above" ? "bottom-full mb-2" : "top-full mt-2"}`}
         >
           {/* Arrow */}
           <span
             className={`absolute left-1/2 -translate-x-1/2 border-[6px] border-transparent
               ${position === "above"
-                ? "top-full border-t-[#1e3a5f]"
-                : "bottom-full border-b-[#1e3a5f]"}`}
+                ? "top-full border-t-ink-900"
+                : "bottom-full border-b-ink-900"}`}
           />
           <p className="text-white text-xs leading-relaxed">{text}</p>
           {detail && (
-            <p className="text-gray-400 text-xs leading-relaxed mt-1.5">{detail}</p>
+            <p className="text-ink-300 text-xs leading-relaxed mt-1.5">{detail}</p>
           )}
         </div>
       )}

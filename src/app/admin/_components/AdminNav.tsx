@@ -3,21 +3,43 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import {
+  LayoutGrid,
+  Users,
+  CreditCard,
+  UserCheck,
+  Building2,
+  Ship,
+  Image as ImageIcon,
+  ClipboardList,
+  BarChart3,
+  Mail,
+  Megaphone,
+  Lightbulb,
+  Lock,
+  type LucideIcon,
+} from "lucide-react";
 
-const navItems = [
-  { label: "Overview", href: "/admin", icon: "⊞" },
-  { label: "Brokers", href: "/admin/brokers", icon: "👥" },
-  { label: "Trials", href: "/admin/trials", icon: "💳" },
-  { label: "Assistants", href: "/admin/assistants", icon: "🤝" },
-  { label: "Brokerages", href: "/admin/brokerages", icon: "🏢" },
-  { label: "Listings", href: "/admin/listings", icon: "🚢" },
-  { label: "Galleries", href: "/admin/galleries", icon: "🖼️" },
-  { label: "Shoots & Invoices", href: "/admin/shoots", icon: "📋" },
-  { label: "Metrics", href: "/admin/metrics", icon: "📊" },
-  { label: "Email Log", href: "/admin/emails", icon: "✉️" },
-  { label: "Announce", href: "/admin/announce", icon: "📣" },
-  { label: "Tips", href: "/admin/tips", icon: "💡" },
-  { label: "Admin Users", href: "/admin/users", icon: "🔐" },
+interface NavItem {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+}
+
+const navItems: NavItem[] = [
+  { label: "Overview", href: "/admin", icon: LayoutGrid },
+  { label: "Brokers", href: "/admin/brokers", icon: Users },
+  { label: "Trials", href: "/admin/trials", icon: CreditCard },
+  { label: "Assistants", href: "/admin/assistants", icon: UserCheck },
+  { label: "Brokerages", href: "/admin/brokerages", icon: Building2 },
+  { label: "Listings", href: "/admin/listings", icon: Ship },
+  { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
+  { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
+  { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
+  { label: "Email Log", href: "/admin/emails", icon: Mail },
+  { label: "Announce", href: "/admin/announce", icon: Megaphone },
+  { label: "Tips", href: "/admin/tips", icon: Lightbulb },
+  { label: "Admin Users", href: "/admin/users", icon: Lock },
 ];
 
 function isActive(pathname: string, href: string) {
@@ -37,26 +59,37 @@ export default function AdminNav() {
   return (
     <>
       {/* Mobile top bar */}
-      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-[#050b14] px-4 py-3 flex items-center justify-between border-b border-[#1e3a5f]">
-        <span className="text-white font-semibold tracking-wide">
-          YachtPics<span className="text-[#d4a843]"> Admin</span>
+      <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-ink-950 border-b border-hairline-inverse px-4 py-3 flex items-center justify-between">
+        <span className="flex items-baseline gap-2.5">
+          <span className="text-white text-[0.8125rem] font-light uppercase tracking-caps-wide leading-none">
+            YachtPics
+          </span>
+          <span className="text-[0.5625rem] font-medium uppercase tracking-caps-wide text-accent-300/80 leading-none">
+            Admin
+          </span>
         </span>
-        <button onClick={handleSignOut} className="text-gray-400 hover:text-white text-xs font-medium transition-colors px-2 py-1 rounded">
+        <button
+          onClick={handleSignOut}
+          className="text-ink-400 hover:text-white text-xs font-medium transition-colors duration-base ease-quiet px-2 py-1 rounded-ctl"
+        >
           Sign out
         </button>
       </div>
 
       {/* Mobile bottom tab bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#050b14] border-t border-[#1e3a5f] flex items-center">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch overflow-x-auto">
         {navItems.map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex-1 flex flex-col items-center justify-center py-2.5 gap-0.5 transition-colors ${active ? "text-[#d4a843]" : "text-gray-500"}`}
+              className={`relative flex-1 min-w-[3.5rem] flex flex-col items-center justify-center py-2.5 gap-1 transition-colors duration-base ease-quiet ${
+                active ? "text-white" : "text-ink-400"
+              }`}
             >
-              <span className="text-base leading-none">{item.icon}</span>
+              {active && <span aria-hidden className="absolute top-0 inset-x-2 h-0.5 bg-accent-500" />}
+              <item.icon size={16} strokeWidth={active ? 2 : 1.5} aria-hidden />
               <span className="text-[9px] font-medium leading-none">{item.label.split(" ")[0]}</span>
             </Link>
           );
@@ -67,35 +100,46 @@ export default function AdminNav() {
       <div className="md:hidden h-12" />
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-60 bg-[#050b14] border-r border-[#1e3a5f] min-h-screen px-4 py-6">
-        <div className="mb-2 px-2">
-          <span className="text-white font-semibold tracking-wide text-lg">
-            YachtPics<span className="text-[#d4a843]"> Admin</span>
+      <aside className="hidden md:flex flex-col w-60 bg-ink-950 border-r border-hairline-inverse-soft min-h-screen px-4 py-7">
+        {/* Wordmark lockup — thin, wide-tracked, hairline rule, small caps */}
+        <div className="px-3 pt-1">
+          <span className="block text-white text-[0.9375rem] font-light uppercase tracking-caps-wide leading-none">
+            YachtPics
           </span>
-          <p className="text-gray-500 text-xs mt-0.5">Internal panel</p>
+          <span aria-hidden className="mt-3.5 block h-px w-14 bg-white/25" />
+          <span className="mt-3.5 block text-[0.625rem] font-medium uppercase tracking-caps-wide text-accent-300/80 leading-none">
+            Admin
+          </span>
+          <p className="text-ink-400 text-xs mt-3">Internal panel</p>
         </div>
 
-        <div className="border-t border-[#1e3a5f] my-4" />
+        <div className="border-t border-hairline-inverse-soft my-4" />
 
-        <nav className="flex-1 space-y-1">
-          {navItems.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                isActive(pathname, item.href)
-                  ? "bg-[#d4a843]/10 text-[#d4a843]"
-                  : "text-gray-400 hover:text-white hover:bg-white/5"
-              }`}
-            >
-              <span>{item.icon}</span>{item.label}
-            </Link>
-          ))}
+        <nav className="flex-1 space-y-0.5">
+          {navItems.map((item) => {
+            const active = isActive(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`relative flex items-center px-3 py-2 rounded-ctl text-sm transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                  active
+                    ? "bg-white/[0.05] text-white font-medium"
+                    : "text-ink-400 hover:text-white hover:bg-white/[0.03]"
+                }`}
+              >
+                {active && <span aria-hidden className="absolute left-0 top-2 bottom-2 w-px bg-accent-400" />}
+                {item.label}
+              </Link>
+            );
+          })}
         </nav>
 
-        <div className="border-t border-[#1e3a5f] pt-4">
-          <button onClick={handleSignOut}
-            className="text-gray-500 hover:text-gray-300 text-xs transition-colors px-2">
+        <div className="border-t border-hairline-inverse pt-4">
+          <button
+            onClick={handleSignOut}
+            className="text-ink-400 hover:text-ink-200 text-xs transition-colors duration-base ease-quiet px-2"
+          >
             Sign out
           </button>
         </div>

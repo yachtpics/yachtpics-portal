@@ -90,27 +90,27 @@ export default function InstallPrompt() {
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 px-4 pb-4 sm:left-auto sm:right-4 sm:max-w-sm">
-      <div className="rounded-xl bg-[#0b1f33] px-4 py-3 text-white shadow-lg ring-1 ring-white/10">
+      <div className="rounded-card bg-ink-900 px-4 py-3 text-white shadow-elev-3 ring-1 ring-hairline-inverse">
         <div className="flex items-start gap-3">
-          <div className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-lg bg-white/10">
+          <div className="mt-0.5 flex h-9 w-9 flex-none items-center justify-center rounded-ctl border border-hairline-inverse-soft bg-white/[0.06]">
             <Download size={18} aria-hidden="true" />
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-sm font-semibold">Install YachtPics</p>
             {deferredPrompt ? (
               <>
-                <p className="mt-0.5 text-xs text-white/70">
+                <p className="mt-0.5 text-xs text-ink-300">
                   Add the portal to your home screen for one-tap access.
                 </p>
                 <button
                   onClick={handleInstall}
-                  className="mt-2.5 rounded-lg bg-white px-3.5 py-1.5 text-xs font-medium text-[#0b1f33] transition hover:bg-white/90"
+                  className="mt-2.5 rounded-ctl bg-white px-3.5 py-1.5 text-xs font-semibold text-ink-950 transition-colors duration-base ease-quiet hover:bg-ink-100"
                 >
                   Install
                 </button>
               </>
             ) : (
-              <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-white/70">
+              <p className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-ink-300">
                 Tap <Share size={13} className="inline" aria-hidden="true" /> then
                 &ldquo;Add to Home Screen&rdquo;.
               </p>
@@ -119,7 +119,7 @@ export default function InstallPrompt() {
           <button
             onClick={closeBanner}
             aria-label="Dismiss"
-            className="flex-none rounded-md p-1 text-white/60 transition hover:bg-white/10 hover:text-white"
+            className="flex-none rounded-ctl p-1 text-ink-400 transition-colors duration-base ease-quiet hover:bg-white/10 hover:text-white"
           >
             <X size={16} aria-hidden="true" />
           </button>

@@ -104,25 +104,25 @@ export default function EnableNotifications({ onlyWhenOff = false }: { onlyWhenO
   if (onlyWhenOff && (state === "on" || state === "denied")) return null;
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5">
+    <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-sm font-semibold text-gray-900">Push notifications</h3>
-          <p className="text-xs text-gray-500 mt-0.5 max-w-md">
+          <h3 className="text-sm font-semibold text-ink-900">Push notifications</h3>
+          <p className="text-xs text-ink-500 mt-0.5 max-w-md">
             Get an alert on this device when a client opens one of your slideshows — so you know the moment a buyer is looking.
           </p>
           {state === "denied" && (
-            <p className="text-xs text-amber-600 mt-2">
+            <p className="text-xs text-warn-700 mt-2">
               Notifications are blocked in your browser settings for this site. Enable them there, then reload.
             </p>
           )}
-          {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+          {error && <p className="text-xs text-danger-600 mt-2">{error}</p>}
         </div>
         <div className="shrink-0">
           {state === "on" ? (
             <button
               onClick={disable}
-              className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-600 hover:border-gray-300 transition-colors"
+              className="text-sm font-medium px-4 py-2 rounded-ctl border border-hairline-strong text-ink-600 hover:border-ink-400 hover:text-ink-900 transition-colors duration-base ease-quiet"
             >
               Turn off
             </button>
@@ -130,7 +130,7 @@ export default function EnableNotifications({ onlyWhenOff = false }: { onlyWhenO
             <button
               onClick={enable}
               disabled={state === "working" || state === "denied"}
-              className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              className="bg-white border border-hairline-strong text-ink-900 hover:border-ink-400 disabled:opacity-40 disabled:cursor-not-allowed text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-base ease-quiet"
             >
               {state === "working" ? "Enabling…" : "Enable"}
             </button>

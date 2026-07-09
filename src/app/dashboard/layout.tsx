@@ -98,7 +98,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       : user.email ?? "User";
 
   return (
-    <div className="flex min-h-screen bg-gray-50">
+    <div className="flex min-h-screen bg-ink-50">
       <DashboardNav
         brokerName={userName}
         role={role}

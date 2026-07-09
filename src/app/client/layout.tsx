@@ -24,7 +24,7 @@ export default async function ClientLayout({ children }: { children: React.React
     : null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-ink-50">
       <ClientHeader name={name} />
       <main>{children}</main>
     </div>
