@@ -60,6 +60,51 @@ interface Props {
   source?: string;
 }
 
+/**
+ * A photograph that reveals itself only once it has decoded — no pop-in,
+ * no layout shift. The parent supplies a `relative` box with a reserved
+ * aspect ratio; until the image arrives, a quiet ink shimmer holds its place.
+ *
+ * These are time-limited signed Supabase URLs, so they intentionally stay
+ * raw <img> (never next/image — the optimizer would cache expiring URLs).
+ */
+function FadePhoto({
+  src,
+  alt,
+  eager = false,
+  className = "",
+  onLoad,
+}: {
+  src: string;
+  alt: string;
+  eager?: boolean;
+  className?: string;
+  onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <>
+      {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-white/[0.04]" />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        ref={(el) => {
+          // Cached images can complete before onLoad wires up.
+          if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
+        }}
+        onLoad={(e) => {
+          setLoaded(true);
+          onLoad?.(e);
+        }}
+        className={`${className} transition-opacity duration-base ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
+      />
+    </>
+  );
+}
+
 export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId, source = "link" }: Props) {
   // Videos first, then photos — unified slide array
   const slides = useMemo<Slide[]>(() => [
@@ -171,6 +216,18 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     return () => window.removeEventListener("keydown", handleKey);
   }, [view, prev, next]);
 
+  // Warm the neighbouring photographs so paging feels instant.
+  useEffect(() => {
+    [current - 1, current + 1].forEach((i) => {
+      const s = slides[i];
+      if (s && s.type === "photo" && s.url) {
+        const img = new window.Image();
+        img.decoding = "async";
+        img.src = s.url;
+      }
+    });
+  }, [current, slides]);
+
   const vesselTitle = [listing.year, listing.make, listing.model, listing.vessel_name]
     .filter(Boolean)
     .join(" ");
@@ -206,8 +263,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   if (slides.length === 0) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center">
-        <p className="text-gray-400 text-sm">No photos available.</p>
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+        <p className="label-caps-inverse">No photos available</p>
       </div>
     );
   }
@@ -220,48 +277,38 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     ? "Video"
     : (currentSlide as { category: string | null }).category ?? "";
 
+  const tabClass = (active: boolean) =>
+    `text-xs font-medium px-3 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+      active ? "bg-white/10 text-white" : "text-ink-400 hover:text-white"
+    }`;
+
+  const arrowClass =
+    "absolute top-1/2 -translate-y-1/2 z-[2] flex h-11 w-11 items-center justify-center rounded-full " +
+    "border border-hairline-inverse bg-ink-950/60 text-white/90 text-2xl leading-none " +
+    "hover:bg-ink-950/90 hover:text-white transition-colors duration-base ease-quiet " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
+
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 gap-4">
+    <div className="min-h-screen bg-ink-950 flex flex-col">
+      {/* Header — one hairline between the vessel and its photographs */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-hairline-inverse gap-4">
         <div className="min-w-0">
-          <h1 className="text-gray-900 font-semibold text-base sm:text-lg truncate">
+          <h1 className="text-white font-semibold text-base sm:text-lg truncate">
             {vesselTitle || "Vessel"}
           </h1>
           {vesselDetails && (
-            <p className="text-gray-500 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
+            <p className="text-ink-400 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setView("slideshow")}
-            className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
-              view === "slideshow"
-                ? "bg-[#d4a843] text-white"
-                : "text-gray-500 hover:text-gray-900"
-            }`}
-          >
+        <div className="flex items-center gap-1 shrink-0 rounded-ctl border border-hairline-inverse p-1">
+          <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
             Slideshow
           </button>
-          <button
-            onClick={() => setView("grid")}
-            className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
-              view === "grid"
-                ? "bg-[#d4a843] text-white"
-                : "text-gray-500 hover:text-gray-900"
-            }`}
-          >
+          <button onClick={() => setView("grid")} className={tabClass(view === "grid")}>
             All Photos
           </button>
           {hasDetails && (
-            <button
-              onClick={() => setView("details")}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${
-                view === "details"
-                  ? "bg-[#d4a843] text-white"
-                  : "text-gray-500 hover:text-gray-900"
-              }`}
-            >
+            <button onClick={() => setView("details")} className={tabClass(view === "details")}>
               Details
             </button>
           )}
@@ -270,9 +317,9 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
       {view === "slideshow" ? (
         <>
-          {/* Main slide area — video and photo use the same full-height container */}
+          {/* Main slide — full-bleed letterbox into the ink, nothing over the image */}
           <div
-            className="flex-1 relative flex items-center justify-center select-none overflow-hidden bg-gray-50"
+            className="flex-1 relative select-none overflow-hidden"
             style={{ minHeight: "calc(100vh - 240px)" }}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
@@ -289,27 +336,22 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 key={`out-${outgoing}`}
                 src={outgoingSlide.url}
                 alt=""
-                className="absolute max-w-full object-contain px-16"
-                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 0 }}
+                className="absolute inset-0 h-full w-full object-contain"
+                style={{ zIndex: 0 }}
               />
             )}
 
             {/* Current slide */}
             {currentSlide.url && (
               currentSlide.type === "photo" ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  key={`in-${current}`}
-                  src={currentSlide.url}
-                  alt={currentSlide.category ?? ""}
-                  className="absolute max-w-full object-contain px-16"
-                  style={{
-                    maxHeight: "calc(100vh - 240px)",
-                    zIndex: 1,
-                    opacity: incomingReady ? 1 : 0,
-                    transition: "opacity 0.5s ease",
-                  }}
-                />
+                <div key={`in-${current}`} className="absolute inset-0" style={{ zIndex: 1 }}>
+                  <FadePhoto
+                    src={currentSlide.url}
+                    alt={currentSlide.category ?? ""}
+                    eager
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
+                </div>
               ) : (
                 <video
                   key={`video-${current}`}
@@ -317,12 +359,11 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   controls
                   playsInline
                   preload="metadata"
-                  className="absolute w-full"
+                  className="absolute inset-0 h-full w-full"
                   style={{
-                    maxHeight: "calc(100vh - 240px)",
                     zIndex: 1,
                     opacity: incomingReady ? 1 : 0,
-                    transition: "opacity 0.5s ease",
+                    transition: "opacity 220ms cubic-bezier(0.25, 0, 0.15, 1)",
                     objectFit: "contain",
                     background: "transparent",
                   }}
@@ -332,52 +373,46 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
             {/* Prev */}
             {current > 0 && (
-              <button
-                onClick={prev}
-                className="absolute left-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
-                style={{ zIndex: 2 }}
-              >
+              <button onClick={prev} aria-label="Previous photo" className={`${arrowClass} left-3`}>
                 ‹
               </button>
             )}
 
             {/* Next */}
             {current < slides.length - 1 && (
-              <button
-                onClick={next}
-                className="absolute right-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors"
-                style={{ zIndex: 2 }}
-              >
+              <button onClick={next} aria-label="Next photo" className={`${arrowClass} right-3`}>
                 ›
               </button>
             )}
           </div>
 
           {/* Caption + counter */}
-          <div className="text-center py-2 px-4 bg-white">
-            <p className="text-gray-500 text-sm">
+          <div className="text-center pt-3 pb-2 px-4">
+            <p className="label-caps-inverse">
               {caption ? `${caption} · ` : ""}
               {current + 1} / {slides.length}
             </p>
           </div>
 
           {/* Thumbnail strip — videos show as dark tile with play icon */}
-          <div className="flex gap-2 px-4 pb-4 overflow-x-auto scrollbar-hide bg-white">
+          <div className="flex gap-1.5 px-4 pb-4 overflow-x-auto scrollbar-hide">
             {slides.map((slide, i) => (
               <button
                 key={slide.id}
                 onClick={() => goTo(i)}
-                className={`shrink-0 rounded-md overflow-hidden transition-all ${
+                aria-label={`Go to slide ${i + 1}`}
+                aria-current={i === current}
+                className={`shrink-0 overflow-hidden transition-opacity duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
                   i === current
-                    ? "ring-2 ring-[#d4a843] opacity-100"
-                    : "opacity-40 hover:opacity-70"
+                    ? "opacity-100 ring-1 ring-accent-400"
+                    : "opacity-40 hover:opacity-80"
                 }`}
               >
                 {slide.type === "photo" && slide.url ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={slide.url} alt="" className="w-16 h-10 object-cover" />
+                  <img src={slide.url} alt="" loading="lazy" decoding="async" className="w-[70px] h-11 object-cover" />
                 ) : (
-                  <div className="w-16 h-10 bg-gray-900 flex items-center justify-center">
+                  <div className="w-[70px] h-11 bg-ink-900 flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
                     </svg>
@@ -388,63 +423,68 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           </div>
         </>
       ) : view === "grid" ? (
-        /* Grid view */
-        <div className="flex-1 p-4 sm:p-6 overflow-auto bg-white">
+        /* Grid view — a gallery wall on ink: large prints, tight gutters, no chrome */
+        <div className="flex-1 px-1.5 sm:px-3 py-3 overflow-auto">
           {videos.length > 0 && (
-            <div className="mb-6 space-y-4">
+            <div className="mb-3 space-y-3">
               {videos.map((video) => video.url && (
-                <div key={video.id} className="rounded-xl overflow-hidden bg-black">
+                <div key={video.id} className="overflow-hidden bg-ink-900">
                   <video
                     src={video.url}
                     controls
                     playsInline
                     preload="metadata"
-                    className="w-full max-h-[480px] bg-black"
+                    className="w-full max-h-[480px]"
                   />
                 </div>
               ))}
             </div>
           )}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5">
             {photos.map((photo, i) => (
-              <div
+              <button
                 key={photo.id}
+                type="button"
                 onClick={() => {
                   setCurrent(videoCount + i);
                   setView("slideshow");
                 }}
-                className="cursor-pointer rounded-lg overflow-hidden border border-gray-200 hover:border-[#d4a843] transition-colors"
+                aria-label={`Open photo ${i + 1}${photo.category ? ` — ${photo.category}` : ""}`}
+                className={`group relative w-full overflow-hidden bg-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 ${
+                  verticalIds.has(photo.id) ? "aspect-[3/4]" : "aspect-[4/3]"
+                }`}
               >
                 {photo.url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <FadePhoto
                     src={photo.url}
-                    alt=""
+                    alt={photo.category ?? `Photo ${i + 1}`}
+                    eager={i < 3}
                     onLoad={(e) => handleImgLoad(e, photo.id)}
-                    className={`w-full object-cover ${verticalIds.has(photo.id) ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+                    className="absolute inset-0 h-full w-full object-contain"
                   />
                 )}
-                <div className="p-2 bg-gray-50">
-                  <p className="text-gray-500 text-xs">
+                {/* Caption on demand — the resting state is just the photograph */}
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end px-3 pb-2.5 pt-10 bg-gradient-to-t from-ink-950/80 to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-base ease-quiet">
+                  <span className="label-caps-inverse">
                     {String(i + 1).padStart(2, "0")} · {photo.category ?? "Other"}
-                  </p>
-                </div>
-              </div>
+                  </span>
+                </span>
+              </button>
             ))}
           </div>
         </div>
       ) : (
         /* Details view */
-        <div className="flex-1 p-5 sm:p-8 overflow-auto bg-white">
+        <div className="flex-1 px-5 sm:px-8 py-8 overflow-auto">
           <div className="max-w-2xl mx-auto">
             {specRows.length > 0 && (
               <>
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-4">Specifications</h2>
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-4 mb-8">
+                <h2 className="label-caps-inverse mb-5">Specifications</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-5 mb-10">
                   {specRows.map(([label, val]) => (
-                    <div key={label} className="border-t-2 border-[#d4a843] pt-2">
-                      <p className="text-[11px] text-gray-400 uppercase tracking-wide font-semibold">{label}</p>
-                      <p className="text-sm text-gray-900 font-semibold mt-0.5">{val}</p>
+                    <div key={label} className="border-t border-hairline-inverse pt-2.5">
+                      <p className="label-caps-inverse">{label}</p>
+                      <p className="text-sm text-white font-medium mt-1">{val}</p>
                     </div>
                   ))}
                 </div>
@@ -452,8 +492,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
             {listing.description && (
               <>
-                <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">About this yacht</h2>
-                <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
+                <h2 className="label-caps-inverse mb-3">About this yacht</h2>
+                <p className="text-sm text-ink-300 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
               </>
             )}
           </div>
@@ -461,10 +501,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       )}
 
       {/* Broker footer */}
-      <div className="border-t border-gray-200 px-5 py-4 flex items-center justify-between gap-4 bg-white">
+      <div className="border-t border-hairline-inverse px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
-            <div className="shrink-0 h-10 w-24 border border-gray-200 rounded flex items-center justify-center p-1.5 overflow-hidden">
+            <div className="shrink-0 h-10 w-24 bg-white rounded-ctl flex items-center justify-center p-1.5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={broker.logoUrl}
@@ -475,16 +515,16 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-gray-900 text-sm font-semibold truncate">{broker.name}</p>
+            <p className="text-white text-sm font-semibold truncate">{broker.name}</p>
             {broker.brokerage && (
-              <p className="text-gray-500 text-xs mt-0.5 truncate">{broker.brokerage}</p>
+              <p className="text-ink-400 text-xs mt-0.5 truncate">{broker.brokerage}</p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => { setInquireOpen(true); setInqSent(false); setInqError(""); }}
-            className="bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
           >
             Request Info
           </button>
@@ -492,7 +532,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {broker.phone && (
               <a
                 href={`tel:${broker.phone}`}
-                className="text-[#d4a843] text-sm font-medium block hover:text-[#c49a35] transition-colors"
+                className="text-accent-300 text-sm font-medium block hover:text-accent-200 transition-colors duration-base ease-quiet"
               >
                 {broker.phone}
               </a>
@@ -502,7 +542,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 href={broker.website.startsWith("http") ? broker.website : `https://${broker.website}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-gray-500 text-xs hover:text-gray-700 transition-colors"
+                className="text-ink-400 text-xs hover:text-ink-300 transition-colors duration-base ease-quiet"
               >
                 {broker.website.replace(/^https?:\/\//, "")}
               </a>
@@ -513,35 +553,41 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
       {/* Inquiry modal */}
       {inquireOpen && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={() => setInquireOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-gray-100">
+        <div className="fixed inset-0 z-50 bg-ink-950/80 flex items-center justify-center p-4" onClick={() => setInquireOpen(false)}>
+          <div className="bg-white rounded-surface shadow-elev-3 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-hairline">
               <div>
-                <h2 className="text-base font-bold text-gray-900">Request information</h2>
-                <p className="text-xs text-gray-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
+                <h2 className="text-h2 text-ink-900">Request information</h2>
+                <p className="text-xs text-ink-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
               </div>
-              <button onClick={() => setInquireOpen(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+              <button
+                onClick={() => setInquireOpen(false)}
+                aria-label="Close"
+                className="flex h-11 w-11 -mr-2 items-center justify-center text-ink-400 hover:text-ink-600 text-xl leading-none transition-colors duration-fast"
+              >
+                ✕
+              </button>
             </div>
             {inqSent ? (
               <div className="px-6 py-10 text-center">
-                <p className="text-green-600 text-2xl mb-2">✓</p>
-                <p className="text-gray-900 font-semibold text-sm">Thanks — your message is on its way.</p>
-                <p className="text-gray-500 text-xs mt-1">{broker.name} will be in touch shortly.</p>
-                <button onClick={() => setInquireOpen(false)} className="mt-5 text-sm text-gray-500 hover:text-gray-700">Close</button>
+                <p className="text-success-600 text-2xl mb-2">✓</p>
+                <p className="text-ink-900 font-semibold text-sm">Thanks — your message is on its way.</p>
+                <p className="text-ink-500 text-xs mt-1">{broker.name} will be in touch shortly.</p>
+                <button onClick={() => setInquireOpen(false)} className="mt-5 text-sm text-ink-500 hover:text-ink-700 min-h-[44px] px-4">Close</button>
               </div>
             ) : (
               <form onSubmit={submitInquiry} className="px-6 py-5 space-y-3">
                 <input value={inq.name} onChange={(e) => setInq({ ...inq, name: e.target.value })} required placeholder="Your name"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843]" />
+                  className="w-full border border-hairline-strong rounded-ctl px-3 py-2.5 min-h-[44px] text-sm text-ink-900 placeholder-ink-400 focus:outline-none focus:border-accent-500 transition-colors duration-fast" />
                 <input type="email" value={inq.email} onChange={(e) => setInq({ ...inq, email: e.target.value })} required placeholder="Email"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843]" />
+                  className="w-full border border-hairline-strong rounded-ctl px-3 py-2.5 min-h-[44px] text-sm text-ink-900 placeholder-ink-400 focus:outline-none focus:border-accent-500 transition-colors duration-fast" />
                 <input value={inq.phone} onChange={(e) => setInq({ ...inq, phone: e.target.value })} placeholder="Phone (optional)"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843]" />
+                  className="w-full border border-hairline-strong rounded-ctl px-3 py-2.5 min-h-[44px] text-sm text-ink-900 placeholder-ink-400 focus:outline-none focus:border-accent-500 transition-colors duration-fast" />
                 <textarea value={inq.message} onChange={(e) => setInq({ ...inq, message: e.target.value })} rows={3} placeholder={`I'm interested in ${listing.vessel_name ?? "this yacht"}…`}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] resize-none" />
-                {inqError && <p className="text-xs text-red-600">{inqError}</p>}
+                  className="w-full border border-hairline-strong rounded-ctl px-3 py-2.5 text-sm text-ink-900 placeholder-ink-400 focus:outline-none focus:border-accent-500 transition-colors duration-fast resize-none" />
+                {inqError && <p className="text-xs text-danger-600">{inqError}</p>}
                 <button type="submit" disabled={inqBusy || !inq.name.trim() || !inq.email.trim()}
-                  className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold py-2.5 rounded-lg transition-colors">
+                  className="w-full bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-ink-950 text-sm font-semibold py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet">
                   {inqBusy ? "Sending…" : "Send to broker"}
                 </button>
               </form>

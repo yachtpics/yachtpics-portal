@@ -23,9 +23,9 @@ type Listing = {
 const STATUS_OPTIONS = ["active", "archived", "sold"] as const;
 
 const statusStyle: Record<string, string> = {
-  active:   "bg-green-50 text-green-700",
-  sold:     "bg-blue-50 text-blue-700",
-  archived: "bg-gray-100 text-gray-500",
+  active:   "bg-success-50 text-success-700",
+  sold:     "bg-info-50 text-info-700",
+  archived: "bg-ink-100 text-ink-500",
 };
 
 function triggerBlobDownload(blob: Blob, filename: string) {
@@ -54,6 +54,56 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
 
   // Share state
   const [shareCopied, setShareCopied] = useState(false);
+
+  // Hero photo — the listing's cover print, letterboxed into ink.
+  // Read-only lookup: the broker's chosen hero_photo_id (falling back to the
+  // first visible photo), honoring the flyer's hero_fit fit/fill convention.
+  const [heroUrl, setHeroUrl] = useState<string | null>(null);
+  const [heroFit, setHeroFit] = useState<"fit" | "fill">("fill");
+  const [heroLoaded, setHeroLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const supabase = createClient();
+        const { data: l } = await supabase
+          .from("listings")
+          .select("hero_photo_id, hero_fit")
+          .eq("id", listing.id)
+          .maybeSingle();
+        let photo: { storage_path: string } | null = null;
+        if (l?.hero_photo_id) {
+          const { data } = await supabase
+            .from("photos")
+            .select("storage_path")
+            .eq("id", l.hero_photo_id)
+            .maybeSingle();
+          photo = data;
+        }
+        if (!photo) {
+          const { data } = await supabase
+            .from("photos")
+            .select("storage_path")
+            .eq("listing_id", listing.id)
+            .eq("is_visible", true)
+            .order("display_order")
+            .limit(1)
+            .maybeSingle();
+          photo = data;
+        }
+        if (!photo || cancelled) return;
+        const { data: signed } = await supabase.storage
+          .from("listing-photos")
+          .createSignedUrl(photo.storage_path, 3600);
+        if (!cancelled && signed?.signedUrl) {
+          setHeroFit(l?.hero_fit === "fit" ? "fit" : "fill");
+          setHeroUrl(signed.signedUrl);
+        }
+      } catch { /* row simply renders without a photo */ }
+    })();
+    return () => { cancelled = true; };
+  }, [listing.id]);
 
   async function handleShare() {
     if (!listing.slideshow_slug) return;
@@ -264,48 +314,71 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
     }
   }
 
+  const quickAction =
+    "flex items-center gap-1 text-xs font-medium px-2.5 py-2.5 sm:py-1.5 rounded-ctl border transition-colors duration-fast ease-quiet " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
+
   return (
-    <div className="bg-white border border-gray-200 rounded-xl px-4 sm:px-6 py-4 flex items-center justify-between hover:border-[#d4a843] transition-colors">
-      {/* Left — link to the listing */}
-      <Link href={`/dashboard/listings/${listing.id}`} className="flex-1 min-w-0 pr-4">
-        <p className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-          {listing.vessel_name ?? "Untitled vessel"}
-          {listing.is_shared && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[#d4a843]/15 text-[#a07820] uppercase tracking-wide">
-              Shared
-            </span>
+    <div className="bg-white border border-hairline rounded-card shadow-elev-1 hover:shadow-elev-2 pr-3 sm:pr-4 flex items-stretch justify-between overflow-hidden transition-shadow duration-base ease-quiet">
+      {/* Left — the photograph first, then the vessel */}
+      <Link href={`/dashboard/listings/${listing.id}`} className="flex flex-1 min-w-0 items-stretch gap-3 sm:gap-4 pr-2 group">
+        <div className="relative w-24 sm:w-32 shrink-0 self-stretch min-h-[4.5rem] bg-ink-950 overflow-hidden">
+          {heroUrl && (
+            // Signed URL — raw <img> on purpose (never next/image).
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={heroUrl}
+              alt={listing.vessel_name ?? "Listing photo"}
+              loading="lazy"
+              decoding="async"
+              onLoad={() => setHeroLoaded(true)}
+              ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setHeroLoaded(true); }}
+              className={`absolute inset-0 h-full w-full transition-opacity duration-base ease-quiet ${
+                heroFit === "fit" ? "object-contain" : "object-cover"
+              } ${heroLoaded ? "opacity-100" : "opacity-0"}`}
+            />
           )}
-          {isCoBroker && (
-            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700 uppercase tracking-wide">
-              Co-broker
-            </span>
+        </div>
+        <div className="min-w-0 py-3.5 self-center">
+          <p className="text-sm font-semibold text-ink-900 flex items-center gap-2 group-hover:text-ink-950">
+            <span className="truncate">{listing.vessel_name ?? "Untitled vessel"}</span>
+            {listing.is_shared && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-accent-500/10 text-accent-700 uppercase tracking-caps shrink-0">
+                Shared
+              </span>
+            )}
+            {isCoBroker && (
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-info-50 text-info-700 uppercase tracking-caps shrink-0">
+                Co-broker
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-ink-400 mt-0.5 truncate">
+            {[
+              listing.year,
+              listing.vessel_type,
+              listing.length_ft ? `${listing.length_ft}′` : null,
+              listing.location,
+            ].filter(Boolean).join(" · ")}
+          </p>
+          {showBroker && listing.broker_name && (
+            <p className="text-xs text-accent-700 mt-1 truncate">{listing.broker_name}</p>
           )}
-        </p>
-        <p className="text-xs text-gray-400 mt-0.5">
-          {[
-            listing.year,
-            listing.vessel_type,
-            listing.length_ft ? `${listing.length_ft}′` : null,
-            listing.location,
-          ].filter(Boolean).join(" · ")}
-        </p>
-        {showBroker && listing.broker_name && (
-          <p className="text-xs text-[#c49a35] mt-1">{listing.broker_name}</p>
-        )}
+        </div>
       </Link>
 
       {/* Right — quick actions + date + status */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-2 shrink-0 py-3.5">
 
         {/* Share slideshow (only when published + active plan) */}
         {listing.slideshow_published && listing.slideshow_slug && !locked && (
           <button
             onClick={handleShare}
             title="Share the client slideshow link"
-            className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${
+            className={`${quickAction} ${
               shareCopied
-                ? "border-green-200 bg-green-50 text-green-700"
-                : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843] hover:text-gray-700"
+                ? "border-success-200 bg-success-50 text-success-700"
+                : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500 hover:text-ink-700"
             }`}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -321,12 +394,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
             onClick={handleDownload}
             disabled={downloading}
             title="Download all photos as ZIP"
-            className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
+            className={`${quickAction}
               ${downloadDone
-                ? "border-green-200 bg-green-50 text-green-700"
+                ? "border-success-200 bg-success-50 text-success-700"
                 : noPhotos
-                  ? "border-amber-200 bg-amber-50 text-amber-700"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843] hover:text-gray-700"
+                  ? "border-warn-200 bg-warn-50 text-warn-700"
+                  : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500 hover:text-ink-700"
               }
               disabled:opacity-60 disabled:cursor-not-allowed`}
           >
@@ -363,10 +436,10 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
           <button
             onClick={(e) => { e.preventDefault(); setSendOpen((o) => !o); setSendDone(false); setSendError(""); }}
             title="Send listing to a client"
-            className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors
+            className={`${quickAction}
               ${sendOpen
-                ? "border-[#d4a843] bg-[#fdf8ed] text-[#a07820]"
-                : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843] hover:text-gray-700"
+                ? "border-accent-500 bg-accent-50 text-accent-700"
+                : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500 hover:text-ink-700"
               }`}
           >
             <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor">
@@ -377,18 +450,18 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
           </button>
 
           {sendOpen && (
-            <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-gray-200 rounded-xl shadow-lg p-4 w-72">
+            <div className="absolute right-0 top-full mt-1.5 z-30 bg-white border border-hairline rounded-card shadow-elev-3 p-4 w-72">
               {sendDone ? (
-                <div className="flex items-center gap-2 text-green-700 text-sm font-medium py-1">
+                <div className="flex items-center gap-2 text-success-700 text-sm font-medium py-1">
                   <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
                   Sent!
                 </div>
               ) : (
                 <form onSubmit={handleSend}>
-                  <p className="text-xs font-semibold text-gray-700 mb-3">
+                  <p className="text-xs font-semibold text-ink-700 mb-3">
                     Send to client
                     {listing.slideshow_published && (
-                      <span className="ml-1.5 text-[#a07820] font-normal">· includes slideshow</span>
+                      <span className="ml-1.5 text-accent-700 font-normal">· includes slideshow</span>
                     )}
                   </p>
                   <input
@@ -397,22 +470,22 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
                     value={sendEmail}
                     onChange={(e) => setSendEmail(e.target.value)}
                     required
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4a843] mb-2"
+                    className="w-full border border-hairline-strong rounded-ctl px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-500 mb-2"
                   />
                   <textarea
                     placeholder="Add a note (optional)"
                     value={sendMessage}
                     onChange={(e) => setSendMessage(e.target.value)}
                     rows={2}
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#d4a843] mb-2 resize-none"
+                    className="w-full border border-hairline-strong rounded-ctl px-3 py-2 text-sm text-ink-900 placeholder-ink-400 focus:outline-none focus:ring-2 focus:ring-accent-500 mb-2 resize-none"
                   />
                   {sendError && (
-                    <p className="text-xs text-red-600 mb-2">{sendError}</p>
+                    <p className="text-xs text-danger-600 mb-2">{sendError}</p>
                   )}
                   <button
                     type="submit"
                     disabled={sending || !sendEmail.trim()}
-                    className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold py-2 rounded-lg transition-colors"
+                    className="w-full bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-ink-950 text-sm font-semibold py-2 rounded-ctl transition-colors duration-fast ease-quiet"
                   >
                     {sending ? "Sending…" : "Send"}
                   </button>
@@ -423,25 +496,25 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
         </div>
         )}
 
-        <p className="text-xs text-gray-400 hidden md:block">Updated {updated}</p>
+        <p className="text-xs text-ink-400 hidden md:block">Updated {updated}</p>
 
         {/* Status badge */}
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={(e) => { e.preventDefault(); setStatusOpen((o) => !o); }}
             disabled={saving}
-            className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors cursor-pointer hover:opacity-80 disabled:opacity-50 ${statusStyle[status] ?? "bg-gray-100 text-gray-500"}`}
+            className={`text-xs font-medium px-2.5 py-1 rounded-full transition-colors duration-fast cursor-pointer hover:opacity-80 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${statusStyle[status] ?? "bg-ink-100 text-ink-500"}`}
           >
             {saving ? "Saving…" : status}
           </button>
 
           {statusOpen && (
-            <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-gray-200 rounded-xl shadow-lg py-1 min-w-[110px]">
+            <div className="absolute right-0 top-full mt-1.5 z-20 bg-white border border-hairline rounded-card shadow-elev-3 py-1 min-w-[110px]">
               {STATUS_OPTIONS.map((s) => (
                 <button
                   key={s}
                   onClick={(e) => { e.preventDefault(); changeStatus(s); }}
-                  className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-gray-50 transition-colors ${s === status ? "text-[#c49a35]" : "text-gray-700"}`}
+                  className={`w-full text-left px-3 py-2 text-xs font-medium hover:bg-ink-50 transition-colors duration-fast ${s === status ? "text-accent-700" : "text-ink-700"}`}
                 >
                   {s === status ? `✓ ${s}` : s}
                 </button>

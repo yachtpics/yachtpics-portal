@@ -221,6 +221,19 @@ export default function BrokerListingPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [lightboxIndex, photos.length]);
 
+  // Warm the neighbouring photos while the lightbox is open so paging feels instant.
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    [lightboxIndex - 1, lightboxIndex + 1].forEach((i) => {
+      const p = photos[i];
+      if (p?.url) {
+        const img = new window.Image();
+        img.decoding = "async";
+        img.src = p.url;
+      }
+    });
+  }, [lightboxIndex, photos]);
+
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
@@ -843,16 +856,17 @@ export default function BrokerListingPage() {
 
   return (
     <div
-      className="px-6 py-8 max-w-5xl mx-auto relative"
+      className="px-4 sm:px-6 py-8 max-w-6xl mx-auto relative"
       onDragEnter={handlePageDragEnter}
       onDragLeave={handlePageDragLeave}
       onDragOver={handlePageDragOver}
       onDrop={handlePageDrop}
     >
-      {/* Lightbox — portal to document.body, all layout via inline styles to avoid Tailwind purging */}
+      {/* Lightbox — portal to document.body, all layout via inline styles to avoid Tailwind purging.
+          Full-bleed on ink: the counter and a single hairline are the only chrome on screen. */}
       {mounted && lightboxIndex !== null && createPortal(
         <div
-          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column" }}
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#050b14", display: "flex", flexDirection: "column" }}
           onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
           onTouchEnd={(e) => {
             if (lightboxTouch === null) return;
@@ -864,51 +878,43 @@ export default function BrokerListingPage() {
             setLightboxTouch(null);
           }}
         >
-          {/* Header */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", flexShrink: 0 }}>
-            <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 14 }}>
+          {/* Header — counter above a single hairline */}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 6px 20px", flexShrink: 0, borderBottom: "1px solid var(--hairline-inverse)" }}>
+            <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
               {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
             </span>
             <button
               onClick={() => setLightboxIndex(null)}
-              style={{ color: "rgba(255,255,255,0.55)", fontSize: 28, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}
+              aria-label="Close"
+              style={{ color: "rgba(255,255,255,0.7)", fontSize: 26, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}
             >
               ×
             </button>
           </div>
 
-          {/* Photo area — fills remaining height */}
-          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 48px" }}>
+          {/* Photo area — fills remaining height, image letterboxed into the ink */}
+          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
             {photos[lightboxIndex]?.url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <LightboxPhoto
+                key={photos[lightboxIndex].id}
                 src={photos[lightboxIndex].url!}
                 alt={photos[lightboxIndex].filename ?? ""}
-                style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", display: "block" }}
               />
             )}
             {lightboxIndex > 0 && (
               <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
-                style={{ position: "absolute", left: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "rgba(255,255,255,0.95)", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                aria-label="Previous photo"
+                style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", background: "rgba(5,11,20,0.6)", border: "1px solid var(--hairline-inverse)", borderRadius: "50%", width: 44, height: 44, color: "rgba(255,255,255,0.9)", fontSize: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ‹
               </button>
             )}
             {lightboxIndex < photos.length - 1 && (
               <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
-                style={{ position: "absolute", right: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "rgba(255,255,255,0.95)", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                aria-label="Next photo"
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "rgba(5,11,20,0.6)", border: "1px solid var(--hairline-inverse)", borderRadius: "50%", width: 44, height: 44, color: "rgba(255,255,255,0.9)", fontSize: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ›
               </button>
             )}
-          </div>
-
-          {/* Thumbnail strip */}
-          <div style={{ display: "flex", gap: 8, padding: "12px 16px", overflowX: "auto", flexShrink: 0 }}>
-            {photos.map((p, i) => (
-              <button key={p.id} onClick={() => setLightboxIndex(i)}
-                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid var(--accent)" : "none" }}>
-                {p.url && <img src={p.url} alt="" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />}
-              </button>
-            ))}
           </div>
         </div>,
         document.body
@@ -1167,7 +1173,9 @@ export default function BrokerListingPage() {
           )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          {/* The gallery wall — photographs on ink, chrome on demand */}
+          <div className="rounded-card bg-ink-950 p-1.5 sm:p-2 shadow-elev-1">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2">
           {photos.filter(p => !deletingIds.has(p.id)).map((photo) => {
             const isSelected = selectedIds.has(photo.id);
             return (
@@ -1191,6 +1199,7 @@ export default function BrokerListingPage() {
               />
             );
           })}
+          </div>
           </div>
           </SortableContext>
           </DndContext>
@@ -1875,6 +1884,7 @@ function SortablePhotoCard({
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isVertical, setIsVertical] = useState(false);
+  const [imgLoaded, setImgLoaded] = useState(false);
   const allCategories = [...(PHOTO_CATEGORIES as readonly string[]), ...extraCategories.filter(c => !(PHOTO_CATEGORIES as readonly string[]).includes(c))];
   const inStandardList = allCategories.includes(photo.category ?? "");
   const [showCustomInput, setShowCustomInput] = useState(!inStandardList);
@@ -1895,176 +1905,257 @@ function SortablePhotoCard({
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : undefined,
   };
+
+  // Chrome on demand: management affordances rest hidden and appear on hover or
+  // keyboard focus. Devices that can't hover (touch) keep them visible so
+  // nothing is lost dockside.
+  const chrome =
+    "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto " +
+    "group-focus-within:opacity-100 group-focus-within:pointer-events-auto " +
+    "[@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto " +
+    "transition-opacity duration-base ease-quiet";
+
+  const ctl =
+    "flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full " +
+    "bg-ink-950/60 text-white hover:bg-ink-950/90 transition-colors duration-base ease-quiet " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`relative rounded-lg overflow-hidden border-2 transition-colors touch-manipulation ${
-        isSelected ? "border-accent-500 shadow-md" :
-        photo.is_visible ? "border-transparent" : "border-hairline-strong opacity-60"
+      className={`group relative flex flex-col touch-manipulation ${
+        isSelected ? "ring-2 ring-accent-500 ring-offset-2 ring-offset-ink-950" : ""
       }`}
     >
-      {/* Drag handle — top-right grip */}
-      {!selectMode && (
-        <div
-          {...attributes}
-          {...listeners}
-          className="absolute top-1.5 right-1.5 z-10 bg-black/40 hover:bg-black/60 rounded p-1 cursor-grab active:cursor-grabbing touch-manipulation"
-          title="Drag to reorder"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
-            <circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/>
-            <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
-            <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
-          </svg>
-        </div>
-      )}
-
-      {/* Hero (cover) star — top-left when not selecting */}
-      {!selectMode && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onSetHero(); }}
-          onPointerDown={(e) => e.stopPropagation()}
-          title={isHero ? "Cover photo — used on the spec sheet & social posts. Tap to clear." : "Set as cover photo (spec sheet & social posts)"}
-          className={`absolute top-1.5 left-1.5 z-10 rounded-full w-7 h-7 flex items-center justify-center text-sm transition-colors ${
-            isHero ? "bg-accent-500 text-ink-950 shadow" : "bg-black/40 hover:bg-black/60 text-white"
-          }`}
-        >
-          {isHero ? "★" : "☆"}
-        </button>
-      )}
-
-      {/* Photo */}
-      <div
-        onClick={onTap}
-        onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
-        onTouchEnd={(e) => {
-          if (!tapStart.current) return;
-          const dx = Math.abs(e.changedTouches[0].clientX - tapStart.current.x);
-          const dy = Math.abs(e.changedTouches[0].clientY - tapStart.current.y);
-          tapStart.current = null;
-          if (dx < 8 && dy < 8) { e.preventDefault(); onTap(); }
-        }}
-        className="cursor-pointer"
-      >
-        {photo.url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={photo.url}
-            alt={photo.filename ?? ""}
-            onLoad={(e) => {
-              const img = e.target as HTMLImageElement;
-              setIsVertical(img.naturalHeight > img.naturalWidth);
-            }}
-            className={`w-full object-cover pointer-events-none ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
-          />
-        ) : (
-          <div className="w-full aspect-[4/3] bg-warn-50 border-b border-warn-200 flex flex-col items-center justify-center gap-2 pointer-events-none">
-            <span className="text-2xl">⚠️</span>
-            <div className="text-center px-3">
-              <p className="text-warn-700 text-xs font-semibold">File missing</p>
-              <p className="text-warn-700 text-[10px] mt-0.5">Delete and re-upload</p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Checkbox in select mode */}
-      {selectMode && (
+      <div className="relative">
+        {/* The photograph — letterboxed into the ink, nothing over it at rest */}
         <div
           onClick={onTap}
-          className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center transition-colors cursor-pointer ${
-            isSelected ? "bg-accent-500 border-accent-500" : "bg-white/80 border-ink-300"
-          }`}
+          onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
+          onTouchEnd={(e) => {
+            if (!tapStart.current) return;
+            const dx = Math.abs(e.changedTouches[0].clientX - tapStart.current.x);
+            const dy = Math.abs(e.changedTouches[0].clientY - tapStart.current.y);
+            tapStart.current = null;
+            if (dx < 8 && dy < 8) { e.preventDefault(); onTap(); }
+          }}
+          className={`relative w-full overflow-hidden bg-ink-900 cursor-pointer ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
         >
-          {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
-        </div>
-      )}
-
-      {/* Caption row */}
-      <div className="p-2 bg-white">
-        <div className="flex items-center gap-1">
-          <span className="text-xs font-medium text-ink-500 shrink-0">{String(index + 1).padStart(2, "0")} ·</span>
-          {!showCustomInput ? (
-            <select
-              value={photo.category ?? "Other"}
-              onChange={(e) => {
-                e.stopPropagation();
-                if (e.target.value === "__custom__") {
-                  setShowCustomInput(true);
-                  setCustomValue("");
-                } else {
-                  onUpdateCategory(e.target.value);
-                }
-              }}
-              onClick={(e) => e.stopPropagation()}
-              className="text-xs font-medium text-ink-700 bg-transparent border-none outline-none cursor-pointer hover:text-accent-700 transition-colors flex-1 min-w-0 truncate"
-            >
-              <option value="__custom__">+ Custom...</option>
-              {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          ) : (
-            <div className="flex items-center gap-1 flex-1 min-w-0">
-              <input
-                type="text"
-                value={customValue}
-                onChange={(e) => { e.stopPropagation(); setCustomValue(e.target.value); }}
-                onBlur={commitCustom}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitCustom(); } }}
-                onClick={(e) => e.stopPropagation()}
-                onPointerDown={(e) => e.stopPropagation()}
-                placeholder="Type & press Enter..."
-                autoFocus
-                className="text-xs text-ink-700 bg-transparent border-b border-hairline-strong outline-none flex-1 min-w-0 focus:border-accent-500"
+          {photo.url ? (
+            <>
+              {!imgLoaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-white/[0.04]" />}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={photo.url}
+                alt={photo.filename ?? ""}
+                loading={index < 4 ? "eager" : "lazy"}
+                decoding="async"
+                ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setImgLoaded(true); }}
+                onLoad={(e) => {
+                  const img = e.target as HTMLImageElement;
+                  setIsVertical(img.naturalHeight > img.naturalWidth);
+                  setImgLoaded(true);
+                }}
+                className={`absolute inset-0 h-full w-full object-contain pointer-events-none transition-opacity duration-base ease-quiet ${
+                  !imgLoaded ? "opacity-0" : photo.is_visible ? "opacity-100" : "opacity-40"
+                }`}
               />
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); setShowCustomInput(false); setCustomValue(""); onUpdateCategory("Other"); }}
-                className="text-ink-400 hover:text-ink-600 text-xs shrink-0 px-1"
-                title="Back to list"
-              >✕</button>
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
+              <span className="text-2xl">⚠️</span>
+              <div className="text-center px-3">
+                <p className="text-warn-300 text-xs font-semibold">File missing</p>
+                <p className="text-warn-300 text-[10px] mt-0.5">Delete and re-upload</p>
+              </div>
             </div>
           )}
-          {!photo.is_visible && <span className="text-ink-400 text-xs shrink-0">· hidden</span>}
+          {!photo.is_visible && (
+            <span className="pointer-events-none absolute left-1.5 bottom-1.5 label-caps-inverse rounded-sm bg-ink-950/70 px-1.5 py-0.5">
+              Hidden
+            </span>
+          )}
         </div>
-        {photo.filename && (
-          <p className="text-xs text-ink-400 truncate mt-0.5" title={photo.filename}>{photo.filename}</p>
+
+        {/* Hero (cover) star — the current cover stays marked; the rest appear on demand */}
+        {!selectMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSetHero(); }}
+            onPointerDown={(e) => e.stopPropagation()}
+            title={isHero ? "Cover photo — used on the spec sheet & social posts. Tap to clear." : "Set as cover photo (spec sheet & social posts)"}
+            aria-label={isHero ? "Clear cover photo" : "Set as cover photo"}
+            className={`absolute top-1.5 left-1.5 z-10 flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full text-sm transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+              isHero ? "bg-accent-500 text-ink-950" : `bg-ink-950/60 text-white hover:bg-ink-950/90 ${chrome}`
+            }`}
+          >
+            {isHero ? "★" : "☆"}
+          </button>
         )}
-        {/* Action buttons */}
+
+        {/* Drag handle — top-right grip */}
         {!selectMode && (
           <div
-            className="flex items-center gap-2 mt-2 pt-2 border-t border-hairline"
+            {...attributes}
+            {...listeners}
+            title="Drag to reorder"
+            className={`absolute top-1.5 right-1.5 z-10 flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-ink-950/60 hover:bg-ink-950/90 cursor-grab active:cursor-grabbing touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${chrome}`}
+          >
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+              <circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/>
+              <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
+              <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
+            </svg>
+          </div>
+        )}
+
+        {/* Actions on demand — download, hide/show, delete-with-confirm */}
+        {!selectMode && (
+          <div
+            className={`absolute inset-x-0 bottom-0 z-10 flex items-center justify-end gap-1 px-1.5 pb-1.5 pt-8 bg-gradient-to-t from-ink-950/85 to-transparent ${chrome}`}
+            onClick={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
-            <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
-              className="flex-1 text-center text-xs font-medium text-ink-600 py-1.5 rounded bg-ink-50 hover:bg-ink-100 transition-colors">
-              {photo.is_visible ? "Hide" : "Show"}
-            </button>
             {confirmDelete ? (
               <>
-                <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                  className="flex-1 text-center text-xs font-medium text-ink-500 py-1.5 rounded bg-ink-50 hover:bg-ink-100 transition-colors">
+                <span className="mr-auto pl-1 text-xs font-medium text-white/85">Delete photo?</span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
+                  className="h-11 sm:h-8 px-3 rounded-full bg-ink-950/60 text-white text-xs font-medium hover:bg-ink-950/90 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                >
                   Cancel
                 </button>
-                <button onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="flex-1 text-center text-xs font-semibold text-white py-1.5 rounded bg-danger-500 hover:bg-danger-600 transition-colors">
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
+                  className="h-11 sm:h-8 px-3 rounded-full bg-danger-600 text-white text-xs font-semibold hover:bg-danger-500 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                >
                   Confirm
                 </button>
               </>
             ) : (
-              <button onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-                className="flex-1 text-center text-xs font-medium text-danger-500 py-1.5 rounded bg-danger-50 hover:bg-danger-200 transition-colors">
-                Delete
-              </button>
+              <>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onDownload(); }}
+                  disabled={downloading}
+                  title="Download photo"
+                  aria-label="Download photo"
+                  className={`${ctl} disabled:opacity-40`}
+                >
+                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
+                  title={photo.is_visible ? "Hide from slideshow & downloads" : "Show in slideshow & downloads"}
+                  aria-label={photo.is_visible ? "Hide photo" : "Show photo"}
+                  className={ctl}
+                >
+                  {photo.is_visible ? (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
+                  ) : (
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  )}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+                  title="Delete photo"
+                  aria-label="Delete photo"
+                  className={`${ctl} hover:text-danger-300`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
+                </button>
+              </>
             )}
           </div>
         )}
+
+        {/* Checkbox in select mode */}
+        {selectMode && (
+          <div
+            onClick={onTap}
+            className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-sm border-2 flex items-center justify-center transition-colors duration-fast cursor-pointer ${
+              isSelected ? "bg-accent-500 border-accent-500" : "bg-ink-950/50 border-white/80"
+            }`}
+          >
+            {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
+          </div>
+        )}
+      </div>
+
+      {/* Gallery plaque — number, category, state */}
+      <div className="flex items-center gap-1.5 bg-ink-950 px-1.5 pt-1 pb-0.5" title={photo.filename ?? undefined}>
+        <span className="text-[11px] font-semibold tracking-caps text-white/35 shrink-0">{String(index + 1).padStart(2, "0")}</span>
+        {!showCustomInput ? (
+          <select
+            value={photo.category ?? "Other"}
+            onChange={(e) => {
+              e.stopPropagation();
+              if (e.target.value === "__custom__") {
+                setShowCustomInput(true);
+                setCustomValue("");
+              } else {
+                onUpdateCategory(e.target.value);
+              }
+            }}
+            onClick={(e) => e.stopPropagation()}
+            className="text-xs font-medium text-ink-300 bg-transparent border-none outline-none cursor-pointer hover:text-white focus-visible:text-white transition-colors duration-fast flex-1 min-w-0 truncate py-1"
+          >
+            <option value="__custom__">+ Custom...</option>
+            {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        ) : (
+          <div className="flex items-center gap-1 flex-1 min-w-0">
+            <input
+              type="text"
+              value={customValue}
+              onChange={(e) => { e.stopPropagation(); setCustomValue(e.target.value); }}
+              onBlur={commitCustom}
+              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitCustom(); } }}
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              placeholder="Type & press Enter..."
+              autoFocus
+              className="text-xs text-white placeholder-white/30 bg-transparent border-b border-hairline-inverse outline-none flex-1 min-w-0 py-1 focus:border-accent-500"
+            />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowCustomInput(false); setCustomValue(""); onUpdateCategory("Other"); }}
+              className="text-white/40 hover:text-white text-xs shrink-0 px-1.5 py-1"
+              title="Back to list"
+            >✕</button>
+          </div>
+        )}
+        {!photo.is_visible && <span className="text-white/35 text-[11px] shrink-0">hidden</span>}
       </div>
     </div>
+  );
+}
+
+// ─── Lightbox photo ────────────────────────────────────────────────────────────
+// Raw <img> on purpose (time-limited signed URLs — never next/image). Fades in
+// once decoded; inline styles because this renders inside a body portal.
+function LightboxPhoto({ src, alt }: { src: string; alt: string }) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt={alt}
+      decoding="async"
+      ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setLoaded(true); }}
+      onLoad={() => setLoaded(true)}
+      style={{
+        position: "absolute",
+        inset: 0,
+        width: "100%",
+        height: "100%",
+        objectFit: "contain",
+        opacity: loaded ? 1 : 0,
+        transition: "opacity 160ms cubic-bezier(0.25, 0, 0.15, 1)",
+      }}
+    />
   );
 }
