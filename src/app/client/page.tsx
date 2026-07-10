@@ -29,12 +29,12 @@ export default async function ClientGalleriesPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-5 py-8">
-      <h1 className="text-2xl font-bold text-gray-900 mb-1">Your galleries</h1>
-      <p className="text-gray-500 text-sm mb-6">View the slideshow and download your photos and videos.</p>
+      <h1 className="text-display text-ink-900 mb-1">Your galleries</h1>
+      <p className="text-ink-500 text-sm mb-6">View the slideshow and download your photos and videos.</p>
 
       {galleries.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl py-16 text-center">
-          <p className="text-gray-400 text-sm">You don&apos;t have any galleries yet.</p>
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 py-16 text-center">
+          <p className="text-ink-500 text-sm">You don&apos;t have any galleries yet.</p>
         </div>
       ) : (
         <div className="grid sm:grid-cols-2 gap-4">
@@ -44,11 +44,11 @@ export default async function ClientGalleriesPage() {
               <Link
                 key={g.id}
                 href={`/client/${g.id}`}
-                className="block bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors"
+                className="block bg-white border border-hairline rounded-card p-5 shadow-elev-1 hover:shadow-elev-2 hover:border-hairline-strong transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
               >
-                <p className="font-semibold text-gray-900">{g.title}</p>
-                <p className="text-xs text-gray-400 mt-1 capitalize">{g.gallery_type}</p>
-                <p className={`text-xs mt-3 ${expired ? "text-gray-400" : "text-green-600"}`}>
+                <p className="font-semibold text-ink-900">{g.title}</p>
+                <p className="label-caps mt-1.5">{g.gallery_type}</p>
+                <p className={`text-xs mt-3 ${expired ? "text-ink-500" : "text-success-600"}`}>
                   {expired
                     ? "Downloads closed — slideshow still available"
                     : g.expires_at

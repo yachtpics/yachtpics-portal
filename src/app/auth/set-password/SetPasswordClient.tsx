@@ -3,6 +3,22 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { Button, Input, Label } from "@/components/ui";
+
+/** The login page's wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
+function WordmarkLockup() {
+  return (
+    <div>
+      <p className="text-white text-[1.625rem] font-light uppercase tracking-caps-wide [text-indent:0.24em] leading-none">
+        YachtPics
+      </p>
+      <span aria-hidden className="mx-auto mt-4 block h-px w-28 bg-white/25" />
+      <p className="mt-4 text-[0.6875rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-accent-300/90">
+        Portal
+      </p>
+    </div>
+  );
+}
 
 export default function SetPasswordClient() {
   const router = useRouter();
@@ -149,39 +165,41 @@ export default function SetPasswordClient() {
     router.push("/dashboard");
   };
 
-  const inputClass =
-    "w-full border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-900 focus:outline-none focus:border-[#d4a843] focus:ring-1 focus:ring-[#d4a843]/30";
-
   if (checking) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="w-5 h-5 border-2 border-[#d4a843] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
+        <div className="w-5 h-5 border-2 border-accent-500 border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (linkInvalid) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="w-full max-w-sm text-center">
-          <p className="text-xl font-semibold text-gray-900 tracking-tight mb-8">
-            YachtPics <span className="text-[#d4a843]">Portal</span>
-          </p>
-          <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
-            <div className="w-10 h-10 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center mx-auto mb-4">
-              <span className="text-amber-500 text-lg">!</span>
+      <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-48 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-accent-500/[0.06] blur-3xl" />
+          <div className="absolute inset-x-0 top-0 h-px bg-hairline-inverse-soft" />
+          <div className="absolute inset-x-0 bottom-0 h-px bg-hairline-inverse-soft" />
+        </div>
+        <div className="relative w-full max-w-sm text-center">
+          <div className="mb-10">
+            <WordmarkLockup />
+          </div>
+          <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm">
+            <div className="w-10 h-10 rounded-full bg-warn-300/10 border border-warn-300/30 flex items-center justify-center mx-auto mb-4">
+              <span className="text-warn-300 text-lg">!</span>
             </div>
-            <h1 className="text-lg font-bold text-gray-900 mb-2">Link expired</h1>
-            <p className="text-sm text-gray-500 leading-relaxed mb-6">
+            <h1 className="text-h2 text-white mb-2">Link expired</h1>
+            <p className="text-sm text-ink-400 leading-relaxed mb-6">
               This invite link has already been used or has expired. Contact your broker or{" "}
-              <a href="mailto:hello@yachtpics.com" className="text-[#d4a843] hover:underline">
+              <a href="mailto:hello@yachtpics.com" className="text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast">
                 hello@yachtpics.com
               </a>{" "}
               to request a new one.
             </p>
             <a
               href="/auth/login"
-              className="block w-full bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] font-semibold text-sm py-3 rounded-lg transition-colors text-center"
+              className="flex w-full items-center justify-center bg-accent-500 hover:bg-accent-400 text-ink-950 font-semibold text-sm py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
             >
               Go to Login
             </a>
@@ -192,19 +210,24 @@ export default function SetPasswordClient() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <p className="text-xl font-semibold text-gray-900 tracking-tight">
-            YachtPics <span className="text-[#d4a843]">Portal</span>
-          </p>
+    <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
+      {/* Ambient composition — a faint champagne glow and structural hairlines */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-48 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-accent-500/[0.06] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-hairline-inverse-soft" />
+        <div className="absolute inset-x-0 bottom-0 h-px bg-hairline-inverse-soft" />
+      </div>
+
+      <div className="relative w-full max-w-sm">
+        <div className="text-center mb-10">
+          <WordmarkLockup />
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-200 p-8 shadow-sm">
-          <h1 className="text-xl font-bold text-gray-900 mb-1">
+        <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm">
+          <h1 className="text-h1 text-white mb-1">
             {firstName ? "Welcome, " + firstName : "Welcome"}
           </h1>
-          <p className="text-sm text-gray-500 mb-6 leading-relaxed">
+          <p className="text-sm text-ink-400 mb-6 leading-relaxed">
             {needsName
               ? "Tell us your name and create a password to get started."
               : "Create a password to secure your account. You’ll use this each time you log in."}
@@ -214,80 +237,78 @@ export default function SetPasswordClient() {
             {needsName && (
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                    First name <span className="text-red-400">*</span>
-                  </label>
-                  <input
+                  <Label tone="dark" className="mb-2">
+                    First name <span className="text-danger-300">*</span>
+                  </Label>
+                  <Input
+                    tone="dark"
                     type="text"
                     required
                     autoFocus
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
                     placeholder="Jane"
-                    className={inputClass}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                    Last name
-                  </label>
-                  <input
+                  <Label tone="dark" className="mb-2">Last name</Label>
+                  <Input
+                    tone="dark"
                     type="text"
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
                     placeholder="Smith"
-                    className={inputClass}
                   />
                 </div>
               </div>
             )}
             <div>
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                Password
-              </label>
-              <input
+              <Label tone="dark" className="mb-2">Password</Label>
+              <Input
+                tone="dark"
                 type="password"
                 required
                 autoFocus={!needsName}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="At least 8 characters"
-                className={inputClass}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1.5">
-                Confirm Password
-              </label>
-              <input
+              <Label tone="dark" className="mb-2">Confirm Password</Label>
+              <Input
+                tone="dark"
                 type="password"
                 required
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="Repeat your password"
-                className={inputClass}
               />
             </div>
             {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">
+              <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
                 {error}
               </div>
             )}
-            <button
+            <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-60 text-[#050b14] font-semibold text-sm py-3 rounded-lg transition-colors mt-2"
+              className="w-full mt-2 focus-visible:ring-offset-ink-950"
             >
               {loading ? "Setting up..." : "Set Password & Go to Dashboard"}
-            </button>
+            </Button>
           </form>
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
+        <p className="text-center text-xs text-ink-500 mt-6">
           Need help?{" "}
-          <a href="mailto:hello@yachtpics.com" className="text-[#d4a843] hover:underline">
+          <a href="mailto:hello@yachtpics.com" className="text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast">
             hello@yachtpics.com
           </a>
+        </p>
+
+        <p className="mt-12 text-center text-[0.625rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-white/25">
+          Yacht Photography
         </p>
       </div>
     </div>

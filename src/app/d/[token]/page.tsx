@@ -6,14 +6,18 @@ export const dynamic = "force-dynamic";
 
 function InvalidState({ title, body }: { title: string; body: string }) {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#050b14] px-6">
+    <div className="min-h-screen flex items-center justify-center bg-ink-950 px-6 py-16">
       <div className="max-w-md w-full text-center">
-        <p className="text-lg font-semibold text-white mb-2">
-          YachtPics <span className="text-[#d4a843]">Portal</span>
+        <p className="text-white text-xl font-light uppercase tracking-caps-wide [text-indent:0.24em] leading-none">
+          YachtPics
         </p>
-        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 mt-4">
-          <h1 className="text-xl font-bold text-white mb-2">{title}</h1>
-          <p className="text-sm text-gray-400 leading-relaxed">{body}</p>
+        <span aria-hidden className="mx-auto mt-4 block h-px w-24 bg-white/25" />
+        <p className="mt-4 text-[0.6875rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-accent-300/90">
+          Portal
+        </p>
+        <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 mt-8">
+          <h1 className="text-h1 text-white mb-2">{title}</h1>
+          <p className="text-sm text-ink-400 leading-relaxed">{body}</p>
         </div>
       </div>
     </div>

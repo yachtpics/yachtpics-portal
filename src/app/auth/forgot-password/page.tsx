@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Button, Input, Label } from "@/components/ui";
+
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
@@ -33,73 +35,91 @@ export default function ForgotPasswordPage() {
     }
   };
 
-  const inputClass =
-    "w-full bg-[#0f2035] border border-[#1e3a5f] text-white placeholder-gray-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-
   return (
-    <div className="min-h-screen bg-[#050b14] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <Link href="/" className="text-white text-2xl font-semibold tracking-wide">
-            YachtPics<span className="text-[#d4a843]"> Portal</span>
+    <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
+      {/* Ambient composition — a faint champagne glow and structural hairlines */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-48 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-accent-500/[0.06] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-hairline-inverse-soft" />
+        <div className="absolute inset-x-0 bottom-0 h-px bg-hairline-inverse-soft" />
+      </div>
+
+      <div className="relative w-full max-w-sm">
+        {/* Wordmark lockup — thin, wide-tracked, hairline rule, small caps */}
+        <div className="text-center mb-10">
+          <Link
+            href="/"
+            className="inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 rounded-sm"
+          >
+            <span className="block text-white text-[1.625rem] font-light uppercase tracking-caps-wide [text-indent:0.24em] leading-none">
+              YachtPics
+            </span>
+            <span className="mx-auto mt-4 block h-px w-28 bg-white/25" />
+            <span className="mt-4 block text-[0.6875rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-accent-300/90">
+              Portal
+            </span>
           </Link>
-          <p className="text-gray-400 mt-2 text-sm">Reset your password</p>
+          <p className="text-ink-400 mt-6 text-sm">Reset your password</p>
         </div>
 
-        <div className="bg-[#0a1628] rounded-xl p-8">
+        <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm">
           {sent ? (
             <div className="text-center">
-              <div className="w-12 h-12 rounded-full bg-[#d4a843]/10 border border-[#d4a843]/30 flex items-center justify-center mx-auto mb-4">
-                <span className="text-[#d4a843] text-xl">✓</span>
+              <div className="w-12 h-12 rounded-full bg-accent-500/10 border border-accent-500/30 flex items-center justify-center mx-auto mb-4">
+                <span className="text-accent-300 text-xl">✓</span>
               </div>
-              <h2 className="text-white font-semibold text-lg mb-2">Check your email</h2>
-              <p className="text-gray-400 text-sm leading-relaxed mb-6">
+              <h2 className="text-white text-h2 mb-2">Check your email</h2>
+              <p className="text-ink-400 text-sm leading-relaxed mb-6">
                 We sent a reset link to <span className="text-white">{email}</span>. It expires in 24 hours.
               </p>
               <Link
                 href="/auth/login"
-                className="text-[#d4a843] hover:text-[#c49a35] text-sm transition-colors"
+                className="text-accent-300 hover:text-accent-200 text-sm transition-colors duration-fast inline-flex items-center min-h-[44px]"
               >
                 ← Back to login
               </Link>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-5">
-              <p className="text-gray-400 text-sm leading-relaxed">
+              <p className="text-ink-400 text-sm leading-relaxed">
                 Enter your email and we&apos;ll send you a link to reset your password.
               </p>
               {error && (
-                <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-lg">
+                <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
                   {error}
                 </div>
               )}
               <div>
-                <label className="block text-gray-300 text-sm font-medium mb-1.5">Email</label>
-                <input
+                <Label tone="dark" className="mb-2">Email</Label>
+                <Input
+                  tone="dark"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   autoFocus
-                  className={inputClass}
                   placeholder="you@brokerage.com"
                 />
               </div>
-              <button
+              <Button
                 type="submit"
                 disabled={loading}
-                className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold py-2.5 rounded-lg transition-colors text-sm"
+                className="w-full focus-visible:ring-offset-ink-950"
               >
                 {loading ? "Sending..." : "Send Reset Link"}
-              </button>
+              </Button>
               <p className="text-center">
-                <Link href="/auth/login" className="text-gray-500 hover:text-gray-400 text-sm transition-colors">
+                <Link href="/auth/login" className="text-ink-500 hover:text-ink-300 text-sm transition-colors duration-fast inline-flex items-center min-h-[44px]">
                   ← Back to login
                 </Link>
               </p>
             </form>
           )}
         </div>
+
+        <p className="mt-12 text-center text-[0.625rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-white/25">
+          Yacht Photography
+        </p>
       </div>
     </div>
   );

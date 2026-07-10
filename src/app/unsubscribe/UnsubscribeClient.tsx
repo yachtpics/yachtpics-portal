@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui";
 
 export default function UnsubscribeClient({
   token,
@@ -32,36 +33,44 @@ export default function UnsubscribeClient({
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f8f9fa", display: "flex", alignItems: "center", justifyContent: "center", padding: "40px 20px", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
-      <div style={{ maxWidth: 460, width: "100%", background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-        <div style={{ background: "#050b14", padding: "28px 40px" }}>
-          <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "0.5px" }}>YachtPics <span style={{ color: "#d4a843" }}>Portal</span></p>
+    <div className="min-h-screen bg-ink-50 flex items-center justify-center px-5 py-10">
+      <div className="w-full max-w-[460px] bg-white rounded-surface border border-hairline shadow-elev-2 overflow-hidden">
+        {/* Ink band with the wordmark treatment */}
+        <div className="bg-ink-950 px-10 py-7">
+          <p className="text-white text-base font-light uppercase tracking-caps-wide leading-none">
+            YachtPics
+          </p>
+          <p className="mt-2 text-[0.625rem] font-medium uppercase tracking-caps-wide text-accent-300/90">
+            Portal
+          </p>
         </div>
-        <div style={{ padding: 40 }}>
+        <div className="p-10">
           {optedOut ? (
             <>
-              <h1 style={{ margin: "0 0 12px", fontSize: 20, fontWeight: 700, color: "#111827" }}>You&rsquo;re unsubscribed</h1>
-              <p style={{ margin: "0 0 24px", fontSize: 14, color: "#6b7280", lineHeight: 1.6 }}>
-                {email ? <>We won&rsquo;t send product news or trial reminders to <strong style={{ color: "#111827" }}>{email}</strong>.</> : "We won't send you product news or trial reminders."} You&rsquo;ll still receive essential account emails — things like client delivery confirmations and password resets.
+              <h1 className="text-h1 text-ink-900 mb-3">You&rsquo;re unsubscribed</h1>
+              <p className="text-sm text-ink-600 leading-relaxed mb-6">
+                {email ? <>We won&rsquo;t send product news or trial reminders to <strong className="text-ink-900">{email}</strong>.</> : "We won't send you product news or trial reminders."} You&rsquo;ll still receive essential account emails — things like client delivery confirmations and password resets.
               </p>
-              <button onClick={() => update(false)} disabled={busy}
-                style={{ background: "#d4a843", color: "#050b14", border: "none", fontSize: 14, fontWeight: 600, padding: "12px 24px", borderRadius: 8, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
+              <Button onClick={() => update(false)} disabled={busy}>
                 {busy ? "Working…" : "Resubscribe"}
-              </button>
+              </Button>
             </>
           ) : (
             <>
-              <h1 style={{ margin: "0 0 12px", fontSize: 20, fontWeight: 700, color: "#111827" }}>Unsubscribe from updates</h1>
-              <p style={{ margin: "0 0 24px", fontSize: 14, color: "#6b7280", lineHeight: 1.6 }}>
-                {email ? <>This stops product news and trial reminders to <strong style={{ color: "#111827" }}>{email}</strong>.</> : "This stops product news and trial reminders."} You&rsquo;ll still get essential account emails.
+              <h1 className="text-h1 text-ink-900 mb-3">Unsubscribe from updates</h1>
+              <p className="text-sm text-ink-600 leading-relaxed mb-6">
+                {email ? <>This stops product news and trial reminders to <strong className="text-ink-900">{email}</strong>.</> : "This stops product news and trial reminders."} You&rsquo;ll still get essential account emails.
               </p>
-              <button onClick={() => update(true)} disabled={busy}
-                style={{ background: "#050b14", color: "#fff", border: "none", fontSize: 14, fontWeight: 600, padding: "12px 24px", borderRadius: 8, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}>
+              <Button
+                onClick={() => update(true)}
+                disabled={busy}
+                className="bg-ink-950 text-white hover:bg-ink-800"
+              >
                 {busy ? "Working…" : "Unsubscribe"}
-              </button>
+              </Button>
             </>
           )}
-          {error && <p style={{ margin: "16px 0 0", fontSize: 13, color: "#dc2626" }}>{error}</p>}
+          {error && <p className="mt-4 text-[13px] text-danger-600">{error}</p>}
         </div>
       </div>
     </div>

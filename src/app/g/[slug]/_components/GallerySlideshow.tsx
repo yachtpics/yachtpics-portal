@@ -6,6 +6,44 @@ type Slide =
   | { type: "photo"; url: string; category: string | null }
   | { type: "video"; url: string; filename: string | null };
 
+/**
+ * A photograph that reveals itself only once it has decoded — no pop-in,
+ * no layout shift. Until the image arrives, a quiet paper shimmer holds
+ * its place. Signed URLs stay raw <img> (never next/image — the optimizer
+ * would cache expiring URLs).
+ */
+function FadePhoto({
+  src,
+  alt,
+  eager = false,
+  className = "",
+}: {
+  src: string;
+  alt: string;
+  eager?: boolean;
+  className?: string;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <>
+      {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        loading={eager ? "eager" : "lazy"}
+        decoding="async"
+        ref={(el) => {
+          // Cached images can complete before onLoad wires up.
+          if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
+        }}
+        onLoad={() => setLoaded(true)}
+        className={`${className} transition-opacity duration-base ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
+      />
+    </>
+  );
+}
+
 export default function GallerySlideshow({
   slug,
   title,
@@ -100,12 +138,25 @@ export default function GallerySlideshow({
     return () => clearInterval(t);
   }, [playing, next, slides.length, view]);
 
+  // Warm the neighbouring photographs so paging feels instant.
+  useEffect(() => {
+    [current - 1, current + 1].forEach((i) => {
+      const idx = slides.length ? (i + slides.length) % slides.length : -1;
+      const s = slides[idx];
+      if (s && s.type === "photo" && s.url) {
+        const img = new window.Image();
+        img.decoding = "async";
+        img.src = s.url;
+      }
+    });
+  }, [current, slides]);
+
   if (slides.length === 0) {
     return (
-      <div className="min-h-screen bg-white flex items-center justify-center px-6 text-center">
+      <div className="min-h-screen bg-ink-50 flex items-center justify-center px-6 text-center">
         <div>
-          <p className="text-sm font-semibold text-[#d4a843] uppercase tracking-wide">YachtPics</p>
-          <p className="text-gray-500 mt-2">This gallery doesn&apos;t have any photos yet.</p>
+          <p className="label-caps text-accent-700">YachtPics</p>
+          <p className="text-ink-500 text-sm mt-3">This gallery doesn&apos;t have any photos yet.</p>
         </div>
       </div>
     );
@@ -115,8 +166,19 @@ export default function GallerySlideshow({
   const outSlide = outgoing !== null ? slides[outgoing] : null;
   const caption = slide.type === "video" ? "Video" : slide.category ?? "";
 
+  const tabClass = (active: boolean) =>
+    `text-xs font-medium px-3 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+      active ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-900"
+    }`;
+
+  const arrowClass =
+    "absolute top-1/2 -translate-y-1/2 z-[2] flex h-11 w-11 items-center justify-center rounded-full " +
+    "border border-hairline bg-white text-ink-700 text-2xl leading-none shadow-elev-1 " +
+    "hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
+
   const videoTile = (size: string) => (
-    <div className={`${size} bg-gray-900 flex items-center justify-center`}>
+    <div className={`${size} bg-ink-900 flex items-center justify-center`}>
       <svg className="w-1/4 h-1/4 text-white" fill="currentColor" viewBox="0 0 20 20">
         <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
       </svg>
@@ -124,32 +186,27 @@ export default function GallerySlideshow({
   );
 
   return (
-    <div className="min-h-screen bg-white flex flex-col">
-      <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 gap-4">
+    <div className="min-h-screen bg-ink-50 flex flex-col">
+      {/* Header — one hairline between the gallery and its photographs */}
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-hairline gap-4">
         <div className="min-w-0">
-          <p className="text-[11px] font-semibold text-[#d4a843] tracking-wide uppercase">YachtPics</p>
-          <h1 className="text-gray-900 font-semibold text-base sm:text-lg truncate">{title}</h1>
+          <p className="label-caps text-accent-700">YachtPics</p>
+          <h1 className="text-ink-900 font-semibold text-base sm:text-lg truncate mt-0.5">{title}</h1>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {slides.length > 1 && view === "slideshow" && (
             <button
               onClick={() => setPlaying((p) => !p)}
-              className="text-xs px-3 py-1.5 rounded-md font-medium border border-gray-200 text-gray-600 hover:text-gray-900 transition-colors"
+              className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
             >
               {playing ? "❚❚ Pause" : "▶ Play"}
             </button>
           )}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setView("slideshow")}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${view === "slideshow" ? "bg-[#d4a843] text-white" : "text-gray-500 hover:text-gray-900"}`}
-            >
+          <div className="flex items-center gap-1 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
+            <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
               Slideshow
             </button>
-            <button
-              onClick={() => setView("grid")}
-              className={`text-xs px-3 py-1.5 rounded-md transition-colors font-medium ${view === "grid" ? "bg-[#d4a843] text-white" : "text-gray-500 hover:text-gray-900"}`}
-            >
+            <button onClick={() => setView("grid")} className={tabClass(view === "grid")}>
               All Photos
             </button>
           </div>
@@ -158,8 +215,9 @@ export default function GallerySlideshow({
 
       {view === "slideshow" ? (
         <>
+          {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
           <div
-            className="flex-1 relative flex items-center justify-center overflow-hidden bg-gray-50 select-none"
+            className="flex-1 relative select-none overflow-hidden"
             style={{ minHeight: "calc(100vh - 240px)" }}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
@@ -171,26 +229,34 @@ export default function GallerySlideshow({
           >
             {/* Outgoing photo (stays underneath while the new one fades in) */}
             {outSlide?.type === "photo" && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <div
                 key={`out-${outgoing}`}
-                src={outSlide.url}
-                alt=""
-                className="absolute max-w-full object-contain px-4 sm:px-16"
-                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 0 }}
-              />
+                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+                style={{ zIndex: 0 }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={outSlide.url}
+                  alt=""
+                  className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
+                />
+              </div>
             )}
 
             {/* Current slide */}
             {slide.type === "photo" ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <div
                 key={`in-${current}`}
-                src={slide.url}
-                alt={slide.category ?? ""}
-                className="absolute max-w-full object-contain px-4 sm:px-16"
-                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 1, opacity: incomingReady ? 1 : 0, transition: "opacity 0.5s ease" }}
-              />
+                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+                style={{ zIndex: 1 }}
+              >
+                <FadePhoto
+                  src={slide.url}
+                  alt={slide.category ?? ""}
+                  eager
+                  className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
+                />
+              </div>
             ) : (
               <video
                 key={`v-${current}`}
@@ -198,55 +264,77 @@ export default function GallerySlideshow({
                 controls
                 playsInline
                 preload="metadata"
-                className="absolute w-full"
-                style={{ maxHeight: "calc(100vh - 240px)", zIndex: 1, objectFit: "contain", opacity: incomingReady ? 1 : 0, transition: "opacity 0.5s ease" }}
+                className="absolute inset-0 h-full w-full"
+                style={{
+                  zIndex: 1,
+                  opacity: incomingReady ? 1 : 0,
+                  transition: "opacity 220ms cubic-bezier(0.25, 0, 0.15, 1)",
+                  objectFit: "contain",
+                  background: "transparent",
+                }}
               />
             )}
 
             {slides.length > 1 && (
               <>
-                <button onClick={prev} aria-label="Previous" className="absolute left-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors" style={{ zIndex: 2 }}>‹</button>
-                <button onClick={next} aria-label="Next" className="absolute right-3 bg-black/30 hover:bg-black/60 text-white rounded-full w-10 h-10 flex items-center justify-center text-xl transition-colors" style={{ zIndex: 2 }}>›</button>
+                <button onClick={prev} aria-label="Previous" className={`${arrowClass} left-3`}>
+                  ‹
+                </button>
+                <button onClick={next} aria-label="Next" className={`${arrowClass} right-3`}>
+                  ›
+                </button>
               </>
             )}
           </div>
 
-          <div className="text-center py-2 px-4 bg-white">
-            <p className="text-gray-500 text-sm">
+          {/* Caption + counter */}
+          <div className="text-center pt-2 pb-1.5 px-4">
+            <p className="label-caps text-ink-600">
               {caption ? `${caption} · ` : ""}
               {current + 1} / {slides.length}
             </p>
           </div>
 
-          <div className="flex gap-2 px-4 pb-4 overflow-x-auto bg-white">
+          {/* Thumbnail strip — videos show as dark tile with play icon */}
+          <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto">
             {slides.map((s, i) => (
               <button
                 key={i}
                 onClick={() => goTo(i)}
-                className={`shrink-0 rounded-md overflow-hidden transition-all ${i === current ? "ring-2 ring-[#d4a843] opacity-100" : "opacity-40 hover:opacity-70"}`}
+                aria-label={`Go to slide ${i + 1}`}
+                aria-current={i === current}
+                className={`shrink-0 overflow-hidden transition-opacity duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                  i === current ? "opacity-100 ring-1 ring-accent-500" : "opacity-50 hover:opacity-100"
+                }`}
               >
                 {s.type === "photo" ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.url} alt="" className="w-16 h-10 object-cover" />
+                  <img src={s.url} alt="" loading="lazy" decoding="async" className="w-[70px] h-11 object-cover" />
                 ) : (
-                  videoTile("w-16 h-10")
+                  videoTile("w-[70px] h-11")
                 )}
               </button>
             ))}
           </div>
         </>
       ) : (
-        <div className="flex-1 p-4 sm:p-6 overflow-auto bg-white">
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-w-5xl mx-auto">
+        /* Grid view — a gallery wall on paper: prints on white mats, lifted by their shadows */
+        <div className="flex-1 px-3 sm:px-5 py-4 overflow-auto">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 max-w-5xl mx-auto">
             {slides.map((s, i) => (
               <button
                 key={i}
                 onClick={() => { setView("slideshow"); goTo(i); }}
-                className="aspect-[4/3] rounded-lg overflow-hidden bg-gray-100"
+                aria-label={`Open slide ${i + 1}`}
+                className="aspect-[4/3] relative overflow-hidden rounded-[2px] bg-white shadow-print focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
               >
                 {s.type === "photo" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.url} alt="" className="w-full h-full object-cover" />
+                  <FadePhoto
+                    src={s.url}
+                    alt={s.category ?? `Photo ${i + 1}`}
+                    eager={i < 4}
+                    className="absolute inset-0 h-full w-full object-contain"
+                  />
                 ) : (
                   videoTile("w-full h-full")
                 )}

@@ -203,12 +203,12 @@ export default function ClientGalleryView({
 
   return (
     <div className="max-w-5xl mx-auto px-5 py-8">
-      <a href="/client" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">&larr; Your galleries</a>
+      <a href="/client" className="text-ink-500 hover:text-ink-700 text-sm transition-colors duration-fast inline-flex items-center min-h-[44px]">&larr; Your galleries</a>
 
-      <div className="mt-3 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+      <div className="mt-1 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">{title}</h1>
-          <p className="text-sm text-gray-500 mt-1">
+          <h1 className="text-display text-ink-900">{title}</h1>
+          <p className="text-sm text-ink-500 mt-1">
             {available.length} photo{available.length !== 1 ? "s" : ""}
             {availableVideos.length > 0 ? ` · ${availableVideos.length} video${availableVideos.length !== 1 ? "s" : ""}` : ""}
           </p>
@@ -217,7 +217,7 @@ export default function ClientGalleryView({
           <button
             onClick={downloadAll}
             disabled={busy}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-5 py-3 rounded-lg transition-colors shrink-0"
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
           >
             {busy ? `Preparing… ${progress}%` : `⬇ Download all photos (${available.length})`}
           </button>
@@ -225,8 +225,8 @@ export default function ClientGalleryView({
       </div>
 
       {busy && (
-        <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-          <div className="h-full bg-[#d4a843] transition-all duration-200" style={{ width: `${progress}%` }} />
+        <div className="mt-3 h-1.5 bg-ink-200 rounded-full overflow-hidden">
+          <div className="h-full bg-accent-500 transition-all duration-base ease-quiet" style={{ width: `${progress}%` }} />
         </div>
       )}
 
@@ -234,13 +234,13 @@ export default function ClientGalleryView({
       <div className="mt-4 flex flex-wrap items-center gap-2">
         {slideshowUrl && (
           <>
-            <a href={slideshowUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium px-4 py-2 rounded-lg bg-[#050b14] text-white hover:bg-[#0c1626] transition-colors">
+            <a href={slideshowUrl} target="_blank" rel="noopener noreferrer" className="text-sm font-medium px-4 py-2 min-h-[44px] inline-flex items-center rounded-ctl bg-ink-950 text-white hover:bg-ink-800 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50">
               ▶ Play slideshow
             </a>
-            <button onClick={copyLink} className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-300 transition-colors">
+            <button onClick={copyLink} className="text-sm font-medium px-4 py-2 min-h-[44px] rounded-ctl border border-hairline-strong bg-white text-ink-700 hover:border-ink-400 hover:text-ink-900 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
               {copied ? "Link copied ✓" : "Copy slideshow link to share"}
             </button>
-            <button onClick={() => setSendOpen((o) => !o)} className="text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-300 transition-colors">
+            <button onClick={() => setSendOpen((o) => !o)} className="text-sm font-medium px-4 py-2 min-h-[44px] rounded-ctl border border-hairline-strong bg-white text-ink-700 hover:border-ink-400 hover:text-ink-900 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
               ✉ Email slideshow
             </button>
           </>
@@ -248,32 +248,32 @@ export default function ClientGalleryView({
       </div>
 
       {slideshowUrl && sendOpen && (
-        <div className="mt-3 max-w-md bg-white border border-gray-200 rounded-xl p-4 space-y-2">
-          <p className="text-sm font-semibold text-gray-700">Email this slideshow</p>
+        <div className="mt-3 max-w-md bg-white border border-hairline rounded-card shadow-elev-1 p-4 space-y-2">
+          <p className="label-caps">Email this slideshow</p>
           <input
             type="email"
             value={sendEmail}
             onChange={(e) => setSendEmail(e.target.value)}
             placeholder="recipient@email.com"
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+            className="w-full text-sm text-ink-900 placeholder:text-ink-400 border border-hairline-strong rounded-ctl px-3 py-2 min-h-[44px] focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/40 transition-colors duration-fast"
           />
           <textarea
             value={sendMessage}
             onChange={(e) => setSendMessage(e.target.value)}
             placeholder="Optional message…"
             rows={2}
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843] resize-none"
+            className="w-full text-sm text-ink-900 placeholder:text-ink-400 border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/40 transition-colors duration-fast resize-none"
           />
-          {sendMsg && <p className="text-xs text-gray-600">{sendMsg}</p>}
+          {sendMsg && <p className="text-xs text-ink-600">{sendMsg}</p>}
           <div className="flex gap-2">
             <button
               onClick={sendSlideshow}
               disabled={sending || !sendEmail.trim()}
-              className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+              className="bg-ink-950 hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-4 py-2 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
             >
               {sending ? "Sending…" : "Send"}
             </button>
-            <button onClick={() => setSendOpen(false)} className="text-sm font-medium px-3 py-2 rounded-lg text-gray-500 hover:text-gray-700">
+            <button onClick={() => setSendOpen(false)} className="text-sm font-medium px-3 py-2 min-h-[44px] rounded-ctl text-ink-500 hover:text-ink-700 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
               Cancel
             </button>
           </div>
@@ -281,8 +281,8 @@ export default function ClientGalleryView({
       )}
 
       {expired && (
-        <div className="mt-4 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-          <p className="text-sm text-amber-800">
+        <div className="mt-4 bg-warn-50 border border-warn-200 rounded-ctl px-4 py-3">
+          <p className="text-sm text-warn-800">
             Downloads for this gallery have closed{expiresAt ? ` (as of ${new Date(expiresAt).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })})` : ""}. You can still view and share the slideshow. Contact YachtPics if you need the files again.
           </p>
         </div>
@@ -291,17 +291,17 @@ export default function ClientGalleryView({
       {/* Videos */}
       {availableVideos.length > 0 && (
         <div className="mt-8">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Videos</h2>
+          <h2 className="label-caps mb-3">Videos</h2>
           <div className="space-y-2">
             {availableVideos.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-3 bg-white border border-gray-200 rounded-lg px-4 py-3">
-                <span className="text-sm text-gray-700 truncate">🎬 {v.filename ?? "Video"}</span>
+              <div key={v.id} className="flex items-center justify-between gap-3 bg-white border border-hairline rounded-ctl shadow-elev-1 px-4 py-3">
+                <span className="text-sm text-ink-700 truncate">🎬 {v.filename ?? "Video"}</span>
                 {!expired ? (
-                  <button onClick={() => downloadVideo(v)} disabled={busy || downloadingId === v.id} className="text-sm font-medium text-[#9a7a1f] hover:text-[#7d6219] shrink-0">
+                  <button onClick={() => downloadVideo(v)} disabled={busy || downloadingId === v.id} className="text-sm font-medium text-accent-700 hover:text-accent-600 disabled:opacity-40 shrink-0 min-h-[44px] transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded-sm px-1">
                     {downloadingId === v.id ? "Downloading…" : "⬇ Download"}
                   </button>
                 ) : (
-                  <span className="text-xs text-gray-400 shrink-0">Closed</span>
+                  <span className="text-xs text-ink-400 shrink-0">Closed</span>
                 )}
               </div>
             ))}
@@ -309,18 +309,18 @@ export default function ClientGalleryView({
         </div>
       )}
 
-      {/* Photo grid */}
+      {/* Photo grid — prints on paper, lifted by their shadows */}
       <div className="mt-8">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold text-gray-700">Photos</h2>
+          <h2 className="label-caps">Photos</h2>
           {slideshowUrl && photos.length > 1 && (
-            <p className="text-xs text-gray-400">Drag to reorder · 👁 to hide from the slideshow (still downloadable)</p>
+            <p className="text-xs text-ink-500">Drag to reorder · 👁 to hide from the slideshow (still downloadable)</p>
           )}
         </div>
         {photos.length === 0 ? (
-          <p className="text-sm text-gray-500">No photos in this gallery yet.</p>
+          <p className="text-sm text-ink-500">No photos in this gallery yet.</p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
             {photos.map((photo, i) => (
               <div
                 key={photo.id}
@@ -328,17 +328,17 @@ export default function ClientGalleryView({
                 onDragStart={() => setDragIndex(i)}
                 onDragOver={(e) => e.preventDefault()}
                 onDrop={() => onPhotoDrop(i)}
-                className={`group relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-200 ${slideshowUrl ? "cursor-move" : ""} ${dragIndex === i ? "ring-2 ring-[#d4a843]" : ""} ${photo.is_visible === false ? "opacity-50" : ""}`}
+                className={`group relative aspect-[4/3] rounded-[2px] overflow-hidden bg-white shadow-print transition-opacity duration-base ease-quiet ${slideshowUrl ? "cursor-move" : ""} ${dragIndex === i ? "ring-2 ring-accent-500" : ""} ${photo.is_visible === false ? "opacity-50" : ""}`}
               >
                 {photo.url && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photo.url} alt={photo.category ?? "Photo"} loading="lazy" className="w-full h-full object-cover pointer-events-none" />
+                  <img src={photo.url} alt={photo.category ?? "Photo"} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
                 )}
 
                 {slideshowUrl && (
                   <button
                     onClick={() => toggleVisible(photo)}
-                    className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-100 bg-black/60 hover:bg-black/80 text-white text-xs w-7 h-7 rounded-full transition-opacity flex items-center justify-center"
+                    className="absolute top-1.5 left-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border border-hairline bg-white hover:bg-ink-50 text-ink-700 text-xs w-8 h-8 rounded-full shadow-elev-1 transition-opacity duration-base ease-quiet flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                     title={photo.is_visible === false ? "Show in slideshow" : "Hide from slideshow"}
                   >
                     {photo.is_visible === false ? "🚫" : "👁"}
@@ -349,14 +349,14 @@ export default function ClientGalleryView({
                   <button
                     onClick={() => downloadOne(photo)}
                     disabled={busy || downloadingId === photo.id}
-                    className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 bg-white text-[#050b14] text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity"
+                    className="absolute bottom-1.5 right-1.5 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border border-hairline bg-white hover:bg-ink-50 text-ink-950 text-xs font-semibold px-3 py-1.5 rounded-full shadow-elev-1 transition-opacity duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                   >
                     {downloadingId === photo.id ? "…" : "⬇ Download"}
                   </button>
                 )}
 
                 {photo.is_visible === false && (
-                  <span className="absolute bottom-1.5 left-1.5 bg-black/70 text-white text-[9px] px-1.5 py-0.5 rounded">Hidden from slideshow</span>
+                  <span className="pointer-events-none absolute bottom-1.5 left-1.5 bg-ink-950/70 text-white text-[9px] px-1.5 py-0.5 rounded-[3px]">Hidden from slideshow</span>
                 )}
               </div>
             ))}
@@ -364,8 +364,8 @@ export default function ClientGalleryView({
         )}
       </div>
 
-      <div className="mt-10 border-t border-gray-200 pt-5">
-        <p className="text-xs text-gray-400 leading-relaxed max-w-2xl">
+      <div className="mt-10 border-t border-hairline pt-5">
+        <p className="text-xs text-ink-500 leading-relaxed max-w-2xl">
           {mediaByYachtPics
             ? `Photos and videos are provided by YachtPics for your use. © ${new Date().getFullYear()} YachtPics. All rights reserved.`
             : "Photos and videos are provided for your use. Please don't share or redistribute them without permission."}

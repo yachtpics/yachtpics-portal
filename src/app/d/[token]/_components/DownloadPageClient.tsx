@@ -120,24 +120,22 @@ export default function DownloadPageClient({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-[#050b14] text-white">
+    <div className="min-h-screen bg-ink-50">
+      {/* Header — ink band with the wordmark treatment */}
+      <div className="bg-ink-950 text-white">
         <div className="max-w-5xl mx-auto px-5 py-6 sm:py-8">
-          <p className="text-sm font-semibold tracking-wide mb-3">
-            YachtPics <span className="text-[#d4a843]">Portal</span>
-          </p>
+          <p className="label-caps-inverse text-accent-300 mb-4">YachtPics Portal</p>
           <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
             <div>
-              <h1 className="text-2xl sm:text-3xl font-bold">{vesselName}</h1>
-              <p className="text-sm text-gray-400 mt-1">
+              <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{vesselName}</h1>
+              <p className="text-sm text-ink-400 mt-1">
                 {available.length} photo{available.length !== 1 ? "s" : ""} available to download
               </p>
             </div>
             <button
               onClick={downloadAll}
               disabled={busy || available.length === 0}
-              className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-5 py-3 rounded-lg transition-colors shrink-0"
+              className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
             >
               {busy ? `Preparing… ${progress}%` : `⬇ Download all (${available.length})`}
             </button>
@@ -145,7 +143,7 @@ export default function DownloadPageClient({
           {busy && (
             <div className="mt-4 h-1.5 bg-white/10 rounded-full overflow-hidden">
               <div
-                className="h-full bg-[#d4a843] transition-all duration-200"
+                className="h-full bg-accent-500 transition-all duration-base ease-quiet"
                 style={{ width: `${progress}%` }}
               />
             </div>
@@ -153,38 +151,39 @@ export default function DownloadPageClient({
         </div>
       </div>
 
-      {/* Gallery */}
+      {/* Gallery — prints on paper, lifted by their shadows */}
       <div className="max-w-5xl mx-auto px-5 py-6">
         {available.length === 0 ? (
-          <p className="text-sm text-gray-500 py-12 text-center">
+          <p className="text-sm text-ink-500 py-12 text-center">
             There are no photos available for this listing yet.
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
             {available.map((photo) => (
               <div
                 key={photo.id}
-                className="group relative aspect-[4/3] rounded-lg overflow-hidden bg-gray-200"
+                className="group relative aspect-[4/3] rounded-[2px] overflow-hidden bg-white shadow-print"
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={photo.url!}
                   alt={photo.category ?? "Photo"}
                   loading="lazy"
-                  className="w-full h-full object-cover"
+                  decoding="async"
+                  className="absolute inset-0 w-full h-full object-contain"
                 />
                 <button
                   onClick={() => downloadOne(photo)}
                   disabled={busy || downloadingId === photo.id}
-                  className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors"
+                  className="absolute inset-0 flex items-center justify-center bg-ink-950/0 group-hover:bg-ink-950/30 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
                   aria-label="Download photo"
                 >
-                  <span className="opacity-0 group-hover:opacity-100 bg-white text-[#050b14] text-xs font-semibold px-3 py-1.5 rounded-full transition-opacity">
+                  <span className="opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 border border-hairline bg-white text-ink-950 text-xs font-semibold px-3 py-2 rounded-full shadow-elev-1 transition-opacity duration-base ease-quiet">
                     {downloadingId === photo.id ? "Downloading…" : "⬇ Download"}
                   </span>
                 </button>
                 {photo.category && (
-                  <span className="absolute bottom-1.5 left-1.5 bg-black/55 text-white text-[10px] font-medium px-2 py-0.5 rounded">
+                  <span className="pointer-events-none absolute bottom-1.5 left-1.5 label-caps text-ink-600 border border-hairline bg-white/90 px-2 py-0.5 rounded-[3px]">
                     {photo.category}
                   </span>
                 )}
@@ -194,8 +193,8 @@ export default function DownloadPageClient({
         )}
 
         {/* Copyright notice */}
-        <div className="mt-8 border-t border-gray-200 pt-5">
-          <p className="text-xs text-gray-400 leading-relaxed max-w-2xl">
+        <div className="mt-8 border-t border-hairline pt-5">
+          <p className="text-xs text-ink-500 leading-relaxed max-w-2xl">
             All photos are the intellectual property of YachtPics and are licensed solely to
             advertise this specific vessel. They may not be transferred, resold, sublicensed, or
             used by any other party without written permission from YachtPics. © {new Date().getFullYear()} YachtPics.

@@ -3,6 +3,25 @@
 import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { Button, Input, Label } from "@/components/ui";
+
+/** The login page's wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
+function WordmarkLockup({ subtitle = "Portal" }: { subtitle?: string }) {
+  return (
+    <Link
+      href="/"
+      className="inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 rounded-sm"
+    >
+      <span className="block text-white text-[1.625rem] font-light uppercase tracking-caps-wide [text-indent:0.24em] leading-none">
+        YachtPics
+      </span>
+      <span className="mx-auto mt-4 block h-px w-28 bg-white/25" />
+      <span className="mt-4 block text-[0.6875rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-accent-300/90">
+        {subtitle}
+      </span>
+    </Link>
+  );
+}
 
 export default function SignupPage() {
   const [form, setForm] = useState({
@@ -59,17 +78,23 @@ export default function SignupPage() {
 
   if (submitted) {
     return (
-      <div className="min-h-screen bg-[#050b14] flex items-center justify-center px-4">
-        <div className="text-center max-w-sm">
-          <div className="text-[#d4a843] text-5xl mb-4">✓</div>
-          <h2 className="text-white text-2xl font-semibold mb-3">Check your email</h2>
-          <p className="text-gray-400 text-sm leading-relaxed">
+      <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-48 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-accent-500/[0.06] blur-3xl" />
+          <div className="absolute inset-x-0 top-0 h-px bg-hairline-inverse-soft" />
+          <div className="absolute inset-x-0 bottom-0 h-px bg-hairline-inverse-soft" />
+        </div>
+        <div className="relative text-center max-w-sm">
+          <WordmarkLockup />
+          <p className="text-accent-300 text-4xl font-light mt-10 mb-4">✓</p>
+          <h2 className="text-white text-h1 mb-3">Check your email</h2>
+          <p className="text-ink-400 text-sm leading-relaxed">
             We sent a confirmation link to <span className="text-white">{form.email}</span>.
             Click it to activate your account, then sign in.
           </p>
           <Link
             href="/auth/login"
-            className="inline-block mt-6 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
+            className="inline-flex items-center justify-center mt-8 bg-accent-500 hover:bg-accent-400 text-ink-950 font-semibold text-sm px-6 py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
           >
             Go to sign in
           </Link>
@@ -78,101 +103,113 @@ export default function SignupPage() {
     );
   }
 
-  const inputClass = "w-full bg-[#0f2035] border border-[#1e3a5f] text-white placeholder-gray-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-
   return (
-    <div className="min-h-screen bg-[#050b14] flex items-center justify-center px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <Link href="/" className="text-white text-2xl font-semibold tracking-wide">
-            YachtPics<span className="text-[#d4a843]"> Portal</span>
-          </Link>
-          <p className="text-gray-400 mt-2 text-sm">Create your broker account</p>
-          <p className="text-gray-500 mt-1 text-xs">Signing up is for brokers. Assistants don&apos;t sign up here &mdash; your broker adds you to their team and you&apos;ll get an email to log in.</p>
+    <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
+      {/* Ambient composition — a faint champagne glow and structural hairlines */}
+      <div aria-hidden className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-48 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-accent-500/[0.06] blur-3xl" />
+        <div className="absolute inset-x-0 top-0 h-px bg-hairline-inverse-soft" />
+        <div className="absolute inset-x-0 bottom-0 h-px bg-hairline-inverse-soft" />
+      </div>
+
+      <div className="relative w-full max-w-sm">
+        <div className="text-center mb-10">
+          <WordmarkLockup />
+          <p className="text-ink-400 mt-6 text-sm">Create your broker account</p>
+          <p className="text-ink-500 mt-1.5 text-xs leading-relaxed">
+            Signing up is for brokers. Assistants don&apos;t sign up here &mdash; your broker adds you to their team and you&apos;ll get an email to log in.
+          </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="bg-[#0a1628] rounded-xl p-8 space-y-4">
+        <form
+          onSubmit={handleSubmit}
+          className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 space-y-5 backdrop-blur-sm"
+        >
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm px-4 py-3 rounded-lg">
+            <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
               {error}
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-gray-300 text-sm font-medium mb-1.5">First Name</label>
-              <input
+              <Label tone="dark" className="mb-2">First Name</Label>
+              <Input
+                tone="dark"
                 type="text"
                 value={form.firstName}
                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}
                 required
-                className={inputClass}
                 placeholder="Jane"
               />
             </div>
             <div>
-              <label className="block text-gray-300 text-sm font-medium mb-1.5">Last Name</label>
-              <input
+              <Label tone="dark" className="mb-2">Last Name</Label>
+              <Input
+                tone="dark"
                 type="text"
                 value={form.lastName}
                 onChange={(e) => setForm({ ...form, lastName: e.target.value })}
                 required
-                className={inputClass}
                 placeholder="Smith"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">Brokerage</label>
-            <input
+            <Label tone="dark" className="mb-2">Brokerage</Label>
+            <Input
+              tone="dark"
               type="text"
               value={form.brokerage}
               onChange={(e) => setForm({ ...form, brokerage: e.target.value })}
               required
-              className={inputClass}
             />
           </div>
 
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">Email</label>
-            <input
+            <Label tone="dark" className="mb-2">Email</Label>
+            <Input
+              tone="dark"
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               required
-              className={inputClass}
               placeholder="you@brokerage.com"
             />
           </div>
 
           <div>
-            <label className="block text-gray-300 text-sm font-medium mb-1.5">Password</label>
-            <input
+            <Label tone="dark" className="mb-2">Password</Label>
+            <Input
+              tone="dark"
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               required
               minLength={8}
-              className={inputClass}
               placeholder="Min. 8 characters"
             />
           </div>
 
-          <button
+          <Button
             type="submit"
             disabled={loading}
-            className="w-full bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold py-2.5 rounded-lg transition-colors text-sm mt-2"
+            className="w-full focus-visible:ring-offset-ink-950"
           >
             {loading ? "Creating account..." : "Create Account"}
-          </button>
+          </Button>
         </form>
 
-        <p className="text-center text-gray-500 text-sm mt-6">
+        <p className="text-center text-ink-500 text-sm mt-8">
           Already have an account?{" "}
-          <Link href="/auth/login" className="text-[#d4a843] hover:text-[#c49a35] transition-colors">
+          <Link href="/auth/login" className="text-accent-300 hover:text-accent-200 transition-colors duration-fast">
             Sign in
           </Link>
+        </p>
+
+        <p className="mt-12 text-center text-[0.625rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-white/25">
+          Yacht Photography
         </p>
       </div>
     </div>

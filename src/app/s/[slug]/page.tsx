@@ -50,10 +50,18 @@ export default async function PublicSlideshowPage({
       ownerPreview = !!canView;
     }
     if (!ownerPreview) return (
-      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#050b14", padding: 40, fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
-        <div style={{ maxWidth: 460, textAlign: "center" }}>
-          <p style={{ margin: 0, fontSize: 20, fontWeight: 600, color: "#fff", letterSpacing: "0.5px" }}>YachtPics <span style={{ color: "#d4a843" }}>Portal</span></p>
-          <p style={{ margin: "20px 0 0", fontSize: 15, color: "#c4c9d4", lineHeight: 1.6 }}>This presentation is temporarily unavailable. Please contact the broker for the latest photos and details.</p>
+      <div className="min-h-screen bg-ink-950 flex items-center justify-center px-10 py-16">
+        <div className="max-w-md text-center">
+          <p className="text-white text-xl font-light uppercase tracking-caps-wide [text-indent:0.24em] leading-none">
+            YachtPics
+          </p>
+          <span aria-hidden className="mx-auto mt-4 block h-px w-24 bg-white/25" />
+          <p className="mt-4 text-[0.6875rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-accent-300/90">
+            Portal
+          </p>
+          <p className="mt-6 text-[0.9375rem] text-ink-300 leading-relaxed">
+            This presentation is temporarily unavailable. Please contact the broker for the latest photos and details.
+          </p>
         </div>
       </div>
     );
