@@ -19,7 +19,7 @@
   --hairline-inverse: rgba(255, 255, 255, 0.12);
   /* Elevation mirrors — keep in sync with tailwind.config.ts boxShadow. */
   --shadow-elev-1: 0 0 0 1px rgba(5, 11, 20, 0.04), 0 1px 2px rgba(5, 11, 20, 0.05);
-  --shadow-print: 0 1px 2px rgba(5, 11, 20, 0.06), 0 10px 28px -8px rgba(5, 11, 20, 0.2);
+  --shadow-print: 0 1px 3px rgba(5, 11, 20, 0.14), 0 6px 14px -4px rgba(5, 11, 20, 0.2), 0 20px 44px -12px rgba(5, 11, 20, 0.38);
 }
 
 @layer base {
