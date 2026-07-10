@@ -84,35 +84,35 @@ export default function ShootDetailPage() {
     setSaving(false);
   }
 
-  const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-  const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
+  const inputClass = "w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-400 rounded-ctl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 transition-colors duration-fast ease-quiet";
+  const labelClass = "block label-caps mb-1.5";
 
   if (loading) {
-    return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading...</div>;
+    return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading...</div>;
   }
 
   return (
     <div className="px-6 py-8 max-w-2xl mx-auto">
       <div className="mb-6">
-        <Link href="/admin/shoots" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+        <Link href="/admin/shoots" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">
           ← All shoots
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-1">Invoice {form.invoice_number}</h1>
-        <p className="text-gray-500 text-sm mt-0.5">
+        <h1 className="text-display text-ink-900 mt-1">Invoice {form.invoice_number}</h1>
+        <p className="text-ink-500 text-sm mt-0.5">
           {[brokerName, vesselName].filter(Boolean).join(" · ")}
         </p>
       </div>
 
       {message && (
-        <div className={`mb-5 px-4 py-3 rounded-lg text-sm ${
-          message.type === "success" ? "bg-green-50 border border-green-200 text-green-700"
-          : "bg-red-50 border border-red-200 text-red-600"
+        <div className={`mb-5 px-4 py-3 rounded-ctl text-sm ${
+          message.type === "success" ? "bg-success-50 border border-success-200 text-success-700"
+          : "bg-danger-50 border border-danger-200 text-danger-600"
         }`}>{message.text}</div>
       )}
 
       <div className="space-y-5">
-        <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold text-gray-900">Shoot Details</h2>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 space-y-4">
+          <h2 className="text-h2 text-ink-900">Shoot Details</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Shoot Date</label>
@@ -125,8 +125,8 @@ export default function ShootDetailPage() {
           </div>
         </section>
 
-        <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold text-gray-900">Payment</h2>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 space-y-4">
+          <h2 className="text-h2 text-ink-900">Payment</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Amount ($)</label>
@@ -158,10 +158,10 @@ export default function ShootDetailPage() {
         </section>
 
         <div className="flex justify-end gap-3">
-          <button type="button" onClick={() => router.back()} className="px-5 py-2.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+          <button type="button" onClick={() => router.back()} className="px-5 py-2.5 text-sm text-ink-600 hover:text-ink-900 transition-colors duration-fast ease-quiet">
             Cancel
           </button>
-          <button onClick={handleSave} disabled={saving} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+          <button onClick={handleSave} disabled={saving} className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm">
             {saving ? "Saving..." : "Save Invoice"}
           </button>
         </div>

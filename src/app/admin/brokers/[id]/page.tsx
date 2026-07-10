@@ -63,17 +63,17 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     <div className="px-6 py-8 max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <Link href="/admin/brokers" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+        <Link href="/admin/brokers" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">
           ← All brokers
         </Link>
         <div className="flex items-start justify-between mt-1">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{name}</h1>
-            <p className="text-gray-500 text-sm mt-0.5">{details?.brokerage_name ?? "No brokerage"}</p>
+            <h1 className="text-display text-ink-900">{name}</h1>
+            <p className="text-ink-500 text-sm mt-0.5">{details?.brokerage_name ?? "No brokerage"}</p>
           </div>
           <Link
             href={`/admin/shoots/new?broker=${params.id}`}
-            className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+            className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
           >
             + New Invoice
           </Link>
@@ -81,11 +81,11 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       </div>
 
       {searchParams.invited === "true" && (
-        <div className="mb-6 flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
-          <span className="text-green-500 text-lg leading-none mt-0.5">✓</span>
+        <div className="mb-6 flex items-start gap-3 bg-success-50 border border-success-200 rounded-card px-5 py-4">
+          <span className="text-success-600 text-lg leading-none mt-0.5">✓</span>
           <div>
-            <p className="text-sm font-semibold text-green-800">All done — broker account created</p>
-            <p className="text-sm text-green-700 mt-0.5">
+            <p className="text-sm font-semibold text-success-700">All done — broker account created</p>
+            <p className="text-sm text-success-700 mt-0.5">
               {name} received an email with their login credentials. You can resend or reset their password below if needed.
             </p>
           </div>
@@ -93,11 +93,11 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       )}
 
       {profile.email_bounced_at && (
-        <div className="mb-6 flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-5 py-4">
-          <span className="text-red-500 text-lg leading-none mt-0.5">⚠</span>
+        <div className="mb-6 flex items-start gap-3 bg-danger-50 border border-danger-200 rounded-card px-5 py-4">
+          <span className="text-danger-600 text-lg leading-none mt-0.5">⚠</span>
           <div>
-            <p className="text-sm font-semibold text-red-800">This broker&rsquo;s email is bouncing</p>
-            <p className="text-sm text-red-700 mt-0.5">
+            <p className="text-sm font-semibold text-danger-700">This broker&rsquo;s email is bouncing</p>
+            <p className="text-sm text-danger-700 mt-0.5">
               Emails to <strong>{profile.display_email}</strong> aren&rsquo;t being delivered{profile.email_bounce_reason ? ` — ${profile.email_bounce_reason}` : ""}. Update their email below to the correct address; that clears this warning and re-enables delivery.
             </p>
           </div>
@@ -106,7 +106,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
         {/* Contact */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
           <BrokerContactEditor
             brokerId={params.id}
             firstName={profile.first_name}
@@ -115,48 +115,48 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             phone={profile.phone}
           />
           {details?.brokerage_address && (
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-ink-500 mt-1">
               {details.brokerage_address}, {details.brokerage_city ?? ""} {details.brokerage_state ?? ""}
             </p>
           )}
           {details?.license_number && (
-            <p className="text-xs text-gray-400 mt-2">License: {details.license_number}</p>
+            <p className="text-xs text-ink-500 mt-2">License: {details.license_number}</p>
           )}
-          <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+          <div className="mt-3 pt-3 border-t border-hairline flex flex-col gap-2">
             <ResendInviteButton brokerId={params.id} />
             <SetTempPasswordButton brokerId={params.id} />
           </div>
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-hairline">
             <AddedByEditor brokerId={params.id} admins={admins} initialAdminId={profile.invited_by ?? null} />
           </div>
         </div>
 
         {/* Subscription */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Subscription</p>
-          <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-            subscription?.status === "active" ? "bg-green-50 text-green-700"
-            : subscription?.status === "trialing" ? "bg-yellow-50 text-yellow-700"
-            : "bg-gray-100 text-gray-500"
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+          <p className="label-caps mb-3">Subscription</p>
+          <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
+            subscription?.status === "active" ? "bg-success-50 text-success-700 border-success-200"
+            : subscription?.status === "trialing" ? "bg-warn-50 text-warn-700 border-warn-200"
+            : "bg-ink-100 text-ink-600 border-hairline"
           }`}>
             {subscription?.status === "trialing" && trialDays !== null
               ? `Trial · ${trialDays} day${trialDays !== 1 ? "s" : ""} left`
               : subscription?.status ?? "—"}
           </span>
-          <p className="text-sm text-gray-500 mt-2 capitalize">Plan: {subscription?.plan ?? "free"}</p>
+          <p className="text-sm text-ink-500 mt-2 capitalize">Plan: {subscription?.plan ?? "free"}</p>
           {subscription?.current_period_end && (
-            <p className="text-xs text-gray-400 mt-1">
+            <p className="text-xs text-ink-500 mt-1 tabular-nums">
               Renews {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
             </p>
           )}
         </div>
 
         {/* Stats */}
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Activity</p>
-          <p className="text-sm text-gray-900"><span className="text-2xl font-bold">{listings?.length ?? 0}</span> listings</p>
-          <p className="text-sm text-gray-500 mt-1"><span className="font-semibold text-gray-900">{shoots?.length ?? 0}</span> shoots on record</p>
-          <p className="text-xs text-gray-400 mt-2">
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+          <p className="label-caps mb-3">Activity</p>
+          <p className="text-sm text-ink-900"><span className="text-2xl font-light tabular-nums">{listings?.length ?? 0}</span> listings</p>
+          <p className="text-sm text-ink-500 mt-1"><span className="font-semibold text-ink-900 tabular-nums">{shoots?.length ?? 0}</span> shoots on record</p>
+          <p className="text-xs text-ink-500 mt-2">
             Member since {new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "America/New_York" })}
           </p>
         </div>
@@ -166,32 +166,32 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       <AssistantsPanel brokerId={params.id} initialAssistants={assistantList} />
 
       {/* Listings */}
-      <div className="bg-white border border-gray-200 rounded-xl mb-6">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Listings ({listings?.length ?? 0})</h2>
-          <Link href={`/admin/listings/new?broker=${params.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-sm font-medium transition-colors">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 mb-6">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+          <h2 className="text-h2 text-ink-900">Listings ({listings?.length ?? 0})</h2>
+          <Link href={`/admin/listings/new?broker=${params.id}`} className="text-accent-700 hover:text-accent-800 text-sm font-medium transition-colors duration-fast ease-quiet">
             + New listing
           </Link>
         </div>
         {!listings || listings.length === 0 ? (
-          <div className="py-10 text-center text-gray-400 text-sm">No listings yet.</div>
+          <div className="py-10 text-center text-ink-400 text-sm">No listings yet.</div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-hairline">
             {listings.map((listing) => (
-              <li key={listing.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+              <li key={listing.id} className="px-6 py-4 flex items-center justify-between hover:bg-ink-50 transition-colors duration-fast ease-quiet">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{listing.vessel_name ?? "Untitled"}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">
+                  <p className="text-sm font-medium text-ink-900">{listing.vessel_name ?? "Untitled"}</p>
+                  <p className="text-xs text-ink-500 mt-0.5">
                     {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                    listing.status === "active" ? "bg-green-50 text-green-700"
-                    : listing.status === "sold" ? "bg-blue-50 text-blue-700"
-                    : "bg-gray-100 text-gray-500"
+                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
+                    listing.status === "active" ? "bg-success-50 text-success-700 border-success-200"
+                    : listing.status === "sold" ? "bg-info-50 text-info-700 border-info-200"
+                    : "bg-ink-100 text-ink-600 border-hairline"
                   }`}>{listing.status}</span>
-                  <Link href={`/admin/listings/${listing.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                  <Link href={`/admin/listings/${listing.id}`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
                     Manage →
                   </Link>
                 </div>
@@ -203,21 +203,21 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
       {/* Co-brokered listings (owned by another broker) */}
       {coBrokered.length > 0 && (
-        <div className="bg-white border border-gray-200 rounded-xl mb-6">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Co-brokered Listings ({coBrokered.length})</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Boats owned by another broker that this broker shares access to.</p>
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 mb-6">
+          <div className="px-6 py-4 border-b border-hairline">
+            <h2 className="text-h2 text-ink-900">Co-brokered Listings ({coBrokered.length})</h2>
+            <p className="text-xs text-ink-500 mt-0.5">Boats owned by another broker that this broker shares access to.</p>
           </div>
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-hairline">
             {coBrokered.map((l) => (
-              <li key={l.id} className="px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+              <li key={l.id} className="px-6 py-4 flex items-center justify-between hover:bg-ink-50 transition-colors duration-fast ease-quiet">
                 <div>
-                  <p className="text-sm font-medium text-gray-900">{l.vessel_name}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">Owned by {l.ownerName}</p>
+                  <p className="text-sm font-medium text-ink-900">{l.vessel_name}</p>
+                  <p className="text-xs text-ink-500 mt-0.5">Owned by {l.ownerName}</p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 uppercase tracking-wide">Co-broker</span>
-                  <Link href={`/admin/listings/${l.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                  <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-info-50 text-info-700 border border-info-200 uppercase tracking-wide">Co-broker</span>
+                  <Link href={`/admin/listings/${l.id}`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
                     Manage →
                   </Link>
                 </div>
@@ -228,17 +228,17 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       )}
 
       {/* Shoot history */}
-      <div className="bg-white border border-gray-200 rounded-xl mb-6">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Shoot History</h2>
-          <Link href={`/admin/shoots/new?broker=${params.id}`} className="text-[#c49a35] hover:text-[#b08c2a] text-sm font-medium transition-colors">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 mb-6">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+          <h2 className="text-h2 text-ink-900">Shoot History</h2>
+          <Link href={`/admin/shoots/new?broker=${params.id}`} className="text-accent-700 hover:text-accent-800 text-sm font-medium transition-colors duration-fast ease-quiet">
             + New invoice
           </Link>
         </div>
         {!shoots || shoots.length === 0 ? (
-          <div className="py-10 text-center text-gray-400 text-sm">No shoots on record.</div>
+          <div className="py-10 text-center text-ink-400 text-sm">No shoots on record.</div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-hairline">
             {shoots.map((shoot) => {
               const vessel = (shoot.listings as { vessel_name: string | null }[] | null)?.[0]?.vessel_name ?? "—";
               const amount = shoot.amount_cents
@@ -250,15 +250,15 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
               return (
                 <li key={shoot.id} className="px-6 py-4 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{vessel}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{date} · {shoot.invoice_number ?? "No invoice #"}</p>
+                    <p className="text-sm font-medium text-ink-900">{vessel}</p>
+                    <p className="text-xs text-ink-500 mt-0.5 tabular-nums">{date} · {shoot.invoice_number ?? "No invoice #"}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <p className="text-sm font-medium text-gray-900">{amount}</p>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                      shoot.payment_status === "paid" ? "bg-green-50 text-green-700"
-                      : shoot.payment_status === "cancelled" ? "bg-gray-100 text-gray-500"
-                      : "bg-yellow-50 text-yellow-700"
+                    <p className="text-sm font-medium text-ink-900 tabular-nums">{amount}</p>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
+                      shoot.payment_status === "paid" ? "bg-success-50 text-success-700 border-success-200"
+                      : shoot.payment_status === "cancelled" ? "bg-ink-100 text-ink-600 border-hairline"
+                      : "bg-warn-50 text-warn-700 border-warn-200"
                     }`}>{shoot.payment_status}</span>
                   </div>
                 </li>
@@ -269,10 +269,10 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       </div>
 
       {/* Danger zone */}
-      <div className="border border-red-100 rounded-xl px-6 py-4 flex items-center justify-between">
+      <div className="border border-danger-200 rounded-card px-6 py-4 flex items-center justify-between">
         <div>
-          <p className="text-sm font-semibold text-red-700">Delete broker</p>
-          <p className="text-xs text-gray-500 mt-0.5">Permanently removes this broker and all associated data. This cannot be undone.</p>
+          <p className="text-sm font-semibold text-danger-700">Delete broker</p>
+          <p className="text-xs text-ink-500 mt-0.5">Permanently removes this broker and all associated data. This cannot be undone.</p>
         </div>
         <DeleteBrokerButton brokerId={params.id} brokerName={name} />
       </div>

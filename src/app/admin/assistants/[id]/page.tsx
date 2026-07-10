@@ -55,17 +55,17 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
-        <Link href="/admin/assistants" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+        <Link href="/admin/assistants" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">
           &larr; Back to Assistants
         </Link>
         <div className="mt-4 flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{displayName}</h1>
-            <p className="text-gray-500 mt-0.5 text-sm">{assistant.display_email ?? "No email"}</p>
-            <p className="text-gray-400 text-xs mt-1">Account created {joinedDate}</p>
+            <h1 className="text-display text-ink-900">{displayName}</h1>
+            <p className="text-ink-500 mt-0.5 text-sm">{assistant.display_email ?? "No email"}</p>
+            <p className="text-ink-500 text-xs mt-1">Account created {joinedDate}</p>
           </div>
           <div className="flex items-center gap-3 mt-1">
-            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-purple-50 text-purple-700">
+            <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-info-50 text-info-700 border border-info-200">
               Assistant
             </span>
             <DeleteAssistantButton assistantId={params.id} displayName={displayName} />
@@ -74,14 +74,14 @@ export default async function AdminAssistantDetailPage({ params }: { params: { i
       </div>
 
       {/* Contact card */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
         <AssistantContactEditor
           assistantId={params.id}
           firstName={assistant.first_name}
           lastName={assistant.last_name}
           email={assistant.display_email}
         />
-        <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2">
+        <div className="mt-3 pt-3 border-t border-hairline flex flex-col gap-2">
           <ResendInviteButton assistantId={params.id} />
           <SetTempPasswordButton assistantId={params.id} />
         </div>

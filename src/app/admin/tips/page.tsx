@@ -35,8 +35,8 @@ export default async function AdminTipsPage() {
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Tips &amp; Tricks</h1>
-        <p className="text-gray-500 text-sm mt-1">A weekly series that walks brokers through the portal&rsquo;s features, one tip at a time.</p>
+        <h1 className="text-display text-ink-900">Tips &amp; Tricks</h1>
+        <p className="text-ink-500 text-sm mt-1">A weekly series that walks brokers through the portal&rsquo;s features, one tip at a time.</p>
       </div>
       <TipsControls tips={rows} recipients={recipients} />
     </div>

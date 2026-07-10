@@ -164,17 +164,18 @@ export default function ProfilePage() {
     setInviting(false);
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64"><div className="text-gray-400 text-sm">Loading...</div></div>;
+  if (loading) return <div className="flex items-center justify-center h-64"><div className="text-ink-400 text-sm">Loading...</div></div>;
 
   const isAssistant = role === "assistant";
-  const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-  const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
+  const inputClass = "w-full bg-white border border-hairline-strong text-ink-900 placeholder:text-ink-400 rounded-ctl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/40 transition-colors duration-fast ease-quiet";
+  const labelClass = "block label-caps mb-1.5";
+  const inkButtonClass = "bg-ink-950 hover:bg-ink-800 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-medium rounded-ctl transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2";
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-        <p className="text-gray-500 mt-1 text-sm">Keep your contact info up to date.</p>
+      <div className="mb-8 pb-6 border-b border-hairline">
+        <h1 className="text-display text-ink-900">My Profile</h1>
+        <p className="text-ink-500 mt-1 text-sm">Keep your contact info up to date.</p>
       </div>
 
       <div className="mb-5">
@@ -182,14 +183,14 @@ export default function ProfilePage() {
       </div>
 
       {message && (
-        <div className={`mb-6 px-4 py-3 rounded-lg text-sm ${message.type === "success" ? "bg-green-50 border border-green-200 text-green-700" : "bg-red-50 border border-red-200 text-red-600"}`}>
+        <div className={`mb-6 px-4 py-3 rounded-card border text-sm ${message.type === "success" ? "bg-success-50 border-success-200 text-success-700" : "bg-danger-50 border-danger-200 text-danger-600"}`}>
           {message.text}
         </div>
       )}
 
       {/* Personal Info */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
-        <h2 className="font-semibold text-gray-900 mb-5">Personal Information</h2>
+      <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
+        <h2 className="text-h2 text-ink-900 mb-5">Personal Information</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>First Name</label>
@@ -201,7 +202,7 @@ export default function ProfilePage() {
           </div>
           <div>
             <div className="flex items-center gap-1.5 mb-1.5">
-              <label className="text-gray-700 text-sm font-medium">Contact Email</label>
+              <label className="label-caps">Contact Email</label>
               <HelpTip
                 text={isAssistant ? "Your contact email — may not be the same as your login email." : "Shown to YachtPics. Separate from your login email."}
                 detail="To change the email you use to sign in, scroll to the bottom of this page."
@@ -210,7 +211,7 @@ export default function ProfilePage() {
               />
             </div>
             <input className={inputClass} type="email" value={profile.display_email} onChange={(e) => setProfile({ ...profile, display_email: e.target.value })} placeholder="jane@brokerage.com" />
-            <p className="text-gray-400 text-xs mt-1">
+            <p className="text-ink-500 text-xs mt-1">
               {isAssistant
                 ? "Your contact email — may not be the same as your login email."
                 : "Used by YachtPics to contact you — not your login email."}
@@ -225,82 +226,82 @@ export default function ProfilePage() {
 
       {/* Notifications — brokers only */}
       {!isAssistant && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
-          <h2 className="font-semibold text-gray-900 mb-1">Notifications</h2>
-          <p className="text-gray-500 text-sm mb-4">Get a heads-up the moment a buyer opens one of your slideshows.</p>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
+          <h2 className="text-h2 text-ink-900 mb-1">Notifications</h2>
+          <p className="text-ink-500 text-sm mb-4">Get a heads-up the moment a buyer opens one of your slideshows.</p>
           <div className="flex items-center justify-between gap-4">
-            <span className="text-sm text-gray-700">Email me when a buyer opens my slideshow</span>
+            <span className="text-sm text-ink-700">Email me when a buyer opens my slideshow</span>
             <button
               type="button"
               onClick={() => toggleViewAlerts(!profile.notify_on_view)}
               aria-pressed={profile.notify_on_view}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${profile.notify_on_view ? "bg-[#d4a843]" : "bg-gray-300"}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-fast ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 ${profile.notify_on_view ? "bg-accent-500" : "bg-ink-300"}`}
             >
-              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${profile.notify_on_view ? "translate-x-5" : "translate-x-0.5"}`} />
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-fast ease-quiet ${profile.notify_on_view ? "translate-x-5" : "translate-x-0.5"}`} />
             </button>
           </div>
-          <p className="text-gray-400 text-xs mt-3">We&rsquo;ll only alert you on a fresh open — at most once every few hours per listing, so it never gets noisy.</p>
+          <p className="text-ink-500 text-xs mt-3">We&rsquo;ll only alert you on a fresh open — at most once every few hours per listing, so it never gets noisy.</p>
         </section>
       )}
 
       {/* Email preferences — everyone */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
-        <h2 className="font-semibold text-gray-900 mb-1">Email preferences</h2>
-        <p className="text-gray-500 text-sm mb-4">Occasional product news, new features, and trial reminders.</p>
+      <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
+        <h2 className="text-h2 text-ink-900 mb-1">Email preferences</h2>
+        <p className="text-ink-500 text-sm mb-4">Occasional product news, new features, and trial reminders.</p>
         <div className="flex items-center justify-between gap-4">
-          <span className="text-sm text-gray-700">Send me product news &amp; updates</span>
+          <span className="text-sm text-ink-700">Send me product news &amp; updates</span>
           <button
             type="button"
             onClick={() => toggleProductEmails(profile.email_opt_out)}
             aria-pressed={!profile.email_opt_out}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 ${!profile.email_opt_out ? "bg-[#d4a843]" : "bg-gray-300"}`}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-fast ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 ${!profile.email_opt_out ? "bg-accent-500" : "bg-ink-300"}`}
           >
-            <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform ${!profile.email_opt_out ? "translate-x-5" : "translate-x-0.5"}`} />
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform duration-fast ease-quiet ${!profile.email_opt_out ? "translate-x-5" : "translate-x-0.5"}`} />
           </button>
         </div>
-        <p className="text-gray-400 text-xs mt-3">Essential account emails — client delivery confirmations, password resets, and billing — are always sent.</p>
+        <p className="text-ink-500 text-xs mt-3">Essential account emails — client delivery confirmations, password resets, and billing — are always sent.</p>
       </section>
 
       {/* Company Logo — brokers only */}
       {!isAssistant && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="font-semibold text-gray-900">Company Logo</h2>
+            <h2 className="text-h2 text-ink-900">Company Logo</h2>
             <HelpTip text="Your logo appears in the footer of every client slideshow, on any device." detail="Best: PNG or SVG with transparent or white background. Max 2 MB." position="below" width={270} />
           </div>
-          <p className="text-gray-500 text-sm mb-5">Displayed in the footer of your client slideshows.</p>
+          <p className="text-ink-500 text-sm mb-5">Displayed in the footer of your client slideshows.</p>
           <div className="flex items-center gap-5 flex-wrap">
             {logoUrl ? (
-              <div className="w-40 h-20 rounded-lg border border-gray-200 bg-gray-50 flex items-center justify-center overflow-hidden p-2">
+              <div className="w-40 h-20 rounded-ctl border border-hairline bg-ink-50 flex items-center justify-center overflow-hidden p-2">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={logoUrl} alt="Company logo" className="max-w-full max-h-full object-contain" />
               </div>
             ) : (
-              <div className="w-40 h-20 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 flex items-center justify-center">
-                <p className="text-gray-400 text-xs">No logo yet</p>
+              <div className="w-40 h-20 rounded-ctl border-2 border-dashed border-hairline-strong bg-ink-50 flex items-center justify-center">
+                <p className="text-ink-400 text-xs">No logo yet</p>
               </div>
             )}
             <div className="flex flex-col gap-2">
-              <label className={"cursor-pointer inline-flex items-center gap-2 bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors" + (uploadingLogo ? " opacity-50 pointer-events-none" : "")}>
+              <label className={"cursor-pointer inline-flex items-center gap-2 bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet" + (uploadingLogo ? " opacity-50 pointer-events-none" : "")}>
                 {uploadingLogo ? "Uploading..." : logoUrl ? "Replace Logo" : "Upload Logo"}
                 <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
               </label>
-              {logoUrl && <button onClick={removeLogo} className="text-xs text-red-400 hover:text-red-600 transition-colors text-left">Remove logo</button>}
-              <p className="text-gray-400 text-xs">PNG, JPG, SVG or WebP. Max 2MB.</p>
-              <p className="text-gray-400 text-xs">Best on a white or transparent background.</p>
+              {logoUrl && <button onClick={removeLogo} className="text-xs text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet text-left">Remove logo</button>}
+              <p className="text-ink-500 text-xs">PNG, JPG, SVG or WebP. Max 2MB.</p>
+              <p className="text-ink-500 text-xs">Best on a white or transparent background.</p>
             </div>
           </div>
         </section>
       )}
 
       {/* Brokerage Info — brokers show full form, assistants show bio only */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
-        <h2 className="font-semibold text-gray-900 mb-5">
+      <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
+        <h2 className="text-h2 text-ink-900 mb-5">
           {isAssistant ? "About Me" : "Brokerage Information"}
         </h2>
         {isAssistant ? (
           <div>
-            <label className={labelClass}>Bio <span className="text-gray-400 font-normal">(optional)</span></label>
+            <label className={labelClass}>Bio <span className="text-ink-400 font-normal">(optional)</span></label>
             <textarea className={inputClass + " resize-none"} rows={3} value={broker.bio} onChange={(e) => setBroker({ ...broker, bio: e.target.value })} placeholder="A short bio..." />
           </div>
         ) : (
@@ -336,7 +337,7 @@ export default function ProfilePage() {
               <input className={inputClass} value={broker.license_number} onChange={(e) => setBroker({ ...broker, license_number: e.target.value })} placeholder="FL-XXXXX" />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelClass}>Bio <span className="text-gray-400 font-normal">(optional)</span></label>
+              <label className={labelClass}>Bio <span className="text-ink-400 font-normal">(optional)</span></label>
               <textarea className={inputClass + " resize-none"} rows={3} value={broker.bio} onChange={(e) => setBroker({ ...broker, bio: e.target.value })} placeholder="A short bio shown on your client-facing slideshow pages..." />
             </div>
           </div>
@@ -344,63 +345,63 @@ export default function ProfilePage() {
       </section>
 
       <div className="flex justify-end mb-8">
-        <button onClick={saveProfile} disabled={saving} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+        <button onClick={saveProfile} disabled={saving} className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2">
           {saving ? "Saving..." : "Save Profile"}
         </button>
       </div>
 
       {/* Assistants — brokers only */}
       {!isAssistant && (
-        <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
           <div className="flex items-center gap-2 mb-1">
-            <h2 className="font-semibold text-gray-900">Assistants</h2>
+            <h2 className="text-h2 text-ink-900">Assistants</h2>
             <HelpTip text="Assistants can view listings and download photos on your behalf." detail="They cannot access billing or change your profile. They must first create their own account with the assistant role." position="above" width={280} />
           </div>
-          <p className="text-gray-500 text-sm mb-5">Assistants can manage your listings and download photos on your behalf.</p>
+          <p className="text-ink-500 text-sm mb-5">Assistants can manage your listings and download photos on your behalf.</p>
           {assistants.length > 0 ? (
-            <ul className="divide-y divide-gray-100 mb-4">
+            <ul className="divide-y divide-hairline mb-4">
               {assistants.map((a) => (
                 <li key={a.assistant_id} className="py-3 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">{a.profiles?.first_name ? (a.profiles.first_name + " " + (a.profiles.last_name ?? "")).trim() : "Assistant"}</p>
-                    <p className="text-xs text-gray-400">{a.profiles?.display_email ?? ""}</p>
+                    <p className="text-sm font-medium text-ink-900">{a.profiles?.first_name ? (a.profiles.first_name + " " + (a.profiles.last_name ?? "")).trim() : "Assistant"}</p>
+                    <p className="text-xs text-ink-500">{a.profiles?.display_email ?? ""}</p>
                   </div>
-                  <button onClick={() => removeAssistant(a.assistant_id)} className="text-xs text-red-400 hover:text-red-600 transition-colors">Remove</button>
+                  <button onClick={() => removeAssistant(a.assistant_id)} className="text-xs text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet">Remove</button>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-gray-400 mb-4">No assistants linked yet.</p>
+            <p className="text-sm text-ink-400 mb-4">No assistants linked yet.</p>
           )}
           <div className="flex gap-3">
             <input className={inputClass + " flex-1"} type="email" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} placeholder="assistant@brokerage.com" />
-            <button onClick={inviteAssistant} disabled={inviting || !inviteEmail} className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap">
+            <button onClick={inviteAssistant} disabled={inviting || !inviteEmail} className={inkButtonClass + " px-4 py-2.5 whitespace-nowrap"}>
               {inviting ? "Adding..." : "Add Assistant"}
             </button>
           </div>
-          <p className="text-gray-400 text-xs mt-2">The assistant must already have an account with the role &quot;assistant&quot; on this platform.</p>
+          <p className="text-ink-500 text-xs mt-2">The assistant must already have an account with the role &quot;assistant&quot; on this platform.</p>
         </section>
       )}
 
       {/* Change login email */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6 mb-5">
+      <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
         <div className="flex items-center gap-2 mb-1">
-          <h2 className="font-semibold text-gray-900">Change Login Email</h2>
+          <h2 className="text-h2 text-ink-900">Change Login Email</h2>
           <HelpTip text="Changes the email you use to sign in — separate from your contact email above." detail="A confirmation link goes to the new address. Your login will not change until you click it." position="above" width={280} />
         </div>
-        <p className="text-gray-500 text-sm mb-5">Changing your login email will send a confirmation to the new address.</p>
+        <p className="text-ink-500 text-sm mb-5">Changing your login email will send a confirmation to the new address.</p>
         <div className="flex gap-3">
           <input className={inputClass + " flex-1"} type="email" value={newLoginEmail} onChange={(e) => setNewLoginEmail(e.target.value)} placeholder="new@email.com" />
-          <button onClick={changeLoginEmail} disabled={changingEmail || !newLoginEmail} className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap">
+          <button onClick={changeLoginEmail} disabled={changingEmail || !newLoginEmail} className={inkButtonClass + " px-4 py-2.5 whitespace-nowrap"}>
             {changingEmail ? "Sending..." : "Update Email"}
           </button>
         </div>
       </section>
 
       {/* Change password */}
-      <section className="bg-white border border-gray-200 rounded-xl p-6">
-        <h2 className="font-semibold text-gray-900 mb-1">Change Password</h2>
-        <p className="text-gray-500 text-sm mb-5">Choose a new password for your account.</p>
+      <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+        <h2 className="text-h2 text-ink-900 mb-1">Change Password</h2>
+        <p className="text-ink-500 text-sm mb-5">Choose a new password for your account.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className={labelClass}>New Password</label>
@@ -427,7 +428,7 @@ export default function ProfilePage() {
           <button
             onClick={changePassword}
             disabled={changingPassword || !newPassword || !confirmPassword}
-            className="bg-[#0a1628] hover:bg-[#0f2035] disabled:opacity-50 text-white text-sm font-medium px-5 py-2.5 rounded-lg transition-colors"
+            className={inkButtonClass + " px-5 py-2.5"}
           >
             {changingPassword ? "Updating..." : "Update Password"}
           </button>

@@ -30,34 +30,34 @@ export default async function AdminAssistantsPage() {
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Assistants</h1>
-          <p className="text-gray-500 mt-1 text-sm">{assistants?.length ?? 0} assistant accounts.</p>
+          <h1 className="text-display text-ink-900">Assistants</h1>
+          <p className="text-ink-500 mt-1 text-sm">{assistants?.length ?? 0} assistant accounts.</p>
         </div>
         <Link
           href="/admin/assistants/new"
-          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+          className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
         >
           + Invite Assistant
         </Link>
       </div>
 
       {(!assistants || assistants.length === 0) ? (
-        <div className="bg-white border border-gray-200 rounded-xl py-16 text-center">
-          <p className="text-gray-400 text-sm">No assistants yet.</p>
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 py-16 text-center">
+          <p className="text-ink-400 text-sm">No assistants yet.</p>
         </div>
       ) : (
-        <div className="bg-white border border-gray-200 rounded-xl overflow-x-auto">
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 text-left">
-                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Name</th>
-                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden sm:table-cell">Email</th>
-                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden md:table-cell">Linked Brokers</th>
-                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide hidden lg:table-cell">Added By</th>
-                <th className="px-4 sm:px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide sticky right-0 bg-white"></th>
+              <tr className="border-b border-hairline text-left">
+                <th className="px-4 sm:px-6 py-3 label-caps">Name</th>
+                <th className="px-4 sm:px-6 py-3 label-caps hidden sm:table-cell">Email</th>
+                <th className="px-4 sm:px-6 py-3 label-caps hidden md:table-cell">Linked Brokers</th>
+                <th className="px-4 sm:px-6 py-3 label-caps hidden lg:table-cell">Added By</th>
+                <th className="px-4 sm:px-6 py-3 label-caps sticky right-0 bg-white"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-hairline">
               {assistants.map((assistant) => {
                 type LinkRow = { broker_id: string; profiles: { first_name: string | null; last_name: string | null; display_email: string | null; invited_by: string | null } | null };
                 const links = (assistant.broker_assistants as unknown) as LinkRow[] | null;
@@ -76,21 +76,21 @@ export default async function AdminAssistantsPage() {
                   : "Multiple";
 
                 return (
-                  <tr key={assistant.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-4 sm:px-6 py-4 font-medium text-gray-900">
+                  <tr key={assistant.id} className="hover:bg-ink-50 transition-colors duration-fast ease-quiet">
+                    <td className="px-4 sm:px-6 py-4 font-medium text-ink-900">
                       {assistant.first_name
                         ? (assistant.first_name + " " + (assistant.last_name ?? "")).trim()
                         : "—"}
                     </td>
-                    <td className="px-4 sm:px-6 py-4 text-gray-500 hidden sm:table-cell">{assistant.display_email ?? "—"}</td>
+                    <td className="px-4 sm:px-6 py-4 text-ink-500 hidden sm:table-cell">{assistant.display_email ?? "—"}</td>
                     <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
                       {brokerNames.length === 0 ? (
-                        <span className="text-gray-300 text-xs">None yet</span>
+                        <span className="text-ink-400 text-xs">None yet</span>
                       ) : (
-                        <span className="text-gray-600 text-xs">{brokerNames.join(", ")}</span>
+                        <span className="text-ink-600 text-xs">{brokerNames.join(", ")}</span>
                       )}
                     </td>
-                    <td className="px-4 sm:px-6 py-4 text-gray-500 text-xs hidden lg:table-cell">{ownerLabel}</td>
+                    <td className="px-4 sm:px-6 py-4 text-ink-500 text-xs hidden lg:table-cell">{ownerLabel}</td>
                     <td className="px-4 sm:px-6 py-4 text-right sticky right-0 bg-white whitespace-nowrap shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                       <div className="flex items-center justify-end gap-4">
                         <DeleteAssistantButton
@@ -100,7 +100,7 @@ export default async function AdminAssistantsPage() {
                             : assistant.display_email ?? "this assistant"}
                         />
                         <Link href={"/admin/assistants/" + assistant.id}
-                          className="text-[#c49a35] hover:text-[#b08c2a] text-xs font-medium transition-colors">
+                          className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
                           Manage &rarr;
                         </Link>
                       </div>

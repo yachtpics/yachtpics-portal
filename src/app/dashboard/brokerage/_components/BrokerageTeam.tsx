@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui";
 
 type Member = { id: string; name: string; email: string | null; role: string };
 
@@ -70,25 +71,25 @@ export default function BrokerageTeam({ brokerageName, members: initialMembers }
     }
   }
 
-  const inputClass = "w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]";
+  const inputClass = "w-full text-sm bg-white border border-hairline-strong text-ink-900 placeholder:text-ink-400 rounded-ctl px-3 py-2 transition-colors duration-fast ease-quiet focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/40";
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
-      <div className="mb-6 flex items-start justify-between gap-3">
+      <div className="mb-6 pb-6 border-b border-hairline flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">{brokerageName} — Team</h1>
-          <p className="text-gray-500 mt-1 text-sm">Add brokers and assistants to your brokerage. You see and manage every broker&apos;s boats here.</p>
+          <h1 className="text-display text-ink-900">{brokerageName} — Team</h1>
+          <p className="text-ink-500 mt-1 text-sm">Add brokers and assistants to your brokerage. You see and manage every broker&apos;s boats here.</p>
         </div>
         <div className="shrink-0 flex gap-2">
           <Link
             href="/dashboard/brokerage/billing"
-            className="text-xs font-medium text-gray-500 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-3 py-2 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
           >
             💳 Billing
           </Link>
           <Link
             href="/dashboard/brokerage/help"
-            className="text-xs font-medium text-gray-500 hover:text-[#c49a35] border border-gray-200 hover:border-[#d4a843] px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-3 py-2 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
           >
             ? Help
           </Link>
@@ -96,24 +97,24 @@ export default function BrokerageTeam({ brokerageName, members: initialMembers }
       </div>
 
       {/* Invite broker */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
-        <p className="text-sm font-semibold text-gray-700 mb-3">Add a broker</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-5">
+        <p className="label-caps mb-3">Add a broker</p>
         <div className="grid grid-cols-2 gap-2 mb-2">
           <input value={bFirst} onChange={(e) => setBFirst(e.target.value)} placeholder="First name" className={inputClass} />
           <input value={bLast} onChange={(e) => setBLast(e.target.value)} placeholder="Last name" className={inputClass} />
         </div>
         <div className="flex gap-2">
           <input type="email" value={bEmail} onChange={(e) => setBEmail(e.target.value)} placeholder="broker@email.com" className={`flex-1 ${inputClass}`} />
-          <button onClick={inviteBroker} disabled={bBusy || !bEmail.trim()} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+          <Button onClick={inviteBroker} disabled={bBusy || !bEmail.trim()} size="sm" className="text-sm">
             {bBusy ? "Inviting…" : "Invite"}
-          </button>
+          </Button>
         </div>
-        {bMsg && <p className="text-xs text-gray-600 mt-2">{bMsg}</p>}
+        {bMsg && <p className="text-xs text-ink-600 mt-2">{bMsg}</p>}
       </div>
 
       {/* Invite assistant */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-8">
-        <p className="text-sm font-semibold text-gray-700 mb-3">Add an assistant</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-8">
+        <p className="label-caps mb-3">Add an assistant</p>
         <div className="grid grid-cols-2 gap-2 mb-2">
           <input value={aFirst} onChange={(e) => setAFirst(e.target.value)} placeholder="First name" className={inputClass} />
           <input value={aLast} onChange={(e) => setALast(e.target.value)} placeholder="Last name" className={inputClass} />
@@ -125,40 +126,40 @@ export default function BrokerageTeam({ brokerageName, members: initialMembers }
             <option key={b.id} value={b.id}>{b.name}</option>
           ))}
         </select>
-        <button onClick={inviteAssistant} disabled={aBusy || !aEmail.trim()} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+        <Button onClick={inviteAssistant} disabled={aBusy || !aEmail.trim()} size="sm" className="text-sm">
           {aBusy ? "Inviting…" : "Invite"}
-        </button>
-        <p className="text-xs text-gray-400 mt-2">Assistants see the broker(s) you link them to. Leave blank to link them later.</p>
-        {aMsg && <p className="text-xs text-gray-600 mt-2">{aMsg}</p>}
+        </Button>
+        <p className="text-xs text-ink-500 mt-2">Assistants see the broker(s) you link them to. Leave blank to link them later.</p>
+        {aMsg && <p className="text-xs text-ink-600 mt-2">{aMsg}</p>}
       </div>
 
       {/* Members */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-5">
-        <p className="text-sm font-semibold text-gray-700 mb-3">Brokers ({brokers.length})</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-5">
+        <p className="label-caps mb-3">Brokers ({brokers.length})</p>
         {brokers.length === 0 ? (
-          <p className="text-sm text-gray-400">No brokers yet.</p>
+          <p className="text-sm text-ink-400">No brokers yet.</p>
         ) : (
           <div className="space-y-1.5">
             {brokers.map((m) => (
-              <div key={m.id} className="border border-gray-100 rounded-lg px-3 py-2">
-                <span className="text-sm font-medium text-gray-800">{m.name}</span>
-                {m.email && <span className="ml-1 text-gray-400 text-xs">{m.email}</span>}
+              <div key={m.id} className="border border-hairline rounded-ctl px-3 py-2">
+                <span className="text-sm font-medium text-ink-800">{m.name}</span>
+                {m.email && <span className="ml-1 text-ink-500 text-xs">{m.email}</span>}
               </div>
             ))}
           </div>
         )}
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl p-5">
-        <p className="text-sm font-semibold text-gray-700 mb-3">Assistants ({assistants.length})</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+        <p className="label-caps mb-3">Assistants ({assistants.length})</p>
         {assistants.length === 0 ? (
-          <p className="text-sm text-gray-400">No assistants yet.</p>
+          <p className="text-sm text-ink-400">No assistants yet.</p>
         ) : (
           <div className="space-y-1.5">
             {assistants.map((m) => (
-              <div key={m.id} className="border border-gray-100 rounded-lg px-3 py-2">
-                <span className="text-sm font-medium text-gray-800">{m.name}</span>
-                {m.email && <span className="ml-1 text-gray-400 text-xs">{m.email}</span>}
+              <div key={m.id} className="border border-hairline rounded-ctl px-3 py-2">
+                <span className="text-sm font-medium text-ink-800">{m.name}</span>
+                {m.email && <span className="ml-1 text-ink-500 text-xs">{m.email}</span>}
               </div>
             ))}
           </div>

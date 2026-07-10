@@ -35,17 +35,17 @@ export default function ResendInviteButton({ assistantId }: { assistantId: strin
 
   if (status === "sent") {
     return (
-      <span className="text-xs text-green-600 font-medium">✓ {message}</span>
+      <span className="text-xs text-success-600 font-medium">✓ {message}</span>
     );
   }
 
   if (status === "error") {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-red-500">{message}</span>
+        <span className="text-xs text-danger-600">{message}</span>
         <button
           onClick={() => { setStatus("idle"); setMessage(null); }}
-          className="text-xs text-gray-400 hover:text-gray-600"
+          className="text-xs text-ink-400 hover:text-ink-600"
         >
           Dismiss
         </button>
@@ -57,7 +57,7 @@ export default function ResendInviteButton({ assistantId }: { assistantId: strin
     <button
       onClick={handleResend}
       disabled={status === "loading"}
-      className="text-xs text-[#c49a35] hover:text-[#b08c2a] transition-colors disabled:opacity-50"
+      className="text-xs text-accent-700 hover:text-accent-800 transition-colors duration-fast ease-quiet disabled:opacity-50"
     >
       {status === "loading" ? "Sending…" : "Resend invite"}
     </button>

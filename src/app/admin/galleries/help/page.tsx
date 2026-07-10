@@ -75,22 +75,22 @@ export default function AdminGalleriesHelpPage() {
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
       <div className="mb-8">
-        <Link href="/admin/galleries" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">&larr; Back to Galleries</Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-3">Galleries — How It Works</h1>
-        <p className="text-gray-500 mt-1 text-sm">Delivering photos and videos to non-broker recipients.</p>
+        <Link href="/admin/galleries" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">&larr; Back to Galleries</Link>
+        <h1 className="text-display text-ink-900 mt-3">Galleries — How It Works</h1>
+        <p className="text-ink-500 mt-1 text-sm">Delivering photos and videos to non-broker recipients.</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
         {sections.map((s) => (
-          <div key={s.num} className="bg-white border border-gray-200 rounded-xl p-5">
+          <div key={s.num} className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs font-bold text-[#d4a843] bg-[#d4a843]/10 px-2 py-0.5 rounded-full">{s.num}</span>
-              <h2 className="font-semibold text-gray-900 text-sm">{s.title}</h2>
+              <span className="text-xs font-bold text-accent-700 bg-accent-50 px-2 py-0.5 rounded-full tabular-nums">{s.num}</span>
+              <h2 className="font-semibold text-ink-900 text-sm">{s.title}</h2>
             </div>
             <ol className="space-y-1.5">
               {s.steps.map((step, i) => (
-                <li key={i} className="flex gap-2 text-xs text-gray-600 leading-relaxed">
-                  <span className="text-[#d4a843] font-bold shrink-0 mt-px">{i + 1}.</span>
+                <li key={i} className="flex gap-2 text-xs text-ink-600 leading-relaxed">
+                  <span className="text-accent-700 font-bold shrink-0 mt-px">{i + 1}.</span>
                   {step}
                 </li>
               ))}
@@ -99,16 +99,16 @@ export default function AdminGalleriesHelpPage() {
         ))}
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Quick Reference</h2>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden">
+        <div className="px-6 py-4 border-b border-hairline">
+          <h2 className="label-caps">Quick Reference</h2>
         </div>
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-hairline">
             {quickRef.map(([task, where], i) => (
-              <tr key={i} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-3 text-gray-700 font-medium text-xs w-1/2">{task}</td>
-                <td className="px-6 py-3 text-gray-400 text-xs">{where}</td>
+              <tr key={i} className="hover:bg-ink-50 transition-colors duration-fast ease-quiet">
+                <td className="px-6 py-3 text-ink-700 font-medium text-xs w-1/2">{task}</td>
+                <td className="px-6 py-3 text-ink-500 text-xs">{where}</td>
               </tr>
             ))}
           </tbody>

@@ -103,23 +103,23 @@ function NewShootForm() {
     router.push(`/admin/shoots/${shoot.id}`);
   }
 
-  const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-  const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
+  const inputClass = "w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-400 rounded-ctl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 transition-colors duration-fast ease-quiet";
+  const labelClass = "block label-caps mb-1.5";
 
   return (
     <div className="px-6 py-8 max-w-2xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">New Invoice</h1>
-        <p className="text-gray-500 mt-1 text-sm">Log a shoot and create an invoice for a broker.</p>
+        <h1 className="text-display text-ink-900">New Invoice</h1>
+        <p className="text-ink-500 mt-1 text-sm">Log a shoot and create an invoice for a broker.</p>
       </div>
 
       {error && (
-        <div className="mb-6 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-600">{error}</div>
+        <div className="mb-6 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-600">{error}</div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold text-gray-900">Shoot Details</h2>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 space-y-4">
+          <h2 className="text-h2 text-ink-900">Shoot Details</h2>
 
           <div>
             <label className={labelClass}>Broker *</label>
@@ -139,7 +139,7 @@ function NewShootForm() {
           </div>
 
           <div>
-            <label className={labelClass}>Listing <span className="text-gray-400 font-normal">(optional)</span></label>
+            <label className={labelClass}>Listing <span className="text-ink-400 normal-case font-normal tracking-normal">(optional)</span></label>
             <select
               className={inputClass}
               value={form.listing_id}
@@ -177,8 +177,8 @@ function NewShootForm() {
           </div>
         </section>
 
-        <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-          <h2 className="font-semibold text-gray-900">Payment</h2>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 space-y-4">
+          <h2 className="text-h2 text-ink-900">Payment</h2>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -223,7 +223,7 @@ function NewShootForm() {
           </div>
 
           <div>
-            <label className={labelClass}>Notes <span className="text-gray-400 font-normal">(optional)</span></label>
+            <label className={labelClass}>Notes <span className="text-ink-400 normal-case font-normal tracking-normal">(optional)</span></label>
             <textarea
               className={`${inputClass} resize-none`}
               rows={3}
@@ -238,14 +238,14 @@ function NewShootForm() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="px-5 py-2.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            className="px-5 py-2.5 text-sm text-ink-600 hover:text-ink-900 transition-colors duration-fast ease-quiet"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm"
           >
             {saving ? "Creating..." : "Create Invoice"}
           </button>
@@ -257,7 +257,7 @@ function NewShootForm() {
 
 export default function NewShootPage() {
   return (
-    <Suspense fallback={<div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading...</div>}>
+    <Suspense fallback={<div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading...</div>}>
       <NewShootForm />
     </Suspense>
   );

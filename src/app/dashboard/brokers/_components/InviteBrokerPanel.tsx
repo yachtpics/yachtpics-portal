@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button, Input, Label } from "@/components/ui";
 
 export default function InviteBrokerPanel() {
   const router = useRouter();
@@ -50,18 +51,18 @@ export default function InviteBrokerPanel() {
 
   return (
     <div className="mt-4">
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
         <div className="flex items-start justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-gray-900 mb-1">Invite a New Broker</h3>
-            <p className="text-xs text-gray-400">
+            <h3 className="text-sm font-semibold text-ink-900 mb-1">Invite a New Broker</h3>
+            <p className="text-xs text-ink-500">
               Set up a portal account for a broker who isn&apos;t in the system yet. They&apos;ll receive an email to create their password.
             </p>
           </div>
           <button
             type="button"
             onClick={() => { setOpen((v) => !v); setError(null); setSuccess(false); }}
-            className="ml-4 shrink-0 text-xs font-semibold text-[#c49a35] hover:text-[#d4a843] transition-colors"
+            className="ml-4 shrink-0 text-xs font-semibold text-accent-700 hover:text-accent-600 transition-colors duration-fast py-2"
           >
             {open ? "Cancel" : "Invite broker"}
           </button>
@@ -71,72 +72,64 @@ export default function InviteBrokerPanel() {
           <form onSubmit={handleInvite} className="mt-5 space-y-3">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs text-gray-500 mb-1">First name <span className="text-red-400">*</span></label>
-                <input
+                <Label className="mb-1">First name <span className="text-danger-600">*</span></Label>
+                <Input
                   type="text"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
                   required
                   placeholder="Jane"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d4a843]/40 focus:border-[#d4a843] bg-white"
                 />
               </div>
               <div>
-                <label className="block text-xs text-gray-500 mb-1">Last name <span className="text-red-400">*</span></label>
-                <input
+                <Label className="mb-1">Last name <span className="text-danger-600">*</span></Label>
+                <Input
                   type="text"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
                   required
                   placeholder="Smith"
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d4a843]/40 focus:border-[#d4a843] bg-white"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Email address <span className="text-red-400">*</span></label>
-              <input
+              <Label className="mb-1">Email address <span className="text-danger-600">*</span></Label>
+              <Input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 placeholder="jane@brokerage.com"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d4a843]/40 focus:border-[#d4a843] bg-white"
               />
             </div>
 
             <div>
-              <label className="block text-xs text-gray-500 mb-1">Brokerage <span className="text-gray-400">(optional)</span></label>
-              <input
+              <Label className="mb-1">Brokerage <span className="text-ink-400">(optional)</span></Label>
+              <Input
                 type="text"
                 value={brokerage}
                 onChange={(e) => setBrokerage(e.target.value)}
                 placeholder="Ocean Blue Yachts"
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#d4a843]/40 focus:border-[#d4a843] bg-white"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3">
+              <p className="text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-card px-4 py-3">
                 {error}
               </p>
             )}
 
             {success && (
-              <p className="text-sm text-green-700 bg-green-50 border border-green-100 rounded-lg px-4 py-3">
+              <p className="text-sm text-success-700 bg-success-50 border border-success-200 rounded-card px-4 py-3">
                 Invite sent. You&apos;re now linked to their account.
               </p>
             )}
 
             <div className="flex justify-end pt-1">
-              <button
-                type="submit"
-                disabled={sending || success}
-                className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
-              >
+              <Button type="submit" disabled={sending || success} className="px-5">
                 {sending ? "Sending invite…" : "Send Invite"}
-              </button>
+              </Button>
             </div>
           </form>
         )}

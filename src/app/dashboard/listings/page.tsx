@@ -94,12 +94,12 @@ export default async function ListingsPage() {
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
-      <div className="mb-8 flex items-center justify-between">
+      <div className="mb-8 pb-6 border-b border-hairline flex items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">
+          <h1 className="text-display text-ink-900">
             {isAssistant ? "Listings" : "My Listings"}
           </h1>
-          <p className="text-gray-500 mt-1 text-sm">
+          <p className="text-ink-500 mt-1 text-sm">
             {isAssistant
               ? "Listings across all brokers you assist."
               : "View your photos, toggle visibility, and reorder your gallery."}
@@ -107,16 +107,16 @@ export default async function ListingsPage() {
         </div>
         <Link
           href="/dashboard/listings/new"
-          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+          className="shrink-0 bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2"
         >
           + New Listing
         </Link>
       </div>
 
       {listings.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl py-16 text-center">
-          <p className="text-gray-400 text-sm">No listings yet.</p>
-          <p className="text-gray-400 text-sm mt-1">
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 py-16 text-center">
+          <p className="text-ink-500 text-sm">No listings yet.</p>
+          <p className="text-ink-500 text-sm mt-1">
             {isAssistant
               ? "Listings will appear here once a broker you assist has active listings."
               : "Click '+ New Listing' to upload your own photos, or listings will appear here after a YachtPics shoot."}

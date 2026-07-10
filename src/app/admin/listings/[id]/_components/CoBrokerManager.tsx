@@ -65,21 +65,21 @@ export default function CoBrokerManager({
   }
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 mb-8">
-      <p className="text-sm font-semibold text-gray-900">Co-brokers</p>
-      <p className="text-xs text-gray-500 mt-0.5 mb-4">
+    <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-8">
+      <p className="label-caps">Co-brokers</p>
+      <p className="text-xs text-ink-500 mt-0.5 mb-4">
         Give another broker access to this one listing — they can view, download, upload, and send it, but not delete. The boat stays owned by the listing&rsquo;s broker.
       </p>
 
       {coBrokers.length > 0 && (
         <div className="space-y-1.5 mb-4">
           {coBrokers.map((b) => (
-            <div key={b.id} className="flex items-center justify-between border border-gray-100 rounded-lg px-3 py-2">
-              <span className="text-sm text-gray-800">{b.name}</span>
+            <div key={b.id} className="flex items-center justify-between border border-hairline rounded-ctl px-3 py-2">
+              <span className="text-sm text-ink-800">{b.name}</span>
               <button
                 onClick={() => remove(b.id)}
                 disabled={busy}
-                className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                className="text-xs text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet disabled:opacity-50"
               >
                 Remove
               </button>
@@ -93,7 +93,7 @@ export default function CoBrokerManager({
           value={pick}
           onChange={(e) => setPick(e.target.value)}
           disabled={busy}
-          className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white focus:outline-none focus:border-[#d4a843] disabled:opacity-50"
+          className="flex-1 text-sm border border-hairline-strong rounded-ctl px-3 py-2 bg-white focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 disabled:opacity-50"
         >
           <option value="">Add a co-broker…</option>
           {available.map((b) => (
@@ -103,12 +103,12 @@ export default function CoBrokerManager({
         <button
           onClick={add}
           disabled={busy || !pick}
-          className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
         >
           Add
         </button>
       </div>
-      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+      {error && <p className="text-xs text-danger-600 mt-2">{error}</p>}
     </div>
   );
 }

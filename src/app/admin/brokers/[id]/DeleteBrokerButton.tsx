@@ -54,7 +54,7 @@ export default function DeleteBrokerButton({ brokerId, brokerName, listingCount 
       <button
         onClick={startConfirm}
         disabled={fetchingCount}
-        className="text-xs text-red-400 hover:text-red-600 transition-colors px-2 disabled:opacity-50"
+        className="text-xs text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet px-2 disabled:opacity-50"
       >
         {fetchingCount ? "…" : "Delete broker"}
       </button>
@@ -63,10 +63,10 @@ export default function DeleteBrokerButton({ brokerId, brokerName, listingCount 
 
   return (
     <div className="flex flex-col gap-2 items-start">
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 max-w-sm">
-        <p className="text-sm font-semibold text-red-700 mb-1">Delete {brokerName}?</p>
-        <p className="text-xs text-red-600 leading-relaxed">
+      {error && <p className="text-xs text-danger-600">{error}</p>}
+      <div className="bg-danger-50 border border-danger-200 rounded-ctl px-4 py-3 max-w-sm">
+        <p className="text-sm font-semibold text-danger-700 mb-1">Delete {brokerName}?</p>
+        <p className="text-xs text-danger-600 leading-relaxed">
           This will permanently delete their account
           {count !== null && count > 0
             ? `, ${count} listing${count !== 1 ? "s" : ""}, and all associated photos, videos, and documents.`
@@ -74,7 +74,7 @@ export default function DeleteBrokerButton({ brokerId, brokerName, listingCount 
           {" "}This cannot be undone.
         </p>
         {count !== null && count > 0 && (
-          <p className="text-xs font-semibold text-red-700 mt-2">
+          <p className="text-xs font-semibold text-danger-700 mt-2">
             ⚠️ {count} listing{count !== 1 ? "s" : ""} will be permanently deleted.
           </p>
         )}
@@ -83,13 +83,13 @@ export default function DeleteBrokerButton({ brokerId, brokerName, listingCount 
         <button
           onClick={handleDelete}
           disabled={loading}
-          className="text-xs font-semibold bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg transition-colors"
+          className="text-xs font-semibold bg-danger-600 hover:bg-danger-500 disabled:opacity-60 text-white px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
         >
           {loading ? "Deleting…" : "Yes, permanently delete"}
         </button>
         <button
           onClick={() => setConfirming(false)}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-xs text-ink-400 hover:text-ink-600 transition-colors duration-fast ease-quiet"
         >
           Cancel
         </button>

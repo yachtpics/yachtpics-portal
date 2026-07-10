@@ -228,43 +228,43 @@ export default function GalleryDetail({
     <div className="px-6 py-8 max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <Link href="/admin/galleries" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">&larr; All galleries</Link>
+        <Link href="/admin/galleries" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">&larr; All galleries</Link>
         <div className="mt-2 flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{gallery.title}</h1>
-            <p className="text-gray-500 text-sm mt-0.5 capitalize">
+            <h1 className="text-display text-ink-900">{gallery.title}</h1>
+            <p className="text-ink-500 text-sm mt-0.5 capitalize">
               {gallery.gallery_type} · {photos.length} photo{photos.length !== 1 ? "s" : ""}{videos.length > 0 ? `, ${videos.length} video${videos.length !== 1 ? "s" : ""}` : ""}
             </p>
           </div>
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full ${expired ? "bg-gray-100 text-gray-500" : "bg-green-50 text-green-700"}`}>
+          <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${expired ? "bg-ink-100 text-ink-600 border-hairline" : "bg-success-50 text-success-700 border-success-200"}`}>
             {expired ? "Downloads expired" : expiresAt ? `Downloads until ${fmtDay(expiresAt)}` : "No expiry"}
           </span>
         </div>
       </div>
 
       {msg && (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-800 flex items-start justify-between gap-3">
+        <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-success-50 border border-success-200 text-success-700 flex items-start justify-between gap-3">
           <span>{msg}</span>
-          <button onClick={() => setMsg("")} className="shrink-0 text-green-500 hover:text-green-700 font-bold">×</button>
+          <button onClick={() => setMsg("")} className="shrink-0 text-success-600 hover:text-success-700 font-bold">×</button>
         </div>
       )}
 
       {/* Share + metrics */}
       <div className="grid md:grid-cols-2 gap-4 mb-6">
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-2">Slideshow link</h2>
-          <p className="text-xs text-gray-500 mb-3">Anyone with this link can view the slideshow. Downloads still require a recipient login.</p>
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+          <h2 className="label-caps mb-2">Slideshow link</h2>
+          <p className="text-xs text-ink-500 mb-3">Anyone with this link can view the slideshow. Downloads still require a recipient login.</p>
           <div className="flex items-center gap-2">
-            <input readOnly value={slideshowUrl} className="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600" />
-            <button onClick={copyLink} className="text-sm font-medium px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-300 transition-colors shrink-0">
+            <input readOnly value={slideshowUrl} className="flex-1 text-sm border border-hairline-strong rounded-ctl px-3 py-2 bg-ink-50 text-ink-600" />
+            <button onClick={copyLink} className="text-sm font-medium px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 transition-colors duration-fast ease-quiet shrink-0">
               {copied ? "Copied ✓" : "Copy"}
             </button>
           </div>
-          <div className="mt-3 pt-3 border-t border-gray-100">
+          <div className="mt-3 pt-3 border-t border-hairline">
             {!sendOpen ? (
               <button
                 onClick={() => setSendOpen(true)}
-                className="w-full text-sm font-semibold px-4 py-2 rounded-lg border border-[#d4a843] text-[#9a7a1f] hover:bg-[#d4a843]/10 transition-colors"
+                className="w-full text-sm font-semibold px-4 py-2 rounded-ctl border border-ink-300 text-ink-800 hover:border-ink-400 hover:bg-ink-50 transition-colors duration-fast ease-quiet"
               >
                 ✉ Email this slideshow to someone
               </button>
@@ -275,24 +275,24 @@ export default function GalleryDetail({
                   value={sendEmail}
                   onChange={(e) => setSendEmail(e.target.value)}
                   placeholder="recipient@email.com"
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+                  className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
                 />
                 <textarea
                   value={sendMessage}
                   onChange={(e) => setSendMessage(e.target.value)}
                   placeholder="Optional message…"
                   rows={2}
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843] resize-none"
+                  className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 resize-none"
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={sendSlideshow}
                     disabled={sending || !sendEmail.trim()}
-                    className="bg-[#050b14] hover:bg-[#0c1626] disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+                    className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
                   >
                     {sending ? "Sending…" : "Send link"}
                   </button>
-                  <button onClick={() => setSendOpen(false)} className="text-xs font-medium px-3 py-2 rounded-lg text-gray-500 hover:text-gray-700">
+                  <button onClick={() => setSendOpen(false)} className="text-xs font-medium px-3 py-2 rounded-ctl text-ink-500 hover:text-ink-700 transition-colors duration-fast ease-quiet">
                     Cancel
                   </button>
                 </div>
@@ -300,42 +300,42 @@ export default function GalleryDetail({
             )}
           </div>
         </div>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-700 mb-3">Activity</h2>
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+          <h2 className="label-caps mb-3">Activity</h2>
           <div className="grid grid-cols-3 gap-2 text-center">
             <div>
-              <p className="text-xl font-bold text-gray-900">{metrics.views}</p>
-              <p className="text-[11px] text-gray-400">Slideshow views</p>
+              <p className="text-xl font-light tabular-nums text-ink-900">{metrics.views}</p>
+              <p className="text-[11px] text-ink-500">Slideshow views</p>
             </div>
             <div>
-              <p className="text-xl font-bold text-gray-900">{metrics.downloadItems}</p>
-              <p className="text-[11px] text-gray-400">Files downloaded</p>
+              <p className="text-xl font-light tabular-nums text-ink-900">{metrics.downloadItems}</p>
+              <p className="text-[11px] text-ink-500">Files downloaded</p>
             </div>
             <div>
-              <p className="text-xl font-bold text-gray-900">{metrics.downloadEvents}</p>
-              <p className="text-[11px] text-gray-400">Download sessions</p>
+              <p className="text-xl font-light tabular-nums text-ink-900">{metrics.downloadEvents}</p>
+              <p className="text-[11px] text-ink-500">Download sessions</p>
             </div>
           </div>
           {metrics.lastDownloadAt && (
-            <p className="text-[11px] text-gray-400 mt-3 text-center">Last download {fmtDate(metrics.lastDownloadAt)}</p>
+            <p className="text-[11px] text-ink-500 mt-3 text-center tabular-nums">Last download {fmtDate(metrics.lastDownloadAt)}</p>
           )}
         </div>
       </div>
 
       {/* Expiry control */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-1">Download window</h2>
-        <p className="text-xs text-gray-500 mb-3">Set how long recipients can download. The slideshow stays viewable after expiry.</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
+        <h2 className="label-caps mb-1">Download window</h2>
+        <p className="text-xs text-ink-500 mb-3">Set how long recipients can download. The slideshow stays viewable after expiry.</p>
         <div className="flex flex-wrap gap-2">
           {[30, 60, 90].map((d) => (
-            <button key={d} onClick={() => setExpiry({ days: d })} className="text-sm px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-[#d4a843] transition-colors">
+            <button key={d} onClick={() => setExpiry({ days: d })} className="text-sm px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-accent-500 transition-colors duration-fast ease-quiet">
               {d} days from now
             </button>
           ))}
-          <button onClick={() => setExpiry({ clear: true })} className="text-sm px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-[#d4a843] transition-colors">
+          <button onClick={() => setExpiry({ clear: true })} className="text-sm px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-accent-500 transition-colors duration-fast ease-quiet">
             No expiry
           </button>
-          <label className="text-sm px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:border-[#d4a843] transition-colors cursor-pointer">
+          <label className="text-sm px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-accent-500 transition-colors duration-fast ease-quiet cursor-pointer">
             Set date…
             <input type="date" className="ml-2 text-xs" onChange={(e) => e.target.value && setExpiry({ date: e.target.value })} />
           </label>
@@ -343,40 +343,40 @@ export default function GalleryDetail({
       </div>
 
       {/* Recipients */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-1">Recipients</h2>
-        <p className="text-xs text-gray-500 mb-4">People with a free login to download from this gallery. They&apos;re emailed an invite when added.</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
+        <h2 className="label-caps mb-1">Recipients</h2>
+        <p className="text-xs text-ink-500 mb-4">People with a free login to download from this gallery. They&apos;re emailed an invite when added.</p>
 
         <div className="flex flex-wrap items-end gap-2 mb-4">
           <div className="flex-1 min-w-[180px]">
-            <label className="block text-[11px] font-medium text-gray-400 mb-1">Email</label>
-            <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="recipient@email.com" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]" />
+            <label className="block text-[11px] font-medium text-ink-500 mb-1">Email</label>
+            <input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="recipient@email.com" className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500" />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-gray-400 mb-1">First name</label>
-            <input value={newFirst} onChange={(e) => setNewFirst(e.target.value)} className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]" />
+            <label className="block text-[11px] font-medium text-ink-500 mb-1">First name</label>
+            <input value={newFirst} onChange={(e) => setNewFirst(e.target.value)} className="w-32 text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500" />
           </div>
           <div>
-            <label className="block text-[11px] font-medium text-gray-400 mb-1">Last name</label>
-            <input value={newLast} onChange={(e) => setNewLast(e.target.value)} className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]" />
+            <label className="block text-[11px] font-medium text-ink-500 mb-1">Last name</label>
+            <input value={newLast} onChange={(e) => setNewLast(e.target.value)} className="w-32 text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500" />
           </div>
-          <button onClick={addRecipient} disabled={addingRecipient} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+          <button onClick={addRecipient} disabled={addingRecipient} className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet">
             {addingRecipient ? "Adding…" : "Add & invite"}
           </button>
         </div>
-        {recipientError && <p className="text-xs text-red-600 mb-3">{recipientError}</p>}
+        {recipientError && <p className="text-xs text-danger-600 mb-3">{recipientError}</p>}
 
         {recipients.length === 0 ? (
-          <p className="text-sm text-gray-400">No recipients yet.</p>
+          <p className="text-sm text-ink-400">No recipients yet.</p>
         ) : (
           <div className="space-y-1.5">
             {recipients.map((r) => (
-              <div key={r.userId} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2">
+              <div key={r.userId} className="flex items-center justify-between gap-3 border border-hairline rounded-ctl px-3 py-2">
                 <div className="min-w-0">
-                  {r.name && <span className="text-sm font-medium text-gray-800">{r.name} </span>}
-                  <span className="text-sm text-gray-500">{r.email}</span>
+                  {r.name && <span className="text-sm font-medium text-ink-800">{r.name} </span>}
+                  <span className="text-sm text-ink-500">{r.email}</span>
                 </div>
-                <button onClick={() => removeRecipient(r.userId)} className="text-xs font-medium text-red-600 hover:text-red-700 shrink-0">Remove</button>
+                <button onClick={() => removeRecipient(r.userId)} className="text-xs font-medium text-danger-600 hover:text-danger-700 shrink-0">Remove</button>
               </div>
             ))}
           </div>
@@ -384,19 +384,19 @@ export default function GalleryDetail({
       </div>
 
       {/* Photos */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold text-gray-700">Photos ({photos.length})</h2>
-          <label className="bg-[#050b14] hover:bg-[#0c1626] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer">
+          <h2 className="label-caps">Photos ({photos.length})</h2>
+          <label className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet cursor-pointer">
             {uploadingPhotos ? "Uploading…" : "Upload photos"}
             <input type="file" accept="image/*" multiple className="hidden" disabled={uploadingPhotos} onChange={(e) => handlePhotos(e.target.files)} />
           </label>
         </div>
         {photos.length === 0 ? (
-          <p className="text-sm text-gray-400">No photos yet.</p>
+          <p className="text-sm text-ink-400">No photos yet.</p>
         ) : (
           <>
-            <p className="text-xs text-gray-400 mb-3">Drag to reorder · click the eye to hide a photo from the slideshow and downloads.</p>
+            <p className="text-xs text-ink-500 mb-3">Drag to reorder · click the eye to hide a photo from the slideshow and downloads.</p>
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
               {photos.map((p, i) => (
                 <div
@@ -405,7 +405,7 @@ export default function GalleryDetail({
                   onDragStart={() => setDragIndex(i)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => onPhotoDrop(i)}
-                  className={`group relative aspect-square rounded-lg overflow-hidden bg-gray-100 cursor-move ${dragIndex === i ? "ring-2 ring-[#d4a843]" : ""} ${p.is_visible === false ? "opacity-40" : ""}`}
+                  className={`group relative aspect-square rounded-lg overflow-hidden bg-ink-100 cursor-move ${dragIndex === i ? "ring-2 ring-accent-500" : ""} ${p.is_visible === false ? "opacity-40" : ""}`}
                 >
                   {p.url && (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -436,22 +436,22 @@ export default function GalleryDetail({
       </div>
 
       {/* Videos */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="text-sm font-semibold text-gray-700">Videos ({videos.length})</h2>
-          <label className="bg-[#050b14] hover:bg-[#0c1626] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors cursor-pointer">
+          <h2 className="label-caps">Videos ({videos.length})</h2>
+          <label className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet cursor-pointer">
             {uploadingVideos ? "Uploading…" : "Upload videos"}
             <input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple className="hidden" disabled={uploadingVideos} onChange={(e) => handleVideos(e.target.files)} />
           </label>
         </div>
         {videos.length === 0 ? (
-          <p className="text-sm text-gray-400">No videos yet.</p>
+          <p className="text-sm text-ink-400">No videos yet.</p>
         ) : (
           <div className="space-y-2">
             {videos.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-3 border border-gray-100 rounded-lg px-3 py-2">
-                <span className="text-sm text-gray-700 truncate">🎬 {v.filename ?? "Video"}</span>
-                <button onClick={() => deleteVideo(v)} className="text-xs font-medium text-red-600 hover:text-red-700 shrink-0">Remove</button>
+              <div key={v.id} className="flex items-center justify-between gap-3 border border-hairline rounded-ctl px-3 py-2">
+                <span className="text-sm text-ink-700 truncate">🎬 {v.filename ?? "Video"}</span>
+                <button onClick={() => deleteVideo(v)} className="text-xs font-medium text-danger-600 hover:text-danger-700 shrink-0">Remove</button>
               </div>
             ))}
           </div>
@@ -475,7 +475,7 @@ function DeleteGalleryButton({ galleryId, title }: { galleryId: string; title: s
     else setBusy(false);
   }
   return (
-    <button onClick={del} disabled={busy} className="text-xs font-medium text-red-600 hover:text-red-700 transition-colors">
+    <button onClick={del} disabled={busy} className="text-xs font-medium text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet">
       {busy ? "Deleting…" : "Delete this gallery"}
     </button>
   );

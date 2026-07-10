@@ -412,28 +412,28 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <Link href="/admin/listings" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+          <Link href="/admin/listings" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">
             ← All listings
           </Link>
-          <h1 className="text-2xl font-bold text-gray-900 mt-1">
+          <h1 className="text-display text-ink-900 mt-1">
             {listing.vessel_name ?? "Untitled vessel"}
           </h1>
-          <p className="text-gray-500 text-sm mt-0.5">
+          <p className="text-ink-500 text-sm mt-0.5">
             {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
           </p>
-          <p className="text-gray-400 text-xs mt-1">Broker: {brokerName}</p>
+          <p className="text-ink-500 text-xs mt-1">Broker: {brokerName}</p>
           {canShare && (
             <button
               onClick={toggleShare}
               disabled={sharingBusy}
               title={isShared ? "Visible to every broker in this brokerage" : "Share this boat with every broker in this brokerage"}
-              className={`mt-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors disabled:opacity-50 ${
+              className={`mt-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
                 isShared
-                  ? "border-[#d4a843] bg-[#d4a843]/10 text-[#a07820]"
-                  : "border-gray-200 bg-white text-gray-500 hover:border-[#d4a843]"
+                  ? "border-accent-500 bg-accent-50 text-accent-700"
+                  : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500"
               }`}
             >
-              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ${isShared ? "bg-[#d4a843]" : "bg-gray-300"}`}>
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-fast ease-quiet ${isShared ? "bg-accent-500" : "bg-ink-300"}`}>
                 <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${isShared ? "translate-x-3.5" : "translate-x-0.5"}`} />
               </span>
               {isShared ? "Shared with brokerage" : "Share with brokerage"}
@@ -445,7 +445,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           <select
             value={status}
             onChange={(e) => setStatus(e.target.value)}
-            className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+            className="text-sm text-ink-700 bg-white border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
           >
             <option value="active">Active</option>
             <option value="archived">Archived</option>
@@ -456,7 +456,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             onChange={(e) => setNotifyMediaType(e.target.value as "photos" | "video" | "both")}
             disabled={notifying}
             title="What to tell the broker is ready"
-            className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+            className="text-sm text-ink-700 bg-white border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
           >
             <option value="photos">Photos</option>
             <option value="video">Video</option>
@@ -465,14 +465,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           <button
             onClick={notifyBroker}
             disabled={notifying}
-            className="bg-white hover:bg-gray-50 disabled:opacity-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg border border-gray-200 transition-colors"
+            className="bg-white hover:border-ink-400 hover:text-ink-900 disabled:opacity-50 text-ink-700 text-sm font-medium px-4 py-2 rounded-ctl border border-hairline-strong transition-colors duration-fast ease-quiet"
           >
             {notifying ? "Sending..." : "📧 Notify Broker"}
           </button>
           <button
             onClick={updateStatus}
             disabled={saving}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
           >
             {saving ? "Saving..." : "Save"}
           </button>
@@ -480,11 +480,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {message && (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-green-50 border border-green-200 text-green-700 flex items-start justify-between gap-3">
+        <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-success-50 border border-success-200 text-success-700 flex items-start justify-between gap-3">
           <span>{message}</span>
           <button
             onClick={() => setMessage("")}
-            className="shrink-0 text-green-500 hover:text-green-700 leading-none text-base font-bold"
+            className="shrink-0 text-success-600 hover:text-success-700 leading-none text-base font-bold"
             aria-label="Dismiss"
           >
             ×
@@ -495,11 +495,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       <CoBrokerManager listingId={listing.id} brokers={brokerOptions} initialCoBrokers={coBrokers} />
 
       {/* Client Slideshow — publish so the broker can share / send to client */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div>
-            <h2 className="font-semibold text-gray-900">Client Slideshow</h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h2 className="text-h2 text-ink-900">Client Slideshow</h2>
+            <p className="text-xs text-ink-500 mt-0.5">
               {slideshowPublished
                 ? "Published — the broker can share the link, send it to a client, or use the QR code."
                 : "Not published. Publish it so this listing can be shared with clients."}
@@ -508,48 +508,48 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           <div className="flex items-center gap-2 shrink-0">
             {slideshowPublished ? (
               <>
-                <button onClick={copySlideshowLink} className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-2 rounded-lg transition-colors">
+                <button onClick={copySlideshowLink} className="text-sm text-ink-600 border border-hairline-strong hover:border-ink-400 px-3 py-2 rounded-ctl transition-colors duration-fast ease-quiet">
                   {slideshowCopied ? "Copied ✓" : "Copy link"}
                 </button>
-                <a href={`/s/${slideshowSlug}`} target="_blank" rel="noopener noreferrer" className="text-sm text-gray-600 border border-gray-200 hover:border-gray-300 px-3 py-2 rounded-lg transition-colors">
+                <a href={`/s/${slideshowSlug}`} target="_blank" rel="noopener noreferrer" className="text-sm text-ink-600 border border-hairline-strong hover:border-ink-400 px-3 py-2 rounded-ctl transition-colors duration-fast ease-quiet">
                   Open
                 </a>
-                <button onClick={unpublishSlideshow} disabled={slideshowBusy} className="text-sm text-gray-500 border border-gray-200 hover:border-red-300 hover:text-red-500 px-3 py-2 rounded-lg transition-colors disabled:opacity-50">
+                <button onClick={unpublishSlideshow} disabled={slideshowBusy} className="text-sm text-ink-500 border border-hairline-strong hover:border-danger-300 hover:text-danger-600 px-3 py-2 rounded-ctl transition-colors duration-fast ease-quiet disabled:opacity-50">
                   {slideshowBusy ? "…" : "Unpublish"}
                 </button>
               </>
             ) : (
-              <button onClick={publishSlideshow} disabled={slideshowBusy} className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+              <button onClick={publishSlideshow} disabled={slideshowBusy} className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet">
                 {slideshowBusy ? "Publishing…" : "Publish slideshow"}
               </button>
             )}
           </div>
         </div>
         {slideshowPublished && slideshowSlug && (
-          <p className="text-xs text-gray-400 mt-3 break-all">{typeof window !== "undefined" ? window.location.origin : ""}/s/{slideshowSlug}</p>
+          <p className="text-xs text-ink-400 mt-3 break-all">{typeof window !== "undefined" ? window.location.origin : ""}/s/{slideshowSlug}</p>
         )}
       </div>
 
       {/* Inquiries (leads from the public slideshow) */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <p className="text-sm font-semibold text-gray-900 mb-1">Inquiries ({leads.length})</p>
-        <p className="text-xs text-gray-500 mb-4">Buyers who reached out from this boat&rsquo;s slideshow.</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
+        <p className="label-caps mb-1">Inquiries ({leads.length})</p>
+        <p className="text-xs text-ink-500 mb-4">Buyers who reached out from this boat&rsquo;s slideshow.</p>
         {leads.length === 0 ? (
-          <p className="text-sm text-gray-400">No inquiries yet.</p>
+          <p className="text-sm text-ink-400">No inquiries yet.</p>
         ) : (
-          <div className="divide-y divide-gray-100">
+          <div className="divide-y divide-hairline">
             {leads.map((l) => (
               <div key={l.id} className="py-3">
-                <p className="text-sm font-medium text-gray-900 flex items-center gap-2">
+                <p className="text-sm font-medium text-ink-900 flex items-center gap-2">
                   {l.name ?? "Buyer"}
-                  {l.status === "new" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 uppercase tracking-wide">New</span>}
+                  {l.status === "new" && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-warn-50 text-warn-700 border border-warn-200 uppercase tracking-wide">New</span>}
                 </p>
-                <div className="text-xs text-gray-500 mt-0.5 flex flex-wrap gap-x-3">
-                  {l.email && <a href={`mailto:${l.email}`} className="hover:text-[#c49a35]">{l.email}</a>}
-                  {l.phone && <a href={`tel:${l.phone}`} className="hover:text-[#c49a35]">{l.phone}</a>}
-                  <span className="text-gray-400">{new Date(l.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}</span>
+                <div className="text-xs text-ink-500 mt-0.5 flex flex-wrap gap-x-3">
+                  {l.email && <a href={`mailto:${l.email}`} className="hover:text-accent-700">{l.email}</a>}
+                  {l.phone && <a href={`tel:${l.phone}`} className="hover:text-accent-700">{l.phone}</a>}
+                  <span className="text-ink-400 tabular-nums">{new Date(l.created_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York" })}</span>
                 </div>
-                {l.message && <p className="text-sm text-gray-600 mt-1">{l.message}</p>}
+                {l.message && <p className="text-sm text-ink-600 mt-1">{l.message}</p>}
               </div>
             ))}
           </div>
@@ -557,35 +557,35 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {/* Download Activity */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-1">Download Activity</h2>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
+        <h2 className="label-caps mb-1">Download Activity</h2>
         {downloads.length === 0 ? (
-          <p className="text-sm text-gray-400">No downloads yet.</p>
+          <p className="text-sm text-ink-400">No downloads yet.</p>
         ) : (
           <table className="w-full text-sm mt-2">
             <thead>
-              <tr className="text-left text-xs text-gray-400 font-medium border-b border-gray-100">
-                <th className="pb-2 pr-4">Downloaded by</th>
-                <th className="pb-2 pr-4">Photos</th>
-                <th className="pb-2">When</th>
+              <tr className="text-left border-b border-hairline">
+                <th className="pb-2 pr-4 label-caps">Downloaded by</th>
+                <th className="pb-2 pr-4 label-caps">Photos</th>
+                <th className="pb-2 label-caps">When</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {downloads.map((d) => (
                 <tr key={d.id}>
-                  <td className="py-2 pr-4 text-gray-800">
+                  <td className="py-2 pr-4 text-ink-800">
                     {d.source === "link" && (
-                      <span className="mr-1.5 align-middle text-[10px] font-semibold uppercase bg-[#d4a843]/15 text-[#9a7a1f] border border-[#d4a843]/30 rounded px-1.5 py-0.5">
+                      <span className="mr-1.5 align-middle text-[10px] font-semibold uppercase bg-accent-50 text-accent-700 border border-accent-200 rounded px-1.5 py-0.5">
                         Public link
                       </span>
                     )}
                     {d.downloader_name}
                     {d.downloader_email && (
-                      <span className="ml-1 text-gray-400 text-xs">({d.downloader_email})</span>
+                      <span className="ml-1 text-ink-400 text-xs">({d.downloader_email})</span>
                     )}
                   </td>
-                  <td className="py-2 pr-4 text-gray-600">{d.photo_count}</td>
-                  <td className="py-2 text-gray-500 text-xs whitespace-nowrap">
+                  <td className="py-2 pr-4 text-ink-600 tabular-nums">{d.photo_count}</td>
+                  <td className="py-2 text-ink-500 text-xs whitespace-nowrap tabular-nums">
                     {new Date(d.downloaded_at).toLocaleString("en-US", {
                       month: "short", day: "numeric", year: "numeric",
                       hour: "numeric", minute: "2-digit",
@@ -600,40 +600,40 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {/* Emails sent for this listing */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-1">Emails sent for this listing</h2>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
+        <h2 className="label-caps mb-1">Emails sent for this listing</h2>
         {sentEmails.length === 0 ? (
-          <p className="text-sm text-gray-400">No emails sent yet for this listing.</p>
+          <p className="text-sm text-ink-400">No emails sent yet for this listing.</p>
         ) : (
           <table className="w-full text-sm mt-2">
             <thead>
-              <tr className="text-left text-xs text-gray-400 font-medium border-b border-gray-100">
-                <th className="pb-2 pr-4">Type</th>
-                <th className="pb-2 pr-4">Recipient</th>
-                <th className="pb-2 pr-4">When</th>
-                <th className="pb-2">Status</th>
+              <tr className="text-left border-b border-hairline">
+                <th className="pb-2 pr-4 label-caps">Type</th>
+                <th className="pb-2 pr-4 label-caps">Recipient</th>
+                <th className="pb-2 pr-4 label-caps">When</th>
+                <th className="pb-2 label-caps">Status</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {sentEmails.map((e) => (
                 <tr key={e.id}>
                   <td className="py-2 pr-4">
-                    <span className="text-[11px] font-medium bg-gray-100 text-gray-700 rounded px-2 py-0.5 whitespace-nowrap">
+                    <span className="text-[11px] font-medium bg-ink-100 text-ink-600 rounded px-2 py-0.5 whitespace-nowrap">
                       {EMAIL_TYPE_LABELS[e.email_type] ?? e.email_type}
                     </span>
                   </td>
-                  <td className="py-2 pr-4 text-gray-800">
+                  <td className="py-2 pr-4 text-ink-800">
                     {e.recipient_email}
-                    {e.recipient_role && <span className="ml-1 text-gray-400 text-xs capitalize">({e.recipient_role})</span>}
+                    {e.recipient_role && <span className="ml-1 text-ink-400 text-xs capitalize">({e.recipient_role})</span>}
                   </td>
-                  <td className="py-2 pr-4 text-gray-500 text-xs whitespace-nowrap">
+                  <td className="py-2 pr-4 text-ink-500 text-xs whitespace-nowrap tabular-nums">
                     {new Date(e.sent_at).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York", timeZoneName: "short" })}
                   </td>
                   <td className="py-2">
                     {e.status === "failed" ? (
-                      <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">Failed</span>
+                      <span className="text-[11px] font-semibold text-danger-700 bg-danger-50 border border-danger-200 rounded px-2 py-0.5">Failed</span>
                     ) : (
-                      <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded px-2 py-0.5">Sent</span>
+                      <span className="text-[11px] font-semibold text-success-700 bg-success-50 border border-success-200 rounded px-2 py-0.5">Sent</span>
                     )}
                   </td>
                 </tr>
@@ -647,24 +647,24 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       <DownloadLinkManager listingId={listing.id} />
 
       {/* Photos section */}
-      <div className="bg-white border border-gray-200 rounded-xl p-6">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <div>
-            <h2 className="font-semibold text-gray-900">Photos</h2>
-            <p className="text-gray-500 text-sm">{photos.length} photo{photos.length !== 1 ? "s" : ""}</p>
+            <h2 className="text-h2 text-ink-900">Photos</h2>
+            <p className="text-ink-500 text-sm">{photos.length} photo{photos.length !== 1 ? "s" : ""}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {photos.length > 0 && !selectMode && (
               <>
                 <button
                   onClick={() => setSelectMode(true)}
-                  className="text-sm text-gray-500 hover:text-gray-700 border border-gray-200 px-3 py-1.5 rounded-lg transition-colors"
+                  className="text-sm text-ink-500 hover:text-ink-700 border border-hairline-strong px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
                 >
                   Select
                 </button>
                 <button
                   onClick={() => setConfirmDeleteAll(true)}
-                  className="text-sm text-red-500 hover:text-red-600 border border-gray-200 hover:border-red-300 px-3 py-1.5 rounded-lg transition-colors"
+                  className="text-sm text-danger-600 hover:text-danger-700 border border-hairline-strong hover:border-danger-300 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
                 >
                   Delete All
                 </button>
@@ -674,13 +674,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               <>
                 <button
                   onClick={() => setSelectedIds(new Set(photos.map((p) => p.id)))}
-                  className="text-sm text-[#c49a35] font-medium transition-colors px-2"
+                  className="text-sm text-accent-700 font-medium transition-colors duration-fast ease-quiet px-2"
                 >
                   Select all
                 </button>
                 <button
                   onClick={() => { setSelectedIds(new Set()); setSelectMode(false); }}
-                  className="text-sm text-gray-400 hover:text-gray-600 transition-colors px-2"
+                  className="text-sm text-ink-400 hover:text-ink-600 transition-colors duration-fast ease-quiet px-2"
                 >
                   Cancel
                 </button>
@@ -688,7 +688,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                   <button
                     onClick={deleteSelected}
                     disabled={deleting}
-                    className="bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition-colors"
+                    className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
                   >
                     {deleting ? "Deleting..." : `🗑 Delete ${selectedIds.size}`}
                   </button>
@@ -697,7 +697,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="bg-[#050b14] hover:bg-[#0a1628] text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
             >
               + Add Photos
             </button>
@@ -708,22 +708,22 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         {/* Delete All confirmation */}
         {confirmDeleteAll && (
           <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-              <h3 className="text-lg font-bold text-gray-900 mb-2">Delete all photos?</h3>
-              <p className="text-gray-500 text-sm mb-6">
+            <div className="bg-white rounded-surface p-6 max-w-sm w-full shadow-elev-3">
+              <h3 className="text-lg font-bold text-ink-900 mb-2">Delete all photos?</h3>
+              <p className="text-ink-500 text-sm mb-6">
                 This will permanently delete all {photos.length} photo{photos.length !== 1 ? "s" : ""} for this listing. This can&apos;t be undone.
               </p>
               <div className="flex gap-3">
                 <button
                   onClick={() => setConfirmDeleteAll(false)}
-                  className="flex-1 bg-white border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium py-2.5 rounded-lg transition-colors"
+                  className="flex-1 bg-white border border-hairline-strong hover:bg-ink-50 text-ink-700 text-sm font-medium py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
                 >
                   Cancel
                 </button>
                 <button
                   onClick={deleteAll}
                   disabled={deleting}
-                  className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
+                  className="flex-1 bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
                 >
                   {deleting ? "Deleting..." : "Delete All"}
                 </button>
@@ -734,11 +734,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
         {uploading && (
           <div className="mb-4">
-            <div className="flex justify-between text-xs text-gray-500 mb-1">
-              <span>Uploading...</span><span>{uploadProgress}%</span>
+            <div className="flex justify-between text-xs text-ink-500 mb-1">
+              <span>Uploading...</span><span className="tabular-nums">{uploadProgress}%</span>
             </div>
-            <div className="bg-gray-100 rounded-full h-2">
-              <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
+            <div className="bg-ink-100 rounded-full h-2">
+              <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
             </div>
           </div>
         )}
@@ -748,9 +748,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-12 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+            className="border-2 border-dashed border-ink-200 rounded-card p-12 text-center cursor-pointer hover:border-accent-500 transition-colors duration-fast ease-quiet"
           >
-            <p className="text-gray-400 text-sm">Drag photos here or click to upload</p>
+            <p className="text-ink-400 text-sm">Drag photos here or click to upload</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -759,9 +759,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               return (
                 <div
                   key={photo.id}
-                  className={`rounded-lg overflow-hidden border-2 bg-white transition-colors ${
-                    isSelected ? "border-[#d4a843] shadow-md" :
-                    photo.is_visible ? "border-transparent" : "border-gray-200 opacity-60"
+                  className={`rounded-lg overflow-hidden border-2 bg-white transition-colors duration-fast ease-quiet ${
+                    isSelected ? "border-accent-500 shadow-elev-2" :
+                    photo.is_visible ? "border-transparent" : "border-ink-200 opacity-60"
                   }`}
                 >
                   {/* Thumbnail — click to enlarge or select */}
@@ -775,13 +775,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     {photo.url ? (
                       <OrientedThumbnail url={photo.url} filename={photo.filename} />
                     ) : (
-                      <div className="w-full aspect-[4/3] bg-gray-100 flex items-center justify-center text-gray-400 text-xs">No preview</div>
+                      <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
                     )}
                     {selectMode && (
                       <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
-                        isSelected ? "bg-[#d4a843] border-[#d4a843]" : "bg-white/80 border-gray-300"
+                        isSelected ? "bg-accent-500 border-accent-500" : "bg-white/80 border-ink-300"
                       }`}>
-                        {isSelected && <span className="text-[#050b14] text-xs font-bold">✓</span>}
+                        {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
                       </div>
                     )}
                   </div>
@@ -811,10 +811,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                           }}
                           onClick={(e) => e.stopPropagation()}
                           placeholder="Type & press Enter..."
-                          className="text-xs text-gray-700 bg-transparent border-b border-gray-200 outline-none flex-1 min-w-0 focus:border-[#d4a843]"
+                          className="text-xs text-ink-700 bg-transparent border-b border-hairline-strong outline-none flex-1 min-w-0 focus:border-accent-500"
                         />
                         <button type="button" onClick={(e) => { e.stopPropagation(); setCustomEdit(null); }}
-                          className="text-gray-400 hover:text-gray-600 text-xs px-1">✕</button>
+                          className="text-ink-400 hover:text-ink-600 text-xs px-1">✕</button>
                       </div>
                     ) : (
                       <select
@@ -833,7 +833,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                           }
                         }}
                         onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-gray-600 bg-transparent border-none outline-none cursor-pointer hover:text-[#c49a35] transition-colors max-w-full"
+                        className="text-xs text-ink-600 bg-transparent border-none outline-none cursor-pointer hover:text-accent-700 transition-colors duration-fast ease-quiet max-w-full"
                       >
                         <option value="__new__">+ New custom...</option>
                         {[...PHOTO_CATEGORIES, ...customCategories]
@@ -841,29 +841,29 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                           .map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     )}
-                    {!photo.is_visible && <span className="text-[10px] text-gray-400 ml-1">· hidden</span>}
+                    {!photo.is_visible && <span className="text-[10px] text-ink-400 ml-1">· hidden</span>}
                     {!selectMode && (
                       <div className="flex gap-1.5 mt-2">
                         <button
                           onClick={() => toggleVisibility(photo.id, photo.is_visible)}
-                          className="flex-1 text-[10px] font-medium text-gray-500 hover:text-gray-800 border border-gray-200 hover:border-gray-300 rounded py-1 transition-colors"
+                          className="flex-1 text-[10px] font-medium text-ink-500 hover:text-ink-800 border border-hairline-strong hover:border-ink-400 rounded py-1 transition-colors duration-fast ease-quiet"
                         >
                           {photo.is_visible ? "Hide" : "Show"}
                         </button>
                         {confirmDeleteId === photo.id ? (
                           <>
                             <button onClick={() => setConfirmDeleteId(null)}
-                              className="flex-1 text-[10px] font-medium text-gray-500 border border-gray-200 rounded py-1 transition-colors">
+                              className="flex-1 text-[10px] font-medium text-ink-500 border border-hairline-strong rounded py-1 transition-colors duration-fast ease-quiet">
                               Cancel
                             </button>
                             <button onClick={() => { setConfirmDeleteId(null); deletePhoto(photo.id, photo.storage_path); }}
-                              className="flex-1 text-[10px] font-bold text-white bg-red-500 hover:bg-red-600 rounded py-1 transition-colors">
+                              className="flex-1 text-[10px] font-bold text-white bg-danger-600 hover:bg-danger-500 rounded py-1 transition-colors duration-fast ease-quiet">
                               Confirm
                             </button>
                           </>
                         ) : (
                           <button onClick={() => setConfirmDeleteId(photo.id)}
-                            className="flex-1 text-[10px] font-medium text-red-500 hover:text-red-700 border border-red-200 hover:border-red-300 rounded py-1 transition-colors">
+                            className="flex-1 text-[10px] font-medium text-danger-600 hover:text-danger-700 border border-danger-200 hover:border-danger-300 rounded py-1 transition-colors duration-fast ease-quiet">
                             Delete
                           </button>
                         )}
@@ -878,16 +878,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {/* Videos section */}
-      <div className="mt-6 bg-white border border-gray-200 rounded-xl p-6">
+      <div className="mt-6 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
-            <h2 className="font-semibold text-gray-900">Listing Videos</h2>
-            <p className="text-gray-500 text-sm mt-0.5">Upload MP4 or MOV video for this listing. Videos appear first in the client slideshow.</p>
+            <h2 className="text-h2 text-ink-900">Listing Videos</h2>
+            <p className="text-ink-500 text-sm mt-0.5">Upload MP4 or MOV video for this listing. Videos appear first in the client slideshow.</p>
           </div>
           <button
             onClick={() => videoInputRef.current?.click()}
             disabled={uploadingVideo}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+            className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
           >
             {uploadingVideo ? `Uploading… ${videoUploadProgress}%` : "＋ Upload Video"}
           </button>
@@ -896,15 +896,15 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
         {uploadingVideo && (
           <div className="mb-4">
-            <div className="bg-gray-100 rounded-full h-2">
-              <div className="bg-[#d4a843] h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
+            <div className="bg-ink-100 rounded-full h-2">
+              <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
             </div>
-            <p className="text-xs text-gray-400 mt-1">Uploading large files may take a moment…</p>
+            <p className="text-xs text-ink-400 mt-1">Uploading large files may take a moment…</p>
           </div>
         )}
 
         {videoError && (
-          <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <div className="mb-4 rounded-ctl border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">
             {videoError}
           </div>
         )}
@@ -912,14 +912,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         {videos.length === 0 ? (
           <div
             onClick={() => videoInputRef.current?.click()}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-10 text-center cursor-pointer hover:border-[#d4a843] transition-colors"
+            className="border-2 border-dashed border-ink-200 rounded-card p-10 text-center cursor-pointer hover:border-accent-500 transition-colors duration-fast ease-quiet"
           >
-            <p className="text-gray-400 text-sm">No videos yet — click to upload an MP4</p>
+            <p className="text-ink-400 text-sm">No videos yet — click to upload an MP4</p>
           </div>
         ) : (
           <div className="space-y-4">
             {videos.filter(v => !deletingVideoIds.has(v.id)).map((video) => (
-              <div key={video.id} className="rounded-xl overflow-hidden border border-gray-200">
+              <div key={video.id} className="rounded-card overflow-hidden border border-hairline">
                 {video.url && (
                   <video
                     src={video.url}
@@ -929,16 +929,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     className="w-full max-h-[420px] bg-black"
                   />
                 )}
-                <div className="px-4 py-3 bg-gray-50 flex items-center gap-3">
+                <div className="px-4 py-3 bg-ink-50 flex items-center gap-3">
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                    <p className="text-sm font-medium text-ink-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
+                    <p className="text-xs text-ink-400 mt-0.5 tabular-nums">
                       {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
                     </p>
                   </div>
                   <button
                     onClick={() => deleteVideo(video.id, video.storage_path)}
-                    className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors shrink-0"
+                    className="text-xs font-medium text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet shrink-0"
                   >
                     Delete
                   </button>
@@ -950,10 +950,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {/* Danger zone */}
-      <div className="mt-6 border border-red-100 rounded-xl px-6 py-4 flex items-center justify-between">
+      <div className="mt-6 border border-danger-200 rounded-card px-6 py-4 flex items-center justify-between">
         <div>
-          <p className="text-sm font-medium text-gray-700">Delete this listing</p>
-          <p className="text-xs text-gray-400 mt-0.5">Permanently removes the listing and all its photos. This cannot be undone.</p>
+          <p className="text-sm font-medium text-ink-700">Delete this listing</p>
+          <p className="text-xs text-ink-500 mt-0.5">Permanently removes the listing and all its photos. This cannot be undone.</p>
         </div>
         <DeleteListingButton listingId={listing.id} vesselName={listing.vessel_name} brokerId={listing.broker_id} />
       </div>
@@ -989,7 +989,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "12px 16px", flexShrink: 0 }}>
             {photos.map((p, i) => (
               <button key={p.id} onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
-                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid #d4a843" : "none" }}>
+                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid var(--accent)" : "none" }}>
                 {p.url && <img src={p.url} alt="" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />}
               </button>
             ))}

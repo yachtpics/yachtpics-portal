@@ -44,22 +44,22 @@ export default function DeleteAssistantButton({
   if (confirming) {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-gray-500">Delete {displayName}?</span>
+        <span className="text-xs text-ink-500">Delete {displayName}?</span>
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="text-xs font-semibold text-white bg-red-500 hover:bg-red-600 disabled:opacity-50 px-2.5 py-1 rounded-md transition-colors"
+          className="text-xs font-semibold text-white bg-danger-600 hover:bg-danger-500 disabled:opacity-50 px-2.5 py-1 rounded-md transition-colors duration-fast ease-quiet"
         >
           {deleting ? "Deleting…" : "Confirm"}
         </button>
         <button
           onClick={() => { setConfirming(false); setError(null); }}
           disabled={deleting}
-          className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+          className="text-xs text-ink-400 hover:text-ink-600 transition-colors duration-fast ease-quiet"
         >
           Cancel
         </button>
-        {error && <span className="text-xs text-red-500">{error}</span>}
+        {error && <span className="text-xs text-danger-600">{error}</span>}
       </div>
     );
   }
@@ -67,7 +67,7 @@ export default function DeleteAssistantButton({
   return (
     <button
       onClick={() => setConfirming(true)}
-      className="text-xs font-medium text-red-400 hover:text-red-600 transition-colors"
+      className="text-xs font-medium text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet"
     >
       Delete Account
     </button>

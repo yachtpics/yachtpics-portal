@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui";
 
 export default function OfficeBillingActions({ active }: { active: boolean }) {
   const [busy, setBusy] = useState(false);
@@ -23,23 +24,24 @@ export default function OfficeBillingActions({ active }: { active: boolean }) {
   return (
     <div>
       {active ? (
-        <button
+        <Button
+          variant="secondary"
           onClick={() => go("/api/brokerage/portal")}
           disabled={busy}
-          className="bg-white border border-gray-200 hover:border-[#d4a843] disabled:opacity-50 text-gray-700 text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
+          className="px-5"
         >
           {busy ? "Opening…" : "Manage billing & invoices"}
-        </button>
+        </Button>
       ) : (
-        <button
+        <Button
           onClick={() => go("/api/brokerage/checkout")}
           disabled={busy}
-          className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-6 py-2.5 rounded-lg transition-colors"
+          className="px-6"
         >
           {busy ? "Redirecting…" : "Start the Office plan — $249/mo"}
-        </button>
+        </Button>
       )}
-      {error && <p className="text-xs text-red-600 mt-2">{error}</p>}
+      {error && <p className="text-xs text-danger-600 mt-2">{error}</p>}
     </div>
   );
 }

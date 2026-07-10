@@ -129,28 +129,28 @@ export default function EditListingPage() {
     router.push(`/dashboard/listings/${id}`);
   }
 
-  const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-  const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
+  const inputClass = "w-full bg-white border border-hairline-strong text-ink-900 placeholder:text-ink-400 rounded-ctl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500/40 transition-colors duration-fast ease-quiet";
+  const labelClass = "block label-caps mb-1.5";
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-400 text-sm">Loading...</div>;
+  if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading...</div>;
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
-      <div className="mb-8">
-        <Link href={`/dashboard/listings/${id}`} className="text-gray-400 hover:text-gray-600 text-sm transition-colors">
+      <div className="mb-8 pb-6 border-b border-hairline">
+        <Link href={`/dashboard/listings/${id}`} className="text-ink-500 hover:text-ink-700 text-sm transition-colors duration-fast">
           ← Back to Listing
         </Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-1">Edit Listing</h1>
-        <p className="text-gray-500 mt-1 text-sm">Update the vessel details.</p>
+        <h1 className="text-display text-ink-900 mt-1">Edit Listing</h1>
+        <p className="text-ink-500 mt-1 text-sm">Update the vessel details.</p>
       </div>
 
       {error && (
-        <div className="mb-6 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-600">{error}</div>
+        <div className="mb-6 px-4 py-3 rounded-card border text-sm bg-danger-50 border-danger-200 text-danger-600">{error}</div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Vessel Information</h2>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-4">Vessel Information</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className={labelClass}>Vessel Name</label>
@@ -176,7 +176,7 @@ export default function EditListingPage() {
                     placeholder="Enter vessel type..."
                     className={inputClass} />
                   <button type="button" onClick={() => { setCustomVesselType(false); setForm({ ...form, vessel_type: "" }); }}
-                    className="text-gray-400 hover:text-gray-600 text-sm px-3 border border-gray-200 rounded-lg">✕</button>
+                    className="text-ink-500 hover:text-ink-700 text-sm px-3 border border-hairline-strong rounded-ctl transition-colors duration-fast">✕</button>
                 </div>
               )}
             </div>
@@ -205,7 +205,7 @@ export default function EditListingPage() {
               <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="North Palm Beach, FL" />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelClass}>Description <span className="text-gray-400 font-normal">(optional)</span></label>
+              <label className={labelClass}>Description <span className="text-ink-400 font-normal">(optional)</span></label>
               <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Key features, recent upgrades..." />
             </div>
             <div>
@@ -219,9 +219,9 @@ export default function EditListingPage() {
           </div>
         </section>
 
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">Specifications <span className="text-gray-400 font-normal text-sm">(optional)</span></h2>
-          <p className="text-gray-500 text-sm mb-4">These appear on the public listing and the printable flyer.</p>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-1">Specifications <span className="text-ink-400 font-normal text-sm">(optional)</span></h2>
+          <p className="text-ink-500 text-sm mb-4">These appear on the public listing and the printable flyer.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>Beam (ft)</label>
@@ -267,11 +267,11 @@ export default function EditListingPage() {
         </section>
 
         <div className="flex justify-end gap-3">
-          <Link href={`/dashboard/listings/${id}`} className="px-5 py-2.5 text-sm text-gray-600 hover:text-gray-900 transition-colors">
+          <Link href={`/dashboard/listings/${id}`} className="px-5 py-2.5 text-sm text-ink-600 hover:text-ink-900 transition-colors duration-fast">
             Cancel
           </Link>
           <button type="submit" disabled={saving}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm">
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2">
             {saving ? "Saving..." : "Save Changes"}
           </button>
         </div>

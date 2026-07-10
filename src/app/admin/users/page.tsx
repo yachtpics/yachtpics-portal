@@ -13,17 +13,17 @@ export default async function AdminUsersPage() {
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Admin Users</h1>
-        <p className="text-gray-500 text-sm mt-1">
+        <h1 className="text-display text-ink-900">Admin Users</h1>
+        <p className="text-ink-500 text-sm mt-1">
           Manage admin accounts. Use &ldquo;Set temp password&rdquo; if someone is locked out.
         </p>
       </div>
 
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden">
         {!admins || admins.length === 0 ? (
-          <div className="py-12 text-center text-gray-400 text-sm">No admin users found.</div>
+          <div className="py-12 text-center text-ink-400 text-sm">No admin users found.</div>
         ) : (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-hairline">
             {admins.map((admin) => {
               const name = admin.first_name
                 ? `${admin.first_name} ${admin.last_name ?? ""}`.trim()
@@ -36,10 +36,10 @@ export default async function AdminUsersPage() {
                 <li key={admin.id} className="px-6 py-5">
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900">{name}</p>
-                      <p className="text-sm text-gray-500 mt-0.5">{admin.display_email ?? "—"}</p>
+                      <p className="text-sm font-semibold text-ink-900">{name}</p>
+                      <p className="text-sm text-ink-500 mt-0.5">{admin.display_email ?? "—"}</p>
                       {joined && (
-                        <p className="text-xs text-gray-400 mt-1">Joined {joined}</p>
+                        <p className="text-xs text-ink-400 mt-1 tabular-nums">Joined {joined}</p>
                       )}
                     </div>
                     <div className="shrink-0 pt-0.5">

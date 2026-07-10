@@ -83,20 +83,20 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
   }
 
   const statusStyles: Record<string, string> = {
-    active: "bg-green-50 text-green-700 border-green-200",
-    expired: "bg-amber-50 text-amber-700 border-amber-200",
-    revoked: "bg-gray-100 text-gray-500 border-gray-200",
+    active: "bg-success-50 text-success-700 border-success-200",
+    expired: "bg-warn-50 text-warn-700 border-warn-200",
+    revoked: "bg-ink-100 text-ink-600 border-hairline",
   };
 
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6">
+    <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
       <div className="flex items-start justify-between gap-3 mb-1">
-        <h2 className="text-sm font-semibold text-gray-700">Public download links</h2>
-        <span className="text-[11px] text-gray-400 bg-gray-50 border border-gray-200 rounded-full px-2 py-0.5">
+        <h2 className="label-caps">Public download links</h2>
+        <span className="text-[11px] text-ink-500 bg-ink-50 border border-hairline rounded-full px-2 py-0.5">
           Admin only
         </span>
       </div>
-      <p className="text-xs text-gray-500 mb-4 max-w-xl">
+      <p className="text-xs text-ink-500 mb-4 max-w-xl">
         Generate a private link anyone can use to download these photos — no portal login required.
         Brokers can&apos;t create these; only admins. Each link is tracked and can be revoked anytime.
       </p>
@@ -104,20 +104,20 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
       {/* Create */}
       <div className="flex flex-wrap items-end gap-2 mb-4">
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-[11px] font-medium text-gray-400 mb-1">Label (optional)</label>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Label (optional)</label>
           <input
             value={label}
             onChange={(e) => setLabel(e.target.value)}
             placeholder="e.g. Surveyor, John at XYZ"
-            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+            className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
           />
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1">Expires</label>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Expires</label>
           <select
             value={expiryDays}
             onChange={(e) => setExpiryDays(Number(e.target.value))}
-            className="text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+            className="text-sm bg-white border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
           >
             {EXPIRY_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -127,31 +127,31 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
         <button
           onClick={createLink}
           disabled={creating}
-          className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
         >
           {creating ? "Creating…" : "Create link"}
         </button>
       </div>
-      {error && <p className="text-xs text-red-600 mb-3">{error}</p>}
+      {error && <p className="text-xs text-danger-600 mb-3">{error}</p>}
 
       {/* List */}
       {loading ? (
-        <p className="text-sm text-gray-400">Loading…</p>
+        <p className="text-sm text-ink-400">Loading…</p>
       ) : links.length === 0 ? (
-        <p className="text-sm text-gray-400">No download links yet.</p>
+        <p className="text-sm text-ink-400">No download links yet.</p>
       ) : (
         <div className="space-y-2">
           {links.map((link) => (
-            <div key={link.id} className="border border-gray-100 rounded-lg p-3">
+            <div key={link.id} className="border border-hairline rounded-ctl p-3">
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className={`text-[10px] font-semibold uppercase border rounded px-1.5 py-0.5 ${statusStyles[link.status]}`}>
                       {link.status}
                     </span>
-                    {link.label && <span className="text-sm font-medium text-gray-800 truncate">{link.label}</span>}
+                    {link.label && <span className="text-sm font-medium text-ink-800 truncate">{link.label}</span>}
                   </div>
-                  <p className="text-[11px] text-gray-400 mt-1">
+                  <p className="text-[11px] text-ink-500 mt-1 tabular-nums">
                     Created {fmtDate(link.created_at)}
                     {" · "}
                     {link.expires_at ? `expires ${fmtDate(link.expires_at)}` : "no expiry"}
@@ -164,19 +164,19 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
                     <>
                       <button
                         onClick={() => copyLink(link)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-300 transition-colors"
+                        className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 transition-colors duration-fast ease-quiet"
                       >
                         {copiedId === link.id ? "Copied ✓" : "Copy link"}
                       </button>
                       <button
                         onClick={() => setEmailOpenId(emailOpenId === link.id ? null : link.id)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:border-gray-300 transition-colors"
+                        className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 transition-colors duration-fast ease-quiet"
                       >
                         Email
                       </button>
                       <button
                         onClick={() => revokeLink(link.id)}
-                        className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 text-red-600 hover:border-red-300 transition-colors"
+                        className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-danger-600 hover:border-danger-300 transition-colors duration-fast ease-quiet"
                       >
                         Revoke
                       </button>
@@ -223,36 +223,36 @@ function EmailForm({ link, onDone }: { link: DownloadLink; onDone: () => void })
     }
   }
 
-  if (sent) return <p className="text-xs text-green-600 mt-3">Sent to {email} ✓</p>;
+  if (sent) return <p className="text-xs text-success-600 mt-3">Sent to {email} ✓</p>;
 
   return (
-    <div className="mt-3 pt-3 border-t border-gray-100 space-y-2">
+    <div className="mt-3 pt-3 border-t border-hairline space-y-2">
       <input
         type="email"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
         placeholder="recipient@email.com"
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]"
+        className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
       />
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}
         placeholder="Optional message…"
         rows={2}
-        className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843] resize-none"
+        className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 resize-none"
       />
-      {err && <p className="text-xs text-red-600">{err}</p>}
+      {err && <p className="text-xs text-danger-600">{err}</p>}
       <div className="flex gap-2">
         <button
           onClick={send}
           disabled={sending || !email}
-          className="bg-[#050b14] hover:bg-[#0c1626] disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors"
+          className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-xs font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
         >
           {sending ? "Sending…" : "Send link"}
         </button>
         <button
           onClick={onDone}
-          className="text-xs font-medium px-3 py-2 rounded-lg text-gray-500 hover:text-gray-700 transition-colors"
+          className="text-xs font-medium px-3 py-2 rounded-ctl text-ink-500 hover:text-ink-700 transition-colors duration-fast ease-quiet"
         >
           Cancel
         </button>

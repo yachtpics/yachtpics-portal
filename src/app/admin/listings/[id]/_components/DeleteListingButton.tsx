@@ -35,7 +35,7 @@ export default function DeleteListingButton({ listingId, vesselName, brokerId, r
     return (
       <button
         onClick={() => setConfirming(true)}
-        className="text-xs text-red-400 hover:text-red-600 transition-colors px-2"
+        className="text-xs text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet px-2"
       >
         Delete listing
       </button>
@@ -44,18 +44,18 @@ export default function DeleteListingButton({ listingId, vesselName, brokerId, r
 
   return (
     <div className="flex items-center gap-3">
-      {error && <p className="text-xs text-red-500">{error}</p>}
-      <p className="text-xs text-gray-500">Delete <strong>{vesselName ?? "this listing"}</strong> and all its photos?</p>
+      {error && <p className="text-xs text-danger-600">{error}</p>}
+      <p className="text-xs text-ink-500">Delete <strong>{vesselName ?? "this listing"}</strong> and all its photos?</p>
       <button
         onClick={handleDelete}
         disabled={loading}
-        className="text-xs font-semibold bg-red-500 hover:bg-red-600 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg transition-colors"
+        className="text-xs font-semibold bg-danger-600 hover:bg-danger-500 disabled:opacity-60 text-white px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
       >
         {loading ? "Deleting…" : "Yes, delete"}
       </button>
       <button
         onClick={() => setConfirming(false)}
-        className="text-xs text-gray-400 hover:text-gray-600 transition-colors"
+        className="text-xs text-ink-400 hover:text-ink-600 transition-colors duration-fast ease-quiet"
       >
         Cancel
       </button>

@@ -83,80 +83,80 @@ export default async function AdminPage() {
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Business Pulse</h1>
-        <p className="text-gray-500 mt-1 text-sm">How YachtPics Portal is doing today, at a glance.</p>
+        <h1 className="text-display text-ink-900">Business Pulse</h1>
+        <p className="text-ink-500 mt-1 text-sm">How YachtPics Portal is doing today, at a glance.</p>
       </div>
 
       {/* Revenue + conversion */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <div className="bg-[#050b14] text-white rounded-xl p-5">
-          <p className="text-gray-400 text-xs font-medium uppercase tracking-wide">Monthly Recurring</p>
-          <p className="text-3xl font-bold mt-1">{money(mrr)}</p>
-          <p className="text-gray-400 text-xs mt-1">{paying} paying {paying === 1 ? "broker" : "brokers"}</p>
+        <div className="bg-ink-950 text-white rounded-card p-5">
+          <p className="label-caps-inverse">Monthly Recurring</p>
+          <p className="text-3xl font-light tabular-nums mt-1">{money(mrr)}</p>
+          <p className="text-ink-400 text-xs mt-1">{paying} paying {paying === 1 ? "broker" : "brokers"}</p>
         </div>
-        <Link href="/admin/trials" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">On Trial</p>
-          <p className="text-3xl font-bold text-blue-700 mt-1">{onTrial}</p>
-          <p className="text-gray-400 text-xs mt-1">your conversion pipeline</p>
+        <Link href="/admin/trials" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+          <p className="label-caps">On Trial</p>
+          <p className="text-3xl font-light tabular-nums text-info-700 mt-1">{onTrial}</p>
+          <p className="text-ink-400 text-xs mt-1">your conversion pipeline</p>
         </Link>
-        <Link href="/admin/trials" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Expiring Soon</p>
-          <p className={`text-3xl font-bold mt-1 ${expiringSoon > 0 ? "text-amber-600" : "text-gray-900"}`}>{expiringSoon}</p>
-          <p className="text-gray-400 text-xs mt-1">{expired} expired, not subscribed</p>
+        <Link href="/admin/trials" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+          <p className="label-caps">Expiring Soon</p>
+          <p className={`text-3xl font-light tabular-nums mt-1 ${expiringSoon > 0 ? "text-warn-700" : "text-ink-900"}`}>{expiringSoon}</p>
+          <p className="text-ink-400 text-xs mt-1">{expired} expired, not subscribed</p>
         </Link>
-        <Link href="/admin/shoots" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Unpaid Invoices</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{money(Math.round(pendingCents / 100))}</p>
-          <p className="text-gray-400 text-xs mt-1">{pendingCount} pending</p>
+        <Link href="/admin/shoots" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+          <p className="label-caps">Unpaid Invoices</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{money(Math.round(pendingCents / 100))}</p>
+          <p className="text-ink-400 text-xs mt-1">{pendingCount} pending</p>
         </Link>
       </div>
 
       {/* Operational + engagement */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        <Link href="/admin/brokers" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Brokers</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{brokerCount}</p>
+        <Link href="/admin/brokers" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+          <p className="label-caps">Brokers</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{brokerCount}</p>
         </Link>
-        <Link href="/admin/listings" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Listings</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{listingCount ?? 0}</p>
+        <Link href="/admin/listings" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+          <p className="label-caps">Listings</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{listingCount ?? 0}</p>
         </Link>
-        <Link href="/admin/metrics" className="bg-white border border-gray-200 rounded-xl p-5 hover:border-[#d4a843] transition-colors">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Buyer Views (30d)</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{views30 ?? 0}</p>
-          <p className="text-gray-400 text-xs mt-1">{sends30 ?? 0} sent to clients</p>
+        <Link href="/admin/metrics" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+          <p className="label-caps">Buyer Views (30d)</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{views30 ?? 0}</p>
+          <p className="text-ink-400 text-xs mt-1">{sends30 ?? 0} sent to clients</p>
         </Link>
-        <div className="bg-white border border-gray-200 rounded-xl p-5">
-          <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">Storage</p>
-          <p className="text-3xl font-bold text-gray-900 mt-1">{usedGB.toFixed(1)}<span className="text-base font-medium text-gray-400"> / {INCLUDED_GB} GB</span></p>
-          <div className="mt-2 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${storagePct > 85 ? "bg-red-500" : storagePct > 60 ? "bg-amber-500" : "bg-[#d4a843]"}`} style={{ width: `${storagePct}%` }} />
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+          <p className="label-caps">Storage</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{usedGB.toFixed(1)}<span className="text-base font-medium text-ink-400"> / {INCLUDED_GB} GB</span></p>
+          <div className="mt-2 h-1.5 bg-ink-100 rounded-full overflow-hidden">
+            <div className={`h-full rounded-full ${storagePct > 85 ? "bg-danger-500" : storagePct > 60 ? "bg-warn-300" : "bg-accent-500"}`} style={{ width: `${storagePct}%` }} />
           </div>
         </div>
       </div>
 
       {/* Quick actions */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 mt-8">
-        <Link href="/admin/listings/new" className="bg-[#050b14] hover:bg-[#0a1628] text-white rounded-xl p-5 transition-colors">
+        <Link href="/admin/listings/new" className="bg-ink-950 hover:bg-ink-800 text-white rounded-card p-5 transition-colors duration-fast ease-quiet">
           <div className="text-2xl mb-2">➕</div>
           <h3 className="font-semibold mb-1">New Listing</h3>
-          <p className="text-gray-400 text-sm">Create a listing and upload photos for a broker.</p>
+          <p className="text-ink-400 text-sm">Create a listing and upload photos for a broker.</p>
         </Link>
-        <Link href="/admin/shoots/new" className="bg-[#050b14] hover:bg-[#0a1628] text-white rounded-xl p-5 transition-colors">
+        <Link href="/admin/shoots/new" className="bg-ink-950 hover:bg-ink-800 text-white rounded-card p-5 transition-colors duration-fast ease-quiet">
           <div className="text-2xl mb-2">📄</div>
           <h3 className="font-semibold mb-1">New Invoice</h3>
-          <p className="text-gray-400 text-sm">Log a shoot and create an invoice for a broker.</p>
+          <p className="text-ink-400 text-sm">Log a shoot and create an invoice for a broker.</p>
         </Link>
       </div>
 
       {/* Recent shoots */}
-      <div className="bg-white border border-gray-200 rounded-xl">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Recent Shoots</h2>
-          <Link href="/admin/shoots" className="text-[#c49a35] hover:text-[#b08c2a] text-sm font-medium">View all →</Link>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+          <h2 className="text-h2 text-ink-900">Recent Shoots</h2>
+          <Link href="/admin/shoots" className="text-accent-700 hover:text-accent-800 text-sm font-medium">View all →</Link>
         </div>
         {recentShoots && recentShoots.length > 0 ? (
-          <ul className="divide-y divide-gray-100">
+          <ul className="divide-y divide-hairline">
             {recentShoots.map((shoot) => {
               const brokerArr = shoot.profiles as { first_name: string | null; last_name: string | null }[] | null;
               const broker = Array.isArray(brokerArr) ? brokerArr[0] : brokerArr;
@@ -168,17 +168,17 @@ export default async function AdminPage() {
               return (
                 <li key={shoot.id} className="px-6 py-4 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-gray-900">
+                    <p className="text-sm font-medium text-ink-900">
                       {broker ? `${broker.first_name ?? ""} ${broker.last_name ?? ""}`.trim() : "Unknown broker"}
                     </p>
-                    <p className="text-xs text-gray-400 mt-0.5">{listing?.vessel_name ?? "No vessel"}</p>
+                    <p className="text-xs text-ink-500 mt-0.5">{listing?.vessel_name ?? "No vessel"}</p>
                   </div>
                   <div className="flex items-center gap-4">
-                    <p className="text-sm font-medium text-gray-900">{amount}</p>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${
-                      shoot.payment_status === "paid" ? "bg-green-50 text-green-700"
-                      : shoot.payment_status === "cancelled" ? "bg-gray-100 text-gray-500"
-                      : "bg-yellow-50 text-yellow-700"
+                    <p className="text-sm font-medium text-ink-900 tabular-nums">{amount}</p>
+                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
+                      shoot.payment_status === "paid" ? "bg-success-50 text-success-700 border-success-200"
+                      : shoot.payment_status === "cancelled" ? "bg-ink-100 text-ink-600 border-hairline"
+                      : "bg-warn-50 text-warn-700 border-warn-200"
                     }`}>
                       {shoot.payment_status}
                     </span>
@@ -188,7 +188,7 @@ export default async function AdminPage() {
             })}
           </ul>
         ) : (
-          <div className="text-center py-10 text-gray-400 text-sm">No shoots yet.</div>
+          <div className="text-center py-10 text-ink-400 text-sm">No shoots yet.</div>
         )}
       </div>
     </div>

@@ -106,10 +106,10 @@ export default async function BrokerageHelpPage() {
     <div className="px-6 py-8 max-w-4xl mx-auto">
 
       {/* Header */}
-      <div className="mb-10">
-        <Link href="/dashboard/brokerage" className="text-gray-400 hover:text-gray-600 text-sm transition-colors">← Brokerage</Link>
-        <h1 className="text-2xl font-bold text-gray-900 mt-1">Brokerage Admin Guide</h1>
-        <p className="text-gray-500 mt-1 text-sm">
+      <div className="mb-10 pb-6 border-b border-hairline">
+        <Link href="/dashboard/brokerage" className="text-ink-500 hover:text-ink-700 text-sm transition-colors duration-fast">← Brokerage</Link>
+        <h1 className="text-display text-ink-900 mt-1">Brokerage Admin Guide</h1>
+        <p className="text-ink-500 mt-1 text-sm">
           How to manage your team and control which inventory your brokers can see.
         </p>
       </div>
@@ -117,17 +117,17 @@ export default async function BrokerageHelpPage() {
       {/* Section cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
         {sections.map((s) => (
-          <div key={s.num} className="bg-white border border-gray-200 rounded-xl p-5">
+          <div key={s.num} className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs font-bold text-[#d4a843] bg-[#d4a843]/10 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-accent-700 bg-accent-50 px-2 py-0.5 rounded-full">
                 {s.num}
               </span>
-              <h2 className="font-semibold text-gray-900 text-sm">{s.title}</h2>
+              <h2 className="font-semibold text-ink-900 text-sm">{s.title}</h2>
             </div>
             <ol className="space-y-1.5">
               {s.steps.map((step, i) => (
-                <li key={i} className="flex gap-2 text-xs text-gray-600 leading-relaxed">
-                  <span className="text-[#d4a843] font-bold shrink-0 mt-px">{i + 1}.</span>
+                <li key={i} className="flex gap-2 text-xs text-ink-600 leading-relaxed">
+                  <span className="text-accent-700 font-bold shrink-0 mt-px">{i + 1}.</span>
                   {step}
                 </li>
               ))}
@@ -137,16 +137,16 @@ export default async function BrokerageHelpPage() {
       </div>
 
       {/* Quick reference table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-10">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Quick Reference</h2>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden mb-10">
+        <div className="px-6 py-4 border-b border-hairline">
+          <h2 className="label-caps">Quick Reference</h2>
         </div>
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-hairline">
             {quickRef.map(([task, where], i) => (
-              <tr key={i} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-3 text-gray-700 font-medium text-xs w-1/2">{task}</td>
-                <td className="px-6 py-3 text-gray-400 text-xs">{where}</td>
+              <tr key={i} className="hover:bg-ink-50 transition-colors duration-fast">
+                <td className="px-6 py-3 text-ink-700 font-medium text-xs w-1/2">{task}</td>
+                <td className="px-6 py-3 text-ink-500 text-xs">{where}</td>
               </tr>
             ))}
           </tbody>
@@ -154,11 +154,11 @@ export default async function BrokerageHelpPage() {
       </div>
 
       {/* Contact */}
-      <div className="bg-[#d4a843]/10 border border-[#d4a843]/30 rounded-xl px-6 py-5">
-        <p className="text-sm font-semibold text-gray-900 mb-1">Need a hand?</p>
-        <p className="text-gray-500 text-xs leading-relaxed">
+      <div className="bg-accent-50 border border-accent-200 rounded-card px-6 py-5">
+        <p className="text-sm font-semibold text-ink-900 mb-1">Need a hand?</p>
+        <p className="text-ink-600 text-xs leading-relaxed">
           Reach out to your YachtPics rep directly at{" "}
-          <a href="mailto:charlie@yachtpics.com" className="text-[#c49a35] hover:underline font-medium">
+          <a href="mailto:charlie@yachtpics.com" className="text-accent-700 hover:underline font-medium">
             charlie@yachtpics.com
           </a>
           . We typically respond same day.

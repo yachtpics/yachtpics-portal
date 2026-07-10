@@ -50,18 +50,18 @@ export default function ResendInviteButton({ brokerId }: { brokerId: string }) {
   if (status === "sent" && tempPassword) {
     return (
       <div className="flex flex-col gap-1.5 py-1">
-        <span className="text-xs text-green-600 font-medium">Done &mdash; new login details sent</span>
-        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-          <span className="text-xs text-gray-500">Temp password:</span>
-          <span className="font-mono text-sm font-semibold text-gray-900">{tempPassword}</span>
+        <span className="text-xs text-success-600 font-medium">Done &mdash; new login details sent</span>
+        <div className="flex items-center gap-2 bg-warn-50 border border-warn-200 rounded-ctl px-3 py-2">
+          <span className="text-xs text-ink-500">Temp password:</span>
+          <span className="font-mono text-sm font-semibold text-ink-900">{tempPassword}</span>
           <button
             onClick={handleCopy}
-            className="text-xs text-[#c49a35] hover:text-[#b08c2a] transition-colors ml-1"
+            className="text-xs text-accent-700 hover:text-accent-800 transition-colors duration-fast ease-quiet ml-1"
           >
             {copied ? "Copied!" : "Copy"}
           </button>
         </div>
-        <button onClick={handleDismiss} className="text-xs text-gray-400 hover:text-gray-600 text-left">
+        <button onClick={handleDismiss} className="text-xs text-ink-400 hover:text-ink-600 text-left">
           Dismiss
         </button>
       </div>
@@ -71,8 +71,8 @@ export default function ResendInviteButton({ brokerId }: { brokerId: string }) {
   if (status === "error") {
     return (
       <div className="flex items-center gap-2">
-        <span className="text-xs text-red-500">{message}</span>
-        <button onClick={handleDismiss} className="text-xs text-gray-400 hover:text-gray-600">
+        <span className="text-xs text-danger-600">{message}</span>
+        <button onClick={handleDismiss} className="text-xs text-ink-400 hover:text-ink-600">
           Dismiss
         </button>
       </div>
@@ -83,7 +83,7 @@ export default function ResendInviteButton({ brokerId }: { brokerId: string }) {
     <button
       onClick={handleResend}
       disabled={status === "loading"}
-      className="text-xs text-[#c49a35] hover:text-[#b08c2a] transition-colors disabled:opacity-50"
+      className="text-xs text-accent-700 hover:text-accent-800 transition-colors duration-fast ease-quiet disabled:opacity-50"
     >
       {status === "loading" ? "Sending..." : "Resend login details"}
     </button>

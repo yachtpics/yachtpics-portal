@@ -145,10 +145,10 @@ export default async function MetricsPage() {
   }
 
   function activityBadge(days: number | null) {
-    if (days === null) return <span className="text-xs text-gray-300">Never</span>;
-    if (days <= 7) return <span className="text-xs font-medium text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Active</span>;
-    if (days <= 30) return <span className="text-xs font-medium text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">{days}d ago</span>;
-    return <span className="text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{days}d ago</span>;
+    if (days === null) return <span className="text-xs text-ink-400">Never</span>;
+    if (days <= 7) return <span className="text-xs font-medium text-success-600 bg-success-50 px-2 py-0.5 rounded-full">Active</span>;
+    if (days <= 30) return <span className="text-xs font-medium text-warn-700 bg-warn-50 px-2 py-0.5 rounded-full tabular-nums">{days}d ago</span>;
+    return <span className="text-xs font-medium text-ink-500 bg-ink-100 px-2 py-0.5 rounded-full tabular-nums">{days}d ago</span>;
   }
 
   // Platform totals
@@ -162,8 +162,8 @@ export default async function MetricsPage() {
   return (
     <div className="px-6 py-8 max-w-6xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">Metrics</h1>
-        <p className="text-gray-500 mt-1 text-sm">Platform activity across brokers and assistants.</p>
+        <h1 className="text-display text-ink-900">Metrics</h1>
+        <p className="text-ink-500 mt-1 text-sm">Platform activity across brokers and assistants.</p>
       </div>
 
       {/* Platform totals */}
@@ -176,62 +176,62 @@ export default async function MetricsPage() {
           { label: "Emails Sent", value: totalEmails },
           { label: "Broker Uploads", value: totalSelfUploads, note: "Broker-uploaded photos" },
         ].map((stat) => (
-          <div key={stat.label} className="bg-white border border-gray-200 rounded-xl p-4">
-            <p className="text-gray-500 text-xs font-medium uppercase tracking-wide">{stat.label}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{stat.value}</p>
-            {stat.note && <p className="text-xs text-gray-400 mt-0.5">{stat.note}</p>}
+          <div key={stat.label} className="bg-white border border-hairline rounded-card shadow-elev-1 p-4">
+            <p className="label-caps">{stat.label}</p>
+            <p className="text-2xl font-light tabular-nums text-ink-900 mt-1">{stat.value}</p>
+            {stat.note && <p className="text-xs text-ink-400 mt-0.5">{stat.note}</p>}
           </div>
         ))}
       </div>
 
       {/* Per-broker table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-8">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900">Broker Activity</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Sorted by most recently active. Sends column split by who sent — broker vs assistant.</p>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden mb-8">
+        <div className="px-6 py-4 border-b border-hairline">
+          <h2 className="text-h2 text-ink-900">Broker Activity</h2>
+          <p className="text-xs text-ink-500 mt-0.5">Sorted by most recently active. Sends column split by who sent — broker vs assistant.</p>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Login</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Listings</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Broker Upload</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Slideshows</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Views</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sends</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Send</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Joined</th>
+              <tr className="border-b border-hairline bg-ink-50">
+                <th className="text-left px-6 py-3 label-caps">Broker</th>
+                <th className="text-left px-4 py-3 label-caps">Last Login</th>
+                <th className="text-center px-4 py-3 label-caps">Listings</th>
+                <th className="text-center px-4 py-3 label-caps">Broker Upload</th>
+                <th className="text-center px-4 py-3 label-caps">Slideshows</th>
+                <th className="text-center px-4 py-3 label-caps">Views</th>
+                <th className="text-center px-4 py-3 label-caps">Sends</th>
+                <th className="text-left px-4 py-3 label-caps">Last Send</th>
+                <th className="text-left px-4 py-3 label-caps">Joined</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {brokerStats.map((b) => (
-                <tr key={b.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={b.id} className="hover:bg-ink-50 transition-colors duration-fast ease-quiet">
                   <td className="px-6 py-4">
-                    <a href={`/admin/brokers/${b.id}`} className="font-medium text-gray-900 hover:text-[#c49a35] transition-colors">
+                    <a href={`/admin/brokers/${b.id}`} className="font-medium text-ink-900 hover:text-accent-700 transition-colors duration-fast ease-quiet">
                       {b.name}
                     </a>
-                    <p className="text-xs text-gray-400 mt-0.5">{b.email}</p>
+                    <p className="text-xs text-ink-400 mt-0.5">{b.email}</p>
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex flex-col gap-1">
                       {activityBadge(b.daysSinceLogin)}
-                      <span className="text-xs text-gray-400">{fmtDate(b.lastSignIn)}</span>
+                      <span className="text-xs text-ink-400 tabular-nums">{fmtDate(b.lastSignIn)}</span>
                     </div>
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className="font-medium text-gray-900">{b.listingCount}</span>
+                    <span className="font-medium text-ink-900 tabular-nums">{b.listingCount}</span>
                   </td>
                   <td className="px-4 py-4 text-center">
                     {b.selfUploadCount === 0 ? (
-                      <span className="font-medium text-sm text-gray-300">—</span>
+                      <span className="font-medium text-sm text-ink-300">—</span>
                     ) : (
                       <div className="flex flex-col items-center gap-1">
-                        <span className="font-semibold text-sm text-amber-600">{b.selfUploadCount}</span>
+                        <span className="font-semibold text-sm text-warn-700 tabular-nums">{b.selfUploadCount}</span>
                         <div className="flex flex-col gap-0.5">
                           {b.selfUploadListings.map((l) => (
-                            <a key={l.id} href={`/admin/listings/${l.id}`} className="text-xs text-amber-500 hover:text-amber-700 hover:underline transition-colors leading-tight">
+                            <a key={l.id} href={`/admin/listings/${l.id}`} className="text-xs text-warn-700 hover:text-warn-800 hover:underline transition-colors duration-fast ease-quiet leading-tight">
                               {l.name}
                             </a>
                           ))}
@@ -240,47 +240,47 @@ export default async function MetricsPage() {
                     )}
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className={`font-medium ${b.publishedSlideshows > 0 ? "text-green-600" : "text-gray-300"}`}>
+                    <span className={`font-medium tabular-nums ${b.publishedSlideshows > 0 ? "text-success-600" : "text-ink-300"}`}>
                       {b.publishedSlideshows}
                     </span>
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className={`font-medium ${b.slideshowViews > 0 ? "text-[#c49a35]" : "text-gray-300"}`}>
+                    <span className={`font-medium tabular-nums ${b.slideshowViews > 0 ? "text-accent-700" : "text-ink-300"}`}>
                       {b.slideshowViews}
                     </span>
                   </td>
                   <td className="px-4 py-4 text-center">
                     {b.emailsSent === 0 ? (
-                      <span className="text-gray-300 font-medium">0</span>
+                      <span className="text-ink-300 font-medium tabular-nums">0</span>
                     ) : (
                       <div className="flex flex-col items-center gap-0.5">
-                        <span className="font-semibold text-gray-900">{b.emailsSent}</span>
+                        <span className="font-semibold text-ink-900 tabular-nums">{b.emailsSent}</span>
                         {b.assistantSentCount > 0 && (
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-ink-400 tabular-nums">
                             {b.brokerSentCount}b / {b.assistantSentCount}a
                           </span>
                         )}
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-xs text-gray-400">{fmtDate(b.lastSend)}</td>
-                  <td className="px-4 py-4 text-xs text-gray-400">{fmtDate(b.joinedAt)}</td>
+                  <td className="px-4 py-4 text-xs text-ink-400 tabular-nums">{fmtDate(b.lastSend)}</td>
+                  <td className="px-4 py-4 text-xs text-ink-400 tabular-nums">{fmtDate(b.joinedAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {brokerStats.length === 0 && (
-            <div className="py-12 text-center text-gray-400 text-sm">No brokers yet.</div>
+            <div className="py-12 text-center text-ink-400 text-sm">No brokers yet.</div>
           )}
         </div>
       </div>
 
       {/* Assistant activity table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden">
+        <div className="px-6 py-4 border-b border-hairline flex items-center justify-between">
           <div>
-            <h2 className="font-semibold text-gray-900">Assistant Activity</h2>
-            <p className="text-xs text-gray-400 mt-0.5">
+            <h2 className="text-h2 text-ink-900">Assistant Activity</h2>
+            <p className="text-xs text-ink-500 mt-0.5">
               {assistantStats.length} assistant{assistantStats.length !== 1 ? "s" : ""} · {activeAssistantsThisWeek} active this week
             </p>
           </div>
@@ -288,44 +288,44 @@ export default async function MetricsPage() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50">
-                <th className="text-left px-6 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Assistant</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Last Login</th>
-                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Sends</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Linked Brokers</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wide">Joined</th>
+              <tr className="border-b border-hairline bg-ink-50">
+                <th className="text-left px-6 py-3 label-caps">Assistant</th>
+                <th className="text-left px-4 py-3 label-caps">Last Login</th>
+                <th className="text-center px-4 py-3 label-caps">Sends</th>
+                <th className="text-left px-4 py-3 label-caps">Linked Brokers</th>
+                <th className="text-left px-4 py-3 label-caps">Joined</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-hairline">
               {assistantStats.map((a) => (
-                <tr key={a.id} className="hover:bg-gray-50 transition-colors">
+                <tr key={a.id} className="hover:bg-ink-50 transition-colors duration-fast ease-quiet">
                   <td className="px-6 py-4">
-                    <a href={`/admin/assistants/${a.id}`} className="font-medium text-gray-900 hover:text-[#c49a35] transition-colors">
+                    <a href={`/admin/assistants/${a.id}`} className="font-medium text-ink-900 hover:text-accent-700 transition-colors duration-fast ease-quiet">
                       {a.name}
                     </a>
-                    <p className="text-xs text-gray-400 mt-0.5">{a.email}</p>
+                    <p className="text-xs text-ink-400 mt-0.5">{a.email}</p>
                   </td>
                   <td className="px-4 py-4">
                     <div className="flex flex-col gap-1">
                       {activityBadge(a.daysSinceLogin)}
-                      <span className="text-xs text-gray-400">{fmtDate(a.lastSignIn)}</span>
+                      <span className="text-xs text-ink-400 tabular-nums">{fmtDate(a.lastSignIn)}</span>
                     </div>
                   </td>
                   <td className="px-4 py-4 text-center">
-                    <span className={`font-medium ${a.sendCount > 0 ? "text-gray-900" : "text-gray-300"}`}>
+                    <span className={`font-medium tabular-nums ${a.sendCount > 0 ? "text-ink-900" : "text-ink-300"}`}>
                       {a.sendCount}
                     </span>
                   </td>
-                  <td className="px-4 py-4 text-xs text-gray-500">
+                  <td className="px-4 py-4 text-xs text-ink-500">
                     {a.linkedBrokers.length === 0 ? "—" : a.linkedBrokers.join(", ")}
                   </td>
-                  <td className="px-4 py-4 text-xs text-gray-400">{fmtDate(a.joinedAt)}</td>
+                  <td className="px-4 py-4 text-xs text-ink-400 tabular-nums">{fmtDate(a.joinedAt)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {assistantStats.length === 0 && (
-            <div className="py-12 text-center text-gray-400 text-sm">No assistants yet.</div>
+            <div className="py-12 text-center text-ink-400 text-sm">No assistants yet.</div>
           )}
         </div>
       </div>

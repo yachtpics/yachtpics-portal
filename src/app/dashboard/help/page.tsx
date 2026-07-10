@@ -139,25 +139,25 @@ export default function HelpPage() {
     <div className="px-6 py-8 max-w-4xl mx-auto">
 
       {/* Header */}
-      <div className="mb-10">
-        <h1 className="text-2xl font-bold text-gray-900">Help &amp; User Guide</h1>
-        <p className="text-gray-500 mt-1 text-sm">
+      <div className="mb-10 pb-6 border-b border-hairline">
+        <h1 className="text-display text-ink-900">Help &amp; User Guide</h1>
+        <p className="text-ink-500 mt-1 text-sm">
           Everything you need to get up and running with the YachtPics Portal.
         </p>
       </div>
 
       {/* Download banner */}
-      <div className="bg-[#050b14] rounded-xl px-6 py-5 flex items-center justify-between mb-10 gap-4 flex-wrap">
+      <div className="bg-ink-950 rounded-card px-6 py-5 flex items-center justify-between mb-10 gap-4 flex-wrap">
         <div>
           <p className="text-white font-semibold text-sm">Full User Guide (PDF)</p>
-          <p className="text-gray-400 text-xs mt-0.5">
+          <p className="text-ink-300 text-xs mt-0.5">
             A complete walkthrough of every feature &mdash; great to keep on file or share with your team.
           </p>
         </div>
         <a
           href="/YachtPics_Portal_User_Guide.pdf"
           download
-          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors whitespace-nowrap"
+          className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-5 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
         >
           Download Guide &darr;
         </a>
@@ -166,17 +166,17 @@ export default function HelpPage() {
       {/* Section cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
         {sections.map((s) => (
-          <div key={s.num} className="bg-white border border-gray-200 rounded-xl p-5">
+          <div key={s.num} className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
             <div className="flex items-center gap-3 mb-3">
-              <span className="text-xs font-bold text-[#d4a843] bg-[#d4a843]/10 px-2 py-0.5 rounded-full">
+              <span className="text-xs font-bold text-accent-700 bg-accent-50 px-2 py-0.5 rounded-full">
                 {s.num}
               </span>
-              <h2 className="font-semibold text-gray-900 text-sm">{s.title}</h2>
+              <h2 className="font-semibold text-ink-900 text-sm">{s.title}</h2>
             </div>
             <ol className="space-y-1.5">
               {s.steps.map((step, i) => (
-                <li key={i} className="flex gap-2 text-xs text-gray-600 leading-relaxed">
-                  <span className="text-[#d4a843] font-bold shrink-0 mt-px">{i + 1}.</span>
+                <li key={i} className="flex gap-2 text-xs text-ink-600 leading-relaxed">
+                  <span className="text-accent-700 font-bold shrink-0 mt-px">{i + 1}.</span>
                   {step}
                 </li>
               ))}
@@ -186,16 +186,16 @@ export default function HelpPage() {
       </div>
 
       {/* Quick reference table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden mb-10">
-        <div className="px-6 py-4 border-b border-gray-100">
-          <h2 className="font-semibold text-gray-900 text-sm">Quick Reference</h2>
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden mb-10">
+        <div className="px-6 py-4 border-b border-hairline">
+          <h2 className="label-caps">Quick Reference</h2>
         </div>
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-hairline">
             {quickRef.map(([task, where], i) => (
-              <tr key={i} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-3 text-gray-700 font-medium text-xs w-1/2">{task}</td>
-                <td className="px-6 py-3 text-gray-400 text-xs">{where}</td>
+              <tr key={i} className="hover:bg-ink-50 transition-colors duration-fast">
+                <td className="px-6 py-3 text-ink-700 font-medium text-xs w-1/2">{task}</td>
+                <td className="px-6 py-3 text-ink-500 text-xs">{where}</td>
               </tr>
             ))}
           </tbody>
@@ -203,11 +203,11 @@ export default function HelpPage() {
       </div>
 
       {/* Contact */}
-      <div className="bg-[#d4a843]/10 border border-[#d4a843]/30 rounded-xl px-6 py-5 mb-4">
-        <p className="text-sm font-semibold text-gray-900 mb-1">Still have questions?</p>
-        <p className="text-gray-500 text-xs leading-relaxed">
+      <div className="bg-accent-50 border border-accent-200 rounded-card px-6 py-5 mb-4">
+        <p className="text-sm font-semibold text-ink-900 mb-1">Still have questions?</p>
+        <p className="text-ink-600 text-xs leading-relaxed">
           Reach out to your YachtPics rep directly at{" "}
-          <a href="mailto:charlie@yachtpics.com" className="text-[#c49a35] hover:underline font-medium">
+          <a href="mailto:charlie@yachtpics.com" className="text-accent-700 hover:underline font-medium">
             charlie@yachtpics.com
           </a>
           . We typically respond same day.
@@ -215,13 +215,13 @@ export default function HelpPage() {
       </div>
 
       {/* Copyright / DMCA */}
-      <div className="bg-white border border-gray-200 rounded-xl px-6 py-5">
-        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Copyright &amp; Content</p>
-        <p className="text-gray-500 text-xs leading-relaxed">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 px-6 py-5">
+        <p className="label-caps mb-2">Copyright &amp; Content</p>
+        <p className="text-ink-600 text-xs leading-relaxed">
           All content uploaded to the YachtPics Portal must be owned by you or used with the copyright
           holder&apos;s permission. If you believe content on this platform infringes your copyright,
           please submit a takedown request to{" "}
-          <a href="mailto:dmca@yachtpics.com" className="text-[#c49a35] hover:underline font-medium">
+          <a href="mailto:dmca@yachtpics.com" className="text-accent-700 hover:underline font-medium">
             dmca@yachtpics.com
           </a>
           {" "}with a description of the work, the location of the infringing material, and your contact

@@ -144,8 +144,8 @@ export default function NewListingPage() {
     }
   }
 
-  const inputClass = "w-full bg-white border border-gray-200 text-gray-900 placeholder-gray-400 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-[#d4a843] transition-colors";
-  const labelClass = "block text-gray-700 text-sm font-medium mb-1.5";
+  const inputClass = "w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-400 rounded-ctl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 transition-colors duration-fast ease-quiet";
+  const labelClass = "block label-caps mb-1.5";
 
   const preselectedBroker = brokers.find((b) => b.id === preselectedBrokerId);
   const preselectedBrokerName = preselectedBroker?.first_name
@@ -156,8 +156,8 @@ export default function NewListingPage() {
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-gray-900">New Listing</h1>
-        <p className="text-gray-500 mt-1 text-sm">
+        <h1 className="text-display text-ink-900">New Listing</h1>
+        <p className="text-ink-500 mt-1 text-sm">
           {fromInvite
             ? "Invite sent. Now create their listing and upload photos — the broker will be notified automatically when you save."
             : "Create a listing and upload photos for a broker."}
@@ -165,11 +165,11 @@ export default function NewListingPage() {
       </div>
 
       {fromInvite && (
-        <div className="mb-6 flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl px-5 py-4">
-          <span className="text-green-500 text-lg leading-none mt-0.5">✓</span>
+        <div className="mb-6 flex items-start gap-3 bg-success-50 border border-success-200 rounded-card px-5 py-4">
+          <span className="text-success-600 text-lg leading-none mt-0.5">✓</span>
           <div>
-            <p className="text-sm font-semibold text-green-800">Invite sent successfully</p>
-            <p className="text-sm text-green-700 mt-0.5">
+            <p className="text-sm font-semibold text-success-700">Invite sent successfully</p>
+            <p className="text-sm text-success-700 mt-0.5">
               The broker will receive a second email when you save this listing confirming their photos are ready.
             </p>
           </div>
@@ -177,21 +177,21 @@ export default function NewListingPage() {
       )}
 
       {error && (
-        <div className="mb-6 px-4 py-3 rounded-lg text-sm bg-red-50 border border-red-200 text-red-600">{error}</div>
+        <div className="mb-6 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-600">{error}</div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Broker */}
         {preselectedBrokerId ? (
-          <section className="bg-white border border-gray-200 rounded-xl p-6">
-            <h2 className="font-semibold text-gray-900 mb-1">Broker</h2>
-            <p className="text-gray-700 text-sm">
+          <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+            <h2 className="text-h2 text-ink-900 mb-1">Broker</h2>
+            <p className="text-ink-700 text-sm">
               {preselectedBrokerName}{preselectedBrokerage ? ` — ${preselectedBrokerage}` : ""}
             </p>
           </section>
         ) : (
-          <section className="bg-white border border-gray-200 rounded-xl p-6">
-            <h2 className="font-semibold text-gray-900 mb-4">Broker</h2>
+          <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+            <h2 className="text-h2 text-ink-900 mb-4">Broker</h2>
             <div>
               <label className={labelClass}>Select Broker *</label>
               <select
@@ -216,8 +216,8 @@ export default function NewListingPage() {
         )}
 
         {/* Vessel Info */}
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="font-semibold text-gray-900 mb-4">Vessel Information</h2>
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-4">Vessel Information</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
               <label className={labelClass}>Vessel Name</label>
@@ -243,7 +243,7 @@ export default function NewListingPage() {
                     placeholder="Enter vessel type..."
                     className={inputClass} />
                   <button type="button" onClick={() => { setCustomVesselType(false); setForm({ ...form, vessel_type: "" }); }}
-                    className="text-gray-400 hover:text-gray-600 text-sm px-3 border border-gray-200 rounded-lg">✕</button>
+                    className="text-ink-400 hover:text-ink-600 text-sm px-3 border border-hairline-strong rounded-ctl">✕</button>
                 </div>
               )}
             </div>
@@ -272,16 +272,16 @@ export default function NewListingPage() {
               <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelClass}>Description <span className="text-gray-400 font-normal">(optional)</span></label>
+              <label className={labelClass}>Description <span className="text-ink-400 normal-case font-normal tracking-normal">(optional)</span></label>
               <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
           </div>
         </section>
 
         {/* Photos */}
-        <section className="bg-white border border-gray-200 rounded-xl p-6">
-          <h2 className="font-semibold text-gray-900 mb-1">Photos</h2>
-          <p className="text-gray-500 text-sm mb-4">
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-1">Photos</h2>
+          <p className="text-ink-500 text-sm mb-4">
             {fromInvite
               ? "Upload their photos here — the broker will be notified automatically when you save."
               : "Drag files in or click to select. Categories are auto-detected from filenames."}
@@ -291,10 +291,10 @@ export default function NewListingPage() {
             onClick={() => fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
             onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
-            className="border-2 border-dashed border-gray-200 rounded-xl p-8 text-center cursor-pointer hover:border-[#d4a843] transition-colors mb-4"
+            className="border-2 border-dashed border-ink-200 rounded-card p-8 text-center cursor-pointer hover:border-accent-500 transition-colors duration-fast ease-quiet mb-4"
           >
-            <p className="text-gray-400 text-sm">Click or drag photos here</p>
-            <p className="text-gray-300 text-xs mt-1">JPG, PNG, WEBP</p>
+            <p className="text-ink-400 text-sm">Click or drag photos here</p>
+            <p className="text-ink-300 text-xs mt-1">JPG, PNG, WEBP</p>
             <input
               ref={fileInputRef}
               type="file"
@@ -308,7 +308,7 @@ export default function NewListingPage() {
           {photos.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {photos.map((photo, i) => (
-                <div key={i} className="relative group rounded-lg overflow-hidden border border-gray-200">
+                <div key={i} className="relative group rounded-lg overflow-hidden border border-hairline">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={photo.preview} alt={photo.file.name} className="w-full h-28 object-cover" />
                   <button
@@ -323,7 +323,7 @@ export default function NewListingPage() {
                       <select
                         value={photo.category}
                         onChange={(e) => updateCategory(i, e.target.value === "__custom__" ? "" : e.target.value)}
-                        className="w-full text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]"
+                        className="w-full text-xs bg-ink-50 border border-hairline-strong rounded px-2 py-1 focus:outline-none focus:border-accent-500"
                       >
                         <option value="__custom__">+ Custom...</option>
                         {PHOTO_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -336,12 +336,12 @@ export default function NewListingPage() {
                           onChange={(e) => updateCategory(i, e.target.value)}
                           placeholder="Enter category..."
                           autoFocus
-                          className="flex-1 text-xs bg-gray-50 border border-gray-200 rounded px-2 py-1 focus:outline-none focus:border-[#d4a843]"
+                          className="flex-1 text-xs bg-ink-50 border border-hairline-strong rounded px-2 py-1 focus:outline-none focus:border-accent-500"
                         />
-                        <button type="button" onClick={() => updateCategory(i, "Other")} className="text-gray-400 hover:text-gray-600 text-xs px-1" title="Back to list">✕</button>
+                        <button type="button" onClick={() => updateCategory(i, "Other")} className="text-ink-400 hover:text-ink-600 text-xs px-1" title="Back to list">✕</button>
                       </div>
                     )}
-                    <p className="text-[10px] text-gray-400 truncate">{photo.file.name}</p>
+                    <p className="text-[10px] text-ink-400 truncate">{photo.file.name}</p>
                   </div>
                 </div>
               ))}
@@ -350,13 +350,13 @@ export default function NewListingPage() {
 
           {uploading && (
             <div className="mt-4">
-              <div className="flex justify-between text-xs text-gray-500 mb-1">
+              <div className="flex justify-between text-xs text-ink-500 mb-1">
                 <span>Uploading photos...</span>
-                <span>{uploadProgress}%</span>
+                <span className="tabular-nums">{uploadProgress}%</span>
               </div>
-              <div className="bg-gray-100 rounded-full h-2">
+              <div className="bg-ink-100 rounded-full h-2">
                 <div
-                  className="bg-[#d4a843] h-2 rounded-full transition-all"
+                  className="bg-accent-500 h-2 rounded-full transition-all"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
@@ -368,14 +368,14 @@ export default function NewListingPage() {
           <button
             type="button"
             onClick={() => router.back()}
-            className="px-5 py-2.5 text-sm text-gray-600 hover:text-gray-900 transition-colors"
+            className="px-5 py-2.5 text-sm text-ink-600 hover:text-ink-900 transition-colors duration-fast ease-quiet"
           >
             Cancel
           </button>
           <button
             type="submit"
             disabled={saving}
-            className="bg-[#d4a843] hover:bg-[#c49a35] disabled:opacity-50 text-[#050b14] font-semibold px-6 py-2.5 rounded-lg transition-colors text-sm"
+            className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm"
           >
             {saving
               ? (fromInvite ? "Saving & notifying broker…" : "Creating...")

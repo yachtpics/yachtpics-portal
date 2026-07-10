@@ -34,21 +34,21 @@ export default async function AdminListingsPage() {
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">All Listings</h1>
-          <p className="text-gray-500 mt-1 text-sm">{listings.length} total listings.</p>
+          <h1 className="text-display text-ink-900">All Listings</h1>
+          <p className="text-ink-500 mt-1 text-sm">{listings.length} total listings.</p>
         </div>
         <Link
           href="/admin/listings/new"
-          className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
+          className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
         >
           + New Listing
         </Link>
       </div>
 
       {listings.length === 0 ? (
-        <div className="bg-white border border-gray-200 rounded-xl py-16 text-center">
-          <p className="text-gray-400 text-sm">No listings yet.</p>
-          <Link href="/admin/listings/new" className="inline-block mt-4 text-[#c49a35] text-sm font-medium">
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 py-16 text-center">
+          <p className="text-ink-400 text-sm">No listings yet.</p>
+          <Link href="/admin/listings/new" className="inline-block mt-4 text-accent-700 text-sm font-medium">
             Create the first one →
           </Link>
         </div>

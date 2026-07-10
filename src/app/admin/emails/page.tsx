@@ -99,26 +99,26 @@ export default async function EmailLogPage({
   const failedCount = logs.filter((l) => l.status === "failed").length;
 
   const selectClass =
-    "text-sm bg-white border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-[#d4a843]";
+    "text-sm bg-white border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500";
 
   return (
     <div className="px-6 py-8 max-w-6xl mx-auto">
       <div className="mb-1 flex items-center justify-between flex-wrap gap-2">
-        <h1 className="text-2xl font-bold text-gray-900">Email Log</h1>
-        <p className="text-sm text-gray-500">
+        <h1 className="text-display text-ink-900">Email Log</h1>
+        <p className="text-sm text-ink-500">
           {logs.length} email{logs.length !== 1 ? "s" : ""}
-          {failedCount > 0 && <span className="text-red-600"> · {failedCount} failed</span>}
-          {failedCount === 0 && sentCount > 0 && <span className="text-green-600"> · all delivered</span>}
+          {failedCount > 0 && <span className="text-danger-600"> · {failedCount} failed</span>}
+          {failedCount === 0 && sentCount > 0 && <span className="text-success-600"> · all delivered</span>}
         </p>
       </div>
-      <p className="text-sm text-gray-500 mb-5">
+      <p className="text-sm text-ink-500 mb-5">
         Every message the portal has sent — invites, photo/video notifications, welcome emails, download links, and client sends.
       </p>
 
       {/* Filters */}
       <form method="get" className="flex flex-wrap items-end gap-2 mb-5">
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1">Type</label>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Type</label>
           <select name="type" defaultValue={searchParams.type ?? ""} className={selectClass}>
             <option value="">All types</option>
             {Object.keys(TYPE_LABELS).map((t) => (
@@ -127,7 +127,7 @@ export default async function EmailLogPage({
           </select>
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1">Status</label>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Status</label>
           <select name="status" defaultValue={searchParams.status ?? ""} className={selectClass}>
             <option value="">All</option>
             <option value="sent">Sent</option>
@@ -135,7 +135,7 @@ export default async function EmailLogPage({
           </select>
         </div>
         <div>
-          <label className="block text-[11px] font-medium text-gray-400 mb-1">Range</label>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Range</label>
           <select name="days" defaultValue={days} className={selectClass}>
             {DAYS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -143,36 +143,36 @@ export default async function EmailLogPage({
           </select>
         </div>
         <div className="flex-1 min-w-[160px]">
-          <label className="block text-[11px] font-medium text-gray-400 mb-1">Search recipient or subject</label>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Search recipient or subject</label>
           <input name="q" defaultValue={searchParams.q ?? ""} placeholder="email or subject…" className={`w-full ${selectClass}`} />
         </div>
-        <button type="submit" className="bg-[#d4a843] hover:bg-[#c49a35] text-[#050b14] text-sm font-semibold px-4 py-2 rounded-lg transition-colors">
+        <button type="submit" className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet">
           Filter
         </button>
-        <Link href="/admin/emails" className="text-sm text-gray-500 hover:text-gray-700 px-2 py-2">Clear</Link>
+        <Link href="/admin/emails" className="text-sm text-ink-500 hover:text-ink-700 px-2 py-2">Clear</Link>
       </form>
 
       {/* Table */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden">
         {logs.length === 0 ? (
-          <p className="text-sm text-gray-400 p-6">No emails match these filters.</p>
+          <p className="text-sm text-ink-400 p-6">No emails match these filters.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-xs text-gray-400 font-medium border-b border-gray-100 bg-gray-50/50">
-                  <th className="py-2.5 px-4">Sent</th>
-                  <th className="py-2.5 px-4">Type</th>
-                  <th className="py-2.5 px-4">Recipient</th>
-                  <th className="py-2.5 px-4">Listing</th>
-                  <th className="py-2.5 px-4">Broker</th>
-                  <th className="py-2.5 px-4">Status</th>
+                <tr className="text-left border-b border-hairline bg-ink-50/50">
+                  <th className="py-2.5 px-4 label-caps">Sent</th>
+                  <th className="py-2.5 px-4 label-caps">Type</th>
+                  <th className="py-2.5 px-4 label-caps">Recipient</th>
+                  <th className="py-2.5 px-4 label-caps">Listing</th>
+                  <th className="py-2.5 px-4 label-caps">Broker</th>
+                  <th className="py-2.5 px-4 label-caps">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-50">
+              <tbody className="divide-y divide-hairline">
                 {logs.map((r) => (
-                  <tr key={r.id} className="hover:bg-gray-50/50">
-                    <td className="py-2.5 px-4 text-gray-500 text-xs whitespace-nowrap">
+                  <tr key={r.id} className="hover:bg-ink-50/50">
+                    <td className="py-2.5 px-4 text-ink-500 text-xs whitespace-nowrap tabular-nums">
                       {new Date(r.sent_at).toLocaleString("en-US", {
                         month: "short", day: "numeric", year: "numeric",
                         hour: "numeric", minute: "2-digit",
@@ -180,27 +180,27 @@ export default async function EmailLogPage({
                       })}
                     </td>
                     <td className="py-2.5 px-4">
-                      <span className="text-[11px] font-medium bg-gray-100 text-gray-700 rounded px-2 py-0.5 whitespace-nowrap">
+                      <span className="text-[11px] font-medium bg-ink-100 text-ink-600 rounded px-2 py-0.5 whitespace-nowrap">
                         {typeLabel(r.email_type)}
                       </span>
                     </td>
-                    <td className="py-2.5 px-4 text-gray-800">
+                    <td className="py-2.5 px-4 text-ink-800">
                       {r.recipient_email}
                       {r.recipient_role && (
-                        <span className="ml-1 text-gray-400 text-xs capitalize">({r.recipient_role})</span>
+                        <span className="ml-1 text-ink-400 text-xs capitalize">({r.recipient_role})</span>
                       )}
                     </td>
-                    <td className="py-2.5 px-4 text-gray-600">
+                    <td className="py-2.5 px-4 text-ink-600">
                       {r.listing_id ? listingMap.get(r.listing_id) ?? "—" : "—"}
                     </td>
-                    <td className="py-2.5 px-4 text-gray-600">
+                    <td className="py-2.5 px-4 text-ink-600">
                       {r.broker_id ? brokerMap.get(r.broker_id) ?? "—" : "—"}
                     </td>
                     <td className="py-2.5 px-4">
                       {r.status === "failed" ? (
-                        <span className="text-[11px] font-semibold text-red-700 bg-red-50 border border-red-200 rounded px-2 py-0.5">Failed</span>
+                        <span className="text-[11px] font-semibold text-danger-700 bg-danger-50 border border-danger-200 rounded px-2 py-0.5">Failed</span>
                       ) : (
-                        <span className="text-[11px] font-semibold text-green-700 bg-green-50 border border-green-200 rounded px-2 py-0.5">Sent</span>
+                        <span className="text-[11px] font-semibold text-success-700 bg-success-50 border border-success-200 rounded px-2 py-0.5">Sent</span>
                       )}
                     </td>
                   </tr>
@@ -211,7 +211,7 @@ export default async function EmailLogPage({
         )}
       </div>
 
-      <p className="text-xs text-gray-400 mt-3">
+      <p className="text-xs text-ink-500 mt-3">
         Showing up to 500 most recent. Logging began when this feature went live — earlier sends aren&apos;t recorded here.
       </p>
     </div>

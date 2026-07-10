@@ -31,15 +31,15 @@ export default async function AdminAnnouncePage() {
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Announcement</h1>
-        <p className="text-gray-500 text-sm mt-1">&ldquo;{ANNOUNCEMENT_SUBJECT}&rdquo;</p>
+        <h1 className="text-display text-ink-900">Announcement</h1>
+        <p className="text-ink-500 text-sm mt-1">&ldquo;{ANNOUNCEMENT_SUBJECT}&rdquo;</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
         {/* Preview */}
         <div>
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Preview</p>
-          <div className="border border-gray-200 rounded-xl overflow-hidden bg-gray-50">
+          <p className="label-caps mb-2">Preview</p>
+          <div className="border border-hairline rounded-card shadow-elev-1 overflow-hidden bg-ink-50">
             <iframe srcDoc={previewHtml} title="Announcement preview" className="w-full" style={{ height: 640, border: "none", background: "#f8f9fa" }} />
           </div>
         </div>
