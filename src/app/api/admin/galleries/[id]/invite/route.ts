@@ -15,26 +15,26 @@ function tempPassword(): string {
 
 function inviteHtml(opts: { firstName: string; galleryTitle: string; email: string; tempPwd: string | null }) {
   const loginBox = opts.tempPwd
-    ? `<div style="background:#f9f5ec;border:1px solid #e8d9a0;border-radius:10px;padding:20px 24px;margin:0 0 28px;">
-         <p style="margin:0 0 12px;font-size:13px;font-weight:600;color:#92721a;text-transform:uppercase;letter-spacing:0.5px;">Your Login Details</p>
+    ? `<div style="background:#f8f3ea;border:1px solid #eaddc1;border-radius:10px;padding:20px 24px;margin:0 0 28px;">
+         <p style="margin:0 0 12px;font-size:13px;font-weight:600;color:#84662a;text-transform:uppercase;">Your Login Details</p>
          <p style="margin:0 0 6px;font-size:13px;color:#6b7280;"><strong style="color:#111827;">Login:</strong> portal.yachtpics.com/auth/login</p>
          <p style="margin:0 0 6px;font-size:13px;color:#6b7280;"><strong style="color:#111827;">Email:</strong> ${opts.email}</p>
          <p style="margin:0;font-size:13px;color:#6b7280;"><strong style="color:#111827;">Temporary password:</strong> <span style="font-family:monospace;font-size:14px;color:#111827;">${opts.tempPwd}</span></p>
        </div>`
-    : `<div style="background:#f9f5ec;border:1px solid #e8d9a0;border-radius:10px;padding:20px 24px;margin:0 0 28px;">
+    : `<div style="background:#f8f3ea;border:1px solid #eaddc1;border-radius:10px;padding:20px 24px;margin:0 0 28px;">
          <p style="margin:0;font-size:14px;color:#111827;">Log in with your existing YachtPics account at <strong>portal.yachtpics.com/auth/login</strong> to view it.</p>
        </div>`;
 
-  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
       <div style="background:#050b14;padding:32px 40px;">
-        <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
+        <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
       </div>
       <div style="padding:40px;">
         <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">Your photos are ready${opts.firstName ? `, ${opts.firstName}` : ""}</h1>
         <p style="margin:0 0 24px;font-size:15px;color:#6b7280;line-height:1.6;">The photos${""} for <strong style="color:#111827;">${opts.galleryTitle}</strong> are ready to view and download in your YachtPics gallery.</p>
         ${loginBox}
-        <a href="${SITE_URL}/auth/login" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">View Your Gallery &rarr;</a>
+        <a href="${SITE_URL}/auth/login" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">View Your Gallery &rarr;</a>
         <p style="margin:24px 0 0;font-size:13px;color:#9ca3af;line-height:1.6;">From your gallery you can watch the slideshow, share it, and download the photos and videos.</p>
       </div>
       <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">

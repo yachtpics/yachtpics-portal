@@ -121,10 +121,10 @@ export async function GET(req: NextRequest) {
        <td style="padding:8px 0;color:#111827;text-align:right;font-weight:600;">${fmtGB(Number(b?.bytes ?? 0))}</td>
      </tr>`;
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
       <div style="background:#050b14;padding:28px 40px;">
-        <p style="margin:0;font-size:18px;font-weight:600;color:#ffffff;">YachtPics <span style="color:#d4a843;">Portal</span> — Storage</p>
+        <p style="margin:0;font-size:18px;font-weight:600;color:#ffffff;">YachtPics <span style="color:#c39e4e;">Portal</span> — Storage</p>
       </div>
       <div style="padding:32px 40px;">
         <div style="background:${bannerColor}1a;border:1px solid ${bannerColor}55;border-radius:8px;padding:14px 16px;margin-bottom:24px;">

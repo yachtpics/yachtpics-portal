@@ -37,19 +37,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const url = `${SITE_URL}/g/${gallery.slug}`;
   const messageBlock = message
-    ? `<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin-bottom:24px;"><p style="margin:0;font-size:15px;color:#374151;line-height:1.6;white-space:pre-wrap;">${message}</p></div>`
+    ? `<div style="background:#f7f8f9;border-radius:8px;padding:16px 20px;margin-bottom:24px;"><p style="margin:0;font-size:15px;color:#374151;line-height:1.6;white-space:pre-wrap;">${message}</p></div>`
     : "";
 
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
     <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
       <div style="background:#050b14;padding:32px 40px;">
-        <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Gallery</span></p>
+        <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Gallery</span></p>
       </div>
       <div style="padding:40px;">
         <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;">${gallery.title}</h1>
         <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">You've been sent a slideshow to view.</p>
         ${messageBlock}
-        <a href="${url}" style="display:inline-flex;align-items:center;gap:8px;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">▶ View Slideshow</a>
+        <a href="${url}" style="display:inline-flex;align-items:center;gap:8px;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">▶ View Slideshow</a>
         <p style="margin:24px 0 0;font-size:12px;color:#9ca3af;">If the button doesn't work, paste this link into your browser:<br><span style="color:#6b7280;word-break:break-all;">${url}</span></p>
       </div>
       <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">

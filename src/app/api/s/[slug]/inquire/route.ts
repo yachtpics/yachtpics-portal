@@ -76,19 +76,19 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       if (broker?.display_email) {
         const subject = `New inquiry on ${vessel}`;
         const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
-    <div style="background:#050b14;padding:32px 40px;"><p style="margin:0;font-size:20px;font-weight:600;color:#fff;">YachtPics <span style="color:#d4a843;">Portal</span></p></div>
+    <div style="background:#050b14;padding:32px 40px;"><p style="margin:0;font-size:20px;font-weight:600;color:#fff;">YachtPics <span style="color:#c39e4e;">Portal</span></p></div>
     <div style="padding:40px;">
       <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">New inquiry on ${esc(vessel)}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Someone just reached out from your slideshow. Reach back out while it's hot.</p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 24px;">
         <tr><td style="padding:6px 0;font-size:14px;color:#6b7280;width:80px;">Name</td><td style="padding:6px 0;font-size:14px;color:#111827;font-weight:600;">${esc(name)}</td></tr>
-        <tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Email</td><td style="padding:6px 0;font-size:14px;"><a href="mailto:${esc(email)}" style="color:#a07820;">${esc(email)}</a></td></tr>
-        ${phone ? `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Phone</td><td style="padding:6px 0;font-size:14px;"><a href="tel:${esc(phone)}" style="color:#a07820;">${esc(phone)}</a></td></tr>` : ""}
+        <tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Email</td><td style="padding:6px 0;font-size:14px;"><a href="mailto:${esc(email)}" style="color:#84662a;">${esc(email)}</a></td></tr>
+        ${phone ? `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;">Phone</td><td style="padding:6px 0;font-size:14px;"><a href="tel:${esc(phone)}" style="color:#84662a;">${esc(phone)}</a></td></tr>` : ""}
         ${message ? `<tr><td style="padding:6px 0;font-size:14px;color:#6b7280;vertical-align:top;">Message</td><td style="padding:6px 0;font-size:14px;color:#374151;line-height:1.5;">${esc(message)}</td></tr>` : ""}
       </table>
-      <a href="${PORTAL}/dashboard/listings/${listing.id}" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:700;font-size:15px;padding:13px 28px;border-radius:8px;">View the listing</a>
+      <a href="${PORTAL}/dashboard/listings/${listing.id}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:700;font-size:15px;padding:13px 28px;border-radius:8px;">View the listing</a>
     </div>
   </div>
 </body></html>`;
