@@ -72,6 +72,26 @@ export default async function ListingsPage() {
   }));
   const lockedListingIds = listings.filter((l) => l.broker_id && lockedOwners.has(l.broker_id)).map((l) => l.id);
 
+  // Cover photo per row, resolved server-side. One RPC (DISTINCT ON, honoring
+  // the chosen hero_photo_id and falling back to the first visible photo) plus
+  // one batched signing call — instead of 2-3 client round trips per row.
+  const heroes: Record<string, { url: string; fit: "fit" | "fill" }> = {};
+  if (listings.length > 0) {
+    const { data: heroRows } = await supabase.rpc("listing_hero_photos", {
+      p_listing_ids: listings.map((l) => l.id),
+    });
+    const rows = (heroRows ?? []) as { listing_id: string; storage_path: string; hero_fit: string | null }[];
+    if (rows.length > 0) {
+      const paths = Array.from(new Set(rows.map((r) => r.storage_path)));
+      const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
+      const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl] as const));
+      for (const r of rows) {
+        const url = urlByPath.get(r.storage_path);
+        if (url) heroes[r.listing_id] = { url, fit: r.hero_fit === "fill" ? "fill" : "fit" };
+      }
+    }
+  }
+
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8 flex items-center justify-between">
@@ -108,6 +128,7 @@ export default async function ListingsPage() {
           currentUserId={user.id}
           coBrokerIds={Array.from(coBrokerIds)}
           lockedListingIds={lockedListingIds}
+          heroes={heroes}
         />
       )}
     </div>

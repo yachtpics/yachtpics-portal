@@ -23,16 +23,20 @@ type ListingItem = {
 
 type StatusFilter = "all" | "active" | "archived";
 
+export type HeroMap = Record<string, { url: string; fit: "fit" | "fill" }>;
+
 export default function ListingsBrowser({
   listings,
   currentUserId,
   coBrokerIds,
   lockedListingIds = [],
+  heroes = {},
 }: {
   listings: ListingItem[];
   currentUserId: string;
   coBrokerIds: string[];
   lockedListingIds?: string[];
+  heroes?: HeroMap;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -68,7 +72,15 @@ export default function ListingsBrowser({
   );
 
   const renderRow = (l: ListingItem) => (
-    <ListingRow key={l.id} listing={l} showBroker={l.broker_id !== currentUserId} isCoBroker={coSet.has(l.id)} locked={lockedSet.has(l.id)} />
+    <ListingRow
+      key={l.id}
+      listing={l}
+      showBroker={l.broker_id !== currentUserId}
+      isCoBroker={coSet.has(l.id)}
+      locked={lockedSet.has(l.id)}
+      heroUrl={heroes[l.id]?.url ?? null}
+      heroFit={heroes[l.id]?.fit ?? "fit"}
+    />
   );
 
   return (

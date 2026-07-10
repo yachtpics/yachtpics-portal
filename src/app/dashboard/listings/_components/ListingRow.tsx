@@ -39,7 +39,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function ListingRow({ listing, showBroker, isCoBroker, locked }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean; locked?: boolean }) {
+export default function ListingRow({ listing, showBroker, isCoBroker, locked, heroUrl = null, heroFit = "fit" }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean; locked?: boolean; heroUrl?: string | null; heroFit?: "fit" | "fill" }) {
   // Status dropdown state
   const [status, setStatus] = useState(listing.status);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -55,55 +55,10 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
   // Share state
   const [shareCopied, setShareCopied] = useState(false);
 
-  // Hero photo — the listing's cover print on a paper ground.
-  // Read-only lookup: the broker's chosen hero_photo_id (falling back to the
-  // first visible photo), honoring the flyer's hero_fit fit/fill convention.
-  const [heroUrl, setHeroUrl] = useState<string | null>(null);
-  const [heroFit, setHeroFit] = useState<"fit" | "fill">("fill");
+  // Hero photo — the listing's cover print on a paper ground. Resolved and
+  // signed server-side in one batched pass (see listing_hero_photos), so the
+  // list paints in a single shot instead of 2-3 round trips per row.
   const [heroLoaded, setHeroLoaded] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const supabase = createClient();
-        const { data: l } = await supabase
-          .from("listings")
-          .select("hero_photo_id, hero_fit")
-          .eq("id", listing.id)
-          .maybeSingle();
-        let photo: { storage_path: string } | null = null;
-        if (l?.hero_photo_id) {
-          const { data } = await supabase
-            .from("photos")
-            .select("storage_path")
-            .eq("id", l.hero_photo_id)
-            .maybeSingle();
-          photo = data;
-        }
-        if (!photo) {
-          const { data } = await supabase
-            .from("photos")
-            .select("storage_path")
-            .eq("listing_id", listing.id)
-            .eq("is_visible", true)
-            .order("display_order")
-            .limit(1)
-            .maybeSingle();
-          photo = data;
-        }
-        if (!photo || cancelled) return;
-        const { data: signed } = await supabase.storage
-          .from("listing-photos")
-          .createSignedUrl(photo.storage_path, 3600);
-        if (!cancelled && signed?.signedUrl) {
-          setHeroFit(l?.hero_fit === "fit" ? "fit" : "fill");
-          setHeroUrl(signed.signedUrl);
-        }
-      } catch { /* row simply renders without a photo */ }
-    })();
-    return () => { cancelled = true; };
-  }, [listing.id]);
 
   async function handleShare() {
     if (!listing.slideshow_slug) return;
