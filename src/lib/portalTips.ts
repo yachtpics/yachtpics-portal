@@ -139,30 +139,30 @@ export function tipEmailHtml(
   const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
   const bodyHtml = tip.body.map(para).join("");
   const noticeHtml = notice
-    ? `<div style="margin:0 0 24px;padding:14px 18px;background:#fbf7ec;border:1px solid #e7d9b0;border-radius:8px;font-size:14px;color:#6b5a2a;line-height:1.6;">${notice}</div>`
+    ? `<div style="margin:0 0 24px;padding:14px 18px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;font-size:14px;color:#6b5a2a;line-height:1.6;">${notice}</div>`
     : "";
 
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
     <div style="background:#050b14;padding:32px 40px;">
-      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
+      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
     </div>
     <div style="padding:40px;">
       ${noticeHtml}
-      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#d4a843;text-transform:uppercase;letter-spacing:1px;">Portal Tip</p>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">Portal Tip</p>
       <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111827;">${tip.headline}</h1>
       <p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">Hi ${firstName},</p>
       ${bodyHtml}
       <div style="margin:28px 0 8px;">
-        <a href="${PORTAL}${tip.ctaPath}" style="display:inline-block;background:#d4a843;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">${tip.ctaLabel}</a>
+        <a href="${PORTAL}${tip.ctaPath}" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">${tip.ctaLabel}</a>
       </div>
       <p style="margin:24px 0 0;font-size:14px;color:#374151;line-height:1.6;">— Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
-      <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;line-height:1.5;"><a href="${PORTAL}/dashboard/tips" style="color:#a07820;text-decoration:none;font-weight:600;">Browse all tips &rarr;</a></p>
+      <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;line-height:1.5;"><a href="${PORTAL}/dashboard/tips" style="color:#84662a;text-decoration:none;font-weight:600;">Browse all tips &rarr;</a></p>
       <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Questions? Just reply to this email.</p>
     </div>${unsubFooter}
   </div>

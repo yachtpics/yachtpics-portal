@@ -18,7 +18,7 @@ export const ANNOUNCEMENT_SEND_BEFORE = "2026-06-25T13:00:00Z";
 
 function feature(title: string, body: string): string {
   return `<tr>
-      <td style="width:16px;vertical-align:top;padding:9px 0 0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d4a843;"></span></td>
+      <td style="width:16px;vertical-align:top;padding:9px 0 0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c39e4e;"></span></td>
       <td style="padding:6px 0;font-size:14px;color:#374151;line-height:1.55;"><strong style="color:#111827;">${title}</strong> — ${body}</td>
     </tr>`;
 }
@@ -53,10 +53,10 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
     <div style="background:#050b14;padding:32px 40px;">
-      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
+      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
     </div>
     <div style="padding:40px;">
       <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">We&rsquo;ve been busy behind the scenes, ${firstName}</h1>
@@ -67,7 +67,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
       <p style="margin:0 0 26px;font-size:14px;color:#6b7280;line-height:1.6;">Two more touches: you can now pick the <strong style="color:#374151;">cover photo</strong> that leads your flyer and posts, and <strong style="color:#374151;">search</strong> your listings instantly as you type.</p>
 
       <div style="margin:0 0 28px;">
-        <a href="${PORTAL}/dashboard" style="display:inline-block;background:#d4a843;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">See what&rsquo;s new</a>
+        <a href="${PORTAL}/dashboard" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">See what&rsquo;s new</a>
       </div>
 
       <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">Open any listing and you&rsquo;ll find these waiting. As always, your delivered photos stay free to download — and if you have a question or an idea for what we should build next, just reply to this email. We read every one.</p>

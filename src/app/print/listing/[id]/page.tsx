@@ -10,8 +10,12 @@ import { hasAccess } from "@/lib/subscriptionAccess";
 
 export const dynamic = "force-dynamic";
 
-const GOLD = "#d4a843";
-const NAVY = "#050b14";
+// Print palette — inline values mirroring the tokens in tailwind.config.ts.
+// This page renders to paper, so colors must be literal and deterministic.
+const INK = "#050b14"; // ink-950 — the wordmark ink
+const BRASS = "#c39e4e"; // accent-500 — the single brass rule
+const BRASS_LARGE = "#a58238"; // accent-600 — large accent text on white (≥3:1)
+const CHAMPAGNE = "#dfc98a"; // accent-300 — accent text on ink
 
 function specRows(l: Record<string, unknown>): [string, string][] {
   const rows: [string, string][] = [];
@@ -102,7 +106,7 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
   let qrDataUrl: string | null = null;
   if (listing.slideshow_published && listing.slideshow_slug) {
     qrDataUrl = await QRCode.toDataURL(`https://portal.yachtpics.com/s/${listing.slideshow_slug}?src=flyer`, {
-      width: 256, margin: 1, color: { dark: NAVY, light: "#ffffff" },
+      width: 256, margin: 1, color: { dark: INK, light: "#ffffff" },
     }).catch(() => null);
   }
 
@@ -114,7 +118,7 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
   const subtitle = [listing.year, listing.make, listing.model].filter(Boolean).join(" ");
 
   return (
-    <div style={{ background: "#e5e7eb", minHeight: "100vh", padding: "24px 0" }}>
+    <div style={{ background: "#eef0f2", minHeight: "100vh", padding: "24px 0" }}>
       <style>{`
         @page { size: letter portrait; margin: 0; }
         @media print {
@@ -126,48 +130,48 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
       `}</style>
 
       <div className="flyer-wrap" style={{ display: "flex", justifyContent: "center" }}>
-        <div className="flyer" style={{ position: "relative", width: "8.5in", minHeight: "11in", background: "#fff", boxShadow: "0 2px 16px rgba(0,0,0,0.15)", display: "flex", flexDirection: "column", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif", color: "#1f2937" }}>
+        <div className="flyer" style={{ position: "relative", width: "8.5in", minHeight: "11in", background: "#fff", boxShadow: "0 2px 16px rgba(5,11,20,0.15)", display: "flex", flexDirection: "column", fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif", color: "#343d4a" }}>
 
           {locked && (
             <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
-              <div style={{ transform: "rotate(-30deg)", textAlign: "center", color: "rgba(212,168,67,0.28)", fontWeight: 800 }}>
+              <div style={{ transform: "rotate(-30deg)", textAlign: "center", color: "rgba(195,158,78,0.30)", fontWeight: 800 }}>
                 <div style={{ fontSize: 96, letterSpacing: 4 }}>PREVIEW</div>
-                <div style={{ fontSize: 30, letterSpacing: 2, color: "rgba(31,41,55,0.30)" }}>Subscribe to unlock</div>
+                <div style={{ fontSize: 30, letterSpacing: 2, color: "rgba(5,11,20,0.30)" }}>Subscribe to unlock</div>
               </div>
             </div>
           )}
 
           {/* Top bar */}
-          <div style={{ background: NAVY, padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ background: INK, padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             {details?.logo_url ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={details.logo_url} alt="" style={{ maxHeight: 44, maxWidth: 200, objectFit: "contain" }} />
             ) : (
               <span style={{ color: "#fff", fontSize: 18, fontWeight: 600 }}>{details?.brokerage_name ?? brokerName}</span>
             )}
-            <span style={{ color: GOLD, fontSize: 13, fontWeight: 600, letterSpacing: "0.5px", textTransform: "uppercase" }}>For Sale</span>
+            <span style={{ color: CHAMPAGNE, fontSize: 12, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>For Sale</span>
           </div>
 
           {/* Hero */}
           {heroUrl && <HeroImage src={heroUrl} alt={listing.vessel_name ?? ""} fit={listing.hero_fit === "fill" ? "fill" : "fit"} />}
 
-          {/* Title + price */}
-          <div style={{ padding: "24px 32px 8px", display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
+          {/* Title + price, closed by the flyer's single brass rule */}
+          <div style={{ margin: "0 32px", padding: "24px 0 14px", borderBottom: `1px solid ${BRASS}`, display: "flex", justifyContent: "space-between", alignItems: "flex-end", gap: 16 }}>
             <div>
-              <h1 style={{ margin: 0, fontSize: 28, fontWeight: 800, color: "#111827" }}>{listing.vessel_name ?? "Untitled Vessel"}</h1>
-              {subtitle && <p style={{ margin: "4px 0 0", fontSize: 15, color: "#6b7280" }}>{subtitle}{listing.vessel_type ? ` · ${listing.vessel_type}` : ""}</p>}
+              <h1 style={{ margin: 0, fontSize: 28, fontWeight: 600, letterSpacing: "-0.02em", color: "#0c1420" }}>{listing.vessel_name ?? "Untitled Vessel"}</h1>
+              {subtitle && <p style={{ margin: "4px 0 0", fontSize: 15, color: "#6d7581" }}>{subtitle}{listing.vessel_type ? ` · ${listing.vessel_type}` : ""}</p>}
             </div>
-            <p style={{ margin: 0, fontSize: 22, fontWeight: 800, color: GOLD, whiteSpace: "nowrap" }}>{price}</p>
+            <p style={{ margin: 0, fontSize: 22, fontWeight: 600, color: BRASS_LARGE, whiteSpace: "nowrap", fontVariantNumeric: "tabular-nums" }}>{price}</p>
           </div>
 
           {/* Specs */}
           {rows.length > 0 && (
-            <div style={{ padding: "12px 32px" }}>
+            <div style={{ padding: "14px 32px 12px" }}>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "10px 24px" }}>
                 {rows.map(([label, val]) => (
-                  <div key={label} style={{ borderTop: `2px solid ${GOLD}`, paddingTop: 6 }}>
-                    <p style={{ margin: 0, fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 600 }}>{label}</p>
-                    <p style={{ margin: "2px 0 0", fontSize: 14, color: "#111827", fontWeight: 600 }}>{val}</p>
+                  <div key={label} style={{ borderTop: "1px solid #e0e3e7", paddingTop: 6 }}>
+                    <p style={{ margin: 0, fontSize: 9, color: "#6d7581", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>{label}</p>
+                    <p style={{ margin: "3px 0 0", fontSize: 14, color: "#0c1420", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{val}</p>
                   </div>
                 ))}
               </div>
@@ -177,18 +181,18 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
           {/* Description */}
           {listing.description && (
             <div style={{ padding: "12px 32px" }}>
-              <p style={{ margin: 0, fontSize: 13, color: "#374151", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{listing.description}</p>
+              <p style={{ margin: 0, fontSize: 13, color: "#4c5560", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{listing.description}</p>
             </div>
           )}
 
           <div style={{ flex: 1 }} />
 
           {/* Footer: broker + QR */}
-          <div style={{ borderTop: "1px solid #e5e7eb", padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ borderTop: "1px solid #e0e3e7", padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
             <div>
-              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#111827" }}>{brokerName}</p>
-              {details?.brokerage_name && <p style={{ margin: "2px 0 0", fontSize: 13, color: "#6b7280" }}>{details.brokerage_name}</p>}
-              <div style={{ marginTop: 6, fontSize: 13, color: "#374151" }}>
+              <p style={{ margin: 0, fontSize: 15, fontWeight: 700, color: "#0c1420" }}>{brokerName}</p>
+              {details?.brokerage_name && <p style={{ margin: "2px 0 0", fontSize: 13, color: "#6d7581" }}>{details.brokerage_name}</p>}
+              <div style={{ marginTop: 6, fontSize: 13, color: "#4c5560" }}>
                 {profile?.phone && <span style={{ marginRight: 14 }}>{profile.phone}</span>}
                 {profile?.display_email && <span style={{ marginRight: 14 }}>{profile.display_email}</span>}
                 {details?.brokerage_website && <span>{details.brokerage_website.replace(/^https?:\/\//, "")}</span>}
@@ -198,14 +202,14 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
               <div style={{ textAlign: "center" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={qrDataUrl} alt="Scan for gallery" style={{ width: 84, height: 84 }} />
-                <p style={{ margin: "2px 0 0", fontSize: 9, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>Scan for full gallery</p>
+                <p style={{ margin: "2px 0 0", fontSize: 8, color: "#6d7581", textTransform: "uppercase", letterSpacing: "0.14em" }}>Scan for full gallery</p>
               </div>
             )}
           </div>
 
           {heroByYachtPics && (
-            <div style={{ background: NAVY, padding: "8px 32px", textAlign: "center" }}>
-              <span style={{ color: "#c4c9d4", fontSize: 10 }}>Photography by YachtPics</span>
+            <div style={{ background: INK, padding: "8px 32px", textAlign: "center" }}>
+              <span style={{ color: "#c5cbd2", fontSize: 10 }}>Photography by YachtPics</span>
             </div>
           )}
         </div>
@@ -213,9 +217,9 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
 
       {locked ? (
         <div className="no-print" style={{ maxWidth: "8.5in", margin: "16px auto 0", textAlign: "center" }}>
-          <div style={{ background: "#fff5f5", border: "1px solid #fecaca", borderRadius: 10, padding: "16px 20px" }}>
-            <p style={{ margin: "0 0 10px", fontSize: 14, color: "#991b1b" }}><strong>This is a preview.</strong> Your plan has ended — subscribe to print or email a clean, watermark-free spec sheet.</p>
-            <Link href="/dashboard/billing" style={{ display: "inline-block", background: "#d4a843", color: "#050b14", fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "10px 22px", borderRadius: 8 }}>Choose a plan &rarr;</Link>
+          <div style={{ background: "#fdf1f0", border: "1px solid #f5cfca", borderRadius: 10, padding: "16px 20px" }}>
+            <p style={{ margin: "0 0 10px", fontSize: 14, color: "#992f26" }}><strong>This is a preview.</strong> Your plan has ended — subscribe to print or email a clean, watermark-free spec sheet.</p>
+            <Link href="/dashboard/billing" style={{ display: "inline-block", background: BRASS, color: INK, fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "10px 22px", borderRadius: 8 }}>Choose a plan &rarr;</Link>
           </div>
         </div>
       ) : (

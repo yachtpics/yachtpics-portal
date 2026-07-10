@@ -3,6 +3,9 @@
 import { useState } from "react";
 
 const MATTE = "#ffffff";
+// On paper, depth comes from a keyline, not a shadow — drop shadows print as
+// muddy grey. A 1px ink-300 hairline frames the photo against the white matte.
+const KEYLINE = "1px solid #c5cbd2";
 
 // Renders the flyer hero in one of two modes:
 //  • "fit"  — shows the whole photo, never cropped, centered on a white matte.
@@ -16,7 +19,7 @@ export default function HeroImage({ src, alt, fit = "fit" }: { src: string; alt:
     return (
       <div style={{ background: MATTE, width: "100%" }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={alt} style={{ width: "100%", height: "4in", objectFit: "cover", display: "block" }} />
+        <img src={src} alt={alt} style={{ width: "100%", height: "4in", objectFit: "cover", display: "block", borderTop: KEYLINE, borderBottom: KEYLINE, boxSizing: "border-box" }} />
       </div>
     );
   }
@@ -35,7 +38,7 @@ export default function HeroImage({ src, alt, fit = "fit" }: { src: string; alt:
           const img = e.currentTarget;
           if (img.naturalWidth && img.naturalHeight) setAspect(img.naturalWidth / img.naturalHeight);
         }}
-        style={{ maxWidth: "100%", maxHeight: maxH, width: "auto", height: "auto", display: "block", margin: "0 auto" }}
+        style={{ maxWidth: "100%", maxHeight: maxH, width: "auto", height: "auto", display: "block", margin: "0 auto", border: KEYLINE, boxSizing: "border-box" }}
       />
     </div>
   );

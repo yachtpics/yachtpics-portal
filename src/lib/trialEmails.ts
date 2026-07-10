@@ -1,5 +1,5 @@
 // Branded HTML for trial lifecycle emails. Styling mirrors the welcome email:
-// dark header bar, gold accent, single clear call to action.
+// ink header bar, brass accent, single clear call to action.
 
 import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
 
@@ -10,16 +10,16 @@ function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: st
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
   <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
     <div style="background:#050b14;padding:32px 40px;">
-      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
+      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
     </div>
     <div style="padding:40px;">
       <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111827;">${headline}</h1>
       ${bodyHtml}
       <div style="margin:32px 0 8px;">
-        <a href="${ctaHref}" style="display:inline-block;background:#d4a843;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">${ctaLabel}</a>
+        <a href="${ctaHref}" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">${ctaLabel}</a>
       </div>
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
@@ -47,12 +47,12 @@ function featureList(intro: string): string {
     .map(
       ([h, t]) => `
         <tr>
-          <td style="width:16px;vertical-align:top;padding:7px 0 0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#d4a843;"></span></td>
+          <td style="width:16px;vertical-align:top;padding:7px 0 0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c39e4e;"></span></td>
           <td style="padding:5px 0;font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">${h}</strong> — ${t}</td>
         </tr>`
     )
     .join("");
-  return `<p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;letter-spacing:0.5px;">${intro}</p>
+  return `<p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;">${intro}</p>
       <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">${rows}</table>`;
 }
 

@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     }
 
     const messageBlock = message
-      ? `<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
+      ? `<div style="background:#f7f8f9;border-radius:8px;padding:16px 20px;margin-bottom:24px;">
            <p style="margin:0;font-size:15px;color:#374151;line-height:1.6;white-space:pre-wrap;">${message}</p>
          </div>`
       : "";
@@ -118,12 +118,12 @@ export async function POST(req: NextRequest) {
 
     const docsBlock = docLinks.length > 0
       ? `<div style="margin-top:20px;">
-           <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Documents</p>
+           <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;">Documents</p>
            ${docLinks.map(d => `
-             <a href="${d.url}" style="display:flex;align-items:center;gap:10px;background:#f8f9fa;border-radius:8px;padding:12px 16px;text-decoration:none;margin-bottom:8px;">
+             <a href="${d.url}" style="display:flex;align-items:center;gap:10px;background:#f7f8f9;border-radius:8px;padding:12px 16px;text-decoration:none;margin-bottom:8px;">
                <span style="font-size:18px;">&#128196;</span>
                <span style="font-size:14px;font-weight:500;color:#111827;">${d.filename}</span>
-               <span style="margin-left:auto;font-size:12px;color:#d4a843;font-weight:600;">Download &#8594;</span>
+               <span style="margin-left:auto;font-size:12px;color:#84662a;font-weight:600;">Download &#8594;</span>
              </a>
            `).join("")}
          </div>`
@@ -131,21 +131,21 @@ export async function POST(req: NextRequest) {
 
     const videosBlock = videoLinks.length > 0
       ? `<div style="margin-top:20px;">
-           <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Videos</p>
+           <p style="margin:0 0 10px;font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;">Videos</p>
            ${videoLinks.map(v => `
-             <a href="${v.url}" style="display:flex;align-items:center;gap:10px;background:#f8f9fa;border-radius:8px;padding:12px 16px;text-decoration:none;margin-bottom:8px;">
+             <a href="${v.url}" style="display:flex;align-items:center;gap:10px;background:#f7f8f9;border-radius:8px;padding:12px 16px;text-decoration:none;margin-bottom:8px;">
                <span style="font-size:18px;">&#127909;</span>
                <span style="font-size:14px;font-weight:500;color:#111827;">${v.filename}</span>
-               <span style="margin-left:auto;font-size:12px;color:#d4a843;font-weight:600;">Watch &#8594;</span>
+               <span style="margin-left:auto;font-size:12px;color:#84662a;font-weight:600;">Watch &#8594;</span>
              </a>
            `).join("")}
          </div>`
       : "";
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f8f9fa;margin:0;padding:40px 20px;">
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
       <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
         <div style="background:#050b14;padding:32px 40px;">
-          <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#d4a843;">Portal</span></p>
+          <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
         </div>
         <div style="padding:40px;">
           <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;">${vesselName}</h1>
@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
           ${docsBlock}
         </div>
         <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">
-          <p style="margin:0 0 6px;font-size:12px;color:#c4c9d4;">Powered by <a href="https://yachtpics.com" style="color:#c4c9d4;text-decoration:none;">YachtPics</a></p>
+          <p style="margin:0 0 6px;font-size:12px;color:#c5cbd2;">Powered by <a href="https://yachtpics.com" style="color:#c5cbd2;text-decoration:none;">YachtPics</a></p>
           <p style="margin:0;font-size:11px;color:#d1d5db;">&copy; ${new Date().getFullYear()} YachtPics. All photos and videos are the intellectual property of YachtPics. All rights reserved.</p>
         </div>
       </div>
