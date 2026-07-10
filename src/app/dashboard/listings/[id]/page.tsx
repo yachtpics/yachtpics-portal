@@ -863,10 +863,10 @@ export default function BrokerListingPage() {
       onDrop={handlePageDrop}
     >
       {/* Lightbox — portal to document.body, all layout via inline styles to avoid Tailwind purging.
-          Full-bleed on ink: the counter and a single hairline are the only chrome on screen. */}
+          A print on paper (ink-50): the counter and a single hairline are the only chrome on screen. */}
       {mounted && lightboxIndex !== null && createPortal(
         <div
-          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "#050b14", display: "flex", flexDirection: "column" }}
+          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "var(--ink-50)", display: "flex", flexDirection: "column" }}
           onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
           onTouchEnd={(e) => {
             if (lightboxTouch === null) return;
@@ -879,20 +879,20 @@ export default function BrokerListingPage() {
           }}
         >
           {/* Header — counter above a single hairline */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 6px 20px", flexShrink: 0, borderBottom: "1px solid var(--hairline-inverse)" }}>
-            <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 6px 20px", flexShrink: 0, borderBottom: "1px solid var(--hairline)" }}>
+            <span style={{ color: "var(--ink-600)", fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
               {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
             </span>
             <button
               onClick={() => setLightboxIndex(null)}
               aria-label="Close"
-              style={{ color: "rgba(255,255,255,0.7)", fontSize: 26, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "none", border: "none", cursor: "pointer" }}
+              style={{ color: "var(--ink-700)", fontSize: 26, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", border: "1px solid var(--hairline)", borderRadius: "50%", boxShadow: "var(--shadow-elev-1)", cursor: "pointer" }}
             >
               ×
             </button>
           </div>
 
-          {/* Photo area — fills remaining height, image letterboxed into the ink */}
+          {/* Photo area — fills remaining height; the print floats on the paper, lifted by its shadow */}
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
             {photos[lightboxIndex]?.url && (
               <LightboxPhoto
@@ -904,14 +904,14 @@ export default function BrokerListingPage() {
             {lightboxIndex > 0 && (
               <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
                 aria-label="Previous photo"
-                style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", background: "rgba(5,11,20,0.6)", border: "1px solid var(--hairline-inverse)", borderRadius: "50%", width: 44, height: 44, color: "rgba(255,255,255,0.9)", fontSize: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", background: "#fff", border: "1px solid var(--hairline)", borderRadius: "50%", width: 44, height: 44, color: "var(--ink-700)", fontSize: 24, boxShadow: "var(--shadow-elev-1)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ‹
               </button>
             )}
             {lightboxIndex < photos.length - 1 && (
               <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
                 aria-label="Next photo"
-                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "rgba(5,11,20,0.6)", border: "1px solid var(--hairline-inverse)", borderRadius: "50%", width: 44, height: 44, color: "rgba(255,255,255,0.9)", fontSize: 24, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "#fff", border: "1px solid var(--hairline)", borderRadius: "50%", width: 44, height: 44, color: "var(--ink-700)", fontSize: 24, boxShadow: "var(--shadow-elev-1)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 ›
               </button>
             )}
@@ -1173,9 +1173,9 @@ export default function BrokerListingPage() {
           )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
-          {/* The gallery wall — photographs on ink, chrome on demand */}
-          <div className="rounded-card bg-ink-950 p-1.5 sm:p-2 shadow-elev-1">
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-1.5 sm:gap-2">
+          {/* The gallery wall — prints on paper, chrome on demand */}
+          <div className="rounded-card bg-ink-50 border border-hairline p-2 sm:p-3">
+          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
           {photos.filter(p => !deletingIds.has(p.id)).map((photo) => {
             const isSelected = selectedIds.has(photo.id);
             return (
@@ -1920,7 +1920,8 @@ function SortablePhotoCard({
 
   const ctl =
     "flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full " +
-    "bg-ink-950/60 text-white hover:bg-ink-950/90 transition-colors duration-base ease-quiet " +
+    "bg-white border border-hairline text-ink-700 shadow-elev-1 " +
+    "hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
 
   return (
@@ -1928,11 +1929,11 @@ function SortablePhotoCard({
       ref={setNodeRef}
       style={style}
       className={`group relative flex flex-col touch-manipulation ${
-        isSelected ? "ring-2 ring-accent-500 ring-offset-2 ring-offset-ink-950" : ""
+        isSelected ? "ring-2 ring-accent-500 ring-offset-2 ring-offset-ink-50" : ""
       }`}
     >
       <div className="relative">
-        {/* The photograph — letterboxed into the ink, nothing over it at rest */}
+        {/* The photograph — a print on a white mat, lifted by its shadow, nothing over it at rest */}
         <div
           onClick={onTap}
           onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
@@ -1943,11 +1944,11 @@ function SortablePhotoCard({
             tapStart.current = null;
             if (dx < 8 && dy < 8) { e.preventDefault(); onTap(); }
           }}
-          className={`relative w-full overflow-hidden bg-ink-900 cursor-pointer ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+          className={`relative w-full overflow-hidden rounded-[2px] bg-white shadow-print cursor-pointer ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
         >
           {photo.url ? (
             <>
-              {!imgLoaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-white/[0.04]" />}
+              {!imgLoaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={photo.url}
@@ -1969,8 +1970,8 @@ function SortablePhotoCard({
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
               <span className="text-2xl">⚠️</span>
               <div className="text-center px-3">
-                <p className="text-warn-300 text-xs font-semibold">File missing</p>
-                <p className="text-warn-300 text-[10px] mt-0.5">Delete and re-upload</p>
+                <p className="text-warn-700 text-xs font-semibold">File missing</p>
+                <p className="text-warn-700 text-[10px] mt-0.5">Delete and re-upload</p>
               </div>
             </div>
           )}
@@ -1989,7 +1990,7 @@ function SortablePhotoCard({
             title={isHero ? "Cover photo — used on the spec sheet & social posts. Tap to clear." : "Set as cover photo (spec sheet & social posts)"}
             aria-label={isHero ? "Clear cover photo" : "Set as cover photo"}
             className={`absolute top-1.5 left-1.5 z-10 flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full text-sm transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-              isHero ? "bg-accent-500 text-ink-950" : `bg-ink-950/60 text-white hover:bg-ink-950/90 ${chrome}`
+              isHero ? "bg-accent-500 text-ink-950 shadow-elev-1" : `bg-white border border-hairline text-ink-700 shadow-elev-1 hover:bg-ink-50 hover:text-ink-950 ${chrome}`
             }`}
           >
             {isHero ? "★" : "☆"}
@@ -2002,9 +2003,9 @@ function SortablePhotoCard({
             {...attributes}
             {...listeners}
             title="Drag to reorder"
-            className={`absolute top-1.5 right-1.5 z-10 flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-ink-950/60 hover:bg-ink-950/90 cursor-grab active:cursor-grabbing touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${chrome}`}
+            className={`absolute top-1.5 right-1.5 z-10 flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-white border border-hairline text-ink-700 shadow-elev-1 hover:bg-ink-50 hover:text-ink-950 cursor-grab active:cursor-grabbing touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${chrome}`}
           >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="white">
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
               <circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/>
               <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
               <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
@@ -2015,17 +2016,17 @@ function SortablePhotoCard({
         {/* Actions on demand — download, hide/show, delete-with-confirm */}
         {!selectMode && (
           <div
-            className={`absolute inset-x-0 bottom-0 z-10 flex items-center justify-end gap-1 px-1.5 pb-1.5 pt-8 bg-gradient-to-t from-ink-950/85 to-transparent ${chrome}`}
+            className={`absolute inset-x-0 bottom-0 z-10 flex items-center justify-end gap-1 px-1.5 pb-1.5 pt-8 bg-gradient-to-t from-white/90 to-transparent ${chrome}`}
             onClick={(e) => e.stopPropagation()}
             onTouchStart={(e) => e.stopPropagation()}
             onTouchEnd={(e) => e.stopPropagation()}
           >
             {confirmDelete ? (
               <>
-                <span className="mr-auto pl-1 text-xs font-medium text-white/85">Delete photo?</span>
+                <span className="mr-auto pl-1 text-xs font-medium text-ink-800">Delete photo?</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                  className="h-11 sm:h-8 px-3 rounded-full bg-ink-950/60 text-white text-xs font-medium hover:bg-ink-950/90 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                  className="h-11 sm:h-8 px-3 rounded-full bg-white border border-hairline text-ink-700 text-xs font-medium shadow-elev-1 hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
                 >
                   Cancel
                 </button>
@@ -2063,7 +2064,7 @@ function SortablePhotoCard({
                   onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
                   title="Delete photo"
                   aria-label="Delete photo"
-                  className={`${ctl} hover:text-danger-300`}
+                  className={`${ctl} hover:text-danger-600`}
                 >
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
                 </button>
@@ -2076,8 +2077,8 @@ function SortablePhotoCard({
         {selectMode && (
           <div
             onClick={onTap}
-            className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-sm border-2 flex items-center justify-center transition-colors duration-fast cursor-pointer ${
-              isSelected ? "bg-accent-500 border-accent-500" : "bg-ink-950/50 border-white/80"
+            className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-sm border-2 flex items-center justify-center transition-colors duration-fast cursor-pointer shadow-elev-1 ${
+              isSelected ? "bg-accent-500 border-accent-500" : "bg-white/90 border-ink-400"
             }`}
           >
             {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
@@ -2086,8 +2087,8 @@ function SortablePhotoCard({
       </div>
 
       {/* Gallery plaque — number, category, state */}
-      <div className="flex items-center gap-1.5 bg-ink-950 px-1.5 pt-1 pb-0.5" title={photo.filename ?? undefined}>
-        <span className="text-[11px] font-semibold tracking-caps text-white/35 shrink-0">{String(index + 1).padStart(2, "0")}</span>
+      <div className="flex items-center gap-1.5 px-1.5 pt-1 pb-0.5" title={photo.filename ?? undefined}>
+        <span className="text-[11px] font-semibold tracking-caps text-ink-500 shrink-0">{String(index + 1).padStart(2, "0")}</span>
         {!showCustomInput ? (
           <select
             value={photo.category ?? "Other"}
@@ -2101,7 +2102,7 @@ function SortablePhotoCard({
               }
             }}
             onClick={(e) => e.stopPropagation()}
-            className="text-xs font-medium text-ink-300 bg-transparent border-none outline-none cursor-pointer hover:text-white focus-visible:text-white transition-colors duration-fast flex-1 min-w-0 truncate py-1"
+            className="text-xs font-medium text-ink-600 bg-transparent border-none outline-none cursor-pointer hover:text-ink-950 focus-visible:text-ink-950 transition-colors duration-fast flex-1 min-w-0 truncate py-1"
           >
             <option value="__custom__">+ Custom...</option>
             {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -2118,17 +2119,17 @@ function SortablePhotoCard({
               onPointerDown={(e) => e.stopPropagation()}
               placeholder="Type & press Enter..."
               autoFocus
-              className="text-xs text-white placeholder-white/30 bg-transparent border-b border-hairline-inverse outline-none flex-1 min-w-0 py-1 focus:border-accent-500"
+              className="text-xs text-ink-900 placeholder-ink-400 bg-transparent border-b border-hairline-strong outline-none flex-1 min-w-0 py-1 focus:border-accent-500"
             />
             <button
               type="button"
               onClick={(e) => { e.stopPropagation(); setShowCustomInput(false); setCustomValue(""); onUpdateCategory("Other"); }}
-              className="text-white/40 hover:text-white text-xs shrink-0 px-1.5 py-1"
+              className="text-ink-400 hover:text-ink-700 text-xs shrink-0 px-1.5 py-1"
               title="Back to list"
             >✕</button>
           </div>
         )}
-        {!photo.is_visible && <span className="text-white/35 text-[11px] shrink-0">hidden</span>}
+        {!photo.is_visible && <span className="text-ink-600 text-[11px] shrink-0">hidden</span>}
       </div>
     </div>
   );
@@ -2137,25 +2138,38 @@ function SortablePhotoCard({
 // ─── Lightbox photo ────────────────────────────────────────────────────────────
 // Raw <img> on purpose (time-limited signed URLs — never next/image). Fades in
 // once decoded; inline styles because this renders inside a body portal.
+// The print sizes to its content so the shadow hugs the photograph itself;
+// padding stays minimal so the image claims the viewport.
 function LightboxPhoto({ src, alt }: { src: string; alt: string }) {
   const [loaded, setLoaded] = useState(false);
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
-      src={src}
-      alt={alt}
-      decoding="async"
-      ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setLoaded(true); }}
-      onLoad={() => setLoaded(true)}
+    <div
       style={{
         position: "absolute",
         inset: 0,
-        width: "100%",
-        height: "100%",
-        objectFit: "contain",
-        opacity: loaded ? 1 : 0,
-        transition: "opacity 160ms cubic-bezier(0.25, 0, 0.15, 1)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 12,
       }}
-    />
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={src}
+        alt={alt}
+        decoding="async"
+        ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setLoaded(true); }}
+        onLoad={() => setLoaded(true)}
+        style={{
+          maxWidth: "100%",
+          maxHeight: "100%",
+          objectFit: "contain",
+          borderRadius: 2,
+          boxShadow: "var(--shadow-print)",
+          opacity: loaded ? 1 : 0,
+          transition: "opacity 160ms cubic-bezier(0.25, 0, 0.15, 1)",
+        }}
+      />
+    </div>
   );
 }

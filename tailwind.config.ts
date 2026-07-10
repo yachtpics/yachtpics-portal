@@ -145,6 +145,9 @@ const config: Config = {
       boxShadow: {
         // Layered, low-blur elevation — never default Tailwind haze
         "elev-1": "0 0 0 1px rgba(5,11,20,0.04), 0 1px 2px rgba(5,11,20,0.05)",
+        // A photograph is a print on paper: it sits on the ink-50 ground and
+        // this shadow lifts it. Contact edge + soft low throw, no haze.
+        print: "0 1px 2px rgba(5,11,20,0.06), 0 10px 28px -8px rgba(5,11,20,0.20)",
         "elev-2":
           "0 0 0 1px rgba(5,11,20,0.04), 0 2px 6px -1px rgba(5,11,20,0.06), 0 10px 24px -10px rgba(5,11,20,0.12)",
         "elev-3":

@@ -63,7 +63,7 @@ interface Props {
 /**
  * A photograph that reveals itself only once it has decoded — no pop-in,
  * no layout shift. The parent supplies a `relative` box with a reserved
- * aspect ratio; until the image arrives, a quiet ink shimmer holds its place.
+ * aspect ratio; until the image arrives, a quiet paper shimmer holds its place.
  *
  * These are time-limited signed Supabase URLs, so they intentionally stay
  * raw <img> (never next/image — the optimizer would cache expiring URLs).
@@ -84,7 +84,7 @@ function FadePhoto({
   const [loaded, setLoaded] = useState(false);
   return (
     <>
-      {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-white/[0.04]" />}
+      {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
@@ -263,8 +263,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   if (slides.length === 0) {
     return (
-      <div className="min-h-screen bg-ink-950 flex items-center justify-center">
-        <p className="label-caps-inverse">No photos available</p>
+      <div className="min-h-screen bg-ink-50 flex items-center justify-center">
+        <p className="label-caps text-ink-600">No photos available</p>
       </div>
     );
   }
@@ -279,28 +279,28 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   const tabClass = (active: boolean) =>
     `text-xs font-medium px-3 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-      active ? "bg-white/10 text-white" : "text-ink-400 hover:text-white"
+      active ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-900"
     }`;
 
   const arrowClass =
     "absolute top-1/2 -translate-y-1/2 z-[2] flex h-11 w-11 items-center justify-center rounded-full " +
-    "border border-hairline-inverse bg-ink-950/60 text-white/90 text-2xl leading-none " +
-    "hover:bg-ink-950/90 hover:text-white transition-colors duration-base ease-quiet " +
+    "border border-hairline bg-white text-ink-700 text-2xl leading-none shadow-elev-1 " +
+    "hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
 
   return (
-    <div className="min-h-screen bg-ink-950 flex flex-col">
+    <div className="min-h-screen bg-ink-50 flex flex-col">
       {/* Header — one hairline between the vessel and its photographs */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-hairline-inverse gap-4">
+      <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-hairline gap-4">
         <div className="min-w-0">
-          <h1 className="text-white font-semibold text-base sm:text-lg truncate">
+          <h1 className="text-ink-900 font-semibold text-base sm:text-lg truncate">
             {vesselTitle || "Vessel"}
           </h1>
           {vesselDetails && (
-            <p className="text-ink-400 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
+            <p className="text-ink-600 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
           )}
         </div>
-        <div className="flex items-center gap-1 shrink-0 rounded-ctl border border-hairline-inverse p-1">
+        <div className="flex items-center gap-1 shrink-0 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
           <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
             Slideshow
           </button>
@@ -317,7 +317,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
       {view === "slideshow" ? (
         <>
-          {/* Main slide — full-bleed letterbox into the ink, nothing over the image */}
+          {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
           <div
             className="flex-1 relative select-none overflow-hidden"
             style={{ minHeight: "calc(100vh - 240px)" }}
@@ -331,25 +331,33 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           >
             {/* Outgoing photo (don't show outgoing video to avoid audio overlap) */}
             {outgoingSlide?.type === "photo" && outgoingSlide.url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <div
                 key={`out-${outgoing}`}
-                src={outgoingSlide.url}
-                alt=""
-                className="absolute inset-0 h-full w-full object-contain"
+                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
                 style={{ zIndex: 0 }}
-              />
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={outgoingSlide.url}
+                  alt=""
+                  className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
+                />
+              </div>
             )}
 
             {/* Current slide */}
             {currentSlide.url && (
               currentSlide.type === "photo" ? (
-                <div key={`in-${current}`} className="absolute inset-0" style={{ zIndex: 1 }}>
+                <div
+                  key={`in-${current}`}
+                  className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+                  style={{ zIndex: 1 }}
+                >
                   <FadePhoto
                     src={currentSlide.url}
                     alt={currentSlide.category ?? ""}
                     eager
-                    className="absolute inset-0 h-full w-full object-contain"
+                    className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                   />
                 </div>
               ) : (
@@ -387,15 +395,15 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           </div>
 
           {/* Caption + counter */}
-          <div className="text-center pt-3 pb-2 px-4">
-            <p className="label-caps-inverse">
+          <div className="text-center pt-2 pb-1.5 px-4">
+            <p className="label-caps text-ink-600">
               {caption ? `${caption} · ` : ""}
               {current + 1} / {slides.length}
             </p>
           </div>
 
           {/* Thumbnail strip — videos show as dark tile with play icon */}
-          <div className="flex gap-1.5 px-4 pb-4 overflow-x-auto scrollbar-hide">
+          <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-hide">
             {slides.map((slide, i) => (
               <button
                 key={slide.id}
@@ -404,8 +412,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 aria-current={i === current}
                 className={`shrink-0 overflow-hidden transition-opacity duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
                   i === current
-                    ? "opacity-100 ring-1 ring-accent-400"
-                    : "opacity-40 hover:opacity-80"
+                    ? "opacity-100 ring-1 ring-accent-500"
+                    : "opacity-50 hover:opacity-100"
                 }`}
               >
                 {slide.type === "photo" && slide.url ? (
@@ -423,12 +431,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           </div>
         </>
       ) : view === "grid" ? (
-        /* Grid view — a gallery wall on ink: large prints, tight gutters, no chrome */
-        <div className="flex-1 px-1.5 sm:px-3 py-3 overflow-auto">
+        /* Grid view — a gallery wall on paper: large prints on white mats, lifted by their shadows */
+        <div className="flex-1 px-3 sm:px-5 py-4 overflow-auto">
           {videos.length > 0 && (
-            <div className="mb-3 space-y-3">
+            <div className="mb-4 space-y-4">
               {videos.map((video) => video.url && (
-                <div key={video.id} className="overflow-hidden bg-ink-900">
+                <div key={video.id} className="overflow-hidden rounded-[2px] bg-ink-950 shadow-print">
                   <video
                     src={video.url}
                     controls
@@ -440,7 +448,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               ))}
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {photos.map((photo, i) => (
               <button
                 key={photo.id}
@@ -450,7 +458,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   setView("slideshow");
                 }}
                 aria-label={`Open photo ${i + 1}${photo.category ? ` — ${photo.category}` : ""}`}
-                className={`group relative w-full overflow-hidden bg-ink-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 ${
+                className={`group relative w-full overflow-hidden rounded-[2px] bg-white shadow-print focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50 ${
                   verticalIds.has(photo.id) ? "aspect-[3/4]" : "aspect-[4/3]"
                 }`}
               >
@@ -479,12 +487,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           <div className="max-w-2xl mx-auto">
             {specRows.length > 0 && (
               <>
-                <h2 className="label-caps-inverse mb-5">Specifications</h2>
+                <h2 className="label-caps text-ink-600 mb-5">Specifications</h2>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-5 mb-10">
                   {specRows.map(([label, val]) => (
-                    <div key={label} className="border-t border-hairline-inverse pt-2.5">
-                      <p className="label-caps-inverse">{label}</p>
-                      <p className="text-sm text-white font-medium mt-1">{val}</p>
+                    <div key={label} className="border-t border-hairline pt-2.5">
+                      <p className="label-caps text-ink-600">{label}</p>
+                      <p className="text-sm text-ink-900 font-medium mt-1">{val}</p>
                     </div>
                   ))}
                 </div>
@@ -492,8 +500,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
             {listing.description && (
               <>
-                <h2 className="label-caps-inverse mb-3">About this yacht</h2>
-                <p className="text-sm text-ink-300 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
+                <h2 className="label-caps text-ink-600 mb-3">About this yacht</h2>
+                <p className="text-sm text-ink-700 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
               </>
             )}
           </div>
@@ -501,10 +509,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       )}
 
       {/* Broker footer */}
-      <div className="border-t border-hairline-inverse px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+      <div className="border-t border-hairline px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
-            <div className="shrink-0 h-10 w-24 bg-white rounded-ctl flex items-center justify-center p-1.5 overflow-hidden">
+            <div className="shrink-0 h-10 w-24 bg-white border border-hairline rounded-ctl flex items-center justify-center p-1.5 overflow-hidden">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={broker.logoUrl}
@@ -515,16 +523,16 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             </div>
           )}
           <div className="min-w-0">
-            <p className="text-white text-sm font-semibold truncate">{broker.name}</p>
+            <p className="text-ink-900 text-sm font-semibold truncate">{broker.name}</p>
             {broker.brokerage && (
-              <p className="text-ink-400 text-xs mt-0.5 truncate">{broker.brokerage}</p>
+              <p className="text-ink-600 text-xs mt-0.5 truncate">{broker.brokerage}</p>
             )}
           </div>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           <button
             onClick={() => { setInquireOpen(true); setInqSent(false); setInqError(""); }}
-            className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
+            className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
           >
             Request Info
           </button>
@@ -532,7 +540,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {broker.phone && (
               <a
                 href={`tel:${broker.phone}`}
-                className="text-accent-300 text-sm font-medium block hover:text-accent-200 transition-colors duration-base ease-quiet"
+                className="text-accent-700 text-sm font-medium block hover:text-accent-600 transition-colors duration-base ease-quiet"
               >
                 {broker.phone}
               </a>
@@ -542,7 +550,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 href={broker.website.startsWith("http") ? broker.website : `https://${broker.website}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-ink-400 text-xs hover:text-ink-300 transition-colors duration-base ease-quiet"
+                className="text-ink-600 text-xs hover:text-ink-900 transition-colors duration-base ease-quiet"
               >
                 {broker.website.replace(/^https?:\/\//, "")}
               </a>

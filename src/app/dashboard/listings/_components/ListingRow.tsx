@@ -55,7 +55,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
   // Share state
   const [shareCopied, setShareCopied] = useState(false);
 
-  // Hero photo — the listing's cover print, letterboxed into ink.
+  // Hero photo — the listing's cover print on a paper ground.
   // Read-only lookup: the broker's chosen hero_photo_id (falling back to the
   // first visible photo), honoring the flyer's hero_fit fit/fill convention.
   const [heroUrl, setHeroUrl] = useState<string | null>(null);
@@ -322,7 +322,9 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
     <div className="bg-white border border-hairline rounded-card shadow-elev-1 hover:shadow-elev-2 pr-3 sm:pr-4 flex items-stretch justify-between overflow-hidden transition-shadow duration-base ease-quiet">
       {/* Left — the photograph first, then the vessel */}
       <Link href={`/dashboard/listings/${listing.id}`} className="flex flex-1 min-w-0 items-stretch gap-3 sm:gap-4 pr-2 group">
-        <div className="relative w-24 sm:w-32 shrink-0 self-stretch min-h-[4.5rem] bg-ink-950 overflow-hidden">
+        {/* "fit" floats the whole print on the paper with its shadow; "fill" stays a
+            flush edge-to-edge crop. Same hero_fit convention as the flyer. */}
+        <div className="relative w-24 sm:w-32 shrink-0 self-stretch min-h-[4.5rem] bg-ink-50 border-r border-hairline overflow-hidden flex items-center justify-center p-1">
           {heroUrl && (
             // Signed URL — raw <img> on purpose (never next/image).
             // eslint-disable-next-line @next/next/no-img-element
@@ -333,8 +335,10 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked }: 
               decoding="async"
               onLoad={() => setHeroLoaded(true)}
               ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setHeroLoaded(true); }}
-              className={`absolute inset-0 h-full w-full transition-opacity duration-base ease-quiet ${
-                heroFit === "fit" ? "object-contain" : "object-cover"
+              className={`transition-opacity duration-base ease-quiet ${
+                heroFit === "fit"
+                  ? "max-h-full max-w-full object-contain rounded-[2px] shadow-print"
+                  : "absolute inset-0 h-full w-full object-cover"
               } ${heroLoaded ? "opacity-100" : "opacity-0"}`}
             />
           )}

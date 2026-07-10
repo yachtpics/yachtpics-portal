@@ -105,6 +105,18 @@ regular weights stay crisp at UI sizes. Exposed as `--font-sans` → Tailwind `f
 - **Shadows:** layered and tight, never default Tailwind haze:
   `shadow-elev-1` (resting card), `shadow-elev-2` (hover/raised), `shadow-elev-3` (modals).
   Each includes a 1px ring so surfaces read as cut, not blurred.
+- **Photographs — a print on paper:** every photograph sits on a **light ground
+  (`ink-50`)** — matching the white matte the owner chose for the printed spec sheet —
+  and is lifted by **`shadow-print`**
+  (`0 1px 2px rgba(5,11,20,0.06), 0 10px 28px -8px rgba(5,11,20,0.20)`), the language of
+  a gallery wall. Pure white may back the immediate mat directly behind an image. The
+  image keeps crisp, near-square corners (0–2px radius) — a print has edges; the shadow
+  supplies the depth, not a rounded card. Never place photography on ink. Always
+  `object-contain` at full size — never crop, never distort. Control chrome floating
+  over photos (arrows, close, star, drag, actions) is an ink glyph on white with a
+  hairline border and `shadow-elev-1`, so it stays visible over light photos.
+  Mirrored as `--shadow-print` / `--shadow-elev-1` in `globals.css` for portal
+  inline-style contexts (e.g. the listing lightbox).
 - **Motion:** `duration-fast` 120ms, `duration-base` 160ms, `duration-slow` 220ms with
   `ease-quiet`. Color/border/shadow transitions only — no bouncy or playful motion.
 - **Rules:** `.rule` / `.rule-inverse` render a 1px hairline `<div>`; or
