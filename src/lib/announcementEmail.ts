@@ -7,48 +7,18 @@ import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
 const PORTAL = "https://portal.yachtpics.com";
 
 /** Stable type used for email_log dedup. Bump the suffix for the next campaign. */
-export const ANNOUNCEMENT_TYPE = "announcement_2026_summer";
-export const ANNOUNCEMENT_SUBJECT = "New in your Portal — turn every listing into marketing, in minutes";
+export const ANNOUNCEMENT_TYPE = "announcement_recently_photographed";
+export const ANNOUNCEMENT_SUBJECT = "New: see what we've been shooting";
 
-// Scheduled-send window (the Vercel cron fires Monday 9am ET = 13:00 UTC, June
-// being EDT/UTC-4). The cron only sends inside this window; combined with the
-// email_log dedup, that guarantees a single send on the intended Monday.
-export const ANNOUNCEMENT_SEND_AFTER = "2026-06-22T13:00:00Z";
-export const ANNOUNCEMENT_SEND_BEFORE = "2026-06-25T13:00:00Z";
-
-function feature(title: string, body: string): string {
-  return `<tr>
-      <td style="width:16px;vertical-align:top;padding:9px 0 0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c39e4e;"></span></td>
-      <td style="padding:6px 0;font-size:14px;color:#374151;line-height:1.55;"><strong style="color:#111827;">${title}</strong> — ${body}</td>
-    </tr>`;
-}
+// Scheduled-send window (the Vercel cron fires Monday 9am ET = 13:00 UTC). The
+// cron only sends inside this window; combined with the email_log dedup, that
+// guarantees a single send. Manual "Send to all" from the admin page works too.
+export const ANNOUNCEMENT_SEND_AFTER = "2026-07-13T13:00:00Z";
+export const ANNOUNCEMENT_SEND_BEFORE = "2026-08-04T13:00:00Z";
 
 export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
   const { firstName, unsubToken } = opts;
   const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
-
-  const features = [
-    feature(
-      "One-click spec sheet",
-      "generate a clean, branded flyer for any listing — full specs and your logo — ready to print or email."
-    ),
-    feature(
-      "Social posts, done for you",
-      "turn any photo into a polished, post-ready image with a caption and hashtags already written. Drop it straight onto Instagram or Facebook."
-    ),
-    feature(
-      "QR codes for your listings",
-      "publish a slideshow and the listing gets its own QR code. Add it to a flyer or a dock sign and a buyer scans straight to the full gallery."
-    ),
-    feature(
-      "Know the moment they look",
-      "we email you the instant a buyer opens your slideshow — so you can follow up while you&rsquo;re right on their mind."
-    ),
-    feature(
-      "Buyer inquiries come to you",
-      "buyers can request more info right from your slideshow — every lead lands in your inbox and on the listing, ready to follow up."
-    ),
-  ].join("");
 
   return `<!DOCTYPE html>
 <html>
@@ -59,18 +29,19 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
     </div>
     <div style="padding:40px;">
-      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">We&rsquo;ve been busy behind the scenes, ${firstName}</h1>
-      <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">The Portal started as the home for every shoot we deliver. Over the last few weeks we&rsquo;ve added a set of tools that take your photos further — helping you market each listing and turn interest into conversations. Here&rsquo;s what&rsquo;s new:</p>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New in the Portal</p>
+      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">See what we&rsquo;ve been shooting, ${firstName}</h1>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">There&rsquo;s a new page in your Portal: <strong style="color:#111827;">Recently Photographed</strong> — a running showcase of the latest boats through the YachtPics lens.</p>
 
-      <table style="width:100%;border-collapse:collapse;margin:0 0 22px;">${features}</table>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">It&rsquo;s built for one thing: helping you connect. Have a client looking for a certain kind of boat? Browse the newest shoots and reach the listing broker directly — their name, phone, and email are right on the card. No prices, no clutter, just fresh inventory and a warm handoff between brokers.</p>
 
-      <p style="margin:0 0 26px;font-size:14px;color:#6b7280;line-height:1.6;">Two more touches: you can now pick the <strong style="color:#374151;">cover photo</strong> that leads your flyer and posts, and <strong style="color:#374151;">search</strong> your listings instantly as you type.</p>
-
-      <div style="margin:0 0 28px;">
-        <a href="${PORTAL}/dashboard" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">See what&rsquo;s new</a>
+      <div style="margin:26px 0;">
+        <a href="${PORTAL}/dashboard/showcase" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">See Recently Photographed</a>
       </div>
 
-      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">Open any listing and you&rsquo;ll find these waiting. As always, your delivered photos stay free to download — and if you have a question or an idea for what we should build next, just reply to this email. We read every one.</p>
+      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">Keeping a boat quiet? You&rsquo;re always in control. Open the listing and check <strong style="color:#374151;">&ldquo;Keep this a pocket listing&rdquo;</strong> to hide it from the showcase — nothing else about your listing changes.</p>
+
+      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">We&rsquo;ll keep featuring new work as it&rsquo;s delivered. If a boat of yours belongs here, odds are you&rsquo;ll see it soon. Questions or ideas? Just reply — we read every one.</p>
 
       <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">— Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>

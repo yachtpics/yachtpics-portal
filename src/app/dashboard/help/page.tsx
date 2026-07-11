@@ -105,6 +105,15 @@ const sections = [
       "You also get an email the moment a buyer opens your slideshow (adjustable in My Profile → Notifications).",
     ],
   },
+  {
+    num: "11",
+    title: "Recently Photographed",
+    steps: [
+      "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
+      "YachtPics curates which boats appear. If a client is after a certain type of boat, browse here and reach the listing broker directly using the phone and email on each card.",
+      "Keeping a boat quiet? Open the listing and check 'Keep this a pocket listing' to hide it from the showcase — even if we've featured it. Nothing else changes; your photos, downloads, and client sharing are unaffected.",
+    ],
+  },
 ];
 
 const quickRef = [
@@ -131,6 +140,8 @@ const quickRef = [
   ["View shoot history & invoices", "Shoots & Invoices"],
   ["Change your login email", "My Profile → Change Login Email"],
   ["Manage billing & download receipts", "Billing → Manage billing & invoices"],
+  ["See recently photographed boats", "Sidebar → Recently Photographed"],
+  ["Keep a boat out of the showcase", "My Listings → listing → 'Keep this a pocket listing'"],
   ["Sign out", "Sidebar → Sign out (bottom-left)"],
 ];
 

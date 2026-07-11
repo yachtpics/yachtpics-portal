@@ -34,6 +34,8 @@ interface Listing {
   status: string;
   broker_id: string;
   is_shared?: boolean | null;
+  in_showcase?: boolean | null;
+  showcase_opt_out?: boolean | null;
   slideshow_slug?: string | null;
   slideshow_published?: boolean | null;
   profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null;
@@ -88,6 +90,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [status, setStatus] = useState(listing.status);
   const [isShared, setIsShared] = useState(listing.is_shared === true);
   const [sharingBusy, setSharingBusy] = useState(false);
+  const [inShowcase, setInShowcase] = useState(listing.in_showcase === true);
+  const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [slideshowPublished, setSlideshowPublished] = useState(listing.slideshow_published === true);
   const [slideshowSlug, setSlideshowSlug] = useState<string | null>(listing.slideshow_slug ?? null);
   const [slideshowBusy, setSlideshowBusy] = useState(false);
@@ -319,6 +323,29 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
+  async function toggleShowcase() {
+    if (showcaseBusy) return;
+    const next = !inShowcase;
+    setShowcaseBusy(true);
+    setInShowcase(next); // optimistic
+    try {
+      const res = await fetch(`/api/admin/listings/${listing.id}/showcase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ show: next }),
+      });
+      if (!res.ok) throw new Error();
+      setMessage(next ? "Added to Recently Photographed." : "Removed from Recently Photographed.");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setInShowcase(!next); // revert
+      setMessage("Couldn't update the showcase. Please try again.");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setShowcaseBusy(false);
+    }
+  }
+
   async function handleVideoFiles(files: FileList | null) {
     if (!files) return;
     setVideoError(null);
@@ -438,6 +465,26 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               </span>
               {isShared ? "Shared with brokerage" : "Share with brokerage"}
             </button>
+          )}
+          <button
+            onClick={toggleShowcase}
+            disabled={showcaseBusy}
+            title={inShowcase ? "Showing in Recently Photographed for all brokers" : "Feature this boat in Recently Photographed"}
+            className={`mt-2 ml-0 sm:ml-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
+              inShowcase
+                ? "border-accent-500 bg-accent-50 text-accent-700"
+                : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500"
+            }`}
+          >
+            <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-fast ease-quiet ${inShowcase ? "bg-accent-500" : "bg-ink-300"}`}>
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${inShowcase ? "translate-x-3.5" : "translate-x-0.5"}`} />
+            </span>
+            {inShowcase ? "In Recently Photographed" : "Add to Recently Photographed"}
+          </button>
+          {listing.showcase_opt_out && (
+            <p className="mt-1.5 text-xs text-warn-700">
+              Broker kept this a pocket listing — it won&rsquo;t appear in Recently Photographed even when added.
+            </p>
           )}
         </div>
 

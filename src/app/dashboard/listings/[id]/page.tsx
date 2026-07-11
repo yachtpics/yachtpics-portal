@@ -38,7 +38,8 @@ export default function BrokerListingPage() {
   const id = params.id as string;
 
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
-  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean } | null>(null);
+  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean; showcase_opt_out: boolean } | null>(null);
+  const [optOutBusy, setOptOutBusy] = useState(false);
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [heroFit, setHeroFit] = useState<"fit" | "fill">("fit");
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
@@ -244,7 +245,7 @@ export default function BrokerListingPage() {
     // Row-level security governs access: own boats, boats of brokers you assist
     // or manage, and any listing individually shared into your brokerage.
     const { data: l } = await supabase.from("listings")
-      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, hero_photo_id, hero_fit")
+      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit")
       .eq("id", id)
       .single();
 
@@ -793,6 +794,32 @@ export default function BrokerListingPage() {
     setSlideshowWorking(false);
   }
 
+  // Broker veto over the Recently Photographed showcase (pocket listings).
+  async function toggleShowcaseOptOut() {
+    if (!listing || optOutBusy) return;
+    const next = !listing.showcase_opt_out;
+    setOptOutBusy(true);
+    setListing((prev) => prev ? { ...prev, showcase_opt_out: next } : prev); // optimistic
+    try {
+      const res = await fetch(`/api/listings/${id}/showcase-optout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optOut: next }),
+      });
+      if (!res.ok) throw new Error();
+      setMessage(next
+        ? "Marked as a pocket listing — kept out of Recently Photographed."
+        : "This boat can now appear in Recently Photographed.");
+      setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setListing((prev) => prev ? { ...prev, showcase_opt_out: !next } : prev); // revert
+      setMessage("Couldn't update that. Please try again.");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setOptOutBusy(false);
+    }
+  }
+
   async function toggleShare() {
     if (sharingBusy) return;
     const next = !isShared;
@@ -1075,6 +1102,23 @@ export default function BrokerListingPage() {
       {message && (
         <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-success-50 border border-success-200 text-success-700">{message}</div>
       )}
+
+      {/* Pocket-listing veto — keep this boat out of the Recently Photographed showcase */}
+      <label className="mb-5 flex items-start gap-3 px-4 py-3 rounded-lg bg-white border border-hairline cursor-pointer">
+        <input
+          type="checkbox"
+          checked={listing.showcase_opt_out}
+          disabled={optOutBusy}
+          onChange={toggleShowcaseOptOut}
+          className="mt-0.5 h-4 w-4 shrink-0 rounded border-hairline-strong text-accent-600 focus:ring-accent-500 disabled:opacity-50"
+        />
+        <span className="text-sm text-ink-700">
+          <span className="font-medium text-ink-900">Keep this a pocket listing</span>
+          <span className="block text-xs text-ink-500 mt-0.5">
+            Hide this boat from the portal-wide <span className="font-medium">Recently Photographed</span> showcase, even if YachtPics features it. Nothing else about your listing changes.
+          </span>
+        </span>
+      </label>
 
       {uploading && (
         <div className="mb-5">

@@ -8,6 +8,7 @@ import type { AccessStatus } from "@/lib/subscriptionAccess";
 import {
   LayoutGrid,
   Ship,
+  Camera,
   ClipboardList,
   Users,
   CreditCard,
@@ -22,11 +23,14 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /** Optional shorter label for the cramped mobile tab bar. */
+  short?: string;
 }
 
 const brokerNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
   { label: "My Listings", href: "/dashboard/listings", icon: Ship },
+  { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
   { label: "Shoots & Invoices", href: "/dashboard/shoots", icon: ClipboardList },
   { label: "Team", href: "/dashboard/team", icon: Users },
   { label: "Billing", href: "/dashboard/billing", icon: CreditCard },
@@ -37,6 +41,7 @@ const brokerNavItems: NavItem[] = [
 
 const assistantNavItems: NavItem[] = [
   { label: "Listings", href: "/dashboard/listings", icon: Ship },
+  { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
   { label: "My Brokers", href: "/dashboard/brokers", icon: Users },
   { label: "My Profile", href: "/dashboard/profile", icon: UserRound },
   { label: "Tips", href: "/dashboard/tips", icon: Lightbulb },
@@ -93,20 +98,20 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
       </div>
 
       {/* Mobile bottom tab bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch">
+      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch overflow-x-auto">
         {navItems.map((item) => {
           const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex-1 flex flex-col items-center justify-center py-3 gap-1 transition-colors duration-base ease-quiet ${
+              className={`relative flex-1 min-w-[3.5rem] flex flex-col items-center justify-center py-3 gap-1 transition-colors duration-base ease-quiet ${
                 active ? "text-white" : "text-ink-400"
               }`}
             >
               {active && <span aria-hidden className="absolute top-0 inset-x-3 h-0.5 bg-accent-500" />}
               <item.icon size={17} strokeWidth={active ? 2 : 1.5} aria-hidden />
-              <span className="text-[10px] font-medium leading-none">{item.label.split(" ")[0]}</span>
+              <span className="text-[10px] font-medium leading-none">{item.short ?? item.label.split(" ")[0]}</span>
             </Link>
           );
         })}
