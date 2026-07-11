@@ -8,7 +8,7 @@ export default async function AdminListingsPage() {
   const { data: listingsRaw } = await supabase
     .from("listings")
     .select(`
-      id, broker_id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, make, model,
+      id, broker_id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, make, model, in_showcase, showcase_opt_out,
       profiles:broker_id(first_name, last_name)
     `)
     .order("updated_at", { ascending: false });
@@ -27,6 +27,8 @@ export default async function AdminListingsPage() {
       broker_name: b?.first_name ? `${b.first_name} ${b.last_name ?? ""}`.trim() : null,
       make: (l.make ?? null) as string | null,
       model: (l.model ?? null) as string | null,
+      in_showcase: (l.in_showcase ?? false) as boolean,
+      showcase_opt_out: (l.showcase_opt_out ?? false) as boolean,
     };
   });
 

@@ -16,6 +16,8 @@ type Row = {
   broker_name: string | null;
   make: string | null;
   model: string | null;
+  in_showcase: boolean;
+  showcase_opt_out: boolean;
 };
 
 type StatusFilter = "all" | "active" | "sold" | "archived";
@@ -23,6 +25,28 @@ type StatusFilter = "all" | "active" | "sold" | "archived";
 export default function AdminListingsBrowser({ listings }: { listings: Row[] }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
+  const [showcase, setShowcase] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(listings.map((l) => [l.id, l.in_showcase]))
+  );
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function toggleShowcase(id: string) {
+    const next = !showcase[id];
+    setBusyId(id);
+    setShowcase((s) => ({ ...s, [id]: next })); // optimistic
+    try {
+      const res = await fetch(`/api/admin/listings/${id}/showcase`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ show: next }),
+      });
+      if (!res.ok) throw new Error();
+    } catch {
+      setShowcase((s) => ({ ...s, [id]: !next })); // revert
+    } finally {
+      setBusyId(null);
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -84,6 +108,7 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                 <th className="px-6 py-3 label-caps hidden sm:table-cell">Broker</th>
                 <th className="px-6 py-3 label-caps hidden md:table-cell">Location</th>
                 <th className="px-6 py-3 label-caps">Status</th>
+                <th className="px-6 py-3 label-caps">Showcase</th>
                 <th className="px-6 py-3 label-caps sticky right-0 bg-white"></th>
               </tr>
             </thead>
@@ -106,6 +131,27 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                     }`}>
                       {listing.status}
                     </span>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <button
+                      onClick={() => toggleShowcase(listing.id)}
+                      disabled={busyId === listing.id}
+                      aria-pressed={showcase[listing.id]}
+                      title={showcase[listing.id] ? "In Recently Photographed" : "Add to Recently Photographed"}
+                      className={`inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-2.5 py-1 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
+                        showcase[listing.id]
+                          ? "border-accent-500 bg-accent-50 text-accent-700"
+                          : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500"
+                      }`}
+                    >
+                      <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-fast ease-quiet ${showcase[listing.id] ? "bg-accent-500" : "bg-ink-300"}`}>
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${showcase[listing.id] ? "translate-x-3.5" : "translate-x-0.5"}`} />
+                      </span>
+                      {showcase[listing.id] ? "Featured" : "Feature"}
+                    </button>
+                    {listing.showcase_opt_out && (
+                      <span className="block text-[11px] text-warn-700 mt-1">Broker: pocket listing</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-right sticky right-0 bg-white whitespace-nowrap shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
                     <div className="flex items-center justify-end gap-4">
