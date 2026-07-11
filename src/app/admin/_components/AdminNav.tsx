@@ -34,7 +34,7 @@ const navItems: NavItem[] = [
   { label: "Assistants", href: "/admin/assistants", icon: UserCheck },
   { label: "Brokerages", href: "/admin/brokerages", icon: Building2 },
   { label: "Listings", href: "/admin/listings", icon: Ship },
-  { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera },
+  { label: "Recently Photographed", href: "/admin/showcase", icon: Camera },
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
