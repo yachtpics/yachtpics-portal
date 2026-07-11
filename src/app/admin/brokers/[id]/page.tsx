@@ -43,6 +43,25 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     };
   });
 
+  // Who added this broker — resolved for ANY role (admin, assistant, brokerage
+  // admin, or another broker), so it isn't just shown as "Unassigned".
+  let inviter: { id: string; name: string; role: string } | null = null;
+  if (profile.invited_by) {
+    const { data: inv } = await supabase
+      .from("profiles")
+      .select("id, first_name, last_name, display_email, role")
+      .eq("id", profile.invited_by)
+      .single();
+    if (inv) {
+      const roleRaw = (inv.role as string) ?? "";
+      inviter = {
+        id: inv.id as string,
+        name: inv.first_name ? `${inv.first_name} ${inv.last_name ?? ""}`.trim() : (inv.display_email ?? "Unknown"),
+        role: roleRaw ? roleRaw.charAt(0).toUpperCase() + roleRaw.slice(1) : "",
+      };
+    }
+  }
+
   // Listings this broker co-brokers (owned by someone else).
   const { data: coBrokeredRows } = await supabase
     .from("listing_co_brokers")
@@ -127,7 +146,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             <SetTempPasswordButton brokerId={params.id} />
           </div>
           <div className="mt-3 pt-3 border-t border-hairline">
-            <AddedByEditor brokerId={params.id} admins={admins} initialAdminId={profile.invited_by ?? null} />
+            <AddedByEditor brokerId={params.id} admins={admins} initialAdminId={profile.invited_by ?? null} initialInviter={inviter} />
           </div>
         </div>
 

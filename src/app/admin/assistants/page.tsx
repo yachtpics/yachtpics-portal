@@ -2,6 +2,17 @@ import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import DeleteAssistantButton from "./[id]/_components/DeleteAssistantButton";
 
+function loginLabel(iso: string | null | undefined): { text: string; stale: boolean } {
+  if (!iso) return { text: "Never", stale: true };
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  const stale = days > 30;
+  if (days <= 0) return { text: "Today", stale };
+  if (days === 1) return { text: "Yesterday", stale };
+  if (days < 14) return { text: `${days} days ago`, stale };
+  if (days < 60) return { text: `${Math.floor(days / 7)} weeks ago`, stale };
+  return { text: new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), stale };
+}
+
 export default async function AdminAssistantsPage() {
   const supabase = await createClient();
 
@@ -25,6 +36,21 @@ export default async function AdminAssistantsPage() {
       a.first_name ? `${a.first_name} ${a.last_name ?? ""}`.trim() : "Admin",
     ])
   );
+
+  // Per-assistant activity (last login + counts), admin-gated SECURITY DEFINER.
+  type Act = { id: string; last_sign_in_at: string | null; brokers_invited: number; client_sends: number; photo_uploads: number };
+  const { data: activityRows } = await supabase.rpc("assistant_activity");
+  const activity = new Map(((activityRows ?? []) as Act[]).map((r) => [r.id, r]));
+
+  // Show the most recently active first; never-logged-in sink to the bottom.
+  const sortedAssistants = [...(assistants ?? [])].sort((a, b) => {
+    const la = activity.get(a.id as string)?.last_sign_in_at;
+    const lb = activity.get(b.id as string)?.last_sign_in_at;
+    if (la && lb) return new Date(lb).getTime() - new Date(la).getTime();
+    if (la) return -1;
+    if (lb) return 1;
+    return 0;
+  });
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
@@ -51,14 +77,15 @@ export default async function AdminAssistantsPage() {
             <thead>
               <tr className="border-b border-hairline text-left">
                 <th className="px-4 sm:px-6 py-3 label-caps">Name</th>
-                <th className="px-4 sm:px-6 py-3 label-caps hidden sm:table-cell">Email</th>
+                <th className="px-4 sm:px-6 py-3 label-caps">Last login</th>
+                <th className="px-4 sm:px-6 py-3 label-caps hidden lg:table-cell">Activity</th>
                 <th className="px-4 sm:px-6 py-3 label-caps hidden md:table-cell">Linked Brokers</th>
                 <th className="px-4 sm:px-6 py-3 label-caps hidden lg:table-cell">Added By</th>
                 <th className="px-4 sm:px-6 py-3 label-caps sticky right-0 bg-white"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-hairline">
-              {assistants.map((assistant) => {
+              {sortedAssistants.map((assistant) => {
                 type LinkRow = { broker_id: string; profiles: { first_name: string | null; last_name: string | null; display_email: string | null; invited_by: string | null } | null };
                 const links = (assistant.broker_assistants as unknown) as LinkRow[] | null;
                 const brokerNames = (links ?? []).map((l) => {
@@ -75,14 +102,25 @@ export default async function AdminAssistantsPage() {
                   ? (adminNameById.get(ownerIds[0]) ?? "—")
                   : "Multiple";
 
+                const act = activity.get(assistant.id as string);
+                const ll = loginLabel(act?.last_sign_in_at);
+
                 return (
                   <tr key={assistant.id} className="hover:bg-ink-50 transition-colors duration-fast ease-quiet">
-                    <td className="px-4 sm:px-6 py-4 font-medium text-ink-900">
-                      {assistant.first_name
-                        ? (assistant.first_name + " " + (assistant.last_name ?? "")).trim()
-                        : "—"}
+                    <td className="px-4 sm:px-6 py-4">
+                      <p className="font-medium text-ink-900">
+                        {assistant.first_name
+                          ? (assistant.first_name + " " + (assistant.last_name ?? "")).trim()
+                          : "—"}
+                      </p>
+                      <p className="text-xs text-ink-500 mt-0.5">{assistant.display_email ?? "—"}</p>
                     </td>
-                    <td className="px-4 sm:px-6 py-4 text-ink-500 hidden sm:table-cell">{assistant.display_email ?? "—"}</td>
+                    <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                      <span className={`text-xs font-medium ${ll.stale ? "text-warn-700" : "text-ink-700"}`}>{ll.text}</span>
+                    </td>
+                    <td className="px-4 sm:px-6 py-4 hidden lg:table-cell text-xs text-ink-500 tabular-nums whitespace-nowrap">
+                      {act ? `${act.brokers_invited} invited · ${act.client_sends} sent · ${act.photo_uploads} uploads` : "—"}
+                    </td>
                     <td className="px-4 sm:px-6 py-4 hidden md:table-cell">
                       {brokerNames.length === 0 ? (
                         <span className="text-ink-400 text-xs">None yet</span>
