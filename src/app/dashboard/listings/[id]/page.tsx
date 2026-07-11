@@ -1065,14 +1065,7 @@ export default function BrokerListingPage() {
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
       </div>
 
-      {!hasAccess(accessStatus) ? (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-danger-50 border border-danger-200 text-danger-700">
-          <span className="font-semibold">Your plan has ended.</span>{" "}
-          Subscribe to send listings to clients, publish slideshows, and upload photos.{" "}
-          <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
-          <span className="text-danger-600">Downloading your delivered photos always stays free.</span>
-        </div>
-      ) : !listing.slideshow_published && (
+      {hasAccess(accessStatus) && !listing.slideshow_published && (
         <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-warn-50 border border-warn-200 text-warn-800">
           <span className="font-semibold">Publish your slideshow to send this listing to a client.</span>{" "}
           Scroll to the <span className="font-medium">Client Slideshow</span> section below and click Create Slideshow — then the Send to Client button turns on.
