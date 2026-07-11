@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import DeleteAssistantButton from "./[id]/_components/DeleteAssistantButton";
+import TableSearch from "@/components/TableSearch";
 
 function loginLabel(iso: string | null | undefined): { text: string; stale: boolean } {
   if (!iso) return { text: "Never", stale: true };
@@ -72,6 +73,7 @@ export default async function AdminAssistantsPage() {
           <p className="text-ink-400 text-sm">No assistants yet.</p>
         </div>
       ) : (
+        <TableSearch placeholder="Search assistants by name or email…">
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -149,6 +151,7 @@ export default async function AdminAssistantsPage() {
             </tbody>
           </table>
         </div>
+        </TableSearch>
       )}
     </div>
   );

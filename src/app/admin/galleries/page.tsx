@@ -1,5 +1,6 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
+import TableSearch from "@/components/TableSearch";
 
 export const dynamic = "force-dynamic";
 
@@ -79,6 +80,7 @@ export default async function AdminGalleriesPage() {
           <p className="text-ink-400 text-sm">No galleries yet. Create one to deliver event or owner photos.</p>
         </div>
       ) : (
+        <TableSearch placeholder="Search galleries by title…">
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
@@ -126,6 +128,7 @@ export default async function AdminGalleriesPage() {
             </tbody>
           </table>
         </div>
+        </TableSearch>
       )}
     </div>
   );

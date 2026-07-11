@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
+import TableSearch from "@/components/TableSearch";
 
 export default async function AdminShootsPage() {
   const supabase = await createClient();
@@ -43,6 +44,7 @@ export default async function AdminShootsPage() {
           </Link>
         </div>
       ) : (
+        <TableSearch placeholder="Search shoots by broker, vessel, invoice…">
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -101,6 +103,7 @@ export default async function AdminShootsPage() {
             </tbody>
           </table>
         </div>
+        </TableSearch>
       )}
     </div>
   );
