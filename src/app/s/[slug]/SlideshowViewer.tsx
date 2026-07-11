@@ -73,33 +73,53 @@ function FadePhoto({
   alt,
   eager = false,
   className = "",
+  fadeMs = 160,
   onLoad,
 }: {
   src: string;
   alt: string;
   eager?: boolean;
   className?: string;
+  fadeMs?: number;
   onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const el = imgRef.current;
+    // Neighbours are preloaded, so the incoming image is usually already
+    // cached — left alone it paints at full opacity on its first frame, which
+    // reads as a hard cut. Paint one frame at opacity 0, then flip on the next
+    // frame so the opacity transition actually runs (a real crossfade).
+    if (el && el.complete && el.naturalWidth > 0) {
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setLoaded(true));
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    }
+  }, [src]);
+
   return (
     <>
       {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={src}
         alt={alt}
         loading={eager ? "eager" : "lazy"}
         decoding="async"
-        ref={(el) => {
-          // Cached images can complete before onLoad wires up.
-          if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
-        }}
         onLoad={(e) => {
           setLoaded(true);
           onLoad?.(e);
         }}
-        className={`${className} transition-opacity duration-base ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
+        style={{
+          opacity: loaded ? 1 : 0,
+          transition: `opacity ${fadeMs}ms cubic-bezier(0.25, 0, 0.15, 1)`,
+        }}
+        className={className}
       />
     </>
   );
@@ -357,6 +377,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     src={currentSlide.url}
                     alt={currentSlide.category ?? ""}
                     eager
+                    fadeMs={500}
                     className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                   />
                 </div>
