@@ -158,6 +158,18 @@ Ranked for YachtPics specifically. #1 and #2 lean on assets no competitor has (t
 
 ---
 
+## 8. Featured-boat spot (free rotating now → paid later)
+
+**Built (free):** a rotating "Recently Photographed" strip on the broker/assistant dashboard — cycles through the current showcase set on login, one tap opens the full showcase gallery. No manual picking; every featured boat gets airtime, weighted to newest. Purpose is retention + training brokers' eyes on that real estate.
+
+**Paid version (later):** a broker pays to pin their listing to the top of the rotation.
+- **Audience nuance (important):** the dashboard audience is *other brokers/assistants*, not buyers — so a paid dashboard spot sells **broker-to-broker exposure** (co-brokerage leads), which is real but modest. Price it nominally at first; raise it once we can show real engagement numbers.
+- **The high-value paid spot is on the PUBLIC boats showcase** (section 5), which reaches actual buyers. Reserve the premium "featured listing" revenue play for the public site.
+- Needs when built: Stripe (one-time boost or recurring), a broker-facing "feature this listing" flow, scheduling/rotation among paying boats, and admin visibility.
+- **Sequencing:** free strip (done) → watch engagement → paid dashboard boost → premium featured slot on the public site.
+
+---
+
 ### Notes
 - These connect: blog (content) → SEO traffic → public listing pages → broker signups (self-serve) → more public listings → more traffic. The flywheel is the real prize.
 - When ready, next step is to pick ONE to scope first (recommend: nail the public-page SEO foundation before the blog, so blog traffic has somewhere to convert).

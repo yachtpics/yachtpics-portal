@@ -20,7 +20,7 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
-  const [idx, setIdx] = useState(0);
+  const [zoom, setZoom] = useState<number | null>(null); // null = thumbnail grid, number = one photo
   const [touchX, setTouchX] = useState<number | null>(null);
 
   const openBoat = boats.find((b) => b.id === openId) ?? null;
@@ -28,7 +28,7 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
   const open = useCallback(async (id: string) => {
     setOpenId(id);
     setPhotos([]);
-    setIdx(0);
+    setZoom(null);
     setLoading(true);
     try {
       const res = await fetch(`/api/showcase/${id}/photos`);
@@ -41,17 +41,16 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
     }
   }, []);
 
-  const close = useCallback(() => { setOpenId(null); setPhotos([]); }, []);
-  const next = useCallback(() => setIdx((i) => (photos.length ? (i + 1) % photos.length : 0)), [photos.length]);
-  const prev = useCallback(() => setIdx((i) => (photos.length ? (i - 1 + photos.length) % photos.length : 0)), [photos.length]);
+  const close = useCallback(() => { setOpenId(null); setPhotos([]); setZoom(null); }, []);
+  const next = useCallback(() => setZoom((z) => (z === null || !photos.length ? z : (z + 1) % photos.length)), [photos.length]);
+  const prev = useCallback(() => setZoom((z) => (z === null || !photos.length ? z : (z - 1 + photos.length) % photos.length)), [photos.length]);
 
-  // Keyboard nav + lock background scroll while open.
   useEffect(() => {
     if (!openId) return;
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") close();
-      if (e.key === "ArrowRight") next();
-      if (e.key === "ArrowLeft") prev();
+      if (e.key === "Escape") { if (zoom === null) close(); else setZoom(null); }
+      else if (e.key === "ArrowRight") next();
+      else if (e.key === "ArrowLeft") prev();
     }
     window.addEventListener("keydown", onKey);
     const prevOverflow = document.body.style.overflow;
@@ -60,7 +59,7 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prevOverflow;
     };
-  }, [openId, close, next, prev]);
+  }, [openId, zoom, close, next, prev]);
 
   const arrow =
     "absolute top-1/2 -translate-y-1/2 z-[2] flex h-11 w-11 items-center justify-center rounded-full " +
@@ -116,12 +115,23 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
 
       {openBoat && (
         <div className="fixed inset-0 z-50 bg-ink-50 flex flex-col" role="dialog" aria-modal="true">
+          {/* Header */}
           <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-hairline gap-4">
-            <div className="min-w-0">
-              <p className="text-ink-900 font-semibold text-sm truncate">{openBoat.vesselName}</p>
-              <p className="label-caps text-ink-500">
-                {loading ? "Loading…" : photos.length ? `${idx + 1} / ${photos.length}` : "No photos"}
-              </p>
+            <div className="min-w-0 flex items-center gap-3">
+              {zoom !== null && (
+                <button
+                  onClick={() => setZoom(null)}
+                  className="shrink-0 text-xs font-medium text-ink-600 hover:text-ink-900 transition-colors duration-fast"
+                >
+                  ‹ All photos
+                </button>
+              )}
+              <div className="min-w-0">
+                <p className="text-ink-900 font-semibold text-sm truncate">{openBoat.vesselName}</p>
+                <p className="label-caps text-ink-500">
+                  {loading ? "Loading…" : photos.length === 0 ? "No photos" : zoom === null ? `${photos.length} photo${photos.length === 1 ? "" : "s"}` : `${zoom + 1} / ${photos.length}`}
+                </p>
+              </div>
             </div>
             <button
               onClick={close}
@@ -132,33 +142,55 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
             </button>
           </div>
 
-          <div
-            className="flex-1 relative flex items-center justify-center p-2 sm:p-5 select-none"
-            onTouchStart={(e) => setTouchX(e.touches[0].clientX)}
-            onTouchEnd={(e) => {
-              if (touchX === null) return;
-              const diff = touchX - e.changedTouches[0].clientX;
-              if (Math.abs(diff) > 50) diff > 0 ? next() : prev();
-              setTouchX(null);
-            }}
-          >
-            {loading ? (
+          {/* Body: thumbnail contact sheet, or one photo */}
+          {loading ? (
+            <div className="flex-1 flex items-center justify-center">
               <p className="label-caps text-ink-400">Loading photos…</p>
-            ) : photos.length ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={photos[idx]} alt="" className="max-h-full max-w-full object-contain rounded-[2px] shadow-print" />
-            ) : (
+            </div>
+          ) : photos.length === 0 ? (
+            <div className="flex-1 flex items-center justify-center">
               <p className="text-ink-500 text-sm">No additional photos for this boat.</p>
-            )}
+            </div>
+          ) : zoom === null ? (
+            <div className="flex-1 overflow-y-auto p-4 sm:p-6">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 sm:gap-3 max-w-5xl mx-auto">
+                {photos.map((p, i) => (
+                  <button
+                    key={i}
+                    onClick={() => setZoom(i)}
+                    className="aspect-square bg-white overflow-hidden rounded-[2px] shadow-print focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={p} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div
+              className="flex-1 relative overflow-hidden select-none"
+              onTouchStart={(e) => setTouchX(e.touches[0].clientX)}
+              onTouchEnd={(e) => {
+                if (touchX === null) return;
+                const diff = touchX - e.changedTouches[0].clientX;
+                if (Math.abs(diff) > 50) diff > 0 ? next() : prev();
+                setTouchX(null);
+              }}
+            >
+              <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-6">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={photos[zoom]} alt="" className="max-h-full max-w-full object-contain rounded-[2px] shadow-print" />
+              </div>
+              {photos.length > 1 && (
+                <>
+                  <button onClick={prev} aria-label="Previous photo" className={`${arrow} left-3`}>‹</button>
+                  <button onClick={next} aria-label="Next photo" className={`${arrow} right-3`}>›</button>
+                </>
+              )}
+            </div>
+          )}
 
-            {photos.length > 1 && (
-              <>
-                <button onClick={prev} aria-label="Previous photo" className={`${arrow} left-3`}>‹</button>
-                <button onClick={next} aria-label="Next photo" className={`${arrow} right-3`}>›</button>
-              </>
-            )}
-          </div>
-
+          {/* Footer: broker contact */}
           <div className="border-t border-hairline px-4 sm:px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
             <div className="text-sm min-w-0">
               {openBoat.brokerName && <span className="font-medium text-ink-900">{openBoat.brokerName}</span>}

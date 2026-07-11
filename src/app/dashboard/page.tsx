@@ -1,8 +1,10 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import HelpTip from "@/components/HelpTip";
 import EnableNotifications from "@/components/EnableNotifications";
+import FeaturedStrip, { type FeaturedBoat } from "@/components/FeaturedStrip";
 import { Badge, Card } from "@/components/ui";
 import type { BadgeTone } from "@/components/ui";
 
@@ -25,6 +27,29 @@ export default async function DashboardPage() {
 
   const isAssistant = profile?.role === "assistant";
   const firstName = profile?.first_name ?? "there";
+
+  // Recently Photographed rotating strip (shared by broker + assistant views).
+  const { data: scData } = await supabase.rpc("showcase_listings");
+  type ScRow = { listing_id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; location: string | null; broker_name: string | null; hero_storage_path: string | null };
+  const scRows = ((scData ?? []) as ScRow[]).slice(0, 12);
+  let featured: FeaturedBoat[] = [];
+  if (scRows.length > 0) {
+    const svc = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const paths = Array.from(new Set(scRows.map((r) => r.hero_storage_path).filter(Boolean))) as string[];
+    const urls = new Map<string, string>();
+    if (paths.length > 0) {
+      const { data: signed } = await svc.storage.from("listing-photos").createSignedUrls(paths, 3600);
+      for (const s of signed ?? []) if (s.signedUrl && s.path) urls.set(s.path, s.signedUrl);
+    }
+    featured = scRows.map((r) => ({
+      id: r.listing_id,
+      vesselName: r.vessel_name ?? "Untitled Vessel",
+      subtitle: [r.year, r.make, r.model].filter(Boolean).join(" "),
+      location: r.location ?? "",
+      heroUrl: r.hero_storage_path ? (urls.get(r.hero_storage_path) ?? null) : null,
+      brokerName: r.broker_name,
+    }));
+  }
 
   // ── Assistant dashboard ──────────────────────────────────────────────────
   if (isAssistant) {
@@ -62,6 +87,8 @@ export default async function DashboardPage() {
             You&apos;re assisting {brokers.length} broker{brokers.length !== 1 ? "s" : ""}.
           </p>
         </div>
+
+        <FeaturedStrip boats={featured} />
 
         <Card className="mb-8 grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-hairline">
           <div className="px-6 py-5">
@@ -150,6 +177,8 @@ export default async function DashboardPage() {
         <h1 className="text-display text-ink-900">Welcome back, {firstName}</h1>
         <p className="text-ink-500 mt-1.5 text-sm">Manage your listings and create buyer presentations.</p>
       </div>
+
+      <FeaturedStrip boats={featured} />
 
       {isNewAccount && (
         <div className="bg-ink-950 rounded-card px-6 py-6 mb-6 shadow-elev-2">
