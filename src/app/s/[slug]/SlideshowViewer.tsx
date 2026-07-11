@@ -350,12 +350,19 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               setTouchStart(null);
             }}
           >
-            {/* Outgoing photo (don't show outgoing video to avoid audio overlap) */}
+            {/* Outgoing photo (don't show outgoing video to avoid audio overlap).
+                It fades OUT as the incoming fades in — a true crossfade — so a
+                wider outgoing shot doesn't leave its edges hanging when the
+                incoming is a different shape (e.g. horizontal → vertical). */}
             {outgoingSlide?.type === "photo" && outgoingSlide.url && (
               <div
                 key={`out-${outgoing}`}
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
-                style={{ zIndex: 0 }}
+                style={{
+                  zIndex: 0,
+                  opacity: incomingReady ? 0 : 1,
+                  transition: "opacity 500ms cubic-bezier(0.25, 0, 0.15, 1)",
+                }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
