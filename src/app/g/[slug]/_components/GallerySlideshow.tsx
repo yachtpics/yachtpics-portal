@@ -68,6 +68,7 @@ export default function GallerySlideshow({
   const [outgoing, setOutgoing] = useState<number | null>(null);
   const [incomingReady, setIncomingReady] = useState(true);
   const [playing, setPlaying] = useState(false);
+  const [showThumbs, setShowThumbs] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const logged = useRef(false);
 
@@ -291,16 +292,31 @@ export default function GallerySlideshow({
             )}
           </div>
 
-          {/* Caption + counter */}
-          <div className="text-center pt-2 pb-1.5 px-4">
+          {/* Caption + counter, with a filmstrip toggle */}
+          <div className="flex items-center justify-center gap-3 pt-2 pb-1.5 px-4">
             <p className="label-caps text-ink-600">
               {caption ? `${caption} · ` : ""}
               {current + 1} / {slides.length}
             </p>
+            {slides.length > 1 && (
+              <button
+                onClick={() => setShowThumbs((v) => !v)}
+                aria-label={showThumbs ? "Hide thumbnails" : "Show thumbnails"}
+                aria-pressed={showThumbs}
+                className={`flex h-6 w-6 items-center justify-center rounded transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${showThumbs ? "text-ink-800" : "text-ink-400 hover:text-ink-700"}`}
+              >
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                  <rect x="2" y="6" width="4" height="8" rx="1" />
+                  <rect x="8" y="6" width="4" height="8" rx="1" />
+                  <rect x="14" y="6" width="4" height="8" rx="1" />
+                </svg>
+              </button>
+            )}
           </div>
 
-          {/* Thumbnail strip — videos show as dark tile with play icon */}
-          <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto">
+          {/* Thumbnail strip — hidden by default so the photograph claims the space; toggle to reveal */}
+          {showThumbs && (
+          <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-hide">
             {slides.map((s, i) => (
               <button
                 key={i}
@@ -320,6 +336,7 @@ export default function GallerySlideshow({
               </button>
             ))}
           </div>
+          )}
         </>
       ) : (
         /* Grid view — a gallery wall on paper: prints on white mats, lifted by their shadows */
