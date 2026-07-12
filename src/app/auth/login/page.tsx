@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Label } from "@/components/ui";
 
@@ -11,7 +10,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const router = useRouter();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,8 +30,11 @@ export default function LoginPage() {
         const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single();
         if (profile?.role === "admin") destination = "/admin";
       }
-      router.push(destination);
-      router.refresh();
+      // Hard navigation (not router.push) so the destination renders fresh
+      // from the server with the new session — avoids Next's client-side
+      // router cache serving stale pages (e.g. a gallery added since the last
+      // session wouldn't appear until a manual refresh).
+      window.location.assign(destination);
     }
   };
 
