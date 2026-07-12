@@ -221,7 +221,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         setIncomingReady(true);
       });
     });
-    fadeTimerRef.current = setTimeout(() => setOutgoing(null), 1050);
+    fadeTimerRef.current = setTimeout(() => setOutgoing(null), 1350);
   }, [current, slides.length]);
 
   const prev = useCallback(() => goTo(current - 1), [goTo, current]);
@@ -367,7 +367,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   // (no white bleed / flash) yet you still see the two blend — a
                   // true crossfade. The trailing fade only matters for the edges
                   // when the two shots are different shapes.
-                  transition: "opacity 350ms cubic-bezier(0.25, 0, 0.15, 1) 600ms",
+                  transition: "opacity 350ms cubic-bezier(0.25, 0, 0.15, 1) 900ms",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -391,7 +391,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     src={currentSlide.url}
                     alt={currentSlide.category ?? ""}
                     eager
-                    fadeMs={600}
+                    fadeMs={900}
                     className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                   />
                 </div>
@@ -406,7 +406,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   style={{
                     zIndex: 1,
                     opacity: incomingReady ? 1 : 0,
-                    transition: "opacity 600ms cubic-bezier(0.25, 0, 0.15, 1)",
+                    transition: "opacity 900ms cubic-bezier(0.25, 0, 0.15, 1)",
                     objectFit: "contain",
                     background: "transparent",
                   }}
