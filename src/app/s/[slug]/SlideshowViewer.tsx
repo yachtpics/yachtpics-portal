@@ -221,7 +221,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         setIncomingReady(true);
       });
     });
-    fadeTimerRef.current = setTimeout(() => setOutgoing(null), 950);
+    fadeTimerRef.current = setTimeout(() => setOutgoing(null), 1050);
   }, [current, slides.length]);
 
   const prev = useCallback(() => goTo(current - 1), [goTo, current]);
@@ -361,10 +361,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 style={{
                   zIndex: 0,
                   opacity: incomingReady ? 0 : 1,
-                  // Hold opaque while the incoming fades in, THEN fade out. The
-                  // stagger keeps the stage fully covered mid-transition, so the
-                  // white background never bleeds through (no flash).
-                  transition: "opacity 450ms cubic-bezier(0.25, 0, 0.15, 1) 350ms",
+                  // Stay fully opaque underneath for the WHOLE incoming fade, then
+                  // clean up. Because the old photo never drops below 1 while the
+                  // new one dissolves in on top, the stage is always fully covered
+                  // (no white bleed / flash) yet you still see the two blend — a
+                  // true crossfade. The trailing fade only matters for the edges
+                  // when the two shots are different shapes.
+                  transition: "opacity 350ms cubic-bezier(0.25, 0, 0.15, 1) 600ms",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -388,7 +391,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     src={currentSlide.url}
                     alt={currentSlide.category ?? ""}
                     eager
-                    fadeMs={450}
+                    fadeMs={600}
                     className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                   />
                 </div>
@@ -403,7 +406,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   style={{
                     zIndex: 1,
                     opacity: incomingReady ? 1 : 0,
-                    transition: "opacity 450ms cubic-bezier(0.25, 0, 0.15, 1)",
+                    transition: "opacity 600ms cubic-bezier(0.25, 0, 0.15, 1)",
                     objectFit: "contain",
                     background: "transparent",
                   }}
