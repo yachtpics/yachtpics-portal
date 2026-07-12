@@ -32,6 +32,17 @@ export default function FeaturedStrip({ boats }: { boats: FeaturedBoat[] }) {
     return () => clearInterval(t);
   }, [boats.length]);
 
+  // Warm the cache so each rotation's photo is ready instantly and swaps in
+  // sync with the caption (otherwise the text changes before the image loads).
+  useEffect(() => {
+    boats.forEach((b) => {
+      if (b.heroUrl) {
+        const img = new window.Image();
+        img.src = b.heroUrl;
+      }
+    });
+  }, [boats]);
+
   if (boats.length === 0) return null;
   const b = boats[i];
   const fade = `transition-opacity duration-slow ease-quiet ${shown ? "opacity-100" : "opacity-0"}`;
