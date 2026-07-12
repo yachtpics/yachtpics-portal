@@ -133,7 +133,7 @@ export default function GallerySlideshow({
   // Drop the outgoing slide once the fade finishes
   useEffect(() => {
     if (incomingReady && outgoing !== null) {
-      const t = setTimeout(() => setOutgoing(null), 1650);
+      const t = setTimeout(() => setOutgoing(null), 1300);
       return () => clearTimeout(t);
     }
   }, [incomingReady, outgoing]);
@@ -254,7 +254,7 @@ export default function GallerySlideshow({
                   // clean up. The old photo never drops below 1 while the new one
                   // dissolves in on top, so the stage is always covered (no white
                   // bleed / flash) yet the two visibly blend — a true crossfade.
-                  transition: "opacity 350ms cubic-bezier(0.25, 0, 0.15, 1) 1200ms",
+                  transition: "opacity 400ms cubic-bezier(0.25, 0, 0.15, 1) 800ms",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
