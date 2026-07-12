@@ -38,7 +38,7 @@ function FadePhoto({
           if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
         }}
         onLoad={() => setLoaded(true)}
-        className={`${className} transition-opacity duration-[900ms] ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`${className} transition-opacity duration-[1200ms] ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </>
   );
@@ -119,7 +119,7 @@ export default function GallerySlideshow({
   // Drop the outgoing slide once the fade finishes
   useEffect(() => {
     if (incomingReady && outgoing !== null) {
-      const t = setTimeout(() => setOutgoing(null), 1350);
+      const t = setTimeout(() => setOutgoing(null), 1650);
       return () => clearTimeout(t);
     }
   }, [incomingReady, outgoing]);
@@ -240,7 +240,7 @@ export default function GallerySlideshow({
                   // clean up. The old photo never drops below 1 while the new one
                   // dissolves in on top, so the stage is always covered (no white
                   // bleed / flash) yet the two visibly blend — a true crossfade.
-                  transition: "opacity 350ms cubic-bezier(0.25, 0, 0.15, 1) 900ms",
+                  transition: "opacity 350ms cubic-bezier(0.25, 0, 0.15, 1) 1200ms",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -277,7 +277,7 @@ export default function GallerySlideshow({
                 style={{
                   zIndex: 1,
                   opacity: incomingReady ? 1 : 0,
-                  transition: "opacity 900ms cubic-bezier(0.25, 0, 0.15, 1)",
+                  transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)",
                   objectFit: "contain",
                   background: "transparent",
                 }}
