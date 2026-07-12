@@ -232,7 +232,11 @@ export default function GallerySlideshow({
               <div
                 key={`out-${outgoing}`}
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
-                style={{ zIndex: 0 }}
+                style={{
+                  zIndex: 0,
+                  opacity: incomingReady ? 0 : 1,
+                  transition: "opacity 500ms cubic-bezier(0.25, 0, 0.15, 1)",
+                }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
