@@ -38,7 +38,7 @@ function FadePhoto({
           if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
         }}
         onLoad={() => setLoaded(true)}
-        className={`${className} transition-opacity duration-base ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`${className} transition-opacity duration-[450ms] ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </>
   );
@@ -119,7 +119,7 @@ export default function GallerySlideshow({
   // Drop the outgoing slide once the fade finishes
   useEffect(() => {
     if (incomingReady && outgoing !== null) {
-      const t = setTimeout(() => setOutgoing(null), 550);
+      const t = setTimeout(() => setOutgoing(null), 950);
       return () => clearTimeout(t);
     }
   }, [incomingReady, outgoing]);
@@ -236,7 +236,10 @@ export default function GallerySlideshow({
                 style={{
                   zIndex: 0,
                   opacity: incomingReady ? 0 : 1,
-                  transition: "opacity 500ms cubic-bezier(0.25, 0, 0.15, 1)",
+                  // Hold opaque while the incoming fades in, THEN fade out — the
+                  // stagger keeps the stage covered so the white background never
+                  // bleeds through mid-transition (no flash).
+                  transition: "opacity 450ms cubic-bezier(0.25, 0, 0.15, 1) 350ms",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -273,7 +276,7 @@ export default function GallerySlideshow({
                 style={{
                   zIndex: 1,
                   opacity: incomingReady ? 1 : 0,
-                  transition: "opacity 220ms cubic-bezier(0.25, 0, 0.15, 1)",
+                  transition: "opacity 450ms cubic-bezier(0.25, 0, 0.15, 1)",
                   objectFit: "contain",
                   background: "transparent",
                 }}
