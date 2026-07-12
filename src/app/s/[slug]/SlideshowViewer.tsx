@@ -374,6 +374,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 <img
                   src={outgoingSlide.url}
                   alt=""
+                  decoding="sync"
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                 />
               </div>

@@ -261,6 +261,7 @@ export default function GallerySlideshow({
                 <img
                   src={outSlide.url}
                   alt=""
+                  decoding="sync"
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                 />
               </div>
