@@ -24,19 +24,33 @@ function FadePhoto({
   className?: string;
 }) {
   const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement>(null);
+
+  useEffect(() => {
+    const el = imgRef.current;
+    // Neighbours are preloaded, so the incoming image is usually already
+    // cached. Flipping to opacity-100 synchronously would skip the transition
+    // entirely — the photo would just appear on top of the old one. Paint one
+    // frame at opacity 0, then flip on the next frame so the fade actually runs.
+    if (el && el.complete && el.naturalWidth > 0) {
+      let raf2 = 0;
+      const raf1 = requestAnimationFrame(() => {
+        raf2 = requestAnimationFrame(() => setLoaded(true));
+      });
+      return () => { cancelAnimationFrame(raf1); cancelAnimationFrame(raf2); };
+    }
+  }, [src]);
+
   return (
     <>
       {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
+        ref={imgRef}
         src={src}
         alt={alt}
         loading={eager ? "eager" : "lazy"}
         decoding="async"
-        ref={(el) => {
-          // Cached images can complete before onLoad wires up.
-          if (el && el.complete && el.naturalWidth > 0) setLoaded(true);
-        }}
         onLoad={() => setLoaded(true)}
         className={`${className} transition-opacity duration-[1200ms] ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
       />
