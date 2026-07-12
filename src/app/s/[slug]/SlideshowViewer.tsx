@@ -103,7 +103,6 @@ function FadePhoto({
 
   return (
     <>
-      {!loaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         ref={imgRef}
