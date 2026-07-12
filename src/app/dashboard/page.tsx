@@ -214,13 +214,13 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {subscription?.status === "trialing" && trialDaysLeft !== null && (
+      {/* Only during an active trial (6+ days). The expiring/ended states are
+          owned by the top TrialBanner, so this no longer duplicates it. */}
+      {subscription?.status === "trialing" && trialDaysLeft !== null && trialDaysLeft > 5 && (
         <div className="bg-accent-50 border border-accent-200 rounded-card px-5 py-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <p className="text-accent-800 font-medium text-sm">
-              {trialDaysLeft > 0
-                ? `Your free trial ends in ${trialDaysLeft} day${trialDaysLeft !== 1 ? "s" : ""}.`
-                : "Your free trial has ended."}
+              Your free trial ends in {trialDaysLeft} days.
             </p>
             <p className="text-ink-500 text-xs mt-0.5">Upgrade to keep building slideshows and sharing listings.</p>
           </div>

@@ -41,11 +41,11 @@ export default function FeaturedStrip({ boats }: { boats: FeaturedBoat[] }) {
       href="/dashboard/showcase"
       className="group block mb-6 bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden transition-all duration-base ease-quiet hover:shadow-elev-2 hover:border-hairline-strong"
     >
-      <div className="flex items-stretch">
-        <div className="relative w-32 sm:w-48 shrink-0 bg-ink-100 overflow-hidden">
+      <div className="flex items-stretch h-28 sm:h-32">
+        <div className="relative w-32 sm:w-48 shrink-0 bg-ink-50 overflow-hidden">
           {b.heroUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={b.heroUrl} alt={b.vesselName} className={`h-full w-full object-cover ${fade}`} />
+            <img src={b.heroUrl} alt={b.vesselName} className={`h-full w-full object-contain ${fade}`} />
           ) : (
             <span className="flex h-full w-full items-center justify-center label-caps text-ink-300">No photo</span>
           )}
