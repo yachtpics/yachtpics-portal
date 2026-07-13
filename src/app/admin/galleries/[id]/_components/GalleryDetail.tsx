@@ -7,9 +7,17 @@ import { createClient } from "@/lib/supabase/client";
 
 type Photo = { id: string; storage_path: string; filename: string | null; category: string | null; display_order: number | null; is_visible: boolean | null; url: string | null };
 type Video = { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null };
-type Recipient = { userId: string; name: string | null; email: string | null };
+type Recipient = {
+  userId: string;
+  name: string | null;
+  email: string | null;
+  lastOpenedAt?: string | null;
+  openCount?: number;
+  filesDownloaded?: number;
+  lastDownloadAt?: string | null;
+};
 type Gallery = { id: string; title: string; gallery_type: string; slug: string; expires_at: string | null; slideshow_published: boolean; created_at: string };
-type Metrics = { views: number; downloadEvents: number; downloadItems: number; lastDownloadAt: string | null };
+type Metrics = { views: number; downloadEvents: number; downloadItems: number; lastDownloadAt: string | null; openedRecipients: number; totalRecipients: number };
 
 const SITE_URL = "https://portal.yachtpics.com";
 
@@ -316,9 +324,17 @@ export default function GalleryDetail({
               <p className="text-[11px] text-ink-500">Download sessions</p>
             </div>
           </div>
-          {metrics.lastDownloadAt && (
-            <p className="text-[11px] text-ink-500 mt-3 text-center tabular-nums">Last download {fmtDate(metrics.lastDownloadAt)}</p>
+          {metrics.totalRecipients > 0 && (
+            <p className="text-[11px] text-ink-500 mt-3 text-center tabular-nums">
+              Opened by {metrics.openedRecipients} of {metrics.totalRecipients} recipient{metrics.totalRecipients === 1 ? "" : "s"}
+            </p>
           )}
+          {metrics.lastDownloadAt && (
+            <p className="text-[11px] text-ink-500 mt-1 text-center tabular-nums">Last download {fmtDate(metrics.lastDownloadAt)}</p>
+          )}
+          <p className="text-[10px] text-ink-400 mt-3 leading-relaxed">
+            Slideshow views count anonymous opens of the public share link. Opens and downloads below are tracked per signed-in recipient.
+          </p>
         </div>
       </div>
 
@@ -370,15 +386,40 @@ export default function GalleryDetail({
           <p className="text-sm text-ink-400">No recipients yet.</p>
         ) : (
           <div className="space-y-1.5">
-            {recipients.map((r) => (
+            {recipients.map((r) => {
+              const opened = (r.openCount ?? 0) > 0;
+              const files = r.filesDownloaded ?? 0;
+              return (
               <div key={r.userId} className="flex items-center justify-between gap-3 border border-hairline rounded-ctl px-3 py-2">
                 <div className="min-w-0">
-                  {r.name && <span className="text-sm font-medium text-ink-800">{r.name} </span>}
-                  <span className="text-sm text-ink-500">{r.email}</span>
+                  <div>
+                    {r.name && <span className="text-sm font-medium text-ink-800">{r.name} </span>}
+                    <span className="text-sm text-ink-500">{r.email}</span>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px]">
+                    {opened ? (
+                      <span className="inline-flex items-center gap-1 text-success-700">
+                        <span className="h-1.5 w-1.5 rounded-full bg-success-500" aria-hidden />
+                        Opened{r.lastOpenedAt ? ` · last ${fmtDate(r.lastOpenedAt)}` : ""}
+                        {(r.openCount ?? 0) > 1 ? ` · ${r.openCount}×` : ""}
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-ink-400">
+                        <span className="h-1.5 w-1.5 rounded-full bg-ink-300" aria-hidden />
+                        Not opened yet
+                      </span>
+                    )}
+                    {files > 0 && (
+                      <span className="text-ink-500 tabular-nums">
+                        · {files} file{files === 1 ? "" : "s"} downloaded{r.lastDownloadAt ? ` · last ${fmtDate(r.lastDownloadAt)}` : ""}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <button onClick={() => removeRecipient(r.userId)} className="text-xs font-medium text-danger-600 hover:text-danger-700 shrink-0">Remove</button>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

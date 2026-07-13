@@ -44,29 +44,57 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
   const vidUrlMap = new Map((vidSigned ?? []).map((d) => [d.path, d.signedUrl]));
   const videosWithUrls = (videos ?? []).map((v) => ({ ...v, url: vidUrlMap.get(v.storage_path) ?? null }));
 
-  // Recipients
-  const { data: accessRows } = await supabase
-    .from("gallery_access")
-    .select("user_id, created_at, profiles:user_id(first_name, last_name, display_email)")
-    .eq("gallery_id", params.id);
+  // Recipients + activity
+  const [{ data: accessRows }, { data: views }, { data: downloads }, { data: opens }] = await Promise.all([
+    supabase
+      .from("gallery_access")
+      .select("user_id, created_at, profiles:user_id(first_name, last_name, display_email)")
+      .eq("gallery_id", params.id),
+    supabase.from("gallery_views").select("id").eq("gallery_id", params.id),
+    supabase.from("gallery_downloads").select("user_id, item_count, kind, downloaded_at").eq("gallery_id", params.id).order("downloaded_at", { ascending: false }),
+    supabase.from("gallery_opens").select("user_id, opened_at").eq("gallery_id", params.id).order("opened_at", { ascending: false }),
+  ]);
+
+  const downloadEvents = downloads ?? [];
+  const openRows = opens ?? [];
+
+  // Per-recipient rollups
+  const opensByUser = new Map<string, { count: number; last: string }>();
+  for (const o of openRows) {
+    const uid = o.user_id as string;
+    const cur = opensByUser.get(uid);
+    if (cur) cur.count += 1;
+    else opensByUser.set(uid, { count: 1, last: o.opened_at as string }); // rows are desc, first seen = latest
+  }
+  const dlByUser = new Map<string, { files: number; sessions: number; last: string }>();
+  for (const d of downloadEvents) {
+    const uid = d.user_id as string;
+    if (!uid) continue;
+    const cur = dlByUser.get(uid);
+    if (cur) { cur.files += d.item_count ?? 0; cur.sessions += 1; }
+    else dlByUser.set(uid, { files: d.item_count ?? 0, sessions: 1, last: d.downloaded_at as string });
+  }
+
   const recipients = (accessRows ?? []).map((r) => {
     const p = (r.profiles as unknown) as { first_name: string | null; last_name: string | null; display_email: string | null } | null;
+    const uid = r.user_id as string;
+    const op = opensByUser.get(uid);
+    const dl = dlByUser.get(uid);
     return {
-      userId: r.user_id as string,
+      userId: uid,
       name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : null,
       email: p?.display_email ?? null,
+      lastOpenedAt: op?.last ?? null,
+      openCount: op?.count ?? 0,
+      filesDownloaded: dl?.files ?? 0,
+      lastDownloadAt: dl?.last ?? null,
     };
   });
 
-  // Metrics
-  const [{ data: views }, { data: downloads }] = await Promise.all([
-    supabase.from("gallery_views").select("id").eq("gallery_id", params.id),
-    supabase.from("gallery_downloads").select("item_count, kind, downloaded_at").eq("gallery_id", params.id).order("downloaded_at", { ascending: false }),
-  ]);
   const viewCount = (views ?? []).length;
-  const downloadEvents = downloads ?? [];
   const downloadItemTotal = downloadEvents.reduce((s, d) => s + (d.item_count ?? 0), 0);
   const lastDownloadAt = downloadEvents[0]?.downloaded_at ?? null;
+  const openedRecipients = recipients.filter((r) => r.openCount > 0).length;
 
   return (
     <GalleryDetail
@@ -79,6 +107,8 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
         downloadEvents: downloadEvents.length,
         downloadItems: downloadItemTotal,
         lastDownloadAt,
+        openedRecipients,
+        totalRecipients: recipients.length,
       }}
     />
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import JSZip from "jszip";
 
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null };
@@ -47,6 +47,15 @@ export default function ClientGalleryView({
   const [sendMessage, setSendMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sendMsg, setSendMsg] = useState("");
+
+  // Record that the recipient opened this gallery (once per mount; the route
+  // throttles to one open per 30 min so refreshes don't inflate the count).
+  const openLogged = useRef(false);
+  useEffect(() => {
+    if (openLogged.current) return;
+    openLogged.current = true;
+    fetch(`/api/client/galleries/${galleryId}/log-open`, { method: "POST" }).catch(() => {});
+  }, [galleryId]);
 
   const available = photos.filter((p) => p.url);
   const availableVideos = videos.filter((v) => v.url);
