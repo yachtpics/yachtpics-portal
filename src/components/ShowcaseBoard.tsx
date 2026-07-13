@@ -41,6 +41,15 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
     }
   }, []);
 
+  // Record a contact tap (phone/email) so admins can see real intent. Fire-and-forget.
+  const trackContact = useCallback((listingId: string, detail: "phone" | "email") => {
+    fetch("/api/showcase/track", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "contact_click", listingId, detail }),
+    }).catch(() => {});
+  }, []);
+
   const close = useCallback(() => { setOpenId(null); setPhotos([]); setZoom(null); }, []);
   const next = useCallback(() => setZoom((z) => (z === null || !photos.length ? z : (z + 1) % photos.length)), [photos.length]);
   const prev = useCallback(() => setZoom((z) => (z === null || !photos.length ? z : (z - 1 + photos.length) % photos.length)), [photos.length]);
@@ -104,8 +113,8 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
                 {b.brokerName && <p className="text-ink-900 text-sm font-medium">{b.brokerName}</p>}
                 {b.brokerageName && <p className="text-ink-500 text-xs mt-0.5">{b.brokerageName}</p>}
                 <div className="mt-1.5 flex flex-col gap-0.5 text-xs">
-                  {b.brokerPhone && <a href={`tel:${b.brokerPhone}`} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast">{b.brokerPhone}</a>}
-                  {b.brokerEmail && <a href={`mailto:${b.brokerEmail}`} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast truncate">{b.brokerEmail}</a>}
+                  {b.brokerPhone && <a href={`tel:${b.brokerPhone}`} onClick={() => trackContact(b.id, "phone")} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast">{b.brokerPhone}</a>}
+                  {b.brokerEmail && <a href={`mailto:${b.brokerEmail}`} onClick={() => trackContact(b.id, "email")} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast truncate">{b.brokerEmail}</a>}
                 </div>
               </div>
             </div>
@@ -197,8 +206,8 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
               {openBoat.brokerageName && <span className="text-ink-500"> · {openBoat.brokerageName}</span>}
             </div>
             <div className="flex gap-4 text-xs shrink-0">
-              {openBoat.brokerPhone && <a href={`tel:${openBoat.brokerPhone}`} className="text-accent-700 hover:text-accent-600">{openBoat.brokerPhone}</a>}
-              {openBoat.brokerEmail && <a href={`mailto:${openBoat.brokerEmail}`} className="text-accent-700 hover:text-accent-600">{openBoat.brokerEmail}</a>}
+              {openBoat.brokerPhone && <a href={`tel:${openBoat.brokerPhone}`} onClick={() => trackContact(openBoat.id, "phone")} className="text-accent-700 hover:text-accent-600">{openBoat.brokerPhone}</a>}
+              {openBoat.brokerEmail && <a href={`mailto:${openBoat.brokerEmail}`} onClick={() => trackContact(openBoat.id, "email")} className="text-accent-700 hover:text-accent-600">{openBoat.brokerEmail}</a>}
             </div>
           </div>
         </div>

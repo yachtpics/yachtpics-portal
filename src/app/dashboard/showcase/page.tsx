@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import ShowcaseGrid from "@/components/ShowcaseGrid";
+import ShowcaseVisitLogger from "@/components/ShowcaseVisitLogger";
 
 export const dynamic = "force-dynamic";
 
@@ -9,5 +10,10 @@ export default async function ShowcasePage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  return <ShowcaseGrid />;
+  return (
+    <>
+      <ShowcaseVisitLogger />
+      <ShowcaseGrid />
+    </>
+  );
 }
