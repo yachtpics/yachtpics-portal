@@ -249,11 +249,10 @@ export default function GallerySlideshow({
                 style={{
                   zIndex: 0,
                   opacity: incomingReady ? 0 : 1,
-                  // Stay fully opaque underneath for the WHOLE incoming fade, then
-                  // clean up. The old photo never drops below 1 while the new one
-                  // dissolves in on top, so the stage is always covered (no white
-                  // bleed / flash) yet the two visibly blend — a true crossfade.
-                  transition: "opacity 400ms cubic-bezier(0.25, 0, 0.15, 1) 800ms",
+                  // A true cross-dissolve — both photos move together over the same
+                  // window, so a wide shot's wings dissolve away with the frame
+                  // instead of sitting either side of a tall one and winking out.
+                  transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}

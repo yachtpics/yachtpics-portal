@@ -360,13 +360,14 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 style={{
                   zIndex: 0,
                   opacity: incomingReady ? 0 : 1,
-                  // Stay fully opaque underneath for the WHOLE incoming fade, then
-                  // clean up. Because the old photo never drops below 1 while the
-                  // new one dissolves in on top, the stage is always fully covered
-                  // (no white bleed / flash) yet you still see the two blend — a
-                  // true crossfade. The trailing fade only matters for the edges
-                  // when the two shots are different shapes.
-                  transition: "opacity 400ms cubic-bezier(0.25, 0, 0.15, 1) 800ms",
+                  // A true cross-dissolve: both photos move together over the same
+                  // window. Holding this one opaque only reads right when the shots
+                  // are the same shape — follow a wide shot with a tall one and the
+                  // wide one's wings sit either side of the new photo, then wink
+                  // out. Fading both at once dissolves the wings with the frame.
+                  // The flash this stagger was added to fix turned out to be the
+                  // unpainted element + loading placeholder, both since fixed.
+                  transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)",
                 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
