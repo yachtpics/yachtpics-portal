@@ -64,7 +64,7 @@ function nav(depth: number): string {
         <li><a href="${b}index.html">Home</a></li>
         <li><a href="${b}gallery.html">Gallery</a></li>
         <li><a href="${b}video.html">Video</a></li>
-        <li><a href="${b}yacht-photos.html">Clients</a></li>
+        <li><a href="${b}yacht-photos.html">Boats</a></li>
         <li><a href="${b}team.html">Team</a></li>
         <li><a href="${b}contact.html">Contact</a></li>
       </ul>
@@ -332,7 +332,7 @@ ${nav(0)}
 <main>
   <div class="page-hero">
     <div class="wrap">
-      <p class="kicker">Client Portal</p>
+      <p class="kicker">Boats</p>
       <h1>${esc(d.brokerageName)}</h1>
       <p>${total} listing shoot${total === 1 ? "" : "s"} delivered by YachtPics. Select a yacht to view its slideshow.</p>
     </div>
