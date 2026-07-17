@@ -215,11 +215,7 @@ ${nav(2)}
   if(!photos.length) return;
   var A = document.getElementById('ypA'), B = document.getElementById('ypB');
   var layers = [A, B], front = 0, cur = 0, busy = false;
-  // Same tuning as the portal: the old photo holds while the new one comes up,
-  // then clears so BOTH finish together at FADE. If it holds the full fade it
-  // lingers past the new photo and you see it wink out — obvious when a wide
-  // shot is followed by a tall one and its edges sit either side.
-  var FADE = 1200, HOLD = 800, CLEAR = 400;
+  var FADE = 1200, EASE = 'cubic-bezier(.25,0,.15,1)';
   var countEl = document.getElementById('ypCount');
   var thumbsEl = document.getElementById('ypThumbs');
   var toggleEl = document.getElementById('ypToggle');
@@ -248,14 +244,17 @@ ${nav(2)}
     back.src = photos[i];
     var go = function(){
       back.style.zIndex = 2; fore.style.zIndex = 1;
-      back.style.transition = instant ? 'none' : 'opacity ' + FADE + 'ms cubic-bezier(.25,0,.15,1)';
+      // A true cross-dissolve: both photos move together across the same window.
+      // Holding the old one opaque (as the portal does) only reads correctly when
+      // consecutive shots are the same shape — follow a wide shot with a tall one
+      // and the wide one's wings sit either side of the new photo for the whole
+      // fade, then wink out. Fading both at once dissolves those wings away with
+      // the rest of the frame. Safe here because decode() has already run, so
+      // there's no paint gap to expose the paper underneath.
+      back.style.transition = instant ? 'none' : 'opacity ' + FADE + 'ms ' + EASE;
+      fore.style.transition = instant ? 'none' : 'opacity ' + FADE + 'ms ' + EASE;
       back.style.opacity = 1;
-      // Start clearing the old photo partway through the new one's fade, so the
-      // two land together instead of the old one trailing behind it.
-      setTimeout(function(){
-        fore.style.transition = 'opacity ' + CLEAR + 'ms cubic-bezier(.25,0,.15,1)';
-        fore.style.opacity = 0;
-      }, instant ? 0 : HOLD);
+      fore.style.opacity = 0;
       setTimeout(function(){
         front = 1 - front; cur = i; busy = false;
         label(); marks(); preload(i);
