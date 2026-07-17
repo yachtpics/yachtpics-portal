@@ -215,7 +215,11 @@ ${nav(2)}
   if(!photos.length) return;
   var A = document.getElementById('ypA'), B = document.getElementById('ypB');
   var layers = [A, B], front = 0, cur = 0, busy = false;
-  var FADE = 1200, CLEAR = 350;
+  // Same tuning as the portal: the old photo holds while the new one comes up,
+  // then clears so BOTH finish together at FADE. If it holds the full fade it
+  // lingers past the new photo and you see it wink out — obvious when a wide
+  // shot is followed by a tall one and its edges sit either side.
+  var FADE = 1200, HOLD = 800, CLEAR = 400;
   var countEl = document.getElementById('ypCount');
   var thumbsEl = document.getElementById('ypThumbs');
   var toggleEl = document.getElementById('ypToggle');
@@ -246,9 +250,13 @@ ${nav(2)}
       back.style.zIndex = 2; fore.style.zIndex = 1;
       back.style.transition = instant ? 'none' : 'opacity ' + FADE + 'ms cubic-bezier(.25,0,.15,1)';
       back.style.opacity = 1;
+      // Start clearing the old photo partway through the new one's fade, so the
+      // two land together instead of the old one trailing behind it.
       setTimeout(function(){
         fore.style.transition = 'opacity ' + CLEAR + 'ms cubic-bezier(.25,0,.15,1)';
         fore.style.opacity = 0;
+      }, instant ? 0 : HOLD);
+      setTimeout(function(){
         front = 1 - front; cur = i; busy = false;
         label(); marks(); preload(i);
       }, instant ? 0 : FADE);
