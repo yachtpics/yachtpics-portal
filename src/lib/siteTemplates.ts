@@ -195,6 +195,10 @@ ${nav(2)}
 .yp-toggle{background:none;border:0;color:#9aa5b1;cursor:pointer;display:flex;padding:4px;transition:color .15s}
 .yp-toggle[aria-pressed="true"],.yp-toggle:hover{color:var(--ink)}
 .yp-thumbs{display:flex;gap:6px;overflow-x:auto;padding:8px 0 4px}
+/* An author display rule beats the UA stylesheet's [hidden]{display:none},
+   so the strip stays visible without this. Thumbnails are hidden by default —
+   the photograph gets the space, exactly as in the portal. */
+.yp-thumbs[hidden]{display:none}
 .yp-thumb{flex:0 0 auto;border:0;padding:0;background:none;cursor:pointer;opacity:.5;transition:opacity .2s}
 .yp-thumb:hover,.yp-thumb[aria-current="true"]{opacity:1}
 .yp-thumb[aria-current="true"]{outline:1px solid var(--gold)}

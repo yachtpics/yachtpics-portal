@@ -1,5 +1,6 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { boatPage, brokeragePage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
+import { orderPhotos } from "@/lib/photoOrder";
 
 // Publishes a listing to yachtpics.com. Two independent vetoes apply, per the
 // brief: ours (publish_to_site) and the broker's (showcase_opt_out — the
@@ -39,6 +40,7 @@ type ListingRow = {
   publish_to_site: boolean | null;
   site_slug: string | null;
   hero_photo_id: string | null;
+  photo_order_manual: boolean | null;
   broker_id: string;
 };
 
@@ -47,17 +49,21 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
   const svc = service();
   const { data: photoRows } = await svc
     .from("photos")
-    .select("id, storage_path")
+    .select("id, storage_path, category, display_order")
     .eq("listing_id", listing.id)
     .eq("is_visible", true)
     .order("display_order", { ascending: true });
 
-  const rows = photoRows ?? [];
-  // Hero first, then display order (stable sort keeps the rest in place).
-  rows.sort((a, b) => {
-    if (a.id === listing.hero_photo_id) return -1;
-    if (b.id === listing.hero_photo_id) return 1;
-    return 0;
+  // Publish in display_order — Charlie uploads straight out of Lightroom in
+  // viewing order, so display_order IS the intended order. Deliberately NOT
+  // category-sorted here: "Head" is one label covering several rooms, each
+  // interleaved next to its own stateroom, and a category sort would clump them
+  // all together and break that. The canonical order is applied by an explicit
+  // "sort to standard order" action instead, which rewrites display_order so the
+  // portal, client sends and the website all agree.
+  const rows = orderPhotos(photoRows ?? [], {
+    manual: true,
+    heroId: listing.hero_photo_id,
   });
 
   const urls: string[] = [];
@@ -147,7 +153,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   const { data: listing } = await svc
     .from("listings")
-    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, broker_id")
+    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, broker_id")
     .eq("id", listingId)
     .maybeSingle();
   if (!listing) return { error: "Listing not found" };

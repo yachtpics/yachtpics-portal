@@ -15,6 +15,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { orderPhotos } from "@/lib/photoOrder";
 import { guessCategory } from "@/lib/guessCategory";
 import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
@@ -42,6 +43,7 @@ export default function BrokerListingPage() {
   const [optOutBusy, setOptOutBusy] = useState(false);
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [heroFit, setHeroFit] = useState<"fit" | "fill">("fit");
+  const [sortingPhotos, setSortingPhotos] = useState(false);
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -876,6 +878,31 @@ export default function BrokerListingPage() {
         supabase.from("photos").update({ display_order: idx }).eq("id", photo.id)
       )
     );
+    // Record that this listing has been hand-sorted. From here on the manual
+    // order wins and the canonical walk-the-boat category order steps aside.
+    await supabase.from("listings").update({ photo_order_manual: true }).eq("id", id);
+  }
+
+  // Rewrite display_order into the standard walk-the-boat order: outside, up
+  // top, cockpit, engine room, then in through the interior. Writes the order
+  // down rather than sorting at render time, so the portal, client sends and the
+  // website all show the identical sequence — and you can still drag afterwards.
+  async function sortToStandardOrder() {
+    if (sortingPhotos || photos.length === 0) return;
+    if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced. You can still drag afterwards.")) return;
+    setSortingPhotos(true);
+    try {
+      const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null });
+      setPhotos(sorted);
+      await Promise.all(
+        sorted.map((photo, idx) =>
+          supabase.from("photos").update({ display_order: idx }).eq("id", photo.id)
+        )
+      );
+      await supabase.from("listings").update({ photo_order_manual: true }).eq("id", id);
+    } finally {
+      setSortingPhotos(false);
+    }
   }
 
   if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading...</div>;
@@ -1206,6 +1233,19 @@ export default function BrokerListingPage() {
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+          {photos.length > 1 && (
+            <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+              <p className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</p>
+              <button
+                onClick={sortToStandardOrder}
+                disabled={sortingPhotos}
+                title="Rewrite the order to the standard walk-through: outside, up top, cockpit, engine room, then the interior"
+                className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
+              >
+                {sortingPhotos ? "Sorting…" : "Sort to standard order"}
+              </button>
             </div>
           )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
