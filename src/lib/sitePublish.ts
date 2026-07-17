@@ -1,0 +1,212 @@
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { boatPage, brokeragePage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
+
+// Publishes a listing to yachtpics.com. Two independent vetoes apply, per the
+// brief: ours (publish_to_site) and the broker's (showcase_opt_out — the
+// pocket-listing veto). Either one blocks it.
+//
+// Note this deliberately does NOT touch /s/[slug]: that route is subscription
+// gated ("the live client slideshow is a paid feature") and must never be what
+// feeds the public website.
+
+const PUBLIC_BUCKET = "site-photos";
+const PRIVATE_BUCKET = "listing-photos";
+
+export type SiteFile = { path: string; content: string };
+
+function service() {
+  return createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
+
+export function publicPhotoUrl(path: string): string {
+  return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PUBLIC_BUCKET}/${path}`;
+}
+
+type ListingRow = {
+  id: string;
+  vessel_name: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+  length_ft: string | null;
+  vessel_type: string | null;
+  location: string | null;
+  status: string | null;
+  showcase_opt_out: boolean | null;
+  publish_to_site: boolean | null;
+  site_slug: string | null;
+  hero_photo_id: string | null;
+  broker_id: string;
+};
+
+/** Copy a listing's visible photos into the public bucket; returns public URLs. */
+async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): Promise<string[]> {
+  const svc = service();
+  const { data: photoRows } = await svc
+    .from("photos")
+    .select("id, storage_path")
+    .eq("listing_id", listing.id)
+    .eq("is_visible", true)
+    .order("display_order", { ascending: true });
+
+  const rows = photoRows ?? [];
+  // Hero first, then display order (stable sort keeps the rest in place).
+  rows.sort((a, b) => {
+    if (a.id === listing.hero_photo_id) return -1;
+    if (b.id === listing.hero_photo_id) return 1;
+    return 0;
+  });
+
+  const urls: string[] = [];
+  const jobs = rows.map((r, i) => {
+    const src = r.storage_path as string;
+    const ext = (src.split(".").pop() || "jpg").toLowerCase();
+    const dest = `${sitePage}/${slug}/${String(i + 1).padStart(3, "0")}.${ext}`;
+    urls.push(publicPhotoUrl(dest));
+    return { src, dest };
+  });
+
+  // Server-side copies — the bytes never travel through this function.
+  // Chunked so a 100+ photo boat doesn't open 100 sockets at once.
+  for (let i = 0; i < jobs.length; i += 8) {
+    await Promise.all(
+      jobs.slice(i, i + 8).map(async (j) => {
+        const { error } = await svc.storage
+          .from(PRIVATE_BUCKET)
+          .copy(j.src, j.dest, { destinationBucket: PUBLIC_BUCKET });
+        // An existing file is fine — republishing overwrites in place.
+        if (error && !/exists/i.test(error.message)) {
+          const { data: blob } = await svc.storage.from(PRIVATE_BUCKET).download(j.src);
+          if (blob) {
+            await svc.storage.from(PUBLIC_BUCKET).upload(j.dest, blob, { upsert: true });
+          }
+        }
+      })
+    );
+  }
+
+  return urls;
+}
+
+/** Render the brokerage page: portal boats on top, the Juicebox archive below. */
+export async function renderBrokeragePage(brokerageId: string): Promise<SiteFile | null> {
+  const svc = service();
+
+  const { data: brokerage } = await svc
+    .from("brokerages")
+    .select("id, name, site_page")
+    .eq("id", brokerageId)
+    .maybeSingle();
+  if (!brokerage?.site_page) return null;
+
+  const { data: brokers } = await svc.from("profiles").select("id").eq("brokerage_id", brokerageId);
+  const brokerIds = (brokers ?? []).map((b) => b.id);
+
+  const { data: published } = brokerIds.length
+    ? await svc
+        .from("listings")
+        .select("vessel_name, make, length_ft, site_slug, published_at")
+        .in("broker_id", brokerIds)
+        .eq("publish_to_site", true)
+        .eq("showcase_opt_out", false)
+        .eq("status", "active")
+        .order("published_at", { ascending: false })
+    : { data: [] };
+
+  const { data: archive } = await svc
+    .from("brokerage_site_archive")
+    .select("label, href")
+    .eq("brokerage_id", brokerageId)
+    .order("sort_order", { ascending: true });
+
+  const html = brokeragePage({
+    sitePage: brokerage.site_page,
+    brokerageName: brokerage.name,
+    boats: (published ?? [])
+      .filter((b) => b.site_slug)
+      .map((b) => ({
+        label: boatLabel({ lengthFt: b.length_ft, make: b.make, vesselName: b.vessel_name }),
+        slug: b.site_slug as string,
+      })),
+    archive: (archive ?? []).map((a) => ({ label: a.label, href: a.href })),
+  });
+
+  return { path: `${brokerage.site_page}.html`, content: html };
+}
+
+/**
+ * Build every file needed to publish a listing: its slideshow page plus the
+ * regenerated brokerage page. Returns the files rather than uploading them, so
+ * the caller can preview before pushing anything live.
+ */
+export async function buildListingFiles(listingId: string): Promise<{ files: SiteFile[]; slug: string; label: string } | { error: string }> {
+  const svc = service();
+
+  const { data: listing } = await svc
+    .from("listings")
+    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, broker_id")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (!listing) return { error: "Listing not found" };
+
+  const l = listing as ListingRow;
+  if (l.status !== "active") return { error: "Listing is not active" };
+  if (l.showcase_opt_out) return { error: "The broker marked this a pocket listing — it can't be published." };
+  if (!l.publish_to_site) return { error: "Listing isn't switched on for the website yet." };
+
+  const { data: broker } = await svc
+    .from("profiles")
+    .select("id, first_name, last_name, display_email, phone, brokerage_id")
+    .eq("id", l.broker_id)
+    .maybeSingle();
+  if (!broker?.brokerage_id) return { error: "Broker has no brokerage — can't map to a website page." };
+
+  const { data: brokerage } = await svc
+    .from("brokerages")
+    .select("id, name, site_page")
+    .eq("id", broker.brokerage_id)
+    .maybeSingle();
+  if (!brokerage?.site_page) {
+    return { error: `${brokerage?.name ?? "This brokerage"} isn't mapped to a website page yet.` };
+  }
+
+  const label = boatLabel({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
+  const slug = l.site_slug || boatSlug({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
+  if (!slug) return { error: "Can't build a URL for this boat — it needs at least a name or make." };
+
+  const photos = await syncPhotos(l, brokerage.site_page, slug);
+  if (photos.length === 0) return { error: "No visible photos to publish." };
+
+  // Persist the slug so the URL is stable even if the boat is renamed later.
+  await svc
+    .from("listings")
+    .update({ site_slug: slug, published_at: new Date().toISOString() })
+    .eq("id", l.id);
+
+  const data: BoatPageData = {
+    label,
+    slug,
+    sitePage: brokerage.site_page,
+    brokerageName: brokerage.name,
+    vesselName: l.vessel_name ?? label,
+    year: l.year,
+    make: l.make,
+    model: l.model,
+    lengthFt: l.length_ft,
+    vesselType: l.vessel_type,
+    location: l.location,
+    brokerName: broker.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : null,
+    brokerEmail: broker.display_email ?? null,
+    brokerPhone: broker.phone ?? null,
+    photos,
+  };
+
+  const files: SiteFile[] = [{ path: `${brokerage.site_page}/${slug}/index.html`, content: boatPage(data) }];
+  const bpage = await renderBrokeragePage(brokerage.id);
+  if (bpage) files.push(bpage);
+
+  return { files, slug, label };
+}

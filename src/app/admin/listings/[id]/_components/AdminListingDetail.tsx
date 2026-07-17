@@ -35,6 +35,7 @@ interface Listing {
   broker_id: string;
   is_shared?: boolean | null;
   in_showcase?: boolean | null;
+  publish_to_site?: boolean | null;
   showcase_opt_out?: boolean | null;
   slideshow_slug?: string | null;
   slideshow_published?: boolean | null;
@@ -92,6 +93,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [sharingBusy, setSharingBusy] = useState(false);
   const [inShowcase, setInShowcase] = useState(listing.in_showcase === true);
   const [showcaseBusy, setShowcaseBusy] = useState(false);
+  const [onSite, setOnSite] = useState(listing.publish_to_site === true);
+  const [siteBusy, setSiteBusy] = useState(false);
   const [slideshowPublished, setSlideshowPublished] = useState(listing.slideshow_published === true);
   const [slideshowSlug, setSlideshowSlug] = useState<string | null>(listing.slideshow_slug ?? null);
   const [slideshowBusy, setSlideshowBusy] = useState(false);
@@ -346,6 +349,33 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
+  // Publish to yachtpics.com. Separate pipeline from Recently Photographed —
+  // this one puts the boat on the public brokerage page with a portal slideshow.
+  async function togglePublishSite() {
+    if (siteBusy) return;
+    const next = !onSite;
+    setSiteBusy(true);
+    try {
+      const res = await fetch(`/api/admin/listings/${listing.id}/publish-site`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publish: next }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setOnSite(next);
+      if (!next) setMessage("Removed from the website.");
+      else if (data.previewOnly) setMessage(`Generated ${data.label} — ${data.reason}`);
+      else setMessage(`Published to yachtpics.com — ${data.uploaded?.length ?? 0} page(s) uploaded.`);
+      setTimeout(() => setMessage(""), 6000);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Couldn't update the website.");
+      setTimeout(() => setMessage(""), 6000);
+    } finally {
+      setSiteBusy(false);
+    }
+  }
+
   async function handleVideoFiles(files: FileList | null) {
     if (!files) return;
     setVideoError(null);
@@ -480,6 +510,27 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${inShowcase ? "translate-x-3.5" : "translate-x-0.5"}`} />
             </span>
             {inShowcase ? "In Recently Photographed" : "Add to Recently Photographed"}
+          </button>
+          <button
+            onClick={togglePublishSite}
+            disabled={siteBusy || listing.showcase_opt_out === true}
+            title={
+              listing.showcase_opt_out
+                ? "Pocket listing — the broker vetoed this"
+                : onSite
+                  ? "Live on yachtpics.com"
+                  : "Publish this boat to yachtpics.com with a portal slideshow"
+            }
+            className={`mt-2 ml-0 sm:ml-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
+              onSite
+                ? "border-accent-500 bg-accent-50 text-accent-700"
+                : "border-hairline-strong bg-white text-ink-500 hover:border-accent-500"
+            }`}
+          >
+            <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-fast ease-quiet ${onSite ? "bg-accent-500" : "bg-ink-300"}`}>
+              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${onSite ? "translate-x-3.5" : "translate-x-0.5"}`} />
+            </span>
+            {siteBusy ? "Publishing…" : onSite ? "On yachtpics.com" : "Publish to website"}
           </button>
           {listing.showcase_opt_out && (
             <p className="mt-1.5 text-xs text-warn-700">
