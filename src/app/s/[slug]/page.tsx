@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
+import { orderPhotos } from "@/lib/photoOrder";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 
@@ -28,7 +29,7 @@ export default async function PublicSlideshowPage({
 
   const { data: listing } = await supabase
     .from("listings")
-    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id, description, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material")
+    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id, description, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, hero_photo_id, photo_order_manual")
     .eq("slideshow_slug", params.slug)
     .eq("slideshow_published", true)
     .single();
@@ -100,7 +101,15 @@ export default async function PublicSlideshowPage({
     ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 7200)
     : { data: [] };
   const urlMap = new Map((signedData ?? []).map(d => [d.path, d.signedUrl]));
-  const withUrls = (photos ?? []).map(photo => ({
+  // Default to the canonical walk-the-boat order (profiles → tower → flybridge →
+  // … → master) UNLESS the broker/assistant hand-arranged this listing, in which
+  // case their order is respected verbatim. photo_order_manual is set the moment
+  // anyone drags a photo or clicks "Sort to standard order".
+  const orderedPhotos = orderPhotos(photos ?? [], {
+    manual: listing.photo_order_manual === true,
+    heroId: listing.hero_photo_id,
+  });
+  const withUrls = orderedPhotos.map(photo => ({
     ...photo,
     url: urlMap.get(photo.storage_path) ?? null,
   }));

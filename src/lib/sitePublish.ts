@@ -54,15 +54,13 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
     .eq("is_visible", true)
     .order("display_order", { ascending: true });
 
-  // Publish in display_order — Charlie uploads straight out of Lightroom in
-  // viewing order, so display_order IS the intended order. Deliberately NOT
-  // category-sorted here: "Head" is one label covering several rooms, each
-  // interleaved next to its own stateroom, and a category sort would clump them
-  // all together and break that. The canonical order is applied by an explicit
-  // "sort to standard order" action instead, which rewrites display_order so the
-  // portal, client sends and the website all agree.
+  // Default to the canonical walk-the-boat order (profiles → tower → flybridge →
+  // … → master) UNLESS the broker/assistant hand-arranged this listing — then
+  // their exact drag order is respected. photo_order_manual flips true the moment
+  // anyone drags a photo or clicks "Sort to standard order", so an untouched
+  // listing gets the standard sequence automatically instead of raw upload order.
   const rows = orderPhotos(photoRows ?? [], {
-    manual: true,
+    manual: listing.photo_order_manual === true,
     heroId: listing.hero_photo_id,
   });
 

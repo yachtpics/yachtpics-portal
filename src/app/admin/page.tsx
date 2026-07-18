@@ -2,6 +2,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { PLANS } from "@/lib/plans";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
+import RepublishLiveBoats from "./_components/RepublishLiveBoats";
 
 export const dynamic = "force-dynamic";
 
@@ -147,6 +148,11 @@ export default async function AdminPage() {
           <h3 className="font-semibold mb-1">New Invoice</h3>
           <p className="text-ink-400 text-sm">Log a shoot and create an invoice for a broker.</p>
         </Link>
+      </div>
+
+      {/* Website maintenance */}
+      <div className="mb-8">
+        <RepublishLiveBoats />
       </div>
 
       {/* Recent shoots */}
