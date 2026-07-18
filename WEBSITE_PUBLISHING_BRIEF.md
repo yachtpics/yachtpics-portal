@@ -94,6 +94,29 @@ Lightroom → portal → website, with FileZilla out of the loop.
   anything that shouldn't be public.* A veto nobody knows about doesn't get used.
 - **`in_showcase` is already the curation switch.** No new consent architecture needed.
 
+### A pocket listing is a *timing* problem, not a consent problem
+
+Charlie, 17 Jul: **a boat is only a pocket listing for a week or two** — long enough for the
+broker to sell it in-house before other brokers get involved. After that it's a normal
+listing and there's nothing to protect.
+
+This reframes the whole veto. `showcase_opt_out` is a permanent switch, but the underlying
+need has a two-week shelf life. Which means:
+
+- **Publishing an older boat carries no pocket risk at all.** The 14 boats published on
+  17 Jul were all shot well before that, so none could still have been pocket listings.
+- **Automatic publishing is only dangerous in one window** — the first couple of weeks after
+  the shoot. That's the entire risk surface.
+
+So when publishing goes automatic (the endgame: new listing + photos → website), **do NOT
+rely on brokers remembering a switch.** Use a **hold**: auto-publish N days after the shoot,
+where N ≈ 21 — comfortably past the two-week pocket window. The pocket period then expires
+on its own, nobody has to remember anything, and `showcase_opt_out` remains as an override
+for the broker who wants longer.
+
+Safe by construction rather than by vigilance. Opt-out depends on someone paying attention;
+a hold doesn't.
+
 ---
 
 ## 4. Hard constraint — the trap
@@ -161,6 +184,23 @@ site on a hunch.
 - GoDaddy monthly → annual switch. Free money.
 
 ---
+
+## Operating notes (learned the hard way, 17 Jul)
+
+**A republish renders with whatever code is live at that instant.** Push → wait for Vercel
+green → *then* toggle. Republishing a minute after pushing silently regenerates the page with
+the old template. Cost us two rounds.
+
+**Uploading static pages over generated ones wipes them.** The local copies of
+`waterfront_yacht_brokerage.html` / `valhalla_boat_sales.html` are pre-publish snapshots.
+Order is: upload static → *then* republish one boat per affected brokerage to regenerate.
+
+**`site_slug` is sticky by design** — set on first publish and reused forever, so URLs stay
+stable when a boat is renamed. If the slug logic changes, existing slugs must be cleared
+(`set site_slug = null`) and the boat republished, or it keeps the old URL.
+
+**Cache-bust when verifying** (`?cb=…`). Fetching the same URL repeatedly returns stale
+copies and will have you debugging a page that was already fixed.
 
 ## Next action
 
