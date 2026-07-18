@@ -54,16 +54,24 @@ for (const { filename } of pages) {
   }
   const html = readFileSync(path, "utf8");
 
-  // A hand-built page has ONE gallery list — that's the archive.
-  // A page we've already generated has TWO: "Recent shoots" (portal boats) then
-  // "Archive". Only the last one is the archive; capturing both would re-import
-  // the portal's own boats as archive entries and list them twice.
-  const lists = html.match(/<ul class="client-cols">([\s\S]*?)<\/ul>/g) || [];
-  const archiveUl = lists.length ? lists[lists.length - 1] : null;
-  if (!archiveUl) continue;
+  // Two page shapes exist:
+  //  - Original rebuilt page: the archive is split across MULTIPLE
+  //    <ul class="client-cols"> blocks with no headings — capture all of them.
+  //  - A page WE generated: "<h2>Recent shoots</h2>" (portal boats) then
+  //    "<h2>Archive</h2>". We must skip the Recent list, or we'd re-import the
+  //    portal's own boats as archive rows and list them twice.
+  // So: if the generated "Recent shoots" heading is present, only look at the
+  // markup from the "Archive" heading onward. Otherwise scan the whole page.
+  let scope = html;
+  if (html.includes(">Recent shoots<")) {
+    const archIdx = html.indexOf(">Archive<");
+    if (archIdx !== -1) scope = html.slice(archIdx);
+  }
 
+  // Galleries link to either index.html (rebuilt) or index.php (older Juicebox) —
+  // matching only .html silently drops hundreds of .php galleries.
   let order = 0;
-  const items = archiveUl.match(/<li><a href="[^"]*\/index\.html">[^<]*<\/a><\/li>/g) || [];
+  const items = scope.match(/<li><a href="[^"]*\/index\.(?:html|php)">[^<]*<\/a><\/li>/g) || [];
   for (const li of items) {
     const m = li.match(/<li><a href="([^"]*)">(.*)<\/a><\/li>/);
     if (!m) continue;

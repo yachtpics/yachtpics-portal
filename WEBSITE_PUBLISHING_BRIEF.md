@@ -185,7 +185,20 @@ site on a hunch.
 
 ---
 
-## Operating notes (learned the hard way, 17 Jul)
+## Cleanup backlog (not urgent)
+
+**Broken archive links from an old site restore.** A few years back the site had an
+incident and was reloaded from backup; some gallery folders never made it back. So the
+archive lists galleries whose folders 404 — confirmed on `grande_yachts_international`
+(rows 13 & 14: `48_cruisers_feisty` and `38_pursuit_g-force` both missing; row 14 is also
+mislabelled). These have been dead on the live site for years with no complaints, and the
+publisher only rewrites a page when a boat is published to it, so there's no new harm.
+
+To clean up properly (needs FileZilla to see the actual gallery folders, which the
+HTML-only download doesn't include): for each `brokerage_site_archive.href`, check whether
+the folder exists on the server; delete rows whose folders are gone (or re-point if the
+gallery exists under a different name). Do it per-page as pages get republished, not as a
+big-bang — a page nobody's touching can wait.
 
 **A republish renders with whatever code is live at that instant.** Push → wait for Vercel
 green → *then* toggle. Republishing a minute after pushing silently regenerates the page with
