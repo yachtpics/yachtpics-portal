@@ -111,6 +111,9 @@ export async function renderBrokeragePage(brokerageId: string): Promise<SiteFile
   const { data: brokers } = await svc.from("profiles").select("id").eq("brokerage_id", brokerageId);
   const brokerIds = (brokers ?? []).map((b) => b.id);
 
+  // Longest boat first — the convention the hand-built archive has always used.
+  // Ordering by published_at would sort by whatever order they happened to get
+  // toggled, which looks unsorted sitting above an archive that isn't.
   const { data: published } = brokerIds.length
     ? await svc
         .from("listings")
@@ -119,7 +122,7 @@ export async function renderBrokeragePage(brokerageId: string): Promise<SiteFile
         .eq("publish_to_site", true)
         .eq("showcase_opt_out", false)
         .eq("status", "active")
-        .order("published_at", { ascending: false })
+        .order("length_ft", { ascending: false, nullsFirst: false })
     : { data: [] };
 
   const { data: archive } = await svc

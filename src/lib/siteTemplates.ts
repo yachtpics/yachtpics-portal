@@ -366,7 +366,7 @@ ${nav(0)}
       ${newList}
       ${heads ? `<h2 style="font-size:26px;margin:56px 0 18px">Archive</h2>` : ""}
       ${archiveList}
-      <p style="margin-top:44px"><a href="yacht-photos.html" style="border-bottom:1px solid var(--gold)">&larr; All clients</a> &nbsp;&middot;&nbsp; <a href="contact.html" style="border-bottom:1px solid var(--gold)">Book a shoot</a></p>
+      <p style="margin-top:44px"><a href="yacht-photos.html" style="border-bottom:1px solid var(--gold)">&larr; All boats</a> &nbsp;&middot;&nbsp; <a href="contact.html" style="border-bottom:1px solid var(--gold)">Book a shoot</a></p>
     </div>
   </section>
 </main>
