@@ -1,6 +1,36 @@
 # YachtPics — Website Publishing Brief
 
-**One line:** the website is fixed and live; the next project is making the portal feed it.
+**One line:** the portal feeds the website. Phase 1 shipped 17 Jul 2026.
+
+## Status
+
+**Phase 1 — DONE.** Simmer Down (52′ Prestige, 113 photos) went portal → yachtpics.com
+via the publish switch. The chain works: public bucket, generated boat page with the
+portal slideshow, regenerated brokerage page, FTPS push. Both vetoes in place.
+
+**The FTP-vs-Vercel fork is settled: stay on FTP.** Phase 1 proved a scoped cPanel FTP
+account + generated static pages is enough. No reason to migrate the site onto Vercel.
+
+**What Phase 1 taught us that we didn't know going in:**
+
+- **The Boats index is the real bottleneck.** `yacht-photos.html` is a hand-built list of
+  85 links. A brokerage page can exist and be live with nothing linking to it. That — not
+  effort — is why the site sits at 85 brokerages listed while 90+ have been served, and why
+  no brokerage was added for ~18 months. Hand-editing HTML per brokerage was never worth
+  the return. Phase 2 kills it.
+- **4,000+ boats shot, 1,384 on the site.** The gap is 20 years of publishing costing an
+  afternoon. Now that it costs a toggle, the gap closes on its own going forward.
+- **Photo order: don't touch it.** Charlie uploads out of Lightroom in viewing order, so
+  `display_order` IS the intended order. A category sort actively breaks it — "Head" is one
+  label covering several rooms, each interleaved beside its own stateroom. The canonical
+  order is an opt-in button (`photoOrder.ts`), never an automatic fallback.
+- **The site's numbers overstated.** H1 claimed ninety brokerages against a list of 85;
+  the homepage CTA said "90+ Clients". Both fixed. The "90+ Served" stat may still be true —
+  served ≠ listed.
+- **Slideshow crossfade:** the website (and now the portal) use a symmetric 1200ms
+  cross-dissolve. The staggered "hold the outgoing opaque" model only reads correctly when
+  consecutive shots are the same shape — a wide shot followed by a tall one parks its wings
+  either side, then winks out.
 
 Recovered from the "Yachtpics.com optimization review" session (13 Jul 2026) so the agreed
 plan lives in the repo instead of a transcript. Everything under **Settled** is decided —
@@ -134,5 +164,17 @@ site on a hunch.
 
 ## Next action
 
-**Phase 1.** Pick Valhalla or Waterfront, add the publish switch, get one boat from portal to
-yachtpics.com end to end. Small, provable, and it answers the FTP-vs-Vercel question.
+**Phase 2 — make a new brokerage cost nothing.** Today a brokerage needs three manual steps
+to reach the website: `site_page` set by hand in SQL, a boat published to trigger the page,
+and a hand-edited link in `yacht-photos.html` or nothing points at it. Three pieces fix it:
+
+1. **Auto-derive `site_page`** from the brokerage name, with an admin override for the
+   mismatches ("Valhalla Yacht Sales" → `valhalla_boat_sales.html`, "HMY Yacht Sales" →
+   `brokerage_boats.html`, "One Water" → `onewater_yacht_group.html`).
+2. **Generate the Boats index from the database** on every publish, so a new brokerage
+   appears in the list automatically. This is the piece that unblocks the backlog.
+3. **A "publish brokerage" action**, so a page can exist before its first boat.
+
+Then adding a brokerage is: add it in the portal, publish a boat, done. No HTML, no FileZilla.
+
+Phase 3 — roll to all 85+, archive recedes.
