@@ -17,20 +17,43 @@ export function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-/** Slug matching the existing archive convention: 52_prestige_simmer_down */
+/**
+ * Slug matching the existing archive: 52_prestige_simmer_down, 41_valhalla_41820.
+ * Derived from the label so hull-number boats don't stutter in the URL too
+ * ("25 Sportsman Open 252 28276" → 25_sportsman_open_252_28276, not
+ * 25_sportsman_25_sportsman_open_252_28276).
+ */
 export function boatSlug(opts: { lengthFt?: string | null; make?: string | null; vesselName?: string | null }): string {
-  const parts = [opts.lengthFt, opts.make, opts.vesselName].filter(Boolean).join(" ");
-  return parts
+  return boatLabel(opts)
     .toLowerCase()
     .replace(/["'’]/g, "")
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
 }
 
-/** Display label matching the archive: 52 Prestige "Simmer Down" */
+/**
+ * Display label, matching the convention the hand-built archive already uses:
+ *
+ *   Named boat      52 Prestige "Simmer Down"     — length, make, name in quotes
+ *   Unnamed boat    41 Valhalla 41820             — hull number, verbatim, no quotes
+ *                   40 Novamarine BS 120
+ *
+ * New boats often have no name, so brokers identify them by hull number — and
+ * they type the whole thing into the name field ("25 Sportsman Open 252 28276").
+ * Blindly quoting that and prefixing length+make gives
+ * `25 Sportsman "25 Sportsman Open 252 28276"`, which stutters. So: if the name
+ * already carries the make AND a number, it's a hull/model descriptor — use it
+ * as-is. Otherwise it's a real name, and it gets the quotes.
+ */
 export function boatLabel(opts: { lengthFt?: string | null; make?: string | null; vesselName?: string | null }): string {
   const head = [opts.lengthFt, opts.make].filter(Boolean).join(" ");
-  return opts.vesselName ? `${head} "${opts.vesselName}"`.trim() : head;
+  const name = opts.vesselName?.trim();
+  if (!name) return head;
+
+  const make = opts.make?.trim().toLowerCase();
+  const isDescriptor = Boolean(make && name.toLowerCase().includes(make) && /\d/.test(name));
+
+  return isDescriptor ? name : `${head} "${name}"`.trim();
 }
 
 function head(opts: { title: string; description: string; canonical: string; depth: number }): string {
