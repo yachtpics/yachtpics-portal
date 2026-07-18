@@ -84,7 +84,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
 
 type Lead = { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; created_at: string };
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[] }) {
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -518,8 +518,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       {/* Header */}
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <Link href="/admin/listings" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">
-            ← All listings
+          <Link
+            href={fromBroker ? `/admin/brokers/${listing.broker_id}` : "/admin/listings"}
+            className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet"
+          >
+            {fromBroker ? `← Back to ${brokerName}` : "← All listings"}
           </Link>
           <h1 className="text-display text-ink-900 mt-1">
             {listing.vessel_name ?? "Untitled vessel"}

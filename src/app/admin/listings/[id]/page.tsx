@@ -22,7 +22,7 @@ type SentEmail = {
   status: string;
 };
 
-export default async function AdminListingPage({ params }: { params: { id: string } }) {
+export default async function AdminListingPage({ params, searchParams }: { params: { id: string }; searchParams: { from?: string } }) {
   const supabase = await createClient();
   const serviceSupabase = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -198,6 +198,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       sitePages={sitePages ?? []}
       coBrokers={coBrokers}
       leads={leads}
+      fromBroker={searchParams?.from === "broker"}
     />
   );
 }

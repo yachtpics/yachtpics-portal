@@ -210,7 +210,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
                     : listing.status === "sold" ? "bg-info-50 text-info-700 border-info-200"
                     : "bg-ink-100 text-ink-600 border-hairline"
                   }`}>{listing.status}</span>
-                  <Link href={`/admin/listings/${listing.id}`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
+                  <Link href={`/admin/listings/${listing.id}?from=broker`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
                     Manage →
                   </Link>
                 </div>
@@ -236,7 +236,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
                 </div>
                 <div className="flex items-center gap-4">
                   <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-info-50 text-info-700 border border-info-200 uppercase tracking-wide">Co-broker</span>
-                  <Link href={`/admin/listings/${l.id}`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
+                  <Link href={`/admin/listings/${l.id}?from=broker`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
                     Manage →
                   </Link>
                 </div>
