@@ -207,7 +207,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   const { data: page } = await svc
     .from("site_pages")
-    .select("label, filename")
+    .select("label, filename, archive_checked_at")
     .eq("filename", sitePage)
     .maybeSingle();
   if (!page) return { error: `"${sitePage}" isn't a known website page.` };
@@ -217,6 +217,21 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   const label = boatLabel({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
   const slug = l.site_slug || boatSlug({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
   if (!slug) return { error: "Can't build a URL for this boat — it needs at least a name or make." };
+
+  // Refuse to publish to a page whose existing galleries we've never captured.
+  //
+  // The publisher rewrites a brokerage page wholesale — new boats plus archive —
+  // so if the archive was never read out of the live HTML, publishing silently
+  // deletes years of Juicebox galleries and every inbound link to them. Fail
+  // closed: an error is recoverable, a wiped page isn't. Seed with
+  // scripts/seed-site-archive.mjs, which also stamps archive_checked_at.
+  if (!page.archive_checked_at) {
+    return {
+      error:
+        `"${page.label}" hasn't had its existing galleries captured yet. Publishing now ` +
+        `could wipe them off the page. Run scripts/seed-site-archive.mjs first.`,
+    };
+  }
 
   const photos = await syncPhotos(l, brokerage.site_page, slug);
   if (photos.length === 0) return { error: "No visible photos to publish." };
