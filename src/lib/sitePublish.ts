@@ -109,8 +109,9 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
  * A page is listed only if its .html actually exists on the site, so a
  * brand-new brokerage doesn't create a dead link before its first boat ships.
  * "Exists" = we captured its archive when seeding (archive_checked_at set), OR
- * it has a published boat (which generated its page). Ordered by sort_order to
- * match the hand-built index.
+ * it has a published boat (which generated its page). Listed alphabetically by
+ * name so a newly added brokerage slots into place instead of landing at the
+ * end — no sort_order bookkeeping to keep up with.
  */
 export async function renderBoatsIndex(): Promise<SiteFile | null> {
   const svc = service();
@@ -121,11 +122,12 @@ export async function renderBoatsIndex(): Promise<SiteFile | null> {
     .from("site_pages")
     .select("label, filename")
     .eq("is_active", true)
-    .eq("has_page", true)
-    .order("sort_order", { ascending: true, nullsFirst: false });
+    .eq("has_page", true);
   if (!pages || pages.length === 0) return null;
 
-  const listed = pages.map((p) => ({ label: p.label as string, filename: p.filename as string }));
+  const listed = pages
+    .map((p) => ({ label: p.label as string, filename: p.filename as string }))
+    .sort((a, b) => a.label.localeCompare(b.label, "en", { sensitivity: "base" }));
   return { path: "yacht-photos.html", content: boatsIndexPage(listed) };
 }
 
