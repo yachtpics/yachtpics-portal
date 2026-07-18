@@ -64,7 +64,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const res = await uploadFiles(built.files);
-  if (res.error) return NextResponse.json({ error: res.error, uploaded: res.uploaded }, { status: 502 });
+  if (res.error) {
+    // The upload failed after we'd already flipped publish_to_site on (the
+    // publisher requires it set to build). Roll it back so the boat doesn't
+    // read as "on the website" while it isn't — the toggle stays "Add to
+    // website" and a retry re-publishes cleanly.
+    await svc
+      .from("listings")
+      .update({ publish_to_site: false, published_at: null })
+      .eq("id", params.id);
+    return NextResponse.json({ error: res.error, uploaded: res.uploaded }, { status: 502 });
+  }
 
   return NextResponse.json({
     success: true,
