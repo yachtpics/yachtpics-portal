@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { buildListingFiles, renderBrokeragePage } from "@/lib/sitePublish";
+import { buildListingFiles, renderSitePage, resolveSitePage } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 
 export const runtime = "nodejs";
@@ -35,12 +35,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // Unpublishing: the boat page stays on disk (old links keep resolving) but it
   // drops off the brokerage page, which is what actually surfaces it.
   if (!publish) {
-    const { data: listing } = await svc.from("listings").select("broker_id").eq("id", params.id).maybeSingle();
-    const { data: broker } = listing
-      ? await svc.from("profiles").select("brokerage_id").eq("id", listing.broker_id).maybeSingle()
-      : { data: null };
-    if (broker?.brokerage_id) {
-      const page = await renderBrokeragePage(broker.brokerage_id);
+    const sitePage = await resolveSitePage(params.id);
+    if (sitePage) {
+      const page = await renderSitePage(sitePage);
       if (page && !dryRun && ftpConfigured()) {
         const res = await uploadFiles([page]);
         if (res.error) return NextResponse.json({ error: res.error }, { status: 502 });

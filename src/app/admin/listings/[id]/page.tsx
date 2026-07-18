@@ -33,7 +33,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .from("listings")
     .select(`
       id, vessel_name, vessel_type, year, length_ft, make, model,
-      asking_price, location, description, status, listing_pdf_url, is_shared, in_showcase, showcase_opt_out, publish_to_site,
+      asking_price, location, description, status, listing_pdf_url, is_shared, in_showcase, showcase_opt_out, publish_to_site, site_page,
       broker_id, slideshow_slug, slideshow_published,
       profiles:broker_id(first_name, last_name, display_email, brokerage_id)
     `)
@@ -41,6 +41,16 @@ export default async function AdminListingPage({ params }: { params: { id: strin
     .single();
 
   if (!listing) notFound();
+
+  // The website's brokerage pages — 25 years of them. Drives the "publish to
+  // which page?" picker. Deliberately not derived from brokerages: most brokers
+  // have no brokerage record, and the filenames have quirks no slug rule would
+  // guess (HMY Yacht Sales → brokerage_boats).
+  const { data: sitePages } = await supabase
+    .from("site_pages")
+    .select("label, filename")
+    .eq("is_active", true)
+    .order("label");
 
   // Only boats whose broker belongs to a brokerage can be shared into one.
   const ownerBrokerageId = (listing.profiles as unknown as { brokerage_id: string | null } | null)?.brokerage_id ?? null;
@@ -185,6 +195,7 @@ export default async function AdminListingPage({ params }: { params: { id: strin
       sentEmails={sentEmails}
       canShare={ownerBrokerageId != null}
       brokerOptions={brokerOptions}
+      sitePages={sitePages ?? []}
       coBrokers={coBrokers}
       leads={leads}
     />

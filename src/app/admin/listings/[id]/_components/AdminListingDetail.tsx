@@ -36,6 +36,7 @@ interface Listing {
   is_shared?: boolean | null;
   in_showcase?: boolean | null;
   publish_to_site?: boolean | null;
+  site_page?: string | null;
   showcase_opt_out?: boolean | null;
   slideshow_slug?: string | null;
   slideshow_published?: boolean | null;
@@ -83,7 +84,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
 
 type Lead = { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; created_at: string };
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], coBrokers = [], leads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[] }) {
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [] }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[] }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   const [uploading, setUploading] = useState(false);
@@ -95,6 +96,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [onSite, setOnSite] = useState(listing.publish_to_site === true);
   const [siteBusy, setSiteBusy] = useState(false);
+  const [sitePage, setSitePage] = useState(listing.site_page ?? "");
   const [slideshowPublished, setSlideshowPublished] = useState(listing.slideshow_published === true);
   const [slideshowSlug, setSlideshowSlug] = useState<string | null>(listing.slideshow_slug ?? null);
   const [slideshowBusy, setSlideshowBusy] = useState(false);
@@ -349,6 +351,28 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
+  // Which yachtpics.com brokerage page this boat belongs on. Optional — most
+  // listings never go to the website. Chosen per listing rather than inherited
+  // from the brokerage, because most brokers have no brokerage record.
+  async function chooseSitePage(next: string) {
+    const prev = sitePage;
+    setSitePage(next); // optimistic
+    try {
+      const res = await fetch(`/api/admin/listings/${listing.id}/site-page`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sitePage: next || null }),
+      });
+      if (!res.ok) throw new Error();
+      setMessage(next ? "Website page set." : "Website page cleared.");
+      setTimeout(() => setMessage(""), 2500);
+    } catch {
+      setSitePage(prev); // revert
+      setMessage("Couldn't set the website page.");
+      setTimeout(() => setMessage(""), 3000);
+    }
+  }
+
   // Publish to yachtpics.com. Separate pipeline from Recently Photographed —
   // this one puts the boat on the public brokerage page with a portal slideshow.
   async function togglePublishSite() {
@@ -513,13 +537,15 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </button>
           <button
             onClick={togglePublishSite}
-            disabled={siteBusy || listing.showcase_opt_out === true}
+            disabled={siteBusy || listing.showcase_opt_out === true || !sitePage}
             title={
               listing.showcase_opt_out
                 ? "Pocket listing — the broker vetoed this"
-                : onSite
-                  ? "Live on yachtpics.com"
-                  : "Publish this boat to yachtpics.com with a portal slideshow"
+                : !sitePage
+                  ? "Pick a website page first"
+                  : onSite
+                    ? "Live on yachtpics.com"
+                    : "Publish this boat to yachtpics.com with a portal slideshow"
             }
             className={`mt-2 ml-0 sm:ml-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
               onSite
@@ -532,6 +558,27 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             </span>
             {siteBusy ? "Publishing…" : onSite ? "On yachtpics.com" : "Publish to website"}
           </button>
+          {sitePages.length > 0 && (
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <label htmlFor="sitePage" className="text-xs text-ink-400">Website page:</label>
+              <select
+                id="sitePage"
+                value={sitePage}
+                onChange={(e) => chooseSitePage(e.target.value)}
+                disabled={onSite}
+                title={onSite ? "Unpublish before moving this boat to a different page" : "Which brokerage page this boat appears on"}
+                className="text-xs border border-hairline-strong rounded-ctl px-2 py-1.5 bg-white text-ink-700 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 disabled:opacity-50 max-w-[16rem]"
+              >
+                <option value="">— not on the website —</option>
+                {sitePages.map((p) => (
+                  <option key={p.filename} value={p.filename}>{p.label}</option>
+                ))}
+              </select>
+              {!sitePage && (
+                <span className="text-xs text-ink-400">Pick one to enable publishing.</span>
+              )}
+            </div>
+          )}
           {listing.showcase_opt_out && (
             <p className="mt-1.5 text-xs text-warn-700">
               Broker kept this a pocket listing — it won&rsquo;t appear in Recently Photographed even when added.

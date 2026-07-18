@@ -97,43 +97,71 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
   return urls;
 }
 
-/** Render the brokerage page: portal boats on top, the Juicebox archive below. */
-export async function renderBrokeragePage(brokerageId: string): Promise<SiteFile | null> {
+/**
+ * Resolve which website page a listing belongs on.
+ *
+ * The listing's own `site_page` wins — that's the picker on the listing form.
+ * Falls back to the broker's brokerage mapping where one exists. Most brokers
+ * have no brokerage record at all (84% of listings, as of Jul 2026), which is
+ * exactly why the per-listing pick exists.
+ */
+export async function resolveSitePage(listingId: string): Promise<string | null> {
   const svc = service();
+  const { data: l } = await svc
+    .from("listings")
+    .select("site_page, broker_id")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (!l) return null;
+  if (l.site_page) return l.site_page;
+
+  const { data: broker } = await svc
+    .from("profiles")
+    .select("brokerage_id")
+    .eq("id", l.broker_id)
+    .maybeSingle();
+  if (!broker?.brokerage_id) return null;
 
   const { data: brokerage } = await svc
     .from("brokerages")
-    .select("id, name, site_page")
-    .eq("id", brokerageId)
+    .select("site_page")
+    .eq("id", broker.brokerage_id)
     .maybeSingle();
-  if (!brokerage?.site_page) return null;
+  return brokerage?.site_page ?? null;
+}
 
-  const { data: brokers } = await svc.from("profiles").select("id").eq("brokerage_id", brokerageId);
-  const brokerIds = (brokers ?? []).map((b) => b.id);
+/** Render a website page: portal boats on top, the Juicebox archive below. */
+export async function renderSitePage(sitePage: string): Promise<SiteFile | null> {
+  const svc = service();
+
+  const { data: page } = await svc
+    .from("site_pages")
+    .select("label, filename")
+    .eq("filename", sitePage)
+    .maybeSingle();
+  if (!page) return null;
 
   // Longest boat first — the convention the hand-built archive has always used.
   // Ordering by published_at would sort by whatever order they happened to get
   // toggled, which looks unsorted sitting above an archive that isn't.
-  const { data: published } = brokerIds.length
-    ? await svc
-        .from("listings")
-        .select("vessel_name, make, length_ft, site_slug, published_at")
-        .in("broker_id", brokerIds)
-        .eq("publish_to_site", true)
-        .eq("showcase_opt_out", false)
-        .eq("status", "active")
-        .order("length_ft", { ascending: false, nullsFirst: false })
-    : { data: [] };
+  const { data: published } = await svc
+    .from("listings")
+    .select("vessel_name, make, length_ft, site_slug")
+    .eq("site_page", sitePage)
+    .eq("publish_to_site", true)
+    .eq("showcase_opt_out", false)
+    .eq("status", "active")
+    .order("length_ft", { ascending: false, nullsFirst: false });
 
   const { data: archive } = await svc
     .from("brokerage_site_archive")
     .select("label, href")
-    .eq("brokerage_id", brokerageId)
+    .eq("site_page", sitePage)
     .order("sort_order", { ascending: true });
 
   const html = brokeragePage({
-    sitePage: brokerage.site_page,
-    brokerageName: brokerage.name,
+    sitePage: page.filename,
+    brokerageName: page.label,
     boats: (published ?? [])
       .filter((b) => b.site_slug)
       .map((b) => ({
@@ -143,7 +171,7 @@ export async function renderBrokeragePage(brokerageId: string): Promise<SiteFile
     archive: (archive ?? []).map((a) => ({ label: a.label, href: a.href })),
   });
 
-  return { path: `${brokerage.site_page}.html`, content: html };
+  return { path: `${page.filename}.html`, content: html };
 }
 
 /**
@@ -171,16 +199,20 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     .select("id, first_name, last_name, display_email, phone, brokerage_id")
     .eq("id", l.broker_id)
     .maybeSingle();
-  if (!broker?.brokerage_id) return { error: "Broker has no brokerage — can't map to a website page." };
 
-  const { data: brokerage } = await svc
-    .from("brokerages")
-    .select("id, name, site_page")
-    .eq("id", broker.brokerage_id)
-    .maybeSingle();
-  if (!brokerage?.site_page) {
-    return { error: `${brokerage?.name ?? "This brokerage"} isn't mapped to a website page yet.` };
+  const sitePage = await resolveSitePage(l.id);
+  if (!sitePage) {
+    return { error: "No website page chosen for this boat — pick a brokerage page on the listing first." };
   }
+
+  const { data: page } = await svc
+    .from("site_pages")
+    .select("label, filename")
+    .eq("filename", sitePage)
+    .maybeSingle();
+  if (!page) return { error: `"${sitePage}" isn't a known website page.` };
+
+  const brokerage = { name: page.label, site_page: page.filename };
 
   const label = boatLabel({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
   const slug = l.site_slug || boatSlug({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
@@ -207,14 +239,14 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     lengthFt: l.length_ft,
     vesselType: l.vessel_type,
     location: l.location,
-    brokerName: broker.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : null,
-    brokerEmail: broker.display_email ?? null,
-    brokerPhone: broker.phone ?? null,
+    brokerName: broker?.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : null,
+    brokerEmail: broker?.display_email ?? null,
+    brokerPhone: broker?.phone ?? null,
     photos,
   };
 
   const files: SiteFile[] = [{ path: `${brokerage.site_page}/${slug}/index.html`, content: boatPage(data) }];
-  const bpage = await renderBrokeragePage(brokerage.id);
+  const bpage = await renderSitePage(sitePage);
   if (bpage) files.push(bpage);
 
   return { files, slug, label };
