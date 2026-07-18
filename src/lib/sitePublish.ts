@@ -64,24 +64,32 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
     heroId: listing.hero_photo_id,
   });
 
+  // Name each public file by its stable photo ID — NOT by its position. The
+  // order lives only in the HTML (the sequence of <img> tags), so re-ordering a
+  // boat just rewrites the page; no image files need to change. This avoids the
+  // trap of position names (001.jpg, 002.jpg…): copy() can't overwrite an
+  // existing object, so a re-order used to leave the old image frozen at each
+  // slot. ID names are immutable content, which also keeps CDN/browser caching
+  // correct.
   const urls: string[] = [];
-  const jobs = rows.map((r, i) => {
+  const jobs = rows.map((r) => {
     const src = r.storage_path as string;
     const ext = (src.split(".").pop() || "jpg").toLowerCase();
-    const dest = `${sitePage}/${slug}/${String(i + 1).padStart(3, "0")}.${ext}`;
+    const dest = `${sitePage}/${slug}/${r.id}.${ext}`;
     urls.push(publicPhotoUrl(dest));
     return { src, dest };
   });
 
   // Server-side copies — the bytes never travel through this function.
-  // Chunked so a 100+ photo boat doesn't open 100 sockets at once.
+  // Chunked so a 100+ photo boat doesn't open 100 sockets at once. An existing
+  // file is fine: the ID name means it already holds this photo's bytes, so we
+  // skip it. Any other error falls back to a download + upsert.
   for (let i = 0; i < jobs.length; i += 8) {
     await Promise.all(
       jobs.slice(i, i + 8).map(async (j) => {
         const { error } = await svc.storage
           .from(PRIVATE_BUCKET)
           .copy(j.src, j.dest, { destinationBucket: PUBLIC_BUCKET });
-        // An existing file is fine — republishing overwrites in place.
         if (error && !/exists/i.test(error.message)) {
           const { data: blob } = await svc.storage.from(PRIVATE_BUCKET).download(j.src);
           if (blob) {
