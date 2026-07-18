@@ -7,19 +7,21 @@ import ResendInviteButton from "./_components/ResendInviteButton";
 import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 import BrokerContactEditor from "./_components/BrokerContactEditor";
 import AddedByEditor from "./_components/AddedByEditor";
+import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
 
-  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }] =
+  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }] =
     await Promise.all([
       supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("plan, status, trial_ends_at, current_period_end").eq("broker_id", params.id).single(),
-      supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at").eq("broker_id", params.id).order("updated_at", { ascending: false }),
+      supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
       supabase.from("shoots").select("id, shoot_date, amount_cents, payment_status, invoice_number, listings:listing_id(vessel_name)").eq("broker_id", params.id).order("shoot_date", { ascending: false }).limit(10),
       supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
       supabase.from("profiles").select("id, first_name, last_name").eq("role", "admin").order("first_name", { ascending: true }),
+      supabase.from("site_pages").select("label, filename").eq("is_active", true).order("label"),
     ]);
 
   if (!profile) notFound();
@@ -195,28 +197,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
         {!listings || listings.length === 0 ? (
           <div className="py-10 text-center text-ink-400 text-sm">No listings yet.</div>
         ) : (
-          <ul className="divide-y divide-hairline">
-            {listings.map((listing) => (
-              <li key={listing.id} className="px-6 py-4 flex items-center justify-between hover:bg-ink-50 transition-colors duration-fast ease-quiet">
-                <div>
-                  <p className="text-sm font-medium text-ink-900">{listing.vessel_name ?? "Untitled"}</p>
-                  <p className="text-xs text-ink-500 mt-0.5">
-                    {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
-                  </p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
-                    listing.status === "active" ? "bg-success-50 text-success-700 border-success-200"
-                    : listing.status === "sold" ? "bg-info-50 text-info-700 border-info-200"
-                    : "bg-ink-100 text-ink-600 border-hairline"
-                  }`}>{listing.status}</span>
-                  <Link href={`/admin/listings/${listing.id}?from=broker`} className="text-accent-700 hover:text-accent-800 text-xs font-medium transition-colors duration-fast ease-quiet">
-                    Manage →
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <BrokerListingsPublisher listings={listings} sitePages={sitePages ?? []} />
         )}
       </div>
 
