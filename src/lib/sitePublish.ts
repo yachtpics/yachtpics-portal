@@ -1,5 +1,5 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { boatPage, brokeragePage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
+import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
 
 // Publishes a listing to yachtpics.com. Two independent vetoes apply, per the
@@ -95,6 +95,32 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
   }
 
   return urls;
+}
+
+/**
+ * Render the Boats index (yacht-photos.html) from the site_pages taxonomy.
+ *
+ * A page is listed only if its .html actually exists on the site, so a
+ * brand-new brokerage doesn't create a dead link before its first boat ships.
+ * "Exists" = we captured its archive when seeding (archive_checked_at set), OR
+ * it has a published boat (which generated its page). Ordered by sort_order to
+ * match the hand-built index.
+ */
+export async function renderBoatsIndex(): Promise<SiteFile | null> {
+  const svc = service();
+
+  // Only pages that actually exist on the server (has_page), so the index never
+  // links to a brokerage page that hasn't been generated yet.
+  const { data: pages } = await svc
+    .from("site_pages")
+    .select("label, filename")
+    .eq("is_active", true)
+    .eq("has_page", true)
+    .order("sort_order", { ascending: true, nullsFirst: false });
+  if (!pages || pages.length === 0) return null;
+
+  const listed = pages.map((p) => ({ label: p.label as string, filename: p.filename as string }));
+  return { path: "yacht-photos.html", content: boatsIndexPage(listed) };
 }
 
 /**
@@ -263,6 +289,15 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   const files: SiteFile[] = [{ path: `${brokerage.site_page}/${slug}/index.html`, content: boatPage(data) }];
   const bpage = await renderSitePage(sitePage);
   if (bpage) files.push(bpage);
+
+  // This brokerage page now exists on the server — mark it so the index lists
+  // it. Must happen before renderBoatsIndex so a first-time page appears.
+  await svc.from("site_pages").update({ has_page: true }).eq("filename", sitePage);
+
+  // Regenerate the Boats index too, so a first-time page for this brokerage
+  // shows up there automatically (no more hand-editing yacht-photos.html).
+  const index = await renderBoatsIndex();
+  if (index) files.push(index);
 
   return { files, slug, label };
 }

@@ -319,6 +319,45 @@ ${nav(2)}
 ${foot()}`;
 }
 
+/**
+ * The Boats index (yacht-photos.html) — the front door that links to every
+ * brokerage page. Generated from the site_pages taxonomy so a new brokerage
+ * appears automatically instead of needing a hand-edited HTML file. This is the
+ * piece that had kept the site frozen at ~85 brokerages for 18 months.
+ */
+export function boatsIndexPage(pages: { label: string; filename: string }[]): string {
+  const title = "Boats We’ve Shot, Brokerage by Brokerage | YachtPics";
+  const description =
+    "Browse listing slideshows by brokerage — Fraser Yachts, Denison, HMY, " +
+    "Northrop & Johnson, MarineMax, Hinckley, Galati and more. Over four " +
+    "thousand boats photographed by YachtPics since 2000.";
+
+  const list = pages
+    .map((p) => `<li><a href="${p.filename}.html">${esc(p.label)}</a></li>`)
+    .join("");
+
+  return `${head({ title, description, canonical: `${SITE}/yacht-photos.html`, depth: 0 })}
+${nav(0)}
+<main>
+  <div class="page-hero">
+    <div class="wrap">
+      <p class="kicker">Boats</p>
+      <h1>Boats we&rsquo;ve shot, brokerage by brokerage</h1>
+      <p>Over four thousand boats photographed to date. Pick a brokerage to see its slideshows.</p>
+    </div>
+  </div>
+  <section>
+    <div class="wrap">
+      <ul class="client-cols">
+        ${list}
+      </ul>
+      <p style="margin-top:44px"><a class="btn dark" href="contact.html">Join Them &mdash; Book a Shoot</a></p>
+    </div>
+  </section>
+</main>
+${foot()}`;
+}
+
 export type BrokeragePageData = {
   sitePage: string;
   brokerageName: string;

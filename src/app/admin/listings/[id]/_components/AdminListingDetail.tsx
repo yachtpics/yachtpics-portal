@@ -97,6 +97,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [onSite, setOnSite] = useState(listing.publish_to_site === true);
   const [siteBusy, setSiteBusy] = useState(false);
   const [sitePage, setSitePage] = useState(listing.site_page ?? "");
+  const [pages, setPages] = useState(sitePages);
   const [slideshowPublished, setSlideshowPublished] = useState(listing.slideshow_published === true);
   const [slideshowSlug, setSlideshowSlug] = useState<string | null>(listing.slideshow_slug ?? null);
   const [slideshowBusy, setSlideshowBusy] = useState(false);
@@ -373,6 +374,30 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
+  // Add a brand-new brokerage to the website taxonomy — for a brokerage that's
+  // never been on the site. It joins the picker and, once a boat is published,
+  // the Boats index. NOT for re-adding one of the existing pages.
+  async function addSitePage() {
+    const label = window.prompt("New brokerage name (as it should appear on yachtpics.com):")?.trim();
+    if (!label) return;
+    try {
+      const res = await fetch(`/api/admin/site-pages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setPages((prev) => [...prev, { label: data.label, filename: data.filename }].sort((a, b) => a.label.localeCompare(b.label)));
+      await chooseSitePage(data.filename);
+      setMessage(`Added "${data.label}" and set it for this boat.`);
+      setTimeout(() => setMessage(""), 4000);
+    } catch (e) {
+      setMessage(e instanceof Error ? e.message : "Couldn't add the brokerage page.");
+      setTimeout(() => setMessage(""), 5000);
+    }
+  }
+
   // Publish to yachtpics.com. Separate pipeline from Recently Photographed —
   // this one puts the boat on the public brokerage page with a portal slideshow.
   async function togglePublishSite() {
@@ -558,7 +583,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             </span>
             {siteBusy ? "Publishing…" : onSite ? "On yachtpics.com" : "Publish to website"}
           </button>
-          {sitePages.length > 0 && (
+          {pages.length > 0 && (
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               <label htmlFor="sitePage" className="text-xs text-ink-400">Website page:</label>
               <select
@@ -570,10 +595,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                 className="text-xs border border-hairline-strong rounded-ctl px-2 py-1.5 bg-white text-ink-700 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 disabled:opacity-50 max-w-[16rem]"
               >
                 <option value="">— not on the website —</option>
-                {sitePages.map((p) => (
+                {pages.map((p) => (
                   <option key={p.filename} value={p.filename}>{p.label}</option>
                 ))}
               </select>
+              {!onSite && (
+                <button
+                  onClick={addSitePage}
+                  className="text-xs font-medium text-accent-700 hover:text-accent-600 transition-colors duration-fast"
+                >
+                  + New brokerage
+                </button>
+              )}
               {!sitePage && (
                 <span className="text-xs text-ink-400">Pick one to enable publishing.</span>
               )}
