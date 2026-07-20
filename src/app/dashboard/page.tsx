@@ -163,6 +163,11 @@ export default async function DashboardPage() {
     .eq("id", user.id)
     .single();
 
+  const { count: shootCount } = await supabase
+    .from("shoots")
+    .select("*", { count: "exact", head: true })
+    .eq("broker_id", user.id);
+
   const activeListings = listings?.filter((l) => l.status === "active").length ?? 0;
 
   const trialDaysLeft = subscription?.trial_ends_at
@@ -248,7 +253,7 @@ export default async function DashboardPage() {
             <p className="label-caps">Total Shoots</p>
             <HelpTip text="Your cumulative YachtPics shoot count. New shoots appear in Shoots and Invoices after delivery." position="below" />
           </div>
-          <p className="text-3xl font-light tabular-nums text-ink-900">&mdash;</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900">{shootCount ?? 0}</p>
         </div>
         <div className="px-6 py-5">
           <div className="flex items-center gap-1.5 mb-2">
@@ -294,12 +299,14 @@ export default async function DashboardPage() {
         {listings && listings.length > 0 ? (
           <ul className="divide-y divide-hairline">
             {listings.map((listing) => (
-              <li key={listing.id} className="px-6 py-4 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-semibold text-ink-900 truncate">{listing.vessel_name ?? "Untitled vessel"}</p>
-                  <p className="text-xs text-ink-400 mt-0.5">{listing.location ?? "Location TBD"}</p>
-                </div>
-                <Badge tone={statusTone(listing.status)}>{listing.status}</Badge>
+              <li key={listing.id}>
+                <Link href={`/dashboard/listings/${listing.id}`} className="px-6 py-4 flex items-center justify-between gap-3 hover:bg-ink-50 transition-colors duration-fast block">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-ink-900 truncate">{listing.vessel_name ?? "Untitled vessel"}</p>
+                    <p className="text-xs text-ink-400 mt-0.5">{listing.location ?? "Location TBD"}</p>
+                  </div>
+                  <Badge tone={statusTone(listing.status)}>{listing.status}</Badge>
+                </Link>
               </li>
             ))}
           </ul>
