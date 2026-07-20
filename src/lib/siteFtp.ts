@@ -75,3 +75,59 @@ export async function uploadFiles(files: SiteFile[]): Promise<{ uploaded: string
 
   return { uploaded: [], error: lastError };
 }
+
+// Deletes files from the site — used to retire a brokerage page whose links are
+// dead or that we no longer want reachable by direct URL. A file that's already
+// gone counts as deleted (idempotent). Same retry shape as uploadFiles.
+export async function deleteFiles(paths: string[]): Promise<{ deleted: string[]; error?: string }> {
+  if (!ftpConfigured()) return { deleted: [], error: "FTP is not configured" };
+
+  const root = (process.env.SITE_FTP_ROOT || "/public_html").replace(/\/+$/, "");
+  const maxAttempts = 3;
+  let lastError = "Delete failed";
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const client = new Client(20_000);
+    const deleted: string[] = [];
+    try {
+      await client.access({
+        host: process.env.SITE_FTP_HOST!,
+        user: process.env.SITE_FTP_USER!,
+        password: process.env.SITE_FTP_PASSWORD!,
+        secure: true,
+        secureOptions: { rejectUnauthorized: false },
+      });
+
+      for (const p of paths) {
+        const full = `${root}/${p}`;
+        try {
+          await client.remove(full);
+          deleted.push(p);
+        } catch (e) {
+          // "Already gone" is the outcome we want — treat a missing file (FTP
+          // 550) as deleted rather than an error.
+          const m = e instanceof Error ? e.message : String(e);
+          if (/550|no such file|not found|cannot find/i.test(m)) {
+            deleted.push(p);
+            continue;
+          }
+          throw e;
+        }
+      }
+      client.close();
+      return { deleted };
+    } catch (e) {
+      client.close();
+      const msg = e instanceof Error ? e.message : String(e);
+      lastError = msg.replace(new RegExp(process.env.SITE_FTP_PASSWORD ?? "\0", "g"), "***");
+
+      const transient = /ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|EPIPE|timeout|closed|not connected/i.test(msg);
+      if (!transient || attempt === maxAttempts) {
+        return { deleted, error: lastError };
+      }
+      await new Promise((r) => setTimeout(r, attempt * 2000));
+    }
+  }
+
+  return { deleted: [], error: lastError };
+}

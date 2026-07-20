@@ -3,6 +3,7 @@ import Link from "next/link";
 import { PLANS } from "@/lib/plans";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
 import RepublishLiveBoats from "./_components/RepublishLiveBoats";
+import RetiredPages from "./_components/RetiredPages";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export default async function AdminPage() {
     { count: views30 },
     { count: sends30 },
     { data: recentShoots },
+    { data: retiredPages },
   ] = await Promise.all([
     service.from("profiles").select("id").eq("role", "broker"),
     service.from("subscriptions").select("broker_id, status, stripe_subscription_id, stripe_price_id, trial_ends_at"),
@@ -42,6 +44,7 @@ export default async function AdminPage() {
       .select("id, shoot_date, amount_cents, payment_status, profiles:broker_id(first_name, last_name), listings:listing_id(vessel_name)")
       .order("created_at", { ascending: false })
       .limit(5),
+    service.from("site_pages").select("label, filename").eq("is_active", false).order("label"),
   ]);
 
   // ---- Revenue + subscription mix ----
@@ -151,8 +154,9 @@ export default async function AdminPage() {
       </div>
 
       {/* Website maintenance */}
-      <div className="mb-8">
+      <div className="mb-8 space-y-4">
         <RepublishLiveBoats />
+        <RetiredPages pages={(retiredPages ?? []) as { label: string; filename: string }[]} />
       </div>
 
       {/* Recent shoots */}
