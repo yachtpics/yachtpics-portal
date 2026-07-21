@@ -131,6 +131,78 @@ export async function renderBoatsIndex(): Promise<SiteFile | null> {
   return { path: "yacht-photos.html", content: boatsIndexPage(listed) };
 }
 
+const SITEMAP_SITE = "https://www.yachtpics.com";
+
+function xmlEsc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * Regenerate sitemap.xml from live data: the core marketing pages, every active
+ * brokerage page, and — the piece that was missing entirely — every published
+ * BOAT page (the image-rich pages we actually want indexed). Rebuilt on each
+ * publish with today's date, so Google always sees the newest boats and drops
+ * retired pages. Deactivated brokerages (is_active/has_page false) fall out
+ * automatically.
+ */
+export async function renderSitemap(): Promise<SiteFile> {
+  const svc = service();
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Core hand-built marketing pages, with the priorities the old sitemap used.
+  const core: [string, string][] = [
+    ["", "1.0"],
+    ["gallery.html", "0.9"],
+    ["contact.html", "0.9"],
+    ["video.html", "0.8"],
+    ["yacht-photos.html", "0.8"],
+    ["team.html", "0.6"],
+    ["marine-industry-blog.html", "0.5"],
+  ];
+
+  const { data: pages } = await svc
+    .from("site_pages")
+    .select("filename")
+    .eq("is_active", true)
+    .eq("has_page", true)
+    .order("filename", { ascending: true });
+
+  // Published boats live at {site_page}/{slug}/index.html. A boat only reaches a
+  // brokerage page when its site_page is set, so that's the accurate source.
+  const { data: boats } = await svc
+    .from("listings")
+    .select("site_page, site_slug")
+    .eq("publish_to_site", true)
+    .eq("status", "active")
+    .eq("showcase_opt_out", false)
+    .not("site_page", "is", null)
+    .not("site_slug", "is", null);
+
+  const rows: { loc: string; priority: string }[] = [];
+  for (const [path, pr] of core) rows.push({ loc: `${SITEMAP_SITE}/${path}`, priority: pr });
+  for (const p of pages ?? []) rows.push({ loc: `${SITEMAP_SITE}/${p.filename}.html`, priority: "0.7" });
+  for (const b of boats ?? []) {
+    rows.push({ loc: `${SITEMAP_SITE}/${b.site_page}/${b.site_slug}/index.html`, priority: "0.8" });
+  }
+
+  const body = rows
+    .map((u) => `  <url><loc>${xmlEsc(u.loc)}</loc><lastmod>${today}</lastmod><priority>${u.priority}</priority></url>`)
+    .join("\n");
+
+  const xml =
+    `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
+  return { path: "sitemap.xml", content: xml };
+}
+
+/** robots.txt — allow everything, and point crawlers at the sitemap. */
+export function renderRobots(): SiteFile {
+  return {
+    path: "robots.txt",
+    content: `User-agent: *\nAllow: /\n\nSitemap: ${SITEMAP_SITE}/sitemap.xml\n`,
+  };
+}
+
 /**
  * Resolve which website page a listing belongs on.
  *
@@ -306,6 +378,11 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   // shows up there automatically (no more hand-editing yacht-photos.html).
   const index = await renderBoatsIndex();
   if (index) files.push(index);
+
+  // Keep the sitemap current — all brokerage + boat pages with today's date —
+  // and refresh robots.txt, so Google discovers newly published boats.
+  files.push(await renderSitemap());
+  files.push(renderRobots());
 
   return { files, slug, label };
 }
