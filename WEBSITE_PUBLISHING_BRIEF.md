@@ -231,3 +231,14 @@ and a hand-edited link in `yacht-photos.html` or nothing points at it. Three pie
 Then adding a brokerage is: add it in the portal, publish a boat, done. No HTML, no FileZilla.
 
 Phase 3 — roll to all 85+, archive recedes.
+
+## Future ideas
+
+**Real estate / non-marine use case (noted Jul 2026).** The portal's core loop —
+photos in, publish a slideshow, send a clean link to a client, downloads always free — is
+not boat-specific. Kelly Sprigg (SYC Yachts; her client came to Samantha wanting to
+subscribe) is also a successful real-estate agent, and the same present-and-send workflow
+maps directly onto property listings. Worth exploring as an adjacent market when there's
+appetite: same product, swap "boat" for "property," potentially a separate brand skin.
+Low urgency, high optionality — a warm first customer already in reach if we ever want to
+test it.

@@ -25,7 +25,10 @@ const ALIASES: Record<string, string> = {
   platform:    "Swim Platform",
   wheel:       "Helm",
   steering:    "Helm",
-  deck:        "Cockpit",
+  // NOTE: no bare "deck" → Cockpit alias. A deck can be many areas (sun deck,
+  // sky lounge aft deck, command deck…); mapping a lone "deck" to Cockpit
+  // silently mislabels anything not yet a category. Unknown decks fall to
+  // "Other" instead, which is the honest result.
 };
 
 function isWholeWord(name: string, term: string): boolean {
@@ -35,6 +38,19 @@ function isWholeWord(name: string, term: string): boolean {
     name.endsWith(" " + term) ||
     name.includes(" " + term + " ")
   );
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Matches a category as a whole phrase, but tolerates a MISSING space between
+// the category's own words — filenames routinely concatenate them
+// ("aftdeck" for "Aft Deck"). The outer \b guards
+// stay, so "head" still won't match inside "overhead".
+function matchesCategory(name: string, cat: string): boolean {
+  const words = cat.toLowerCase().split(/\s+/).map(escapeRegExp);
+  return new RegExp(`\\b${words.join("\\s*")}\\b`).test(name);
 }
 
 /**
@@ -55,9 +71,10 @@ export function guessCategory(filename: string): string {
     .trim();
 
   // Sort longest categories first so specific names beat short ones
+  // ("Skylounge Aft Deck" wins over "Aft Deck").
   const sorted = [...PHOTO_CATEGORIES].sort((a, b) => b.length - a.length);
   for (const cat of sorted) {
-    if (isWholeWord(name, cat.toLowerCase())) return cat;
+    if (matchesCategory(name, cat)) return cat;
   }
 
   // Fall back to aliases (whole-word match on each alias key)

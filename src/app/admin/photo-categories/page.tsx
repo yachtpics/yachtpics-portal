@@ -98,7 +98,7 @@ export default function PhotoCategoriesPage() {
             type="text"
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder="e.g. Sky Lounge, Laundry Room..."
+            placeholder="e.g. Skylounge, Laundry Room..."
             className="flex-1 border border-hairline-strong rounded-ctl px-3 py-2 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
           />
           <button
