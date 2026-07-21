@@ -87,6 +87,34 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
     category: p.category,
   }));
 
+  // Videos live in their own bucket. We sign two URLs each: a plain one for the
+  // inline preview, and a download-forced one (Supabase's `download` param sets
+  // Content-Disposition: attachment) so a click saves the file instead of
+  // opening it — and without pulling a huge video into browser memory.
+  const { data: videos } = await supabase
+    .from("videos")
+    .select("id, storage_path, filename, created_at")
+    .eq("listing_id", link.listing_id)
+    .order("created_at");
+
+  const vidPaths = (videos ?? []).map((v) => v.storage_path);
+  const { data: vidSigned } =
+    vidPaths.length > 0
+      ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 60 * 60 * 6)
+      : { data: [] };
+  const vidUrlMap = new Map((vidSigned ?? []).map((d) => [d.path, d.signedUrl]));
+
+  const videosWithUrls = (videos ?? []).map((v, i) => {
+    const previewUrl = vidUrlMap.get(v.storage_path) ?? null;
+    const dlName = v.filename && /\.\w+$/.test(v.filename) ? v.filename : `${v.filename ?? "video"}.mp4`;
+    return {
+      id: v.id,
+      previewUrl,
+      downloadUrl: previewUrl ? `${previewUrl}&download=${encodeURIComponent(dlName)}` : null,
+      label: v.filename ?? `Video ${i + 1}`,
+    };
+  });
+
   const vesselName = listing?.vessel_name ?? "Vessel";
 
   return (
@@ -94,6 +122,7 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
       token={params.token}
       vesselName={vesselName}
       photos={photosWithUrls}
+      videos={videosWithUrls}
     />
   );
 }

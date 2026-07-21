@@ -10,6 +10,13 @@ type Photo = {
   category: string | null;
 };
 
+type Video = {
+  id: string;
+  previewUrl: string | null;
+  downloadUrl: string | null;
+  label: string;
+};
+
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -25,15 +32,18 @@ export default function DownloadPageClient({
   token,
   vesselName,
   photos,
+  videos = [],
 }: {
   token: string;
   vesselName: string;
   photos: Photo[];
+  videos?: Video[];
 }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const available = photos.filter((p) => p.url);
+  const availableVideos = videos.filter((v) => v.downloadUrl);
   const safeName = vesselName.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "vessel";
 
   function logDownload(count: number) {
@@ -129,7 +139,9 @@ export default function DownloadPageClient({
             <div>
               <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">{vesselName}</h1>
               <p className="text-sm text-ink-400 mt-1">
-                {available.length} photo{available.length !== 1 ? "s" : ""} available to download
+                {available.length} photo{available.length !== 1 ? "s" : ""}
+                {availableVideos.length > 0 && ` · ${availableVideos.length} video${availableVideos.length !== 1 ? "s" : ""}`}
+                {" "}available to download
               </p>
             </div>
             <button
@@ -150,6 +162,40 @@ export default function DownloadPageClient({
           )}
         </div>
       </div>
+
+      {/* Videos — preview inline, download individually (files are large, so no zip) */}
+      {availableVideos.length > 0 && (
+        <div className="max-w-5xl mx-auto px-5 pt-6">
+          <p className="label-caps text-ink-500 mb-3">
+            Video{availableVideos.length !== 1 ? "s" : ""}
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {availableVideos.map((video) => (
+              <div key={video.id} className="bg-white border border-hairline rounded-card shadow-elev-1 overflow-hidden">
+                {video.previewUrl && (
+                  <video
+                    src={video.previewUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="w-full max-h-[320px] bg-black"
+                  />
+                )}
+                <div className="flex items-center justify-between gap-3 px-4 py-3">
+                  <span className="text-sm text-ink-700 truncate">{video.label}</span>
+                  <a
+                    href={video.downloadUrl!}
+                    onClick={() => logDownload(1)}
+                    className="shrink-0 bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-base ease-quiet"
+                  >
+                    ⬇ Download
+                  </a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Gallery — prints on paper, lifted by their shadows */}
       <div className="max-w-5xl mx-auto px-5 py-6">
