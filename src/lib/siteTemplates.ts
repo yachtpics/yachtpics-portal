@@ -141,17 +141,54 @@ export function boatPage(d: BoatPageData): string {
     d.location,
   ].filter(Boolean);
 
+  // A labeled spec list + a real descriptive paragraph. Search engines read a
+  // gallery-only page as near-empty ("Crawled – not indexed"); this gives every
+  // boat page genuine, keyword-relevant text so it's worth indexing.
+  const specPairs = ([
+    d.year ? ["Year", String(d.year)] : null,
+    d.make ? ["Builder", d.make] : null,
+    d.model ? ["Model", d.model] : null,
+    d.lengthFt ? ["Length", `${d.lengthFt}′`] : null,
+    d.vesselType ? ["Type", d.vesselType] : null,
+    d.location ? ["Location", d.location] : null,
+  ].filter(Boolean)) as [string, string][];
+
+  const nameish = [d.year ? String(d.year) : null, d.make, d.model].filter(Boolean).join(" ");
+  const typeWord = d.vesselType ? d.vesselType.toLowerCase() : "yacht";
+  const nPhotos = d.photos.length;
+  const bodyText =
+    `YachtPics photographed ${d.vesselName}` +
+    (nameish ? `, ${nameish}` : "") +
+    (d.lengthFt ? `, a ${d.lengthFt}-foot ${typeWord}` : ` ${typeWord}`) +
+    (d.location ? ` based in ${d.location}` : "") +
+    `, listed for sale with ${d.brokerageName}. ` +
+    `This gallery presents ${nPhotos} professional photograph${nPhotos !== 1 ? "s" : ""} of the vessel — ` +
+    `exterior profiles, deck spaces, the helm and flybridge, salon, galley and staterooms — ` +
+    `captured to brokerage marketing standard by YachtPics, yacht photography specialists.`;
+
   const title = `${d.label} — ${d.brokerageName} | YachtPics`;
-  const description = `Yacht photography by YachtPics for ${d.label}${d.vesselType ? `, a ${d.vesselType.toLowerCase()}` : ""} listed with ${d.brokerageName}. ${d.photos.length} photographs.`;
+  const description = bodyText.length > 155 ? bodyText.slice(0, 152).trimEnd() + "…" : bodyText;
+
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "ImageGallery",
+    name: `${d.label} — ${d.brokerageName}`,
+    description: bodyText,
+    url: `${SITE}/${d.sitePage}/${d.slug}/index.html`,
+    provider: { "@type": "Organization", name: "YachtPics", url: SITE },
+    image: d.photos,
+  };
+  const ldScript = `<script type="application/ld+json">${JSON.stringify(ld)}</script>`;
 
   const thumbs = d.photos
     .map(
       (p, i) =>
-        `<button class="yp-thumb" data-i="${i}" aria-label="Photo ${i + 1}"><img src="${p}" alt="" loading="lazy" decoding="async"></button>`
+        `<button class="yp-thumb" data-i="${i}" aria-label="Photo ${i + 1}"><img src="${p}" alt="${esc(d.vesselName)} yacht photo ${i + 1}" loading="lazy" decoding="async"></button>`
     )
     .join("");
 
   return `${head({ title, description, canonical: `${SITE}/${d.sitePage}/${d.slug}/index.html`, depth: 2 })}
+${ldScript}
 ${nav(2)}
 <main>
   <div class="page-hero">
@@ -165,7 +202,7 @@ ${nav(2)}
   <section style="padding:40px 0 24px">
     <div class="wrap">
       <div class="yp-stage" id="ypStage">
-        <img class="yp-layer" id="ypA" alt="${esc(d.vesselName)}" decoding="sync">
+        <img class="yp-layer" id="ypA" alt="${esc(d.vesselName)} — yacht photography by YachtPics" decoding="sync">
         <img class="yp-layer" id="ypB" alt="" decoding="sync">
         <button class="yp-arrow yp-prev" id="ypPrev" aria-label="Previous photo">&lsaquo;</button>
         <button class="yp-arrow yp-next" id="ypNext" aria-label="Next photo">&rsaquo;</button>
@@ -198,6 +235,10 @@ ${nav(2)}
           ${d.brokerEmail ? `<a href="mailto:${esc(d.brokerEmail)}">${esc(d.brokerEmail)}</a>` : ""}
         </div>
       </div>
+      <div class="yp-about">
+        <p>${esc(bodyText)}</p>
+        ${specPairs.length ? `<dl class="yp-specs">${specPairs.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : ""}
+      </div>
       <p style="margin-top:40px">
         <a href="../../${d.sitePage}.html" style="border-bottom:1px solid var(--gold)">&larr; All ${esc(d.brokerageName)} yachts</a>
         &nbsp;&middot;&nbsp;
@@ -226,7 +267,14 @@ ${nav(2)}
 .yp-thumb:hover,.yp-thumb[aria-current="true"]{opacity:1}
 .yp-thumb[aria-current="true"]{outline:1px solid var(--gold)}
 .yp-thumb img{width:82px;height:54px;object-fit:cover}
-.yp-broker{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:28px}
+.yp-about{margin-top:36px;max-width:760px}
+.yp-about p{color:var(--ink-soft);line-height:1.7;font-size:16px}
+.yp-specs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 32px;margin-top:22px;border-top:1px solid var(--line)}
+.yp-specs>div{display:flex;justify-content:space-between;gap:16px;padding:11px 0;border-bottom:1px solid var(--line)}
+.yp-specs dt{color:var(--ink-soft);text-transform:uppercase;letter-spacing:.1em;font-size:12px}
+.yp-specs dd{margin:0;color:var(--ink);font-weight:600;font-size:14px;text-align:right}
+@media(max-width:560px){.yp-specs{grid-template-columns:1fr}}
+.yp-broker{display:flex;justify-content:space-between;align-items:flex-end;gap:24px;flex-wrap:wrap;border-top:1px solid var(--line);padding-top:28px;margin-top:40px}
 .yp-contact{display:flex;flex-direction:column;gap:4px;font-size:15px}
 .yp-contact a{border-bottom:1px solid var(--gold-soft)}
 @media(max-width:560px){.yp-stage{height:56vh}}
