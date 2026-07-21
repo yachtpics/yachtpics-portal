@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { logShowcaseEvent } from "@/lib/showcaseEvents";
+import { orderPhotos } from "@/lib/photoOrder";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const { data: listing } = await service
     .from("listings")
-    .select("id, in_showcase, showcase_opt_out, status, hero_photo_id")
+    .select("id, in_showcase, showcase_opt_out, status, hero_photo_id, photo_order_manual")
     .eq("id", params.id)
     .maybeSingle();
 
@@ -35,17 +36,17 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const { data: photoRows } = await service
     .from("photos")
-    .select("id, storage_path")
+    .select("id, storage_path, category, display_order")
     .eq("listing_id", params.id)
     .eq("is_visible", true)
     .order("display_order", { ascending: true });
 
-  const rows = photoRows ?? [];
-  // Hero first, otherwise keep display order (V8 sort is stable).
-  rows.sort((a, b) => {
-    if (a.id === listing.hero_photo_id) return -1;
-    if (b.id === listing.hero_photo_id) return 1;
-    return 0;
+  // Same ordering everything else uses: canonical walk-the-boat order
+  // (profiles → tower → flybridge → …) by default, or the broker's hand-sorted
+  // order if they arranged this listing. Hero photo always opens.
+  const rows = orderPhotos(photoRows ?? [], {
+    manual: listing.photo_order_manual === true,
+    heroId: listing.hero_photo_id,
   });
 
   const paths = rows.map((r) => r.storage_path as string);

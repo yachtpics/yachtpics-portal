@@ -30,6 +30,7 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [existingAccount, setExistingAccount] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,7 +39,7 @@ export default function SignupPage() {
 
     const supabase = createClient();
 
-    const { error: signUpError } = await supabase.auth.signUp({
+    const { data, error: signUpError } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
       options: {
@@ -53,6 +54,17 @@ export default function SignupPage() {
 
     if (signUpError) {
       setError(signUpError.message);
+      setLoading(false);
+      return;
+    }
+
+    // Supabase deliberately hides whether an email is already registered (to
+    // stop attackers probing the user list): signing up with an existing,
+    // confirmed email returns a fake "success" with an EMPTY identities array
+    // and sends no email. Detect that and steer the person to sign in / reset,
+    // instead of showing a "check your email" screen for a mail that never comes.
+    if (data.user && (data.user.identities?.length ?? 0) === 0) {
+      setExistingAccount(true);
       setLoading(false);
       return;
     }
@@ -75,6 +87,41 @@ export default function SignupPage() {
     setLoading(false);
     setSubmitted(true);
   };
+
+  if (existingAccount) {
+    return (
+      <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
+        <div aria-hidden className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-48 left-1/2 h-96 w-[52rem] -translate-x-1/2 rounded-full bg-accent-500/[0.06] blur-3xl" />
+          <div className="absolute inset-x-0 top-0 h-px bg-hairline-inverse-soft" />
+          <div className="absolute inset-x-0 bottom-0 h-px bg-hairline-inverse-soft" />
+        </div>
+        <div className="relative text-center max-w-sm">
+          <WordmarkLockup />
+          <h2 className="text-white text-h1 mt-10 mb-3">You already have an account</h2>
+          <p className="text-ink-400 text-sm leading-relaxed">
+            There&apos;s already a YachtPics account for <span className="text-white">{form.email}</span>.
+            No need to sign up again &mdash; just sign in. If you don&apos;t remember your password,
+            reset it and you&apos;ll be right in.
+          </p>
+          <div className="mt-8 flex flex-col gap-3">
+            <Link
+              href="/auth/login"
+              className="inline-flex items-center justify-center bg-accent-500 hover:bg-accent-400 text-ink-950 font-semibold text-sm px-6 py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
+            >
+              Go to sign in
+            </Link>
+            <Link
+              href="/auth/forgot-password"
+              className="inline-flex items-center justify-center text-accent-300 hover:text-accent-200 font-medium text-sm min-h-[44px] transition-colors duration-fast"
+            >
+              Forgot your password?
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (submitted) {
     return (
