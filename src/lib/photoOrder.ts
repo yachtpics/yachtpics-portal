@@ -24,6 +24,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Skylounge Day Head",
   "Sun Deck",
   "Bow",
+  "Foredeck",
   "Stern",
   "Port",
   "Starboard",
@@ -52,6 +53,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Pilothouse",
   "Helm",
   "Console",
+  "Navigation Station",
   "Companionway",
   "Lower Companionway",
   "Lower Foyer",
@@ -61,6 +63,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Aft Cabin",
 
   // Guest accommodation — each stateroom followed by its own head
+  "Forward Cabin",
   "Forward Stateroom",
   "Forward Stateroom Head",
   "Guest Stateroom",

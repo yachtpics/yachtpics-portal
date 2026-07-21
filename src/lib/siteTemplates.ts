@@ -421,6 +421,15 @@ export function brokeragePage(d: BrokeragePageData): string {
   const title = `Yacht Photography for ${d.brokerageName} | YachtPics`;
   const description = `Listing photography slideshows produced by YachtPics for ${d.brokerageName} — ${total} yacht shoots delivered.`;
 
+  // A real intro paragraph so the page carries indexable text, not just a list
+  // of links (which reads as thin content and gets "Crawled – not indexed").
+  const introText =
+    `YachtPics produces professional listing photography for ${d.brokerageName}` +
+    (total ? `, with ${total} yacht photo shoot${total === 1 ? "" : "s"} delivered to date` : "") +
+    `. Each gallery below presents a vessel's exterior profiles, deck spaces, helm and ` +
+    `flybridge, salon, galley and staterooms — shot to the marketing standard the yacht ` +
+    `brokerage market expects. Browse ${d.brokerageName}'s boats below, or get in touch to book a shoot.`;
+
   const newList = d.boats.length
     ? `<ul class="client-cols">
 ${d.boats.map((b) => `        <li><a href="${d.sitePage}/${b.slug}/index.html">${esc(b.label)}</a></li>`).join("\n")}
@@ -449,6 +458,7 @@ ${nav(0)}
   </div>
   <section>
     <div class="wrap">
+      <p style="max-width:760px;color:var(--ink-soft);line-height:1.7;margin-bottom:36px">${esc(introText)}</p>
       ${heads ? `<h2 style="font-size:26px;margin-bottom:18px">Recent shoots</h2>` : ""}
       ${newList}
       ${heads ? `<h2 style="font-size:26px;margin:56px 0 18px">Archive</h2>` : ""}
