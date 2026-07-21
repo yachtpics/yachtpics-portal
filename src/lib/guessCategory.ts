@@ -1,14 +1,13 @@
 import { PHOTO_CATEGORIES } from "./photoCategories";
 
-// Aliases for common alternate naming conventions in filenames
+// Aliases for common alternate naming conventions in filenames.
+// These are TRUE synonyms only — a word that reliably means one area. Ambiguous
+// guesses were deliberately removed (e.g. "exterior"/"profile"/"aft"/"bridge"),
+// because mapping an ambiguous word to one specific area silently mislabels
+// photos; anything the categories don't recognize should fall to "Other"
+// instead, which is the honest result.
 const ALIASES: Record<string, string> = {
-  exterior:    "Starboard",
-  profile:     "Port",
   front:       "Bow",
-  aft:         "Stern",
-  back:        "Stern",
-  bridge:      "Flybridge",
-  fly:         "Flybridge",
   interior:    "Salon",
   living:      "Salon",
   mainsalon:   "Salon",
