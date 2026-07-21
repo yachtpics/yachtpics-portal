@@ -13,7 +13,6 @@ const ALIASES: Record<string, string> = {
   living:      "Salon",
   mainsalon:   "Salon",
   kitchen:     "Galley",
-  dining:      "Galley",
   master:      "Master Stateroom",
   guest:       "Guest Stateroom",
   bath:        "Head",

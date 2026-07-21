@@ -45,6 +45,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Day Head",
   "Galley",
   "Dinette",
+  "Dining",
   "Pantry",
   "Foyer",
   "Main Deck Foyer",
