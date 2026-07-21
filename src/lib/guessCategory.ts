@@ -44,12 +44,20 @@ function escapeRegExp(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-// Matches a category as a whole phrase, but tolerates a MISSING space between
-// the category's own words — filenames routinely concatenate them
-// ("aftdeck" for "Aft Deck"). The outer \b guards
-// stay, so "head" still won't match inside "overhead".
+// Matches a category as a whole phrase, tolerating the two things filenames
+// routinely do to category names:
+//   1. Concatenate the words ("aftdeck" for "Aft Deck", "skylounge" for
+//      "Skylounge") — handled by allowing zero-or-more spaces between words.
+//   2. Drop the word "stateroom" ("master" for "Master Stateroom", "on deck
+//      master head" for "On Deck Master Stateroom Head") — so "stateroom" is
+//      matched as optional.
+// The outer \b guards stay, so "head" still won't match inside "overhead", and
+// longest-category-first ordering keeps the specific names winning.
 function matchesCategory(name: string, cat: string): boolean {
-  const words = cat.toLowerCase().split(/\s+/).map(escapeRegExp);
+  const words = cat
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => (w === "stateroom" ? "(?:stateroom)?" : escapeRegExp(w)));
   return new RegExp(`\\b${words.join("\\s*")}\\b`).test(name);
 }
 
