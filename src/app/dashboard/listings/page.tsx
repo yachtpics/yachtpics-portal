@@ -123,13 +123,52 @@ export default async function ListingsPage() {
           </p>
         </div>
       ) : (
-        <ListingsBrowser
-          listings={listings}
-          currentUserId={user.id}
-          coBrokerIds={Array.from(coBrokerIds)}
-          lockedListingIds={lockedListingIds}
-          heroes={heroes}
-        />
+        <>
+          {/* Spotlight the newest boat (list is sorted newest-first) so a broker
+              lands and can open their latest shoot in one click, without hunting.
+              It still appears in the list below — this is just a fast path. */}
+          {(() => {
+            const top = listings[0];
+            const hero = heroes[top.id];
+            const specs = [top.year, top.make, top.model, top.length_ft ? `${top.length_ft}′` : null, top.location]
+              .filter(Boolean)
+              .join(" · ");
+            return (
+              <Link
+                href={`/dashboard/listings/${top.id}`}
+                className="group flex items-stretch mb-6 overflow-hidden rounded-card border border-hairline bg-white shadow-elev-1 hover:shadow-elev-2 hover:border-accent-500 transition-all duration-base ease-quiet"
+              >
+                <div className="relative w-40 sm:w-56 shrink-0 min-h-[8rem] bg-ink-100">
+                  {hero?.url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={hero.url}
+                      alt={top.vessel_name ?? "Latest shoot"}
+                      className={`absolute inset-0 h-full w-full ${hero.fit === "fill" ? "object-cover" : "object-contain"}`}
+                    />
+                  ) : (
+                    <div className="h-full w-full flex items-center justify-center text-ink-300 text-xs">No photo yet</div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0 p-5 sm:p-6 flex flex-col justify-center">
+                  <p className="label-caps text-accent-700 mb-1.5">Latest shoot</p>
+                  <h2 className="text-h2 text-ink-900 truncate">{top.vessel_name ?? "Untitled vessel"}</h2>
+                  {specs && <p className="text-ink-500 text-sm mt-0.5 truncate">{specs}</p>}
+                  <span className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-accent-700 group-hover:text-accent-600 transition-colors duration-fast">
+                    View &amp; download photos <span aria-hidden>&rarr;</span>
+                  </span>
+                </div>
+              </Link>
+            );
+          })()}
+          <ListingsBrowser
+            listings={listings}
+            currentUserId={user.id}
+            coBrokerIds={Array.from(coBrokerIds)}
+            lockedListingIds={lockedListingIds}
+            heroes={heroes}
+          />
+        </>
       )}
     </div>
   );

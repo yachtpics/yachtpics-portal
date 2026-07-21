@@ -23,9 +23,11 @@ export default function LoginPage() {
       setError(error.message);
       setLoading(false);
     } else {
-      // Redirect admins directly to the admin panel
+      // Brokers/assistants land straight on their Listings — login + one click to
+      // a boat's photos, which is what they're almost always here for. Admins go
+      // to the admin panel.
       const userId = authData.user?.id;
-      let destination = "/dashboard";
+      let destination = "/dashboard/listings";
       if (userId) {
         const { data: profile } = await supabase.from("profiles").select("role").eq("id", userId).single();
         if (profile?.role === "admin") destination = "/admin";

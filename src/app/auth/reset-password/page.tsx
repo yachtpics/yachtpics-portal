@@ -106,7 +106,15 @@ export default function ResetPasswordPage() {
       return;
     }
 
-    router.push("/dashboard");
+    // Land where they'd want to be: brokers/assistants on their Listings,
+    // admins on the admin panel.
+    const { data: { user } } = await supabase.auth.getUser();
+    let destination = "/dashboard/listings";
+    if (user) {
+      const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+      if (profile?.role === "admin") destination = "/admin";
+    }
+    router.push(destination);
   };
 
   if (checking) {

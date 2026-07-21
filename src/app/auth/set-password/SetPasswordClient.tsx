@@ -162,7 +162,9 @@ export default function SetPasswordClient() {
       return;
     }
 
-    router.push("/dashboard");
+    // New brokers/assistants set up via invite — send them straight to their
+    // Listings, the one-click-to-photos landing.
+    router.push("/dashboard/listings");
   };
 
   if (checking) {
