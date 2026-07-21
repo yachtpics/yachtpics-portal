@@ -28,6 +28,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Port",
   "Starboard",
   "Swim Platform",
+  "Beach Club",
   "Cockpit",
   "Aft Deck",
 
