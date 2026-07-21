@@ -31,7 +31,9 @@ export default function ShowcaseBoard({ boats }: { boats: Boat[] }) {
     setZoom(null);
     setLoading(true);
     try {
-      const res = await fetch(`/api/showcase/${id}/photos`);
+      // no-store: always pull the current photo set + order. Without this the
+      // browser can replay a stale list (e.g. old order after a re-sort/re-upload).
+      const res = await fetch(`/api/showcase/${id}/photos`, { cache: "no-store" });
       const data = await res.json();
       setPhotos(Array.isArray(data.photos) ? data.photos : []);
     } catch {

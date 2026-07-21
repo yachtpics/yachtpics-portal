@@ -55,5 +55,5 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const { data: signed } = await service.storage.from("listing-photos").createSignedUrls(paths, 3600);
   const photos = (signed ?? []).map((s) => s.signedUrl).filter(Boolean);
 
-  return NextResponse.json({ photos });
+  return NextResponse.json({ photos }, { headers: { "Cache-Control": "no-store" } });
 }
