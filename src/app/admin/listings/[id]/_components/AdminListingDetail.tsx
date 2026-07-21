@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
+import { orderPhotos } from "@/lib/photoOrder";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
 
@@ -40,6 +41,8 @@ interface Listing {
   showcase_opt_out?: boolean | null;
   slideshow_slug?: string | null;
   slideshow_published?: boolean | null;
+  hero_photo_id?: string | null;
+  photo_order_manual?: boolean | null;
   profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null;
 }
 
@@ -111,6 +114,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState("");
+  const [bulkCategorizing, setBulkCategorizing] = useState(false);
+  const [heroPhotoId, setHeroPhotoId] = useState<string | null>(listing.hero_photo_id ?? null);
+  const [sorting, setSorting] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
   const [customEdit, setCustomEdit] = useState<{ photoId: string; value: string } | null>(null);
@@ -207,6 +214,54 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (!(PHOTO_CATEGORIES as readonly string[]).includes(category)) {
       setCustomCategories((prev) => prev.includes(category) ? prev : [...prev, category]);
     }
+  }
+
+  // Set the category on every selected photo at once — so 20 shots of the same
+  // area are one pick, not twenty.
+  async function applyBulkCategory() {
+    if (!bulkCategory || selectedIds.size === 0) return;
+    setBulkCategorizing(true);
+    const ids = Array.from(selectedIds);
+    await Promise.all(ids.map((photoId) => updateCategory(photoId, bulkCategory)));
+    setBulkCategorizing(false);
+    setSelectedIds(new Set());
+    const label = bulkCategory;
+    setBulkCategory("");
+    setMessage(`Set ${ids.length} photo${ids.length !== 1 ? "s" : ""} to “${label}”.`);
+    setTimeout(() => setMessage(""), 3000);
+  }
+
+  // Star / cover photo — the featured image used on the showcase card, listings
+  // card, flyer, and social posts. Clicking the current one clears it.
+  async function setHero(photoId: string) {
+    const next = heroPhotoId === photoId ? null : photoId;
+    const prev = heroPhotoId;
+    setHeroPhotoId(next); // optimistic
+    const { error } = await supabase.from("listings").update({ hero_photo_id: next }).eq("id", listing.id);
+    if (error) {
+      setHeroPhotoId(prev);
+      setMessage("Couldn't update the cover photo.");
+      setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+    setMessage(next ? "Cover photo set." : "Cover photo cleared.");
+    setTimeout(() => setMessage(""), 2500);
+  }
+
+  // Rewrite display_order into the canonical walk-the-boat order (profiles →
+  // exterior → engine room → interior → staterooms). Marks the listing
+  // hand-sorted so that order sticks everywhere.
+  async function sortToStandardOrder() {
+    if (sorting || photos.length === 0) return;
+    if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced.")) return;
+    setSorting(true);
+    const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null });
+    await Promise.all(sorted.map((p, i) => supabase.from("photos").update({ display_order: i }).eq("id", p.id)));
+    setPhotos(sorted.map((p, i) => ({ ...p, display_order: i })));
+    await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
+    setSorting(false);
+    setMessage("Sorted to standard order.");
+    setTimeout(() => setMessage(""), 2500);
   }
 
   async function deletePhoto(photoId: string, storagePath: string) {
@@ -866,15 +921,53 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                   Cancel
                 </button>
                 {selectedIds.size > 0 && (
-                  <button
-                    onClick={deleteSelected}
-                    disabled={deleting}
-                    className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                  >
-                    {deleting ? "Deleting..." : `🗑 Delete ${selectedIds.size}`}
-                  </button>
+                  <>
+                    {/* Bulk category — set the area on every selected photo at once */}
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={bulkCategory}
+                        onChange={(e) => setBulkCategory(e.target.value)}
+                        className="text-sm border border-hairline-strong rounded-ctl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-accent-500"
+                      >
+                        <option value="">Assign category…</option>
+                        {PHOTO_CATEGORIES.filter((c) => c !== "Other").map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                        {customCategories.map((cat) => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                        <option value="Other">Other</option>
+                      </select>
+                      {bulkCategory && (
+                        <button
+                          onClick={applyBulkCategory}
+                          disabled={bulkCategorizing}
+                          className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
+                        >
+                          {bulkCategorizing ? "Applying…" : `Apply to ${selectedIds.size}`}
+                        </button>
+                      )}
+                    </div>
+                    <button
+                      onClick={deleteSelected}
+                      disabled={deleting}
+                      className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
+                    >
+                      {deleting ? "Deleting..." : `🗑 Delete ${selectedIds.size}`}
+                    </button>
+                  </>
                 )}
               </>
+            )}
+            {photos.length > 1 && !selectMode && (
+              <button
+                onClick={sortToStandardOrder}
+                disabled={sorting}
+                title="Rewrite the order to the standard walk-through: profiles, exterior, engine room, then the interior"
+                className="text-sm font-medium px-3 py-2 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast ease-quiet"
+              >
+                {sorting ? "Sorting…" : "Sort to standard order"}
+              </button>
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -964,6 +1057,23 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                       }`}>
                         {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
                       </div>
+                    )}
+                    {/* Cover-photo star — sets the featured image (showcase card,
+                        listings card, flyer, social). Filled = current cover. */}
+                    {!selectMode && (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setHero(photo.id); }}
+                        title={heroPhotoId === photo.id ? "Cover photo — click to clear" : "Set as cover photo"}
+                        aria-label={heroPhotoId === photo.id ? "Clear cover photo" : "Set as cover photo"}
+                        className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-sm shadow-elev-1 transition-colors duration-fast ease-quiet ${
+                          heroPhotoId === photo.id
+                            ? "bg-accent-500 text-ink-950"
+                            : "bg-white/85 text-ink-500 hover:text-ink-900"
+                        }`}
+                      >
+                        {heroPhotoId === photo.id ? "★" : "☆"}
+                      </button>
                     )}
                   </div>
 
