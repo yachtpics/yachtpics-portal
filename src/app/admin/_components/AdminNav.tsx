@@ -86,13 +86,13 @@ export default function AdminNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex-1 min-w-[3.5rem] flex flex-col items-center justify-center py-2.5 gap-1 transition-colors duration-base ease-quiet ${
+              className={`relative flex-1 min-w-[4.5rem] flex flex-col items-center justify-center py-3 gap-1.5 transition-colors duration-base ease-quiet ${
                 active ? "text-white" : "text-ink-400"
               }`}
             >
               {active && <span aria-hidden className="absolute top-0 inset-x-2 h-0.5 bg-accent-500" />}
-              <item.icon size={16} strokeWidth={active ? 2 : 1.5} aria-hidden />
-              <span className="text-[9px] font-medium leading-none">{item.label.split(" ")[0]}</span>
+              <item.icon size={24} strokeWidth={active ? 2 : 1.75} aria-hidden />
+              <span className="text-[11px] font-medium leading-none">{item.label.split(" ")[0]}</span>
             </Link>
           );
         })}
