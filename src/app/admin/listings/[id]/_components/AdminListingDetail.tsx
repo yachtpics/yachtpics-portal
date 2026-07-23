@@ -1027,7 +1027,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <p className="text-ink-400 text-sm">Drag photos here or click to upload</p>
           </div>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 items-start">
             {photos.map((photo, idx) => {
               const isSelected = selectedIds.has(photo.id);
               return (
@@ -1294,13 +1294,26 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
 function OrientedThumbnail({ url, filename }: { url: string; filename: string | null }) {
   const [isVertical, setIsVertical] = useState(false);
+  const ref = useRef<HTMLImageElement>(null);
+
+  // onLoad alone misses images that are already cached/complete before React
+  // attaches the handler — which left every card defaulting to landscape (4:3)
+  // and cropping verticals. Measure on mount too so orientation is always right.
+  useEffect(() => {
+    const img = ref.current;
+    if (img && img.complete && img.naturalWidth > 0) {
+      setIsVertical(img.naturalHeight > img.naturalWidth);
+    }
+  }, [url]);
+
   return (
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      ref={ref}
       src={url}
       alt={filename ?? ""}
       onLoad={(e) => {
-        const img = e.target as HTMLImageElement;
+        const img = e.currentTarget;
         setIsVertical(img.naturalHeight > img.naturalWidth);
       }}
       className={`w-full object-cover ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
