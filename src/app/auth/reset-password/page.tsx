@@ -30,6 +30,28 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [ready, setReady] = useState(false);
+  const [resendEmail, setResendEmail] = useState("");
+  const [resending, setResending] = useState(false);
+  const [resent, setResent] = useState(false);
+  const [resendErr, setResendErr] = useState<string | null>(null);
+
+  // From the expired-link screen: send a fresh reset link right here, so the
+  // person never has to hunt for the forgot-password page. Common trigger is a
+  // corporate mail scanner pre-opening (and burning) the one-time link.
+  async function resendReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!resendEmail.trim() || resending) return;
+    setResending(true);
+    setResendErr(null);
+    const { createClient } = await import("@/lib/supabase/client");
+    const supabase = createClient();
+    const { error } = await supabase.auth.resetPasswordForEmail(resendEmail.trim(), {
+      redirectTo: `${window.location.origin}/auth/reset-password`,
+    });
+    setResending(false);
+    if (error) { setResendErr(error.message); return; }
+    setResent(true);
+  }
 
   useEffect(() => {
     // Defer client creation — createBrowserClient accesses browser APIs at construction time.
@@ -137,23 +159,56 @@ export default function ResetPasswordPage() {
           <div className="mb-10">
             <WordmarkLockup />
           </div>
-          <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm">
-            <div className="w-10 h-10 rounded-full bg-warn-300/10 border border-warn-300/30 flex items-center justify-center mx-auto mb-4">
-              <span className="text-warn-300 text-lg">!</span>
-            </div>
-            <h1 className="text-h2 text-white mb-2">Link expired</h1>
-            <p className="text-sm text-ink-400 leading-relaxed mb-6">
-              This reset link has already been used or has expired.{" "}
-              <a href="/auth/forgot-password" className="text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast">
-                Request a new one
-              </a>
-              .
-            </p>
+          <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm text-left">
+            {resent ? (
+              <>
+                <p className="text-accent-300 text-3xl font-light text-center mb-3">✓</p>
+                <h1 className="text-h2 text-white mb-2 text-center">Check your email</h1>
+                <p className="text-sm text-ink-400 leading-relaxed text-center">
+                  We sent a fresh reset link to <span className="text-white">{resendEmail}</span>.
+                  Open it and set your password. If it still says expired, open the link on your
+                  phone instead — some company email systems open (and use up) links automatically.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="w-10 h-10 rounded-full bg-warn-300/10 border border-warn-300/30 flex items-center justify-center mx-auto mb-4">
+                  <span className="text-warn-300 text-lg">!</span>
+                </div>
+                <h1 className="text-h2 text-white mb-2 text-center">Link expired</h1>
+                <p className="text-sm text-ink-400 leading-relaxed mb-5 text-center">
+                  This reset link was already used or has expired. Enter your email and we&apos;ll
+                  send a fresh one — open it right away.
+                </p>
+                <form onSubmit={resendReset} className="space-y-3">
+                  <div>
+                    <Label tone="dark" className="mb-2">Email</Label>
+                    <Input
+                      tone="dark"
+                      type="email"
+                      required
+                      autoFocus
+                      value={resendEmail}
+                      onChange={(e) => setResendEmail(e.target.value)}
+                      placeholder="you@brokerage.com"
+                    />
+                  </div>
+                  {resendErr && (
+                    <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
+                      {resendErr}
+                    </div>
+                  )}
+                  <Button type="submit" disabled={resending} className="w-full focus-visible:ring-offset-ink-950">
+                    {resending ? "Sending…" : "Send me a new link"}
+                  </Button>
+                </form>
+              </>
+            )}
             <a
               href="/auth/login"
-              className="flex w-full items-center justify-center bg-accent-500 hover:bg-accent-400 text-ink-950 font-semibold text-sm py-2.5 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
+              className="mt-6 block text-center text-sm text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast"
             >
-              Back to Login
+              Back to sign in
             </a>
           </div>
         </div>
