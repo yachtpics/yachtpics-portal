@@ -10,6 +10,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  // "password" is the classic email + password (temp password still works).
+  // "magic" sends a one-click sign-in link — the zero-typing path for anyone
+  // who can't get the password to take.
+  const [mode, setMode] = useState<"password" | "magic">("password");
+  const [magicSent, setMagicSent] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +45,21 @@ export default function LoginPage() {
     }
   };
 
+  const handleMagicLink = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    // Always succeeds from the user's view — the API never reveals whether an
+    // account exists, and delivery is fire-and-forget through Resend.
+    await fetch("/api/auth/magic-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    setLoading(false);
+    setMagicSent(true);
+  };
+
   return (
     <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
       {/* Ambient composition — a faint champagne glow and structural hairlines */}
@@ -67,53 +87,123 @@ export default function LoginPage() {
           <p className="text-ink-400 mt-6 text-sm">Sign in to your account</p>
         </div>
 
-        <form
-          onSubmit={handleLogin}
-          className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 space-y-5 backdrop-blur-sm"
-        >
-          {error && (
-            <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
-              {error}
-            </div>
-          )}
-          <div>
-            <Label tone="dark" className="mb-2">Email</Label>
-            <Input
-              tone="dark"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              placeholder="you@brokerage.com"
-            />
+        {magicSent ? (
+          <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm text-center">
+            <p className="text-accent-300 text-3xl font-light mb-3">✓</p>
+            <h1 className="text-h2 text-white mb-2">Check your email</h1>
+            <p className="text-sm text-ink-400 leading-relaxed">
+              If an account exists for <span className="text-white">{email}</span>, we just sent a
+              sign-in link. Open it and press the button — no password needed.
+            </p>
+            <button
+              type="button"
+              onClick={() => { setMagicSent(false); setMode("password"); }}
+              className="mt-6 text-sm text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast"
+            >
+              Back to sign in
+            </button>
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-2">
-              <Label tone="dark">Password</Label>
-              <Link
-                href="/auth/forgot-password"
-                className="text-xs text-accent-300 hover:text-accent-200 transition-colors duration-fast"
-              >
-                Forgot password?
-              </Link>
-            </div>
-            <Input
-              tone="dark"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              placeholder="••••••••"
-            />
-          </div>
-          <Button
-            type="submit"
-            disabled={loading}
-            className="w-full focus-visible:ring-offset-ink-950"
+        ) : mode === "magic" ? (
+          <form
+            onSubmit={handleMagicLink}
+            className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 space-y-5 backdrop-blur-sm"
           >
-            {loading ? "Signing in..." : "Sign In"}
-          </Button>
-        </form>
+            {error && (
+              <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
+                {error}
+              </div>
+            )}
+            <p className="text-sm text-ink-400 leading-relaxed">
+              Enter your email and we&apos;ll send a link that signs you in with one click — no
+              password to remember.
+            </p>
+            <div>
+              <Label tone="dark" className="mb-2">Email</Label>
+              <Input
+                tone="dark"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="you@brokerage.com"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full focus-visible:ring-offset-ink-950"
+            >
+              {loading ? "Sending..." : "Email me a sign-in link"}
+            </Button>
+            <button
+              type="button"
+              onClick={() => { setMode("password"); setError(""); }}
+              className="w-full text-center text-sm text-accent-300 hover:text-accent-200 transition-colors duration-fast"
+            >
+              Sign in with a password instead
+            </button>
+          </form>
+        ) : (
+          <form
+            onSubmit={handleLogin}
+            className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 space-y-5 backdrop-blur-sm"
+          >
+            {error && (
+              <div className="bg-danger-500/10 border border-danger-500/30 text-danger-300 text-sm px-4 py-3 rounded-ctl">
+                {error}
+              </div>
+            )}
+            <div>
+              <Label tone="dark" className="mb-2">Email</Label>
+              <Input
+                tone="dark"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                placeholder="you@brokerage.com"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <Label tone="dark">Password</Label>
+                <Link
+                  href="/auth/forgot-password"
+                  className="text-xs text-accent-300 hover:text-accent-200 transition-colors duration-fast"
+                >
+                  Forgot password?
+                </Link>
+              </div>
+              <Input
+                tone="dark"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+              />
+            </div>
+            <Button
+              type="submit"
+              disabled={loading}
+              className="w-full focus-visible:ring-offset-ink-950"
+            >
+              {loading ? "Signing in..." : "Sign In"}
+            </Button>
+            <div className="flex items-center gap-3">
+              <span className="h-px flex-1 bg-hairline-inverse-soft" />
+              <span className="text-[0.6875rem] font-medium uppercase tracking-caps-wide text-ink-500">or</span>
+              <span className="h-px flex-1 bg-hairline-inverse-soft" />
+            </div>
+            <button
+              type="button"
+              onClick={() => { setMode("magic"); setError(""); }}
+              className="w-full text-center text-sm text-accent-300 hover:text-accent-200 transition-colors duration-fast"
+            >
+              Email me a sign-in link instead
+            </button>
+          </form>
+        )}
 
         <p className="text-center text-ink-500 text-sm mt-8">
           Need access?{" "}
