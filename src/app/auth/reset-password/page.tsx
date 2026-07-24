@@ -2,7 +2,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label } from "@/components/ui";
 
@@ -30,6 +30,7 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(true);
   const [ready, setReady] = useState(false);
+  const ranRef = useRef(false);
   const [resendEmail, setResendEmail] = useState("");
   const [resending, setResending] = useState(false);
   const [resent, setResent] = useState(false);
@@ -54,9 +55,29 @@ export default function ResetPasswordPage() {
   }
 
   useEffect(() => {
+    // Run this exactly once. Re-firing would re-exchange a now-consumed
+    // one-time code and could push the page into a false "expired" state.
+    if (ranRef.current) return;
+    ranRef.current = true;
+
     // Defer client creation — createBrowserClient accesses browser APIs at construction time.
     import("@/lib/supabase/client").then(async ({ createClient }) => {
       const supabase = createClient();
+
+      // The real test isn't "did the exchange error" — it's "do we now have a
+      // session." A one-time recovery code can be consumed by a duplicate page
+      // load or an email link-scanner (Supabase's logs show these exchanges
+      // succeeding on the server), which makes a *later* exchange report
+      // "already used" even though the session was created. So: if a session
+      // exists, let them set a new password regardless of the exchange result.
+      async function readyIfSession() {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          setReady(true);
+          return true;
+        }
+        return false;
+      }
 
       // If there's a ?code= in the URL, exchange it for a session here in the browser.
       // This keeps the code verifier in the same JS context where it was stored.
@@ -66,7 +87,7 @@ export default function ResetPasswordPage() {
       // PKCE flow: ?code= in URL
       if (code) {
         const { error } = await supabase.auth.exchangeCodeForSession(code);
-        if (!error) {
+        if (!error || (await readyIfSession())) {
           window.history.replaceState({}, "", "/auth/reset-password");
           setReady(true);
         }
@@ -94,11 +115,9 @@ export default function ResetPasswordPage() {
         return;
       }
 
-      // No code or hash — check for existing session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setReady(true);
-      }
+      // No code or hash (or an error redirect) — a lingering valid session from
+      // an already-consumed code still lets them reset.
+      await readyIfSession();
       setChecking(false);
     });
   }, []);
