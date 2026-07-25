@@ -262,7 +262,7 @@ export default function GalleryDetail({
             </p>
           </div>
           <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${expired ? "bg-ink-100 text-ink-600 border-hairline" : "bg-success-50 text-success-700 border-success-200"}`}>
-            {expired ? "Downloads expired" : expiresAt ? `Downloads until ${fmtDay(expiresAt)}` : "No expiry"}
+            {expired ? "Gallery expired" : expiresAt ? `Available until ${fmtDay(expiresAt)}` : "No time limit"}
           </span>
         </div>
       </div>
@@ -383,9 +383,9 @@ export default function GalleryDetail({
           </div>
         </div>
 
-        <div className={`mt-4 pt-4 border-t border-hairline ${downloadsEnabled ? "" : "opacity-50 pointer-events-none"}`}>
-        <h2 className="label-caps mb-1">Download window</h2>
-        <p className="text-xs text-ink-500 mb-3">Set how long visitors can download. The slideshow stays viewable after expiry.</p>
+        <div className="mt-4 pt-4 border-t border-hairline">
+        <h2 className="label-caps mb-1">Time limit</h2>
+        <p className="text-xs text-ink-500 mb-3">Set how long this gallery link stays good for. After it expires, the link stops working &mdash; both viewing and downloads. Leave as &ldquo;No expiry&rdquo; to keep it open indefinitely.</p>
         <div className="flex flex-wrap gap-2">
           {[30, 60, 90].map((d) => (
             <button key={d} onClick={() => setExpiry({ days: d })} className="text-sm px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-accent-500 transition-colors duration-fast ease-quiet">

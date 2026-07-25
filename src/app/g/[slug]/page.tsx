@@ -19,11 +19,24 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
 
   if (!gallery || !gallery.slideshow_published) notFound();
 
-  // Downloads are allowed only when the switch is on AND the download window
-  // hasn't closed. The slideshow stays viewable after expiry either way.
-  const downloadsEnabled =
-    gallery.downloads_enabled === true &&
-    (!gallery.expires_at || new Date(gallery.expires_at) > new Date());
+  // The time limit governs the whole link: once it passes, the gallery stops
+  // working — viewing and downloads alike. Show a friendly note rather than a
+  // raw 404 so a recipient with an old link understands what happened.
+  const isExpired = gallery.expires_at != null && new Date(gallery.expires_at) <= new Date();
+  if (isExpired) {
+    return (
+      <div className="min-h-screen bg-ink-50 flex items-center justify-center px-6 text-center">
+        <div>
+          <p className="label-caps text-accent-700">YachtPics</p>
+          <p className="text-ink-500 text-sm mt-3">This gallery link has expired and is no longer available.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Downloads additionally require the switch to be on (the gallery is already
+  // known to be within its time limit here).
+  const downloadsEnabled = gallery.downloads_enabled === true;
 
   const { data: photos } = await supabase
     .from("photos")
