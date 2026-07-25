@@ -366,16 +366,21 @@ export default function GalleryDetail({
                 : "This gallery is view-only — no download button is shown."}
             </p>
           </div>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={downloadsEnabled}
-            onClick={toggleDownloads}
-            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 ${downloadsEnabled ? "bg-success-500" : "bg-ink-200"}`}
-            aria-label="Allow downloads for this gallery"
-          >
-            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-fast ease-quiet ${downloadsEnabled ? "translate-x-6" : "translate-x-1"}`} />
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <span className={`text-xs font-semibold uppercase tracking-wide tabular-nums w-7 text-right ${downloadsEnabled ? "text-success-700" : "text-ink-400"}`}>
+              {downloadsEnabled ? "On" : "Off"}
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={downloadsEnabled}
+              onClick={toggleDownloads}
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 ${downloadsEnabled ? "bg-success-600 border-success-700" : "bg-ink-300 border-ink-400"}`}
+              aria-label="Allow downloads for this gallery"
+            >
+              <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform duration-fast ease-quiet ${downloadsEnabled ? "translate-x-6" : "translate-x-1"}`} />
+            </button>
+          </div>
         </div>
 
         <div className={`mt-4 pt-4 border-t border-hairline ${downloadsEnabled ? "" : "opacity-50 pointer-events-none"}`}>
