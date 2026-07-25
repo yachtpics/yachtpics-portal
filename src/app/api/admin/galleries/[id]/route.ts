@@ -13,6 +13,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     title?: string;
     expiry?: { days?: number | null; date?: string | null; clear?: boolean } | null;
     slideshowPublished?: boolean;
+    downloadsEnabled?: boolean;
   };
   try {
     body = await req.json();
@@ -23,6 +24,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const update: Record<string, unknown> = {};
   if (typeof body.title === "string" && body.title.trim()) update.title = body.title.trim();
   if (typeof body.slideshowPublished === "boolean") update.slideshow_published = body.slideshowPublished;
+  if (typeof body.downloadsEnabled === "boolean") update.downloads_enabled = body.downloadsEnabled;
 
   if (body.expiry !== undefined) {
     const e = body.expiry;

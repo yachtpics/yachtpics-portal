@@ -12,7 +12,7 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
 
   const { data: gallery } = await supabase
     .from("galleries")
-    .select("id, title, gallery_type, slug, expires_at, slideshow_published, created_at")
+    .select("id, title, gallery_type, slug, expires_at, slideshow_published, downloads_enabled, created_at")
     .eq("id", params.id)
     .single();
 

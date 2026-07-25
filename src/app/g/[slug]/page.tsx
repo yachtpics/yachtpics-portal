@@ -13,11 +13,17 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
 
   const { data: gallery } = await supabase
     .from("galleries")
-    .select("id, title, slug, slideshow_published")
+    .select("id, title, slug, slideshow_published, downloads_enabled, expires_at")
     .eq("slug", params.slug)
     .maybeSingle();
 
   if (!gallery || !gallery.slideshow_published) notFound();
+
+  // Downloads are allowed only when the switch is on AND the download window
+  // hasn't closed. The slideshow stays viewable after expiry either way.
+  const downloadsEnabled =
+    gallery.downloads_enabled === true &&
+    (!gallery.expires_at || new Date(gallery.expires_at) > new Date());
 
   const { data: photos } = await supabase
     .from("photos")
@@ -48,5 +54,5 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
     .map((v) => ({ url: vmap.get(v.storage_path) ?? null, filename: v.filename }))
     .filter((s): s is { url: string; filename: string | null } => !!s.url);
 
-  return <GallerySlideshow slug={gallery.slug} title={gallery.title} photos={photoSlides} videos={videoSlides} />;
+  return <GallerySlideshow slug={gallery.slug} title={gallery.title} photos={photoSlides} videos={videoSlides} downloadsEnabled={downloadsEnabled} />;
 }

@@ -16,7 +16,7 @@ type Recipient = {
   filesDownloaded?: number;
   lastDownloadAt?: string | null;
 };
-type Gallery = { id: string; title: string; gallery_type: string; slug: string; expires_at: string | null; slideshow_published: boolean; created_at: string };
+type Gallery = { id: string; title: string; gallery_type: string; slug: string; expires_at: string | null; slideshow_published: boolean; downloads_enabled: boolean; created_at: string };
 type Metrics = { views: number; downloadEvents: number; downloadItems: number; lastDownloadAt: string | null; openedRecipients: number; totalRecipients: number };
 
 const SITE_URL = "https://portal.yachtpics.com";
@@ -41,6 +41,7 @@ export default function GalleryDetail({
   const [videos, setVideos] = useState<Video[]>(initVideos);
   const [recipients, setRecipients] = useState<Recipient[]>(initRecipients);
   const [expiresAt, setExpiresAt] = useState<string | null>(gallery.expires_at);
+  const [downloadsEnabled, setDownloadsEnabled] = useState<boolean>(gallery.downloads_enabled);
 
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadingVideos, setUploadingVideos] = useState(false);
@@ -187,6 +188,22 @@ export default function GalleryDetail({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId }),
     }).catch(() => {});
+  }
+
+  async function toggleDownloads() {
+    const nv = !downloadsEnabled;
+    setDownloadsEnabled(nv); // optimistic
+    const res = await fetch(`/api/admin/galleries/${gallery.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ downloadsEnabled: nv }),
+    });
+    if (!res.ok) {
+      setDownloadsEnabled(!nv);
+      setMsg("Couldn't update the download setting. Please try again.");
+    } else {
+      setMsg(nv ? "Downloads are ON — visitors can download this gallery." : "Downloads are OFF — this gallery is view-only.");
+    }
   }
 
   async function setExpiry(payload: { days?: number | null; date?: string | null; clear?: boolean }) {
@@ -338,10 +355,32 @@ export default function GalleryDetail({
         </div>
       </div>
 
-      {/* Expiry control */}
+      {/* Downloads control */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="label-caps mb-1">Allow downloads</h2>
+            <p className="text-xs text-ink-500">
+              {downloadsEnabled
+                ? "Anyone viewing this gallery can download the photos and videos."
+                : "This gallery is view-only — no download button is shown."}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={downloadsEnabled}
+            onClick={toggleDownloads}
+            className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 ${downloadsEnabled ? "bg-success-500" : "bg-ink-200"}`}
+            aria-label="Allow downloads for this gallery"
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-fast ease-quiet ${downloadsEnabled ? "translate-x-6" : "translate-x-1"}`} />
+          </button>
+        </div>
+
+        <div className={`mt-4 pt-4 border-t border-hairline ${downloadsEnabled ? "" : "opacity-50 pointer-events-none"}`}>
         <h2 className="label-caps mb-1">Download window</h2>
-        <p className="text-xs text-ink-500 mb-3">Set how long recipients can download. The slideshow stays viewable after expiry.</p>
+        <p className="text-xs text-ink-500 mb-3">Set how long visitors can download. The slideshow stays viewable after expiry.</p>
         <div className="flex flex-wrap gap-2">
           {[30, 60, 90].map((d) => (
             <button key={d} onClick={() => setExpiry({ days: d })} className="text-sm px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-accent-500 transition-colors duration-fast ease-quiet">
@@ -355,6 +394,7 @@ export default function GalleryDetail({
             Set date…
             <input type="date" className="ml-2 text-xs" onChange={(e) => e.target.value && setExpiry({ date: e.target.value })} />
           </label>
+        </div>
         </div>
       </div>
 
@@ -488,11 +528,39 @@ export default function GalleryDetail({
         {videos.length === 0 ? (
           <p className="text-sm text-ink-400">No videos yet.</p>
         ) : (
-          <div className="space-y-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {videos.map((v) => (
-              <div key={v.id} className="flex items-center justify-between gap-3 border border-hairline rounded-ctl px-3 py-2">
-                <span className="text-sm text-ink-700 truncate">🎬 {v.filename ?? "Video"}</span>
-                <button onClick={() => deleteVideo(v)} className="text-xs font-medium text-danger-600 hover:text-danger-700 shrink-0">Remove</button>
+              <div key={v.id} className="group relative rounded-lg overflow-hidden bg-black border border-hairline">
+                {v.url ? (
+                  // A real video element previewing the first frame — same as the
+                  // broker listing page — so galleries show a thumbnail, not an icon.
+                  // The #t=0.1 fragment nudges browsers to paint that frame as the poster.
+                  // eslint-disable-next-line jsx-a11y/media-has-caption
+                  <video
+                    src={`${v.url}#t=0.1`}
+                    muted
+                    playsInline
+                    preload="metadata"
+                    className="w-full aspect-video object-cover pointer-events-none"
+                  />
+                ) : (
+                  <div className="w-full aspect-video flex items-center justify-center text-white/60 text-2xl">🎬</div>
+                )}
+                <span aria-hidden className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                  <span className="w-10 h-10 rounded-full bg-black/55 flex items-center justify-center">
+                    <span className="ml-0.5 border-y-[7px] border-y-transparent border-l-[12px] border-l-white" />
+                  </span>
+                </span>
+                <button
+                  onClick={() => deleteVideo(v)}
+                  className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 bg-black/60 text-white text-xs w-6 h-6 rounded-full transition-opacity flex items-center justify-center"
+                  aria-label="Remove video"
+                >
+                  ×
+                </button>
+                {v.filename && (
+                  <span className="absolute bottom-1 left-1 right-8 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded truncate">{v.filename}</span>
+                )}
               </div>
             ))}
           </div>

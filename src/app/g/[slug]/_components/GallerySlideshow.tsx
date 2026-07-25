@@ -1,10 +1,22 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import JSZip from "jszip";
 
 type Slide =
   | { type: "photo"; url: string; category: string | null }
   | { type: "video"; url: string; filename: string | null };
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
 /**
  * A photograph that reveals itself only once it has decoded — no pop-in,
@@ -62,11 +74,13 @@ export default function GallerySlideshow({
   title,
   photos,
   videos,
+  downloadsEnabled = false,
 }: {
   slug: string;
   title: string;
   photos: { url: string; category: string | null }[];
   videos: { url: string; filename: string | null }[];
+  downloadsEnabled?: boolean;
 }) {
   const slides = useMemo<Slide[]>(
     () => [
@@ -75,6 +89,88 @@ export default function GallerySlideshow({
     ],
     [photos, videos]
   );
+
+  const [downloadingAll, setDownloadingAll] = useState(false);
+  const [dlProgress, setDlProgress] = useState(0);
+  const [downloadingOne, setDownloadingOne] = useState(false);
+
+  const logDownload = useCallback((count: number, kind: "single" | "zip") => {
+    fetch(`/api/g/${slug}/download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ itemCount: count, kind }),
+    }).catch(() => {});
+  }, [slug]);
+
+  // Download the single item currently on screen (works for photos and videos).
+  const downloadCurrentSlide = useCallback(async (s: Slide) => {
+    if (!s.url || downloadingOne) return;
+    setDownloadingOne(true);
+    try {
+      const res = await fetch(s.url);
+      const blob = await res.blob();
+      const name =
+        s.type === "video"
+          ? (s.filename ?? "video.mp4")
+          : `${s.category ?? "photo"}.jpg`;
+      triggerDownload(blob, name);
+      logDownload(1, "single");
+    } catch {
+      /* ignore */
+    } finally {
+      setDownloadingOne(false);
+    }
+  }, [downloadingOne, logDownload]);
+
+  // Zip every photo. Videos are excluded from the zip (they can be large) — the
+  // per-slide download handles those individually.
+  const downloadAllPhotos = useCallback(async () => {
+    if (downloadingAll || photos.length === 0) return;
+    setDownloadingAll(true);
+    setDlProgress(0);
+    try {
+      if (photos.length === 1) {
+        const res = await fetch(photos[0].url);
+        const blob = await res.blob();
+        triggerDownload(blob, `${photos[0].category ?? "photo"}.jpg`);
+        logDownload(1, "single");
+        setDownloadingAll(false);
+        return;
+      }
+      const zip = new JSZip();
+      const BATCH = 8;
+      let fetched = 0;
+      for (let i = 0; i < photos.length; i += BATCH) {
+        const batch = photos.slice(i, i + BATCH);
+        await Promise.all(
+          batch.map(async (p, j) => {
+            try {
+              const res = await fetch(p.url);
+              const blob = await res.blob();
+              zip.file(`${String(i + j + 1).padStart(2, "0")}-${p.category ?? "photo"}.jpg`, blob);
+            } catch {
+              /* skip */
+            }
+            fetched++;
+            setDlProgress(Math.round((fetched / photos.length) * 85));
+          })
+        );
+      }
+      setDlProgress(88);
+      const safeTitle = title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "gallery";
+      const zipBlob = await zip.generateAsync(
+        { type: "blob", compression: "STORE" },
+        (meta) => setDlProgress(88 + Math.round(meta.percent * 0.12))
+      );
+      triggerDownload(zipBlob, `${safeTitle}-photos.zip`);
+      logDownload(photos.length, "zip");
+      setDlProgress(100);
+    } catch {
+      /* ignore */
+    } finally {
+      setTimeout(() => { setDownloadingAll(false); setDlProgress(0); }, 600);
+    }
+  }, [downloadingAll, photos, title, logDownload]);
 
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
@@ -208,6 +304,15 @@ export default function GallerySlideshow({
           <h1 className="text-ink-900 font-semibold text-base sm:text-lg truncate mt-0.5">{title}</h1>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {downloadsEnabled && photos.length > 0 && (
+            <button
+              onClick={downloadAllPhotos}
+              disabled={downloadingAll}
+              className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-accent-500 bg-accent-500 text-white shadow-elev-1 hover:bg-accent-600 disabled:opacity-60 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+            >
+              {downloadingAll ? `Zipping… ${dlProgress}%` : videos.length > 0 ? "⤓ Download photos" : "⤓ Download all"}
+            </button>
+          )}
           {slides.length > 1 && view === "slideshow" && (
             <button
               onClick={() => setPlaying((p) => !p)}
@@ -327,6 +432,19 @@ export default function GallerySlideshow({
                   <rect x="8" y="6" width="4" height="8" rx="1" />
                   <rect x="14" y="6" width="4" height="8" rx="1" />
                 </svg>
+              </button>
+            )}
+            {downloadsEnabled && slide.url && (
+              <button
+                onClick={() => downloadCurrentSlide(slide)}
+                disabled={downloadingOne}
+                aria-label={slide.type === "video" ? "Download this video" : "Download this photo"}
+                className="flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" />
+                </svg>
+                {downloadingOne ? "…" : "Download"}
               </button>
             )}
           </div>
