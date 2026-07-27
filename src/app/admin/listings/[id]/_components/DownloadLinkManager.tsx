@@ -200,6 +200,7 @@ function EmailForm({ link, onDone }: { link: DownloadLink; onDone: () => void })
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [sent, setSent] = useState(false);
+  const [result, setResult] = useState<{ sent: number; failed: string[] } | null>(null);
   const [err, setErr] = useState("");
 
   async function send() {
@@ -214,8 +215,9 @@ function EmailForm({ link, onDone }: { link: DownloadLink; onDone: () => void })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to send");
+      setResult({ sent: data.sent ?? 1, failed: data.failed ?? [] });
       setSent(true);
-      setTimeout(onDone, 1200);
+      setTimeout(onDone, 2000);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Failed to send");
     } finally {
@@ -223,17 +225,25 @@ function EmailForm({ link, onDone }: { link: DownloadLink; onDone: () => void })
     }
   }
 
-  if (sent) return <p className="text-xs text-success-600 mt-3">Sent to {email} ✓</p>;
+  if (sent) return (
+    <p className="text-xs text-success-600 mt-3">
+      Sent to {result?.sent ?? 1} recipient{(result?.sent ?? 1) === 1 ? "" : "s"} ✓
+      {result && result.failed.length > 0 && (
+        <span className="text-danger-600"> · couldn&apos;t reach {result.failed.join(", ")}</span>
+      )}
+    </p>
+  );
 
   return (
     <div className="mt-3 pt-3 border-t border-hairline space-y-2">
       <input
-        type="email"
+        type="text"
         value={email}
         onChange={(e) => setEmail(e.target.value)}
-        placeholder="recipient@email.com"
+        placeholder="name@email.com, second@email.com"
         className="w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
       />
+      <p className="text-[11px] text-ink-400">Separate multiple emails with a comma. Each person gets their own copy.</p>
       <textarea
         value={message}
         onChange={(e) => setMessage(e.target.value)}

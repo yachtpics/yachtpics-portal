@@ -23,6 +23,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing link or email" }, { status: 400 });
   }
 
+  // Accept one or several addresses — comma, semicolon, space, or newline
+  // separated — and send each recipient their own copy so they never see each
+  // other's address.
+  const recipients = Array.from(
+    new Set(
+      String(email)
+        .split(/[,;\s]+/)
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e))
+    )
+  );
+  if (recipients.length === 0) {
+    return NextResponse.json({ error: "Enter at least one valid email address." }, { status: 400 });
+  }
+
   const { data: link } = await admin
     .from("download_links")
     .select("id, token, revoked, expires_at, listing_id")
@@ -72,35 +87,47 @@ export async function POST(req: NextRequest) {
     </div>
   </body></html>`;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: "YachtPics <hello@yachtpics.com>",
-      to: email,
+  let sent = 0;
+  const failed: string[] = [];
+
+  for (const recipient of recipients) {
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: "YachtPics <hello@yachtpics.com>",
+        to: recipient,
+        subject: `${vesselName} — Photo Download`,
+        html,
+      }),
+    });
+
+    let data: { message?: string } = {};
+    try { data = await res.json(); } catch { /* non-JSON body */ }
+
+    await logEmail({
+      emailType: "download_link",
+      recipientEmail: recipient,
+      listingId: link.listing_id,
       subject: `${vesselName} — Photo Download`,
-      html,
-    }),
-  });
+      status: res.ok ? "sent" : "failed",
+      error: res.ok ? null : (data.message ?? "Failed to send"),
+      sentBy: userId,
+    });
 
-  const data = await res.json();
-
-  await logEmail({
-    emailType: "download_link",
-    recipientEmail: email,
-    listingId: link.listing_id,
-    subject: `${vesselName} — Photo Download`,
-    status: res.ok ? "sent" : "failed",
-    error: res.ok ? null : (data.message ?? "Failed to send"),
-    sentBy: userId,
-  });
-
-  if (!res.ok) {
-    return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
+    if (res.ok) sent++;
+    else failed.push(recipient);
   }
 
-  return NextResponse.json({ success: true });
+  if (sent === 0) {
+    return NextResponse.json(
+      { error: "Couldn't send to any of those addresses. Please check them and try again." },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ success: true, sent, failed });
 }
