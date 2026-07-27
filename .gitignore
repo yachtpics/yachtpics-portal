@@ -35,3 +35,7 @@ next-env.d.ts
 
 # marketing assets (kept locally, not version-controlled)
 /marketing/
+
+# Local storage-usage tracking logs (not part of the app)
+portal-storage-usage-history.csv
+portal-storage-check/usage-history.csv
