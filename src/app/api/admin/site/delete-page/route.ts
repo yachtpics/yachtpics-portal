@@ -52,6 +52,11 @@ export async function POST(req: NextRequest) {
   const del = await deleteFiles([`${filename}.html`]);
   if (del.error) return NextResponse.json({ error: del.error }, { status: 502 });
 
+  // Record that the file is gone. Without this the page kept reappearing in the
+  // admin "Retired pages" list on every refresh, even though the delete had
+  // genuinely succeeded on the server.
+  await svc.from("site_pages").update({ has_page: false }).eq("filename", filename);
+
   // Drop its captured archive links so nothing lingers in the DB.
   await svc.from("brokerage_site_archive").delete().eq("site_page", filename);
 

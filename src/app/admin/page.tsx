@@ -44,7 +44,10 @@ export default async function AdminPage() {
       .select("id, shoot_date, amount_cents, payment_status, profiles:broker_id(first_name, last_name), listings:listing_id(vessel_name)")
       .order("created_at", { ascending: false })
       .limit(5),
-    service.from("site_pages").select("label, filename").eq("is_active", false).order("label"),
+    // Only deactivated pages that STILL have a file on the server need cleanup.
+    // Without the has_page filter, a page you'd already deleted kept reappearing
+    // here on every refresh.
+    service.from("site_pages").select("label, filename").eq("is_active", false).eq("has_page", true).order("label"),
   ]);
 
   // ---- Revenue + subscription mix ----
