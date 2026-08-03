@@ -21,6 +21,15 @@ type Metrics = { views: number; downloadEvents: number; downloadItems: number; l
 
 const SITE_URL = "https://portal.yachtpics.com";
 
+/** Storage rejects anything larger, so catch it in the browser first. */
+const MAX_VIDEO_BYTES = 2_097_152_000; // 2 GB — matches the listing-videos bucket
+const MAX_VIDEO_LABEL = "2 GB";
+
+function fmtGB(bytes: number) {
+  const gb = bytes / 1_073_741_824;
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1_048_576)} MB`;
+}
+
 export default function GalleryDetail({
   gallery,
   photos: initPhotos,
@@ -45,6 +54,8 @@ export default function GalleryDetail({
 
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadingVideos, setUploadingVideos] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoError, setVideoError] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [msg, setMsg] = useState("");
   const [copied, setCopied] = useState(false);
@@ -97,14 +108,62 @@ export default function GalleryDetail({
 
   async function handleVideos(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
+    setVideoError("");
+
+    // Storage caps a single video at 2 GB. Catch that HERE rather than letting
+    // someone wait out a 30-minute upload that was always going to be rejected —
+    // which is exactly what used to happen with raw camera files.
+    const all = Array.from(fileList);
+    const tooBig = all.filter((f) => f.size > MAX_VIDEO_BYTES);
+    const ok = all.filter((f) => f.size <= MAX_VIDEO_BYTES);
+    if (tooBig.length > 0) {
+      setVideoError(
+        `${tooBig.map((f) => `${f.name} (${fmtGB(f.size)})`).join(", ")} ` +
+        `${tooBig.length === 1 ? "is" : "are"} over the ${MAX_VIDEO_LABEL} limit and can't be uploaded. ` +
+        `Export a finished 1080p version first — a raw camera file is far larger than a broker needs.`
+      );
+      if (ok.length === 0) return;
+    }
+
     setUploadingVideos(true);
+    setVideoProgress(0);
     setMsg("");
-    for (const file of Array.from(fileList)) {
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setVideoError("Your session expired. Refresh the page and sign in again.");
+      setUploadingVideos(false);
+      return;
+    }
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+    for (let i = 0; i < ok.length; i++) {
+      const file = ok[i];
       try {
         const ext = file.name.split(".").pop() || "mp4";
         const path = `galleries/${gallery.id}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("listing-videos").upload(path, file, { upsert: false });
-        if (upErr) throw upErr;
+
+        // XHR rather than the SDK so we get real byte-level progress — a large
+        // video with no feedback is indistinguishable from a hang.
+        const uploaded = await new Promise<boolean>((resolve) => {
+          const xhr = new XMLHttpRequest();
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              const base = (i / ok.length) * 100;
+              const slice = (e.loaded / e.total) * (100 / ok.length);
+              setVideoProgress(Math.round(base + slice));
+            }
+          };
+          xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
+          xhr.onerror = () => resolve(false);
+          xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
+          xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
+          xhr.setRequestHeader("cache-control", "max-age=3600");
+          xhr.setRequestHeader("content-type", file.type || "video/mp4");
+          xhr.send(file);
+        });
+        if (!uploaded) throw new Error("the transfer didn't complete");
+
         const { data: row, error: insErr } = await supabase
           .from("videos")
           .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name })
@@ -114,10 +173,12 @@ export default function GalleryDetail({
         const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
         setVideos((prev) => [...prev, { ...(row as Video), url: signed?.signedUrl ?? null }]);
       } catch (e) {
-        setMsg(`Video upload failed: ${e instanceof Error ? e.message : "error"}`);
+        setVideoError(`${file.name} failed to upload — ${e instanceof Error ? e.message : "error"}.`);
       }
+      setVideoProgress(Math.round(((i + 1) / ok.length) * 100));
     }
     setUploadingVideos(false);
+    setVideoProgress(0);
   }
 
   async function deletePhoto(p: Photo) {
@@ -526,10 +587,39 @@ export default function GalleryDetail({
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
           <h2 className="label-caps">Videos ({videos.length})</h2>
           <label className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet cursor-pointer">
-            {uploadingVideos ? "Uploading…" : "Upload videos"}
+            {uploadingVideos ? `Uploading… ${videoProgress}%` : "Upload videos"}
             <input type="file" accept="video/mp4,video/quicktime,.mp4,.mov" multiple className="hidden" disabled={uploadingVideos} onChange={(e) => handleVideos(e.target.files)} />
           </label>
         </div>
+
+        <p className="text-xs text-ink-500 -mt-2 mb-4">
+          Finished 1080p exports only — {MAX_VIDEO_LABEL} max per file. Raw camera files are far
+          larger than a broker needs.
+        </p>
+
+        {uploadingVideos && (
+          <div className="mb-4">
+            <div className="bg-ink-100 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-accent-500 h-2 rounded-full transition-all duration-base ease-quiet"
+                style={{ width: `${videoProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-ink-500 mt-2">
+              Uploading… {videoProgress}% &middot;{" "}
+              <span className="text-warn-800 font-medium">
+                keep this tab open and your computer awake until it finishes.
+              </span>
+            </p>
+          </div>
+        )}
+
+        {videoError && (
+          <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
+            <span>{videoError}</span>
+            <button onClick={() => setVideoError("")} className="shrink-0 font-bold text-danger-600 hover:text-danger-700">×</button>
+          </div>
+        )}
         {videos.length === 0 ? (
           <p className="text-sm text-ink-400">No videos yet.</p>
         ) : (
