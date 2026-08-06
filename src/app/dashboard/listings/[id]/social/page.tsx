@@ -261,8 +261,13 @@ export default function SocialGraphicPage() {
     if (logoUrl) {
       try {
         logo = await loadImage(logoUrl);
-        logoW = 200 * s;
-        logoH = (logo.height / logo.width) * logoW;
+        // Wide wordmark logos and squarish badge logos need different treatment:
+        // sizing purely on width makes a tall logo enormous. Cap the height too.
+        const aspect = logo.width / logo.height;
+        logoW = 300 * s;
+        logoH = logoW / aspect;
+        const maxLogoH = 108 * s;
+        if (logoH > maxLogoH) { logoH = maxLogoH; logoW = logoH * aspect; }
       } catch { logo = null; }
     }
 
