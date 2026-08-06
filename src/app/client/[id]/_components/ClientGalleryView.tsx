@@ -41,6 +41,7 @@ export default function ClientGalleryView({
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [dlError, setDlError] = useState("");
   const [copied, setCopied] = useState(false);
   const [sendOpen, setSendOpen] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
@@ -127,33 +128,70 @@ export default function ClientGalleryView({
     });
   }
 
-  async function downloadOne(photo: Photo) {
-    if (!photo.url || busy || expired) return;
-    setDownloadingId(photo.id);
+  /**
+   * Mint fresh download links right before using them.
+   *
+   * The URLs handed to this page are signed once, at render. On a long visit —
+   * or part-way through a 137-photo download — they expire. An expired link
+   * doesn't error: Supabase returns a small error document, which we'd
+   * cheerfully save as "Salon.jpg", producing a file the client's computer
+   * refuses to open. Re-signing first makes that impossible.
+   */
+  async function freshUrls(): Promise<{ photos: Record<string, string | null>; videos: Record<string, string | null> } | null> {
     try {
-      const res = await fetch(photo.url);
-      const blob = await res.blob();
+      const res = await fetch(`/api/client/galleries/${galleryId}/signed-urls`, { method: "POST" });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }
+
+  /** Fetch one file, refusing anything that isn't actually a file. */
+  async function fetchFile(url: string): Promise<Blob> {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`link expired or unavailable (${res.status})`);
+    const blob = await res.blob();
+    // An expired-link error body is tiny and is not an image/video.
+    if (blob.size < 1024 && !blob.type.startsWith("image/") && !blob.type.startsWith("video/")) {
+      throw new Error("link expired");
+    }
+    return blob;
+  }
+
+  async function downloadOne(photo: Photo) {
+    if (busy || expired) return;
+    setDownloadingId(photo.id);
+    setDlError("");
+    try {
+      const fresh = await freshUrls();
+      const url = fresh?.photos?.[photo.id] ?? photo.url;
+      if (!url) throw new Error("no link");
+      const blob = await fetchFile(url);
       const ext = photo.filename?.split(".").pop() ?? "jpg";
       triggerDownload(blob, photo.filename ?? `${photo.category ?? "photo"}.${ext}`);
       log("photo", 1);
     } catch {
-      /* ignore */
+      setDlError("That photo couldn't be downloaded — please refresh the page and try again.");
     } finally {
       setDownloadingId(null);
     }
   }
 
   async function downloadVideo(v: Video) {
-    if (!v.url || busy || expired) return;
+    if (busy || expired) return;
     setDownloadingId(v.id);
+    setDlError("");
     try {
-      const res = await fetch(v.url);
-      const blob = await res.blob();
+      const fresh = await freshUrls();
+      const url = fresh?.videos?.[v.id] ?? v.url;
+      if (!url) throw new Error("no link");
+      const blob = await fetchFile(url);
       const ext = v.filename?.split(".").pop() ?? "mp4";
       triggerDownload(blob, v.filename ?? `video.${ext}`);
       log("video", 1);
     } catch {
-      /* ignore */
+      setDlError("That video couldn't be downloaded — please refresh the page and try again.");
     } finally {
       setDownloadingId(null);
     }
@@ -174,27 +212,55 @@ export default function ClientGalleryView({
         setBusy(false);
         return;
       }
+      // Re-sign everything first — the links this page was given may already
+      // have expired, and a large set takes a while to pull down.
+      const fresh = await freshUrls();
+
       const zip = new JSZip();
       const BATCH = 8;
       let fetched = 0;
+      const failed: number[] = [];
+
       for (let i = 0; i < available.length; i += BATCH) {
         const batch = available.slice(i, i + BATCH);
         await Promise.all(
           batch.map(async (photo, j) => {
-            if (!photo.url) return;
-            try {
-              const res = await fetch(photo.url);
-              const blob = await res.blob();
-              const ext = photo.filename?.split(".").pop() ?? "jpg";
-              zip.file(`${String(i + j + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`, blob);
-            } catch {
-              /* skip */
+            const n = i + j + 1;
+            const url = fresh?.photos?.[photo.id] ?? photo.url;
+            if (url) {
+              try {
+                const blob = await fetchFile(url);
+                const ext = photo.filename?.split(".").pop() ?? "jpg";
+                zip.file(`${String(n).padStart(3, "0")}-${photo.category ?? "photo"}.${ext}`, blob);
+              } catch {
+                // One retry — most failures here are transient.
+                try {
+                  const blob = await fetchFile(url);
+                  const ext = photo.filename?.split(".").pop() ?? "jpg";
+                  zip.file(`${String(n).padStart(3, "0")}-${photo.category ?? "photo"}.${ext}`, blob);
+                } catch {
+                  failed.push(n);
+                }
+              }
+            } else {
+              failed.push(n);
             }
             fetched++;
             setProgress(Math.round((fetched / available.length) * 85));
           })
         );
       }
+
+      // Never let photos go missing silently — that's how a client ends up
+      // discovering a gap in the numbering and having to ask about it.
+      if (failed.length) {
+        failed.sort((a, b) => a - b);
+        setDlError(
+          `${failed.length} photo${failed.length === 1 ? "" : "s"} couldn't be added (${failed.join(", ")}). ` +
+          `Refresh the page and download again to collect them.`
+        );
+      }
+
       setProgress(88);
       const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" }, (m) => setProgress(88 + Math.round(m.percent * 0.12)));
       triggerDownload(zipBlob, `${safeName}-photos.zip`);
@@ -236,6 +302,13 @@ export default function ClientGalleryView({
       {busy && (
         <div className="mt-3 h-1.5 bg-ink-200 rounded-full overflow-hidden">
           <div className="h-full bg-accent-500 transition-all duration-base ease-quiet" style={{ width: `${progress}%` }} />
+        </div>
+      )}
+
+      {dlError && (
+        <div className="mt-3 bg-warn-50 border border-warn-200 text-warn-800 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
+          <span>{dlError}</span>
+          <button onClick={() => setDlError("")} className="shrink-0 font-bold text-warn-700 hover:text-warn-800" aria-label="Dismiss">×</button>
         </div>
       )}
 
