@@ -40,9 +40,9 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi ${firstName},</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">When we built the Portal, it did exactly one thing: get your photos to you without a zip file, a download that timed out, or a link you couldn&rsquo;t find three weeks later when you actually needed it.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">What you needed was simple enough: an easy way to get photos from us to your clients. Back before internet speeds caught up, that was a genuine chore &mdash; burned discs, FTP logins, zip files that gave out halfway through, and a broker waiting on a download instead of working the boat.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Then you started asking for things. Not features for the sake of features &mdash; the small, real problems that come up when you&rsquo;re actually marketing a boat. We built most of them. Here&rsquo;s what&rsquo;s waiting in there now:</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">So we built the Portal to do exactly that, and nothing else. Then we kept going &mdash; because once your photos live somewhere proper, a lot of the work you&rsquo;d otherwise do by hand stops needing to be done at all. Here&rsquo;s what&rsquo;s waiting in there now:</p>
 
       <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 26px;">
         ${bullet("Every shoot, permanently.", "Photos and walkthrough video in one place. Nothing expires, nothing to hunt for.")}
@@ -63,7 +63,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">And the part that hasn&rsquo;t changed, and won&rsquo;t: <strong style="color:#374151;">your photos are always free to download.</strong> That was the whole point on day one, and it still is.</p>
 
-      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">If there&rsquo;s something you keep doing by hand that the Portal ought to be doing for you, tell us. That&rsquo;s how most of the list above got built.</p>
+      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">If there&rsquo;s something you still do by hand that the Portal ought to be doing for you, tell us. We&rsquo;d rather build it than have you work around it.</p>
 
       <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">— Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>
