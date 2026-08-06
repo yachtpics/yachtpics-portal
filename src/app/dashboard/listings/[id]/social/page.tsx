@@ -31,7 +31,6 @@ const INK = "#050b14";       // ink-950 — fallback ground
 const BONE = "#ffffff";      // vessel name
 const BONE_SOFT = "rgba(255,255,255,0.86)"; // caps above the name
 const BONE_QUIET = "rgba(255,255,255,0.66)"; // spec line
-const KEYLINE = "rgba(255,255,255,0.22)";
 
 /**
  * Canvas has no reliable letter-spacing across browsers, so draw tracked caps
@@ -70,10 +69,20 @@ function loadImage(url: string): Promise<HTMLImageElement> {
     }));
 }
 
-function drawCover(ctx: CanvasRenderingContext2D, img: HTMLImageElement, w: number, h: number) {
-  const scale = Math.max(w / img.width, h / img.height);
+/**
+ * Fit the whole photograph inside the area — never crop it. Most boat shots are
+ * horizontal, and cropping one into a square cuts the bow or stern off the thing
+ * we're actually selling. Letterboxing costs a little space and keeps the frame
+ * the photographer composed.
+ */
+function drawContain(
+  ctx: CanvasRenderingContext2D,
+  img: HTMLImageElement,
+  x: number, y: number, w: number, h: number
+) {
+  const scale = Math.min(w / img.width, h / img.height);
   const dw = img.width * scale, dh = img.height * scale;
-  ctx.drawImage(img, (w - dw) / 2, (h - dh) / 2, dw, dh);
+  ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
 const BADGES = ["For Sale", "Just Listed", "Price Reduced", "Open House", "Sold"];
@@ -161,10 +170,24 @@ export default function SocialGraphicPage() {
     ctx.fillStyle = INK;
     ctx.fillRect(0, 0, w, h);
 
+    // Layout: photograph in its entirety up top, a solid band beneath it for the
+    // type. Nothing is written over the boat — white text on a white hull or a
+    // bright sky is unreadable — and a horizontal shot never gets cropped to
+    // fit a square.
+    const bandH = format === "story" ? h * 0.30 : h * 0.34;
+    const photoH = h - bandH;
+
     try {
       const img = await loadImage(selected);
-      drawCover(ctx, img, w, h);
+      drawContain(ctx, img, 0, 0, w, photoH);
     } catch { /* leave ink bg */ }
+
+    // The band.
+    ctx.fillStyle = INK;
+    ctx.fillRect(0, photoH, w, bandH);
+    // A hairline where the photograph meets it — the rule from the wordmark.
+    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    ctx.fillRect(0, photoH, w, Math.max(1, 1.5 * (Math.min(w, h) / 1080)));
 
     // ── Cinematic monochrome composition ────────────────────────────────
     // Everything below is centred and scaled off the short edge, so the square
@@ -178,78 +201,44 @@ export default function SocialGraphicPage() {
     const serifFamily = serif.style.fontFamily;
     const sans = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
-    // A soft vignette top and bottom: enough to seat the type, not so much
-    // that it flattens the photograph.
-    const topGrad = ctx.createLinearGradient(0, 0, 0, h * 0.34);
-    topGrad.addColorStop(0, "rgba(10,13,17,0.52)");
-    topGrad.addColorStop(1, "rgba(10,13,17,0)");
-    ctx.fillStyle = topGrad;
-    ctx.fillRect(0, 0, w, h * 0.34);
-
-    // Reaches higher than you'd think — the name can wrap to two lines at the
-    // larger sizes, and every line needs a dark ground under it.
-    const botGrad = ctx.createLinearGradient(0, h * 0.30, 0, h);
-    botGrad.addColorStop(0, "rgba(10,13,17,0)");
-    botGrad.addColorStop(0.55, "rgba(10,13,17,0.55)");
-    botGrad.addColorStop(1, "rgba(10,13,17,0.93)");
-    ctx.fillStyle = botGrad;
-    ctx.fillRect(0, h * 0.30, w, h * 0.70);
-
-    // Inset keyline — the frame that makes it read as a composed piece.
-    const inset = 44 * s;
-    ctx.strokeStyle = KEYLINE;
-    ctx.lineWidth = Math.max(1, 1.5 * s);
-    ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
-
     ctx.textAlign = "left"; // fillTracked centres manually
     ctx.textBaseline = "alphabetic";
 
-    // Status, centred at the top.
+    // Status tag — small, top-left, over the photo's own ground rather than the
+    // boat, so it never sits on the hull.
     // NOTE ON SIZES: Instagram renders a 1080px card at roughly 400px wide, so
-    // anything under ~30px here becomes unreadable in-feed. Every value below is
-    // set for that, not for how it looks zoomed-in on a desktop.
+    // anything under ~30px here is unreadable in-feed. Sizes are set for that,
+    // not for how they look zoomed-in on a desktop.
     if (badge) {
-      ctx.fillStyle = BONE_SOFT;
-      ctx.font = `600 ${31 * s}px ${sans}`;
-      fillTracked(ctx, badge.toUpperCase(), cx, inset + 76 * s, 8 * s);
+      const bs = 26 * s;
+      ctx.font = `600 ${bs}px ${sans}`;
+      const tw = trackedWidth(ctx, badge.toUpperCase(), 7 * s);
+      const bx = 44 * s, by = 44 * s;
+      ctx.fillStyle = "rgba(5,11,20,0.72)";
+      ctx.fillRect(bx, by, tw + 44 * s, bs + 34 * s);
+      ctx.fillStyle = BONE;
+      fillTracked(ctx, badge.toUpperCase(), bx + (tw + 44 * s) / 2, by + bs + 12 * s, 7 * s);
     }
 
-    // Broker logo sits centred just inside the lower keyline; draw it first so
-    // the text stack knows how much room is left above it.
-    let logoBlock = 0;
-    if (logoUrl) {
-      try {
-        const logo = await loadImage(logoUrl);
-        const lw = 250 * s, lh = (logo.height / logo.width) * lw;
-        ctx.globalAlpha = 0.95;
-        ctx.drawImage(logo, cx - lw / 2, h - inset - 40 * s - lh, lw, lh);
-        ctx.globalAlpha = 1;
-        logoBlock = lh + 40 * s;
-      } catch { /* skip logo */ }
-    }
-
-    // Bottom stack, built upward from the baseline so it always sits right.
-    let y = h - inset - 72 * s - logoBlock;
-
-    // Spec line: length · year · price — monochrome, quiet, wide-tracked.
+    // ── The band ────────────────────────────────────────────────────────
+    // Everything below lives on solid ink, so legibility never depends on
+    // what the photograph happens to be doing behind it. The stack is
+    // measured first, then centred in the band.
+    const name = listing.vessel_name ?? "Now Available";
+    const maker = [listing.make, listing.model].filter(Boolean).join(" ");
     const specBits = [
       listing.length_ft ? `${listing.length_ft} FEET` : null,
       listing.year ? String(listing.year) : null,
       listing.asking_price ? `$${Number(listing.asking_price).toLocaleString("en-US")}` : null,
     ].filter(Boolean) as string[];
-    if (specBits.length) {
-      ctx.fillStyle = BONE_QUIET;
-      ctx.font = `600 ${30 * s}px ${sans}`;
-      fillTracked(ctx, specBits.join("   ·   "), cx, y, 7 * s);
-      y -= 62 * s;
-    }
+    const spec = specBits.join("   ·   ");
 
-    // Vessel name — the editorial serif, centred, wrapping if it must.
-    const name = listing.vessel_name ?? "Now Available";
-    const nameSize = name.length > 22 ? 104 * s : name.length > 14 ? 132 * s : 156 * s;
-    ctx.fillStyle = BONE;
+    const capSize = 29 * s;
+    const nameSize = name.length > 22 ? 88 * s : name.length > 14 ? 108 * s : 124 * s;
+    const maxW = w - 130 * s;
+
+    // Wrap the name if it's long.
     ctx.font = `600 ${nameSize}px ${serifFamily}, Georgia, serif`;
-    const maxW = w - inset * 2 - 56 * s;
     const lines: string[] = [];
     if (ctx.measureText(name).width > maxW) {
       let line = "";
@@ -261,21 +250,61 @@ export default function SocialGraphicPage() {
     } else {
       lines.push(name);
     }
-    ctx.textAlign = "center";
-    for (let i = lines.length - 1; i >= 0; i--) {
-      ctx.fillText(lines[i], cx, y);
-      y -= nameSize * 1.02;
-    }
-    ctx.textAlign = "left";
-    y -= 22 * s;
 
-    // Make + model above the name, in tracked caps.
-    const maker = [listing.make, listing.model].filter(Boolean).join(" ");
+    // Logo height, so it can be centred into the stack rather than floated.
+    let logo: HTMLImageElement | null = null;
+    let logoW = 0, logoH = 0;
+    if (logoUrl) {
+      try {
+        logo = await loadImage(logoUrl);
+        logoW = 200 * s;
+        logoH = (logo.height / logo.width) * logoW;
+      } catch { logo = null; }
+    }
+
+    // Measure the whole stack, then centre it vertically in the band.
+    const gapCapName = 26 * s;
+    const gapNameSpec = 30 * s;
+    const gapSpecLogo = 30 * s;
+    const nameBlock = lines.length * nameSize * 0.96;
+    const stackH =
+      (maker ? capSize + gapCapName : 0) +
+      nameBlock +
+      (spec ? gapNameSpec + capSize : 0) +
+      (logo ? gapSpecLogo + logoH : 0);
+
+    let y = photoH + (bandH - stackH) / 2;
+
     if (maker) {
       ctx.fillStyle = BONE_SOFT;
-      ctx.font = `600 ${31 * s}px ${sans}`;
+      ctx.font = `600 ${capSize}px ${sans}`;
+      y += capSize;
       fillTracked(ctx, maker.toUpperCase(), cx, y, 9 * s);
-      y -= 48 * s;
+      y += gapCapName;
+    }
+
+    ctx.fillStyle = BONE;
+    ctx.font = `600 ${nameSize}px ${serifFamily}, Georgia, serif`;
+    ctx.textAlign = "center";
+    for (const line of lines) {
+      y += nameSize * 0.76;
+      ctx.fillText(line, cx, y);
+      y += nameSize * 0.20;
+    }
+    ctx.textAlign = "left";
+
+    if (spec) {
+      y += gapNameSpec + capSize * 0.8;
+      ctx.fillStyle = BONE_QUIET;
+      ctx.font = `600 ${capSize}px ${sans}`;
+      fillTracked(ctx, spec, cx, y, 7 * s);
+    }
+
+    if (logo) {
+      y += gapSpecLogo;
+      ctx.globalAlpha = 0.95;
+      ctx.drawImage(logo, cx - logoW / 2, y, logoW, logoH);
+      ctx.globalAlpha = 1;
     }
 
 
