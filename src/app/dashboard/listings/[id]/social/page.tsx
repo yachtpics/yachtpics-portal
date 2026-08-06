@@ -27,7 +27,11 @@ const DIMS: Record<Format, { w: number; h: number }> = {
 // Canvas palette — monochrome by design. The boat supplies the only colour on
 // the card; charcoal and bone carry everything else. (A 2D context can't read
 // Tailwind classes, so these mirror the tokens literally.)
-const INK = "#050b14";       // ink-950 — fallback ground
+const INK = "#050b14";       // ink-950 — the letterbox ground behind the photo
+// The band is deliberately a step lighter than the anchor. Near-black reads
+// heavy under a bright boat shot; this keeps the contrast for white type
+// without the card feeling like it has a hole in the bottom of it.
+const BAND = "#1b2433";      // ink-800
 const BONE = "#ffffff";      // vessel name
 const BONE_SOFT = "rgba(255,255,255,0.86)"; // caps above the name
 const BONE_QUIET = "rgba(255,255,255,0.66)"; // spec line
@@ -183,7 +187,7 @@ export default function SocialGraphicPage() {
     } catch { /* leave ink bg */ }
 
     // The band.
-    ctx.fillStyle = INK;
+    ctx.fillStyle = BAND;
     ctx.fillRect(0, photoH, w, bandH);
     // A hairline where the photograph meets it — the rule from the wordmark.
     ctx.fillStyle = "rgba(255,255,255,0.16)";
@@ -210,7 +214,7 @@ export default function SocialGraphicPage() {
     // anything under ~30px here is unreadable in-feed. Sizes are set for that,
     // not for how they look zoomed-in on a desktop.
     if (badge) {
-      const bs = 26 * s;
+      const bs = 30 * s;
       ctx.font = `600 ${bs}px ${sans}`;
       const tw = trackedWidth(ctx, badge.toUpperCase(), 7 * s);
       const bx = 44 * s, by = 44 * s;
@@ -233,7 +237,7 @@ export default function SocialGraphicPage() {
     ].filter(Boolean) as string[];
     const spec = specBits.join("   ·   ");
 
-    const capSize = 29 * s;
+    const capSize = 36 * s;
     const nameSize = name.length > 22 ? 88 * s : name.length > 14 ? 108 * s : 124 * s;
     const maxW = w - 130 * s;
 
