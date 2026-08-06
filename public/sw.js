@@ -10,7 +10,7 @@
  *
  * Bump CACHE_VERSION whenever the precache list or strategy changes.
  */
-const CACHE_VERSION = "v4";
+const CACHE_VERSION = "v5";
 const PRECACHE = `yachtpics-precache-${CACHE_VERSION}`;
 const RUNTIME = `yachtpics-runtime-${CACHE_VERSION}`;
 const OFFLINE_URL = "/offline";
@@ -80,7 +80,12 @@ self.addEventListener("fetch", (event) => {
   // cache the response, so authenticated pages are always re-fetched fresh.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(() =>
+      // `cache: "no-store"` is deliberate: a plain fetch() here still honours the
+      // HTTP cache, which could hand back a stale admin page (a gallery missing
+      // from the list, or photos missing inside it because the signed URLs were
+      // baked into old HTML). Authenticated pages must always come from the
+      // network — that's what a hard-refresh was working around.
+      fetch(request, { cache: "no-store" }).catch(() =>
         caches.match(OFFLINE_URL, { ignoreSearch: true }).then(
           (cached) =>
             cached ||

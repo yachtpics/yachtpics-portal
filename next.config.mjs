@@ -19,6 +19,23 @@ const nextConfig = {
       static: 0,
     },
   },
+  // Authenticated areas must never be cached by the browser or an intermediary.
+  // Without this, a stale admin page could come back from the HTTP cache — a
+  // newly created gallery missing from the list, or its photos missing because
+  // the signed image URLs were baked into older HTML. That's what forced a
+  // hard-refresh (Ctrl+Shift+R) to see fresh data.
+  async headers() {
+    return [
+      {
+        source: "/admin/:path*",
+        headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" }],
+      },
+      {
+        source: "/dashboard/:path*",
+        headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
