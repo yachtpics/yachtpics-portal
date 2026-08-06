@@ -94,6 +94,8 @@ export default function GallerySlideshow({
   const [dlProgress, setDlProgress] = useState(0);
   const [downloadingOne, setDownloadingOne] = useState(false);
 
+  const [dlError, setDlError] = useState("");
+
   const logDownload = useCallback((count: number, kind: "single" | "zip") => {
     fetch(`/api/g/${slug}/download`, {
       method: "POST",
@@ -102,13 +104,44 @@ export default function GallerySlideshow({
     }).catch(() => {});
   }, [slug]);
 
+  /**
+   * Mint fresh links right before downloading. The URLs this page was rendered
+   * with expire; an expired link returns a small error document rather than
+   * failing, which would otherwise be saved as a .jpg the visitor can't open.
+   */
+  const freshUrls = useCallback(async (): Promise<{ photos: (string | null)[]; videos: (string | null)[] } | null> => {
+    try {
+      const res = await fetch(`/api/g/${slug}/signed-urls`, { method: "POST" });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      return null;
+    }
+  }, [slug]);
+
+  /** Fetch one file, refusing anything that isn't actually a file. */
+  const fetchFile = useCallback(async (url: string): Promise<Blob> => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`link expired (${res.status})`);
+    const blob = await res.blob();
+    if (blob.size < 1024 && !blob.type.startsWith("image/") && !blob.type.startsWith("video/")) {
+      throw new Error("link expired");
+    }
+    return blob;
+  }, []);
+
   // Download the single item currently on screen (works for photos and videos).
-  const downloadCurrentSlide = useCallback(async (s: Slide) => {
+  const downloadCurrentSlide = useCallback(async (s: Slide, index: number) => {
     if (!s.url || downloadingOne) return;
     setDownloadingOne(true);
+    setDlError("");
     try {
-      const res = await fetch(s.url);
-      const blob = await res.blob();
+      // Re-sign first — the URL rendered into this page may already be dead.
+      const fresh = await freshUrls();
+      const url = s.type === "video"
+        ? (fresh?.videos?.[index - photos.length] ?? s.url)
+        : (fresh?.photos?.[index] ?? s.url);
+      const blob = await fetchFile(url);
       const name =
         s.type === "video"
           ? (s.filename ?? "video.mp4")
@@ -116,11 +149,11 @@ export default function GallerySlideshow({
       triggerDownload(blob, name);
       logDownload(1, "single");
     } catch {
-      /* ignore */
+      setDlError("That file couldn't be downloaded — please refresh the page and try again.");
     } finally {
       setDownloadingOne(false);
     }
-  }, [downloadingOne, logDownload]);
+  }, [downloadingOne, logDownload, freshUrls, fetchFile, photos.length]);
 
   // Zip every photo. Videos are excluded from the zip (they can be large) — the
   // per-slide download handles those individually.
@@ -128,10 +161,14 @@ export default function GallerySlideshow({
     if (downloadingAll || photos.length === 0) return;
     setDownloadingAll(true);
     setDlProgress(0);
+    setDlError("");
     try {
+      // Re-sign everything before pulling it down; a large set outlives the
+      // links this page was rendered with.
+      const fresh = await freshUrls();
+
       if (photos.length === 1) {
-        const res = await fetch(photos[0].url);
-        const blob = await res.blob();
+        const blob = await fetchFile(fresh?.photos?.[0] ?? photos[0].url);
         triggerDownload(blob, `${photos[0].category ?? "photo"}.jpg`);
         logDownload(1, "single");
         setDownloadingAll(false);
@@ -140,20 +177,35 @@ export default function GallerySlideshow({
       const zip = new JSZip();
       const BATCH = 8;
       let fetched = 0;
+      const failed: number[] = [];
       for (let i = 0; i < photos.length; i += BATCH) {
         const batch = photos.slice(i, i + BATCH);
         await Promise.all(
           batch.map(async (p, j) => {
+            const n = i + j + 1;
+            const url = fresh?.photos?.[i + j] ?? p.url;
             try {
-              const res = await fetch(p.url);
-              const blob = await res.blob();
-              zip.file(`${String(i + j + 1).padStart(2, "0")}-${p.category ?? "photo"}.jpg`, blob);
+              const blob = await fetchFile(url);
+              zip.file(`${String(n).padStart(3, "0")}-${p.category ?? "photo"}.jpg`, blob);
             } catch {
-              /* skip */
+              // One retry — most failures here are transient.
+              try {
+                const blob = await fetchFile(url);
+                zip.file(`${String(n).padStart(3, "0")}-${p.category ?? "photo"}.jpg`, blob);
+              } catch {
+                failed.push(n);
+              }
             }
             fetched++;
             setDlProgress(Math.round((fetched / photos.length) * 85));
           })
+        );
+      }
+      if (failed.length) {
+        failed.sort((a, b) => a - b);
+        setDlError(
+          `${failed.length} photo${failed.length === 1 ? "" : "s"} couldn't be added (${failed.join(", ")}). ` +
+          `Refresh the page and download again to collect them.`
         );
       }
       setDlProgress(88);
@@ -170,7 +222,7 @@ export default function GallerySlideshow({
     } finally {
       setTimeout(() => { setDownloadingAll(false); setDlProgress(0); }, 600);
     }
-  }, [downloadingAll, photos, title, logDownload]);
+  }, [downloadingAll, photos, title, logDownload, freshUrls, fetchFile]);
 
   const [view, setView] = useState<"slideshow" | "grid">("slideshow");
   const [current, setCurrent] = useState(0);
@@ -332,6 +384,13 @@ export default function GallerySlideshow({
         </div>
       </div>
 
+      {dlError && (
+        <div className="mx-4 sm:mx-6 mt-3 bg-warn-50 border border-warn-200 text-warn-800 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
+          <span>{dlError}</span>
+          <button onClick={() => setDlError("")} className="shrink-0 font-bold text-warn-700 hover:text-warn-800" aria-label="Dismiss">×</button>
+        </div>
+      )}
+
       {view === "slideshow" ? (
         <>
           {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
@@ -436,7 +495,7 @@ export default function GallerySlideshow({
             )}
             {downloadsEnabled && slide.url && (
               <button
-                onClick={() => downloadCurrentSlide(slide)}
+                onClick={() => downloadCurrentSlide(slide, current)}
                 disabled={downloadingOne}
                 aria-label={slide.type === "video" ? "Download this video" : "Download this photo"}
                 className="flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded"
