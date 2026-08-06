@@ -186,11 +186,14 @@ export default function SocialGraphicPage() {
     ctx.fillStyle = topGrad;
     ctx.fillRect(0, 0, w, h * 0.34);
 
-    const botGrad = ctx.createLinearGradient(0, h * 0.42, 0, h);
+    // Reaches higher than you'd think — the name can wrap to two lines at the
+    // larger sizes, and every line needs a dark ground under it.
+    const botGrad = ctx.createLinearGradient(0, h * 0.30, 0, h);
     botGrad.addColorStop(0, "rgba(10,13,17,0)");
-    botGrad.addColorStop(1, "rgba(10,13,17,0.90)");
+    botGrad.addColorStop(0.55, "rgba(10,13,17,0.55)");
+    botGrad.addColorStop(1, "rgba(10,13,17,0.93)");
     ctx.fillStyle = botGrad;
-    ctx.fillRect(0, h * 0.42, w, h * 0.58);
+    ctx.fillRect(0, h * 0.30, w, h * 0.70);
 
     // Inset keyline — the frame that makes it read as a composed piece.
     const inset = 44 * s;
@@ -202,10 +205,13 @@ export default function SocialGraphicPage() {
     ctx.textBaseline = "alphabetic";
 
     // Status, centred at the top.
+    // NOTE ON SIZES: Instagram renders a 1080px card at roughly 400px wide, so
+    // anything under ~30px here becomes unreadable in-feed. Every value below is
+    // set for that, not for how it looks zoomed-in on a desktop.
     if (badge) {
       ctx.fillStyle = BONE_SOFT;
-      ctx.font = `500 ${22 * s}px ${sans}`;
-      fillTracked(ctx, badge.toUpperCase(), cx, inset + 58 * s, 6 * s);
+      ctx.font = `600 ${31 * s}px ${sans}`;
+      fillTracked(ctx, badge.toUpperCase(), cx, inset + 76 * s, 8 * s);
     }
 
     // Broker logo sits centred just inside the lower keyline; draw it first so
@@ -214,16 +220,16 @@ export default function SocialGraphicPage() {
     if (logoUrl) {
       try {
         const logo = await loadImage(logoUrl);
-        const lw = 150 * s, lh = (logo.height / logo.width) * lw;
-        ctx.globalAlpha = 0.92;
-        ctx.drawImage(logo, cx - lw / 2, h - inset - 34 * s - lh, lw, lh);
+        const lw = 250 * s, lh = (logo.height / logo.width) * lw;
+        ctx.globalAlpha = 0.95;
+        ctx.drawImage(logo, cx - lw / 2, h - inset - 40 * s - lh, lw, lh);
         ctx.globalAlpha = 1;
-        logoBlock = lh + 30 * s;
+        logoBlock = lh + 40 * s;
       } catch { /* skip logo */ }
     }
 
     // Bottom stack, built upward from the baseline so it always sits right.
-    let y = h - inset - 60 * s - logoBlock;
+    let y = h - inset - 72 * s - logoBlock;
 
     // Spec line: length · year · price — monochrome, quiet, wide-tracked.
     const specBits = [
@@ -233,14 +239,14 @@ export default function SocialGraphicPage() {
     ].filter(Boolean) as string[];
     if (specBits.length) {
       ctx.fillStyle = BONE_QUIET;
-      ctx.font = `500 ${21 * s}px ${sans}`;
-      fillTracked(ctx, specBits.join("   ·   "), cx, y, 5.5 * s);
-      y -= 46 * s;
+      ctx.font = `600 ${30 * s}px ${sans}`;
+      fillTracked(ctx, specBits.join("   ·   "), cx, y, 7 * s);
+      y -= 62 * s;
     }
 
     // Vessel name — the editorial serif, centred, wrapping if it must.
     const name = listing.vessel_name ?? "Now Available";
-    const nameSize = name.length > 18 ? 68 * s : name.length > 12 ? 82 * s : 96 * s;
+    const nameSize = name.length > 22 ? 104 * s : name.length > 14 ? 132 * s : 156 * s;
     ctx.fillStyle = BONE;
     ctx.font = `600 ${nameSize}px ${serifFamily}, Georgia, serif`;
     const maxW = w - inset * 2 - 56 * s;
@@ -261,15 +267,15 @@ export default function SocialGraphicPage() {
       y -= nameSize * 1.02;
     }
     ctx.textAlign = "left";
-    y -= 6 * s;
+    y -= 22 * s;
 
     // Make + model above the name, in tracked caps.
     const maker = [listing.make, listing.model].filter(Boolean).join(" ");
     if (maker) {
       ctx.fillStyle = BONE_SOFT;
-      ctx.font = `500 ${21 * s}px ${sans}`;
-      fillTracked(ctx, maker.toUpperCase(), cx, y, 7 * s);
-      y -= 34 * s;
+      ctx.font = `600 ${31 * s}px ${sans}`;
+      fillTracked(ctx, maker.toUpperCase(), cx, y, 9 * s);
+      y -= 48 * s;
     }
 
 
