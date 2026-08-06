@@ -40,9 +40,11 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi ${firstName},</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">What you needed was simple enough: an easy way to get photos from us to your clients. Back before internet speeds caught up, that was a genuine chore &mdash; burned discs, FTP logins, zip files that gave out halfway through, and a broker waiting on a download instead of working the boat.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">What you needed was always simple: a way to put the photos in front of the person who needed to see them.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">So we built the Portal to do exactly that, and nothing else. Then we kept going &mdash; because once your photos live somewhere proper, a lot of the work you&rsquo;d otherwise do by hand stops needing to be done at all. Here&rsquo;s what&rsquo;s waiting in there now:</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">That&rsquo;s the whole reason yachtpics.com exists. It began as a place to keep a slideshow link for every boat we shot &mdash; so you could send one link to a client and they could look at the boat from wherever they were. Back before internet speeds caught up, that was no small thing.</p>
+
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">The Portal is that same idea, grown up. Send a client a link to the boat &mdash; then keep going, because once your photos live somewhere proper, a lot of the work you&rsquo;d otherwise do by hand stops needing to be done at all. Here&rsquo;s what&rsquo;s waiting in there now:</p>
 
       <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 26px;">
         ${bullet("Every shoot, permanently.", "Photos and walkthrough video in one place. Nothing expires, nothing to hunt for.")}
