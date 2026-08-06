@@ -3,8 +3,20 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { hasAccess } from "@/lib/subscriptionAccess";
+
+/**
+ * Editorial serif for the vessel name. High-contrast garamond — the register
+ * luxury brokerages use, and a deliberate move away from the heavy system-UI
+ * bold that made these cards read like every other listing post.
+ */
+const serif = Cormorant_Garamond({
+  subsets: ["latin"],
+  weight: ["400", "600"],
+  display: "swap",
+});
 
 type Photo = { id: string; url: string | null };
 type Format = "square" | "story";
@@ -12,11 +24,37 @@ const DIMS: Record<Format, { w: number; h: number }> = {
   square: { w: 1080, h: 1080 },
   story: { w: 1080, h: 1920 },
 };
-// Canvas palette — literal values mirroring tailwind.config.ts tokens (a 2D
-// context can't read Tailwind classes). Ink anchor + brass accent ramp.
-const INK = "#050b14"; // ink-950
-const BRASS = "#c39e4e"; // accent-500 — accent over the photo
-const CHAMPAGNE = "#dfc98a"; // accent-300 — accent text on the ink gradient
+// Canvas palette — monochrome by design. The boat supplies the only colour on
+// the card; charcoal and bone carry everything else. (A 2D context can't read
+// Tailwind classes, so these mirror the tokens literally.)
+const INK = "#050b14";       // ink-950 — fallback ground
+const BONE = "#ffffff";      // vessel name
+const BONE_SOFT = "rgba(255,255,255,0.86)"; // caps above the name
+const BONE_QUIET = "rgba(255,255,255,0.66)"; // spec line
+const KEYLINE = "rgba(255,255,255,0.22)";
+
+/**
+ * Canvas has no reliable letter-spacing across browsers, so draw tracked caps
+ * a glyph at a time. Returns the total width so callers can centre it.
+ */
+function trackedWidth(ctx: CanvasRenderingContext2D, text: string, track: number) {
+  let total = 0;
+  for (const ch of text) total += ctx.measureText(ch).width + track;
+  return total - track;
+}
+function fillTracked(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  cx: number,
+  y: number,
+  track: number
+) {
+  let x = cx - trackedWidth(ctx, text, track) / 2;
+  for (const ch of text) {
+    ctx.fillText(ch, x, y);
+    x += ctx.measureText(ch).width + track;
+  }
+}
 
 // Load an image robustly: fetch as blob → object URL → <img>, which keeps the
 // canvas untainted so we can export it (signed Supabase URLs send CORS for GET).
@@ -128,63 +166,112 @@ export default function SocialGraphicPage() {
       drawCover(ctx, img, w, h);
     } catch { /* leave ink bg */ }
 
-    // Bottom gradient for legibility
-    const gradH = h * 0.5;
-    const grad = ctx.createLinearGradient(0, h - gradH, 0, h);
-    grad.addColorStop(0, "rgba(5,11,20,0)");
-    grad.addColorStop(1, "rgba(5,11,20,0.92)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, h - gradH, w, gradH);
+    // ── Cinematic monochrome composition ────────────────────────────────
+    // Everything below is centred and scaled off the short edge, so the square
+    // and the story crop read identically.
+    const s = Math.min(w, h) / 1080;
+    const cx = w / 2;
 
-    // Status tag (top-left)
-    ctx.fillStyle = BRASS;
-    ctx.font = "700 34px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    ctx.textBaseline = "top";
-    ctx.fillText(badge.toUpperCase(), 64, 60);
+    // Make sure the serif is actually rasterised before we measure or draw
+    // with it — otherwise the first paint silently falls back to a system font.
+    try { await document.fonts.ready; } catch { /* older browser: fall through */ }
+    const serifFamily = serif.style.fontFamily;
+    const sans = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
 
-    // Vessel name + details + price (bottom-left)
-    const pad = 64;
-    let y = h - pad;
-    if (listing.asking_price) {
-      ctx.fillStyle = CHAMPAGNE; // accent text on the ink gradient
-      ctx.font = "800 56px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.textBaseline = "alphabetic";
-      ctx.fillText(`$${Number(listing.asking_price).toLocaleString("en-US")}`, pad, y);
-      y -= 70;
-    }
-    const sub = [listing.year, listing.make, listing.length_ft ? `${listing.length_ft}′` : null].filter(Boolean).join("  ·  ");
-    if (sub) {
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
-      ctx.font = "500 34px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.fillText(sub, pad, y);
-      y -= 56;
-    }
-    ctx.fillStyle = "#ffffff";
-    ctx.font = "800 68px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-    const name = listing.vessel_name ?? "Now Available";
-    // simple wrap if too wide
-    const maxW = w - pad * 2;
-    if (ctx.measureText(name).width > maxW) {
-      const words = name.split(" ");
-      let line = "", lines: string[] = [];
-      for (const word of words) {
-        if (ctx.measureText(line + word).width > maxW && line) { lines.push(line.trim()); line = ""; }
-        line += word + " ";
-      }
-      if (line) lines.push(line.trim());
-      for (let i = lines.length - 1; i >= 0; i--) { ctx.fillText(lines[i], pad, y); y -= 76; }
-    } else {
-      ctx.fillText(name, pad, y);
+    // A soft vignette top and bottom: enough to seat the type, not so much
+    // that it flattens the photograph.
+    const topGrad = ctx.createLinearGradient(0, 0, 0, h * 0.34);
+    topGrad.addColorStop(0, "rgba(10,13,17,0.52)");
+    topGrad.addColorStop(1, "rgba(10,13,17,0)");
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, w, h * 0.34);
+
+    const botGrad = ctx.createLinearGradient(0, h * 0.42, 0, h);
+    botGrad.addColorStop(0, "rgba(10,13,17,0)");
+    botGrad.addColorStop(1, "rgba(10,13,17,0.90)");
+    ctx.fillStyle = botGrad;
+    ctx.fillRect(0, h * 0.42, w, h * 0.58);
+
+    // Inset keyline — the frame that makes it read as a composed piece.
+    const inset = 44 * s;
+    ctx.strokeStyle = KEYLINE;
+    ctx.lineWidth = Math.max(1, 1.5 * s);
+    ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
+
+    ctx.textAlign = "left"; // fillTracked centres manually
+    ctx.textBaseline = "alphabetic";
+
+    // Status, centred at the top.
+    if (badge) {
+      ctx.fillStyle = BONE_SOFT;
+      ctx.font = `500 ${22 * s}px ${sans}`;
+      fillTracked(ctx, badge.toUpperCase(), cx, inset + 58 * s, 6 * s);
     }
 
-    // Broker logo (bottom-right)
+    // Broker logo sits centred just inside the lower keyline; draw it first so
+    // the text stack knows how much room is left above it.
+    let logoBlock = 0;
     if (logoUrl) {
       try {
         const logo = await loadImage(logoUrl);
-        const lw = 220, lh = (logo.height / logo.width) * lw;
-        ctx.drawImage(logo, w - lw - pad, h - lh - pad, lw, lh);
+        const lw = 150 * s, lh = (logo.height / logo.width) * lw;
+        ctx.globalAlpha = 0.92;
+        ctx.drawImage(logo, cx - lw / 2, h - inset - 34 * s - lh, lw, lh);
+        ctx.globalAlpha = 1;
+        logoBlock = lh + 30 * s;
       } catch { /* skip logo */ }
     }
+
+    // Bottom stack, built upward from the baseline so it always sits right.
+    let y = h - inset - 60 * s - logoBlock;
+
+    // Spec line: length · year · price — monochrome, quiet, wide-tracked.
+    const specBits = [
+      listing.length_ft ? `${listing.length_ft} FEET` : null,
+      listing.year ? String(listing.year) : null,
+      listing.asking_price ? `$${Number(listing.asking_price).toLocaleString("en-US")}` : null,
+    ].filter(Boolean) as string[];
+    if (specBits.length) {
+      ctx.fillStyle = BONE_QUIET;
+      ctx.font = `500 ${21 * s}px ${sans}`;
+      fillTracked(ctx, specBits.join("   ·   "), cx, y, 5.5 * s);
+      y -= 46 * s;
+    }
+
+    // Vessel name — the editorial serif, centred, wrapping if it must.
+    const name = listing.vessel_name ?? "Now Available";
+    const nameSize = name.length > 18 ? 68 * s : name.length > 12 ? 82 * s : 96 * s;
+    ctx.fillStyle = BONE;
+    ctx.font = `600 ${nameSize}px ${serifFamily}, Georgia, serif`;
+    const maxW = w - inset * 2 - 56 * s;
+    const lines: string[] = [];
+    if (ctx.measureText(name).width > maxW) {
+      let line = "";
+      for (const word of name.split(" ")) {
+        if (line && ctx.measureText(`${line} ${word}`).width > maxW) { lines.push(line); line = word; }
+        else line = line ? `${line} ${word}` : word;
+      }
+      if (line) lines.push(line);
+    } else {
+      lines.push(name);
+    }
+    ctx.textAlign = "center";
+    for (let i = lines.length - 1; i >= 0; i--) {
+      ctx.fillText(lines[i], cx, y);
+      y -= nameSize * 1.02;
+    }
+    ctx.textAlign = "left";
+    y -= 6 * s;
+
+    // Make + model above the name, in tracked caps.
+    const maker = [listing.make, listing.model].filter(Boolean).join(" ");
+    if (maker) {
+      ctx.fillStyle = BONE_SOFT;
+      ctx.font = `500 ${21 * s}px ${sans}`;
+      fillTracked(ctx, maker.toUpperCase(), cx, y, 7 * s);
+      y -= 34 * s;
+    }
+
 
     // Watermark for expired brokers — they see the design, but the output is
     // unusable until they subscribe.
@@ -194,11 +281,11 @@ export default function SocialGraphicPage() {
       ctx.rotate(-Math.PI / 6);
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillStyle = "rgba(255,255,255,0.30)";
-      ctx.font = "800 96px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.fillText("PREVIEW", 0, -28);
-      ctx.font = "700 36px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-      ctx.fillText("Subscribe to unlock", 0, 44);
+      ctx.fillStyle = "rgba(255,255,255,0.32)";
+      ctx.font = `600 ${112 * s}px ${serifFamily}, Georgia, serif`;
+      ctx.fillText("Preview", 0, -24 * s);
+      ctx.font = `500 ${30 * s}px ${sans}`;
+      ctx.fillText("Subscribe to unlock", 0, 46 * s);
       ctx.restore();
     }
 
