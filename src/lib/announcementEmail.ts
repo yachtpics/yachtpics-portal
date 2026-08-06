@@ -57,7 +57,9 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
         ${bullet("Your assistant, co-broker and office", "all working from the same set of photos.")}
       </table>
 
-      <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">Same shoot. Same photos. The difference is that everything you&rsquo;d normally rebuild by hand &mdash; the flyer, the post, the presentation &mdash; is already sitting there, made from the images we took.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Same shoot. Same photos. The difference is that everything you&rsquo;d normally rebuild by hand &mdash; the flyer, the post, the presentation &mdash; is already sitting there, made from the images we took.</p>
+
+      <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">And it goes further than our shoots. <strong style="color:#111827;">You can add a listing yourself and upload your own photos</strong> &mdash; a boat we haven&rsquo;t been out to, a trade-in, a new listing you picked up this morning. It all works the same way, so every boat you&rsquo;re marketing can live in one place instead of scattered across your desktop.</p>
 
       <div style="margin:26px 0;">
         <a href="${PORTAL}/dashboard/listings" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">Open your Portal</a>
