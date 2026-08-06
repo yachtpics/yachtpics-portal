@@ -131,7 +131,7 @@ export const TIPS: Tip[] = [
     headline: "Lead them through the boat",
     body: [
       "Buyers scroll in the order you set. Open a listing and drag the photos into the sequence that walks someone through the boat the way you'd show it in person — profiles first, then up top, then down through the living spaces.",
-      "Anything you'd rather not show, hide it. A tight, well-ordered set reads as a better boat than the same photos in a jumble.",
+      "You can also tailor the set to the buyer. Tap the eye on any photo to keep it out of the slideshow — a space mid-refit, a detail the owner would rather keep private, or simply a tighter edit for a particular client. It stays in your library either way.",
     ],
     ctaLabel: "Arrange a listing",
     ctaPath: "/dashboard/listings",
