@@ -51,6 +51,10 @@ export default function GalleryDetail({
   const [recipients, setRecipients] = useState<Recipient[]>(initRecipients);
   const [expiresAt, setExpiresAt] = useState<string | null>(gallery.expires_at);
   const [downloadsEnabled, setDownloadsEnabled] = useState<boolean>(gallery.downloads_enabled);
+  const [title, setTitle] = useState(gallery.title);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(gallery.title);
+  const [savingTitle, setSavingTitle] = useState(false);
 
   const [uploadingPhotos, setUploadingPhotos] = useState(false);
   const [uploadingVideos, setUploadingVideos] = useState(false);
@@ -251,6 +255,30 @@ export default function GalleryDetail({
     }).catch(() => {});
   }
 
+  async function saveTitle() {
+    const next = titleDraft.trim();
+    if (!next || next === title) {
+      setEditingTitle(false);
+      setTitleDraft(title);
+      return;
+    }
+    setSavingTitle(true);
+    const res = await fetch(`/api/admin/galleries/${gallery.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: next }),
+    });
+    setSavingTitle(false);
+    if (res.ok) {
+      setTitle(next);
+      setEditingTitle(false);
+      setMsg("Gallery name updated.");
+    } else {
+      setMsg("Couldn't update the name. Please try again.");
+      setTitleDraft(title);
+    }
+  }
+
   async function toggleDownloads() {
     const nv = !downloadsEnabled;
     setDownloadsEnabled(nv); // optimistic
@@ -316,8 +344,46 @@ export default function GalleryDetail({
       <div className="mb-6">
         <Link href="/admin/galleries" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">&larr; All galleries</Link>
         <div className="mt-2 flex items-start justify-between gap-3 flex-wrap">
-          <div>
-            <h1 className="text-display text-ink-900">{gallery.title}</h1>
+          <div className="min-w-0">
+            {editingTitle ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <input
+                  autoFocus
+                  value={titleDraft}
+                  onChange={(e) => setTitleDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") saveTitle();
+                    if (e.key === "Escape") { setEditingTitle(false); setTitleDraft(title); }
+                  }}
+                  className="text-display text-ink-900 border border-hairline-strong rounded-ctl px-3 py-1.5 min-w-[18rem] focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
+                  placeholder="Gallery name"
+                />
+                <button
+                  onClick={saveTitle}
+                  disabled={savingTitle}
+                  className="text-xs font-semibold px-3 py-2 rounded-ctl bg-ink-950 text-white hover:bg-ink-800 disabled:opacity-50 transition-colors duration-fast ease-quiet"
+                >
+                  {savingTitle ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => { setEditingTitle(false); setTitleDraft(title); }}
+                  className="text-xs font-medium px-3 py-2 rounded-ctl text-ink-500 hover:text-ink-700 transition-colors duration-fast ease-quiet"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-display text-ink-900">{title}</h1>
+                <button
+                  onClick={() => { setTitleDraft(title); setEditingTitle(true); }}
+                  className="text-xs font-medium px-2.5 py-1 rounded-ctl border border-hairline-strong text-ink-600 hover:border-ink-400 hover:text-ink-900 transition-colors duration-fast ease-quiet"
+                  title="Rename this gallery"
+                >
+                  Rename
+                </button>
+              </div>
+            )}
             <p className="text-ink-500 text-sm mt-0.5 capitalize">
               {gallery.gallery_type} · {photos.length} photo{photos.length !== 1 ? "s" : ""}{videos.length > 0 ? `, ${videos.length} video${videos.length !== 1 ? "s" : ""}` : ""}
             </p>
@@ -663,7 +729,7 @@ export default function GalleryDetail({
       </div>
 
       {/* Danger zone */}
-      <DeleteGalleryButton galleryId={gallery.id} title={gallery.title} />
+      <DeleteGalleryButton galleryId={gallery.id} title={title} />
     </div>
   );
 }
