@@ -123,6 +123,74 @@ export const TIPS: Tip[] = [
     ctaLabel: "Send a listing",
     ctaPath: "/dashboard/listings",
   },
+
+  // ── Batch 2 ─────────────────────────────────────────────────────────────
+  {
+    slug: "photo-order",
+    subject: "Tip: the order your photos tell the story",
+    headline: "Lead them through the boat",
+    body: [
+      "Buyers scroll in the order you set. Open a listing and drag the photos into the sequence that walks someone through the boat the way you'd show it in person — profiles first, then up top, then down through the living spaces.",
+      "Anything you'd rather not show, hide it. A tight, well-ordered set reads as a better boat than the same photos in a jumble.",
+    ],
+    ctaLabel: "Arrange a listing",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "assistants",
+    subject: "Tip: hand the busywork to someone else",
+    headline: "Your assistant can do this for you",
+    body: [
+      "You don't have to be the one uploading photos and sending listings. Add your assistant from your Team page and they get their own login with access to your listings — no sharing your password.",
+      "They can enter listings, arrange photos, and send to clients. You stay on the water; the work still gets done.",
+    ],
+    ctaLabel: "Add your assistant",
+    ctaPath: "/dashboard/team",
+  },
+  {
+    slug: "install-app",
+    subject: "Tip: put the portal on your phone",
+    headline: "One tap from your home screen",
+    body: [
+      "The portal installs like an app. On your phone, open it in your browser and choose Add to Home Screen — you'll get an icon that opens straight to your listings, no typing a web address.",
+      "Handy at a boat show or on the dock, when a buyer asks to see something and you'd rather not fumble for a link.",
+    ],
+    ctaLabel: "Open on your phone",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "magic-link",
+    subject: "Tip: skip the password",
+    headline: "Sign in without remembering anything",
+    body: [
+      "Forgot your password? You don't need it. On the sign-in screen choose \"Email me a sign-in link,\" enter your email, and we'll send a link that logs you straight in with one tap.",
+      "It works every time, on any device — particularly useful if your office email is strict about links or you're signing in from your phone.",
+    ],
+    ctaLabel: "Try it now",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "share-with-office",
+    subject: "Tip: let your office see the boat",
+    headline: "Share a listing with your brokerage",
+    body: [
+      "Turn on sharing for a listing and everyone at your brokerage can view it — useful when a colleague has a buyer for your boat, or you're covering for someone who's away.",
+      "You stay in control: sharing is per listing, and you can switch it off any time.",
+    ],
+    ctaLabel: "Share a listing",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "co-broker",
+    subject: "Tip: working a boat together?",
+    headline: "Give your co-broker their own access",
+    body: [
+      "When you're co-listing, add the other broker to the listing and they get full access to the photos, the slideshow, and the send tools — without you forwarding anything.",
+      "One set of photos, one link, both of you working from the same thing.",
+    ],
+    ctaLabel: "Add a co-broker",
+    ctaPath: "/dashboard/listings",
+  },
 ];
 
 export const TIP_BY_SLUG: Record<string, Tip> = Object.fromEntries(TIPS.map((t) => [t.slug, t]));
