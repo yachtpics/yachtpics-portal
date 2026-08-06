@@ -1,6 +1,7 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import GalleryDetail from "./_components/GalleryDetail";
+import RefreshOnMount from "@/components/RefreshOnMount";
 
 export const dynamic = "force-dynamic";
 
@@ -97,19 +98,22 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
   const openedRecipients = recipients.filter((r) => r.openCount > 0).length;
 
   return (
-    <GalleryDetail
-      gallery={gallery}
-      photos={photosWithUrls}
-      videos={videosWithUrls}
-      recipients={recipients}
-      metrics={{
-        views: viewCount,
-        downloadEvents: downloadEvents.length,
-        downloadItems: downloadItemTotal,
-        lastDownloadAt,
-        openedRecipients,
-        totalRecipients: recipients.length,
-      }}
-    />
+    <>
+      <RefreshOnMount />
+      <GalleryDetail
+        gallery={gallery}
+        photos={photosWithUrls}
+        videos={videosWithUrls}
+        recipients={recipients}
+        metrics={{
+          views: viewCount,
+          downloadEvents: downloadEvents.length,
+          downloadItems: downloadItemTotal,
+          lastDownloadAt,
+          openedRecipients,
+          totalRecipients: recipients.length,
+        }}
+      />
+    </>
   );
 }

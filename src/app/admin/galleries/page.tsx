@@ -1,6 +1,7 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import TableSearch from "@/components/TableSearch";
+import RefreshOnMount from "@/components/RefreshOnMount";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export default async function AdminGalleriesPage() {
 
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
+      <RefreshOnMount />
       <div className="mb-8 flex items-center justify-between">
         <div>
           <h1 className="text-display text-ink-900">Galleries</h1>
