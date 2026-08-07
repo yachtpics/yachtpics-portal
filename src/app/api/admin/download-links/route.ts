@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
 
   const { data: links, error } = await admin
     .from("download_links")
-    .select("id, token, label, expires_at, revoked, created_at")
+    .select("id, token, label, expires_at, revoked, created_at, scope")
     .eq("listing_id", listingId)
     .order("created_at", { ascending: false });
 
@@ -61,7 +61,7 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
   const { admin, userId } = auth;
 
-  let body: { listingId?: string; label?: string; expiryDays?: number | null };
+  let body: { listingId?: string; label?: string; expiryDays?: number | null; scope?: string };
   try {
     body = await req.json();
   } catch {
@@ -70,6 +70,10 @@ export async function POST(req: NextRequest) {
 
   const { listingId, label, expiryDays } = body;
   if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+
+  // What the link hands over: photos only, videos only, or both. Lets a broker
+  // be sent a video without a 200-photo download attached, and vice versa.
+  const scope = body.scope === "photos" || body.scope === "videos" ? body.scope : "both";
 
   // Confirm listing exists
   const { data: listing } = await admin
@@ -93,8 +97,9 @@ export async function POST(req: NextRequest) {
       created_by: userId,
       label: label?.trim() || null,
       expires_at,
+      scope,
     })
-    .select("id, token, label, expires_at, revoked, created_at")
+    .select("id, token, label, expires_at, revoked, created_at, scope")
     .single();
 
   if (error || !created) {

@@ -12,6 +12,13 @@ type DownloadLink = {
   created_at: string;
   download_count: number;
   status: "active" | "expired" | "revoked";
+  scope?: "both" | "photos" | "videos" | null;
+};
+
+const SCOPE_LABEL: Record<string, string> = {
+  both: "Photos & videos",
+  photos: "Photos only",
+  videos: "Videos only",
 };
 
 const EXPIRY_OPTIONS = [
@@ -27,6 +34,9 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
   const [creating, setCreating] = useState(false);
   const [label, setLabel] = useState("");
   const [expiryDays, setExpiryDays] = useState(30);
+  // What the recipient gets. "videos" is handy when a broker only needs the
+  // walkthrough and shouldn't have to wade through 200 photos to find it.
+  const [scope, setScope] = useState<"both" | "photos" | "videos">("both");
   const [error, setError] = useState("");
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [emailOpenId, setEmailOpenId] = useState<string | null>(null);
@@ -46,7 +56,7 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
       const res = await fetch("/api/admin/download-links", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, label, expiryDays }),
+        body: JSON.stringify({ listingId, label, expiryDays, scope }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to create link");
@@ -113,6 +123,18 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
           />
         </div>
         <div>
+          <label className="block text-[11px] font-medium text-ink-500 mb-1">Includes</label>
+          <select
+            value={scope}
+            onChange={(e) => setScope(e.target.value as "both" | "photos" | "videos")}
+            className="text-sm bg-white border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
+          >
+            <option value="both">Photos &amp; videos</option>
+            <option value="photos">Photos only</option>
+            <option value="videos">Videos only</option>
+          </select>
+        </div>
+        <div>
           <label className="block text-[11px] font-medium text-ink-500 mb-1">Expires</label>
           <select
             value={expiryDays}
@@ -149,9 +171,16 @@ export default function DownloadLinkManager({ listingId }: { listingId: string }
                     <span className={`text-[10px] font-semibold uppercase border rounded px-1.5 py-0.5 ${statusStyles[link.status]}`}>
                       {link.status}
                     </span>
+                    {link.scope && link.scope !== "both" && (
+                      <span className="text-[10px] font-semibold uppercase border border-accent-200 bg-accent-50 text-accent-800 rounded px-1.5 py-0.5">
+                        {link.scope === "videos" ? "Video only" : "Photos only"}
+                      </span>
+                    )}
                     {link.label && <span className="text-sm font-medium text-ink-800 truncate">{link.label}</span>}
                   </div>
                   <p className="text-[11px] text-ink-500 mt-1 tabular-nums">
+                    {SCOPE_LABEL[link.scope ?? "both"]}
+                    {" · "}
                     Created {fmtDate(link.created_at)}
                     {" · "}
                     {link.expires_at ? `expires ${fmtDate(link.expires_at)}` : "no expiry"}

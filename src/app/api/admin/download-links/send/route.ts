@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
 
   const { data: link } = await admin
     .from("download_links")
-    .select("id, token, revoked, expires_at, listing_id")
+    .select("id, token, revoked, expires_at, listing_id, scope")
     .eq("id", linkId)
     .single();
 
@@ -57,6 +57,12 @@ export async function POST(req: NextRequest) {
     .single();
 
   const vesselName = listing?.vessel_name ?? "your vessel";
+  // What this link actually hands over, so the email says so plainly.
+  const scope = (link as { scope?: string }).scope ?? "both";
+  const kindTitle = scope === "videos" ? "Video Download" : scope === "photos" ? "Photo Download" : "Photo & Video Download";
+  const kindBody = scope === "videos" ? "the video" : scope === "photos" ? "the photos" : "the photos and video";
+  const ctaLabel = scope === "videos" ? "Download Video" : "Download Photos";
+
   const url = `${SITE_URL}/d/${link.token}`;
 
   const messageBlock = message
@@ -71,12 +77,12 @@ export async function POST(req: NextRequest) {
         <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
       </div>
       <div style="padding:40px;">
-        <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;">${vesselName} — Photo Download</h1>
-        <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">You've been sent a private link to download the photos for this vessel.</p>
+        <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;">${vesselName} — ${kindTitle}</h1>
+        <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">You&rsquo;ve been sent a private link to download ${kindBody} for this vessel.</p>
         ${messageBlock}
         <div style="margin-bottom:20px;">
           <a href="${url}" style="display:inline-flex;align-items:center;gap:8px;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;">
-            Download Photos &#8594;
+            ${ctaLabel} &#8594;
           </a>
         </div>
         <p style="margin:0;font-size:12px;color:#9ca3af;">If the button doesn't work, copy and paste this link into your browser:<br><span style="color:#6b7280;word-break:break-all;">${url}</span></p>
@@ -100,7 +106,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         from: "YachtPics <hello@yachtpics.com>",
         to: recipient,
-        subject: `${vesselName} — Photo Download`,
+        subject: `${vesselName} — ${kindTitle}`,
         html,
       }),
     });
@@ -112,7 +118,7 @@ export async function POST(req: NextRequest) {
       emailType: "download_link",
       recipientEmail: recipient,
       listingId: link.listing_id,
-      subject: `${vesselName} — Photo Download`,
+      subject: `${vesselName} — ${kindTitle}`,
       status: res.ok ? "sent" : "failed",
       error: res.ok ? null : (data.message ?? "Failed to send"),
       sentBy: userId,

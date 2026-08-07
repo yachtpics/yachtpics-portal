@@ -32,7 +32,7 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
 
   const { data: link } = await supabase
     .from("download_links")
-    .select("id, listing_id, revoked, expires_at")
+    .select("id, listing_id, revoked, expires_at, scope")
     .eq("token", params.token)
     .single();
 
@@ -67,11 +67,19 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
     .eq("id", link.listing_id)
     .single();
 
-  const { data: photos } = await supabase
-    .from("photos")
-    .select("id, storage_path, filename, category, display_order")
-    .eq("listing_id", link.listing_id)
-    .order("display_order");
+  // A link can be scoped to photos only, videos only, or both — so a broker who
+  // just needs the walkthrough isn't handed 200 photos, and vice versa.
+  const scope = (link as { scope?: string }).scope ?? "both";
+  const wantsPhotos = scope === "photos" || scope === "both";
+  const wantsVideos = scope === "videos" || scope === "both";
+
+  const { data: photos } = wantsPhotos
+    ? await supabase
+        .from("photos")
+        .select("id, storage_path, filename, category, display_order")
+        .eq("listing_id", link.listing_id)
+        .order("display_order")
+    : { data: [] };
 
   const paths = (photos ?? []).map((p) => p.storage_path);
   const { data: signed } =
@@ -91,11 +99,13 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
   // inline preview, and a download-forced one (Supabase's `download` param sets
   // Content-Disposition: attachment) so a click saves the file instead of
   // opening it — and without pulling a huge video into browser memory.
-  const { data: videos } = await supabase
-    .from("videos")
-    .select("id, storage_path, filename, created_at")
-    .eq("listing_id", link.listing_id)
-    .order("created_at");
+  const { data: videos } = wantsVideos
+    ? await supabase
+        .from("videos")
+        .select("id, storage_path, filename, created_at")
+        .eq("listing_id", link.listing_id)
+        .order("created_at")
+    : { data: [] };
 
   const vidPaths = (videos ?? []).map((v) => v.storage_path);
   const { data: vidSigned } =
