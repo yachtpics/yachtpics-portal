@@ -63,6 +63,7 @@ export const PHOTO_CATEGORIES = [
   "Port Guest Stateroom Head",
   "Port Passageway",
   "Profiles",
+  "Profiles Running",
   "Salon",
   "Skylounge",
   "Skylounge Aft Deck",

@@ -14,6 +14,7 @@
 export const CANONICAL_PHOTO_ORDER: string[] = [
   // Exterior + upper decks
   "Profiles",
+  "Profiles Running",
   "Tower",
   "Flybridge",
   "Enclosed Flybridge",

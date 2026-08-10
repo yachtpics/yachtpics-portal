@@ -23,6 +23,11 @@ const ALIASES: Record<string, string> = {
   platform:    "Swim Platform",
   wheel:       "Helm",
   steering:    "Helm",
+  // Unambiguous in a yacht context: a "running" or "underway" shot is the boat
+  // moving. There's no other area these could mean.
+  running:     "Profiles Running",
+  underway:    "Profiles Running",
+  cruising:    "Profiles Running",
   // NOTE: no bare "deck" → Cockpit alias. A deck can be many areas (sun deck,
   // sky lounge aft deck, command deck…); mapping a lone "deck" to Cockpit
   // silently mislabels anything not yet a category. Unknown decks fall to
@@ -56,7 +61,12 @@ function matchesCategory(name: string, cat: string): boolean {
     .toLowerCase()
     .split(/\s+/)
     .map((w) => (w === "stateroom" ? "(?:stateroom)?" : escapeRegExp(w)));
-  return new RegExp(`\\b${words.join("\\s*")}\\b`).test(name);
+  // Leading \b still guards the front, so "head" can't match inside "overhead".
+  // The trailing guard is (?![a-z]) rather than \b so a frame number glued
+  // straight onto the word still matches — cameras produce "Profiles01.jpg" and
+  // "AftDeck12.jpg" constantly, and a trailing \b rejected every one of them.
+  // Letters are still refused, so "head" won't match "header".
+  return new RegExp(`\\b${words.join("\\s*")}(?![a-z])`).test(name);
 }
 
 /**
