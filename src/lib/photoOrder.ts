@@ -37,6 +37,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   // Machinery — early, per Charlie's order
   "Engine Room",
   "Engines",
+  "Engine",
   "Generator Room",
   "Mechanical Room",
   "Electrical Room",

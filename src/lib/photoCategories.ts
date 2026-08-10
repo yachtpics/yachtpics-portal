@@ -23,6 +23,7 @@ export const PHOTO_CATEGORIES = [
   "Electrical Room",
   "Enclosed Flybridge",
   "Enclosed Flybridge Aft Deck",
+  "Engine",
   "Engine Room",
   "Engines",
   "Flybridge",

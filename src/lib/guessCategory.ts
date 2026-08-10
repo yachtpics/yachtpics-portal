@@ -17,7 +17,9 @@ const ALIASES: Record<string, string> = {
   bath:        "Head",
   bathroom:    "Head",
   toilet:      "Head",
-  engine:      "Engine Room",
+  // No bare "engine" alias: "Engine" is now a category in its own right, and
+  // categories are matched before aliases — so an alias here would be dead code
+  // that reads as if it still applied.
   bilge:       "Engine Room",
   swim:        "Swim Platform",
   platform:    "Swim Platform",
