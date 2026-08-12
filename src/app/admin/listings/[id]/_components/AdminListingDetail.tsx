@@ -559,13 +559,26 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
   async function deleteVideo(videoId: string, storagePath: string) {
     setDeletingVideoIds(prev => new Set(Array.from(prev).concat(videoId)));
-    await fetch("/api/videos/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId, storagePath }),
-    });
-    setVideos(prev => prev.filter(v => v.id !== videoId));
-    setDeletingVideoIds(prev => { const next = new Set(prev); next.delete(videoId); return next; });
+    setVideoError(null);
+    try {
+      const res = await fetch("/api/videos/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, storagePath }),
+      });
+      // Only drop it from the list once the server confirms. Removing it
+      // regardless is what made a refused delete look like it had worked —
+      // the video vanished, then reappeared on the next load.
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Delete failed (${res.status})`);
+      }
+      setVideos(prev => prev.filter(v => v.id !== videoId));
+    } catch (e) {
+      setVideoError(`Couldn't delete that video — ${e instanceof Error ? e.message : "please try again"}.`);
+    } finally {
+      setDeletingVideoIds(prev => { const next = new Set(prev); next.delete(videoId); return next; });
+    }
   }
 
   return (

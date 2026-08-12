@@ -166,6 +166,7 @@ export default function BrokerListingPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
+  const [videoDeleteError, setVideoDeleteError] = useState<string | null>(null);
   const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
@@ -719,13 +720,25 @@ export default function BrokerListingPage() {
 
   async function deleteVideo(videoId: string, storagePath: string) {
     setDeletingVideoIds(prev => new Set(Array.from(prev).concat(videoId)));
-    await fetch("/api/videos/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ videoId, storagePath }),
-    });
-    setVideos(prev => prev.filter(v => v.id !== videoId));
-    setDeletingVideoIds(prev => { const next = new Set(prev); next.delete(videoId); return next; });
+    setVideoDeleteError(null);
+    try {
+      const res = await fetch("/api/videos/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ videoId, storagePath }),
+      });
+      // Only drop it from the list once the server confirms — otherwise a
+      // refused delete looks like it worked and the video returns on reload.
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error ?? `Delete failed (${res.status})`);
+      }
+      setVideos(prev => prev.filter(v => v.id !== videoId));
+    } catch (e) {
+      setVideoDeleteError(`Couldn't delete that video — ${e instanceof Error ? e.message : "please try again"}.`);
+    } finally {
+      setDeletingVideoIds(prev => { const next = new Set(prev); next.delete(videoId); return next; });
+    }
   }
 
   async function toggleVideoSlideshow(videoId: string, current: boolean) {
@@ -1511,6 +1524,13 @@ export default function BrokerListingPage() {
               <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${videoUploadProgress}%` }} />
             </div>
             <p className="text-xs text-ink-400 mt-1">Uploading large files may take a moment…</p>
+          </div>
+        )}
+
+        {videoDeleteError && (
+          <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
+            <span>{videoDeleteError}</span>
+            <button onClick={() => setVideoDeleteError(null)} className="shrink-0 font-bold text-danger-600 hover:text-danger-700" aria-label="Dismiss">×</button>
           </div>
         )}
 
