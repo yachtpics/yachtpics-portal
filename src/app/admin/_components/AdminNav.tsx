@@ -45,15 +45,24 @@ const navItems: NavItem[] = [
 ];
 
 /**
- * Mobile bottom bar order — most-used first.
+ * Nav order — most-used first, so the pages Charlie actually lives in are
+ * reachable immediately (and on mobile, without swiping the bar sideways).
  *
- * The bar scrolls horizontally, so whatever sits in the first few slots is what
- * you can reach without swiping. That's a different priority from the desktop
- * sidebar, which shows everything at once and reads better grouped logically —
- * so the two orders are deliberately separate.
+ * Desktop and mobile are kept as SEPARATE lists even though they're currently
+ * identical. They serve different constraints — the sidebar shows everything at
+ * once, the mobile bar only shows the first few — so when one needs to change,
+ * it can move without dragging the other with it.
  *
- * Anything not listed here keeps its sidebar order and follows on behind.
+ * Anything not listed keeps its `navItems` order and follows on behind.
  */
+const SIDEBAR_PRIORITY = [
+  "/admin/brokers",
+  "/admin/assistants",
+  "/admin/listings",
+  "/admin/metrics",
+  "/admin/emails",
+];
+
 const MOBILE_PRIORITY = [
   "/admin/brokers",
   "/admin/assistants",
@@ -62,14 +71,20 @@ const MOBILE_PRIORITY = [
   "/admin/emails",
 ];
 
-const mobileNavItems = [...navItems].sort((a, b) => {
-  const ia = MOBILE_PRIORITY.indexOf(a.href);
-  const ib = MOBILE_PRIORITY.indexOf(b.href);
-  if (ia !== -1 && ib !== -1) return ia - ib;
-  if (ia !== -1) return -1;
-  if (ib !== -1) return 1;
-  return 0; // stable: everything else keeps the sidebar order
-});
+/** Stable sort: listed hrefs lead in the given order, the rest keep theirs. */
+function orderBy(priority: string[]): NavItem[] {
+  return [...navItems].sort((a, b) => {
+    const ia = priority.indexOf(a.href);
+    const ib = priority.indexOf(b.href);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return 0;
+  });
+}
+
+const sidebarNavItems = orderBy(SIDEBAR_PRIORITY);
+const mobileNavItems = orderBy(MOBILE_PRIORITY);
 
 function isActive(pathname: string, href: string) {
   return pathname === href || (href !== "/admin" && pathname.startsWith(href));
@@ -151,7 +166,7 @@ export default function AdminNav() {
         <div className="border-t border-hairline-inverse-soft my-4" />
 
         <nav className="flex-1 space-y-0.5">
-          {navItems.map((item) => {
+          {sidebarNavItems.map((item) => {
             const active = isActive(pathname, item.href);
             return (
               <Link
