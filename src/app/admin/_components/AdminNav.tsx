@@ -44,6 +44,33 @@ const navItems: NavItem[] = [
   { label: "Admin Users", href: "/admin/users", icon: Lock },
 ];
 
+/**
+ * Mobile bottom bar order — most-used first.
+ *
+ * The bar scrolls horizontally, so whatever sits in the first few slots is what
+ * you can reach without swiping. That's a different priority from the desktop
+ * sidebar, which shows everything at once and reads better grouped logically —
+ * so the two orders are deliberately separate.
+ *
+ * Anything not listed here keeps its sidebar order and follows on behind.
+ */
+const MOBILE_PRIORITY = [
+  "/admin/brokers",
+  "/admin/assistants",
+  "/admin/listings",
+  "/admin/metrics",
+  "/admin/emails",
+];
+
+const mobileNavItems = [...navItems].sort((a, b) => {
+  const ia = MOBILE_PRIORITY.indexOf(a.href);
+  const ib = MOBILE_PRIORITY.indexOf(b.href);
+  if (ia !== -1 && ib !== -1) return ia - ib;
+  if (ia !== -1) return -1;
+  if (ib !== -1) return 1;
+  return 0; // stable: everything else keeps the sidebar order
+});
+
 function isActive(pathname: string, href: string) {
   return pathname === href || (href !== "/admin" && pathname.startsWith(href));
 }
@@ -80,19 +107,19 @@ export default function AdminNav() {
 
       {/* Mobile bottom tab bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch overflow-x-auto">
-        {navItems.map((item) => {
+        {mobileNavItems.map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex-1 min-w-[4.5rem] flex flex-col items-center justify-center py-3 gap-1.5 transition-colors duration-base ease-quiet ${
+              className={`relative flex-1 min-w-[5rem] flex flex-col items-center justify-center py-3.5 gap-1.5 transition-colors duration-base ease-quiet ${
                 active ? "text-white" : "text-ink-400"
               }`}
             >
               {active && <span aria-hidden className="absolute top-0 inset-x-2 h-0.5 bg-accent-500" />}
-              <item.icon size={24} strokeWidth={active ? 2 : 1.75} aria-hidden />
-              <span className="text-[11px] font-medium leading-none">{item.label.split(" ")[0]}</span>
+              <item.icon size={28} strokeWidth={active ? 2 : 1.75} aria-hidden />
+              <span className="text-[11.5px] font-medium leading-none">{item.label.split(" ")[0]}</span>
             </Link>
           );
         })}
