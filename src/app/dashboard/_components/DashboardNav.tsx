@@ -120,7 +120,11 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
       <div className="md:hidden h-12" />
 
       {/* Desktop sidebar */}
-      <aside className="hidden md:flex flex-col w-60 bg-ink-950 border-r border-hairline-inverse-soft min-h-screen px-4 py-7">
+      {/* Desktop sidebar — pinned. `self-start` stops the flex parent stretching
+          it to full page height (a full-height element has nothing to stick to),
+          `h-screen` holds it to the viewport, and `overflow-y-auto` lets the nav
+          scroll on its own if the list outgrows a short window. */}
+      <aside className="hidden md:flex flex-col w-60 shrink-0 bg-ink-950 border-r border-hairline-inverse-soft sticky top-0 self-start h-screen overflow-y-auto px-4 py-7">
         {/* Wordmark lockup — thin, wide-tracked, hairline rule, small caps */}
         <div className="mb-9 px-3 pt-1">
           <span className="block text-white text-[0.9375rem] font-light uppercase tracking-caps-wide leading-none">
