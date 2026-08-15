@@ -1060,7 +1060,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     }
                   >
                     {photo.url ? (
-                      <OrientedThumbnail url={photo.url} filename={photo.filename} />
+                      <OrientedThumbnail url={`/api/thumb/${photo.id}?w=400`} filename={photo.filename} />
                     ) : (
                       <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
                     )}
@@ -1294,7 +1294,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             {photos.map((p, i) => (
               <button key={p.id} onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
                 style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid var(--accent)" : "none" }}>
-                {p.url && <img src={p.url} alt="" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />}
+                {/* Filmstrip is 56px wide — the smallest transform is plenty. */}
+                <img src={`/api/thumb/${p.id}?w=200`} alt="" loading="lazy" decoding="async" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />
               </button>
             ))}
           </div>

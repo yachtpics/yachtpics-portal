@@ -2048,7 +2048,10 @@ function SortablePhotoCard({
               {!imgLoaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={photo.url}
+                // Resized thumbnail, not the full-size original. The originals
+                // average ~2 MB; a 200-photo listing was pulling ~420 MB to draw
+                // a grid. The lightbox and downloads still use photo.url.
+                src={`/api/thumb/${photo.id}?w=400`}
                 alt={photo.filename ?? ""}
                 loading={index < 4 ? "eager" : "lazy"}
                 decoding="async"
