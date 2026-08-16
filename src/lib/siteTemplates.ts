@@ -128,6 +128,16 @@ export type BoatPageData = {
   brokerEmail: string | null;
   brokerPhone: string | null;
   photos: string[];
+  /** Video published to the public site. Empty for photo-only boats. */
+  videos: SiteVideo[];
+};
+
+/** One video on a boat page, already copied to the public media host. */
+export type SiteVideo = {
+  url: string;
+  /** Still captured at upload time, shown before play instead of a black box. */
+  poster: string | null;
+  filename: string | null;
 };
 
 /** One boat: the portal slideshow, rendered static, inside the website's chrome. */
@@ -166,19 +176,73 @@ export function boatPage(d: BoatPageData): string {
     `exterior profiles, deck spaces, the helm and flybridge, salon, galley and staterooms — ` +
     `captured to brokerage marketing standard by YachtPics, yacht photography specialists.`;
 
+  // Video is worth saying out loud in the page text — it's a differentiator for
+  // the broker and it gives the page something to be indexed on beyond photos.
+  const hasVideo = d.videos.length > 0;
+  const hasPhotos = nPhotos > 0;
+  const videoLine = hasVideo
+    ? `A full walkthrough video of ${d.vesselName} is included on this page.`
+    : "";
+  const pageText = hasPhotos ? (hasVideo ? `${bodyText} ${videoLine}` : bodyText) : videoLine
+    ? `YachtPics produced professional video of ${d.vesselName}` +
+      (nameish ? `, ${nameish}` : "") +
+      (d.location ? ` based in ${d.location}` : "") +
+      `, listed for sale with ${d.brokerageName}. ${videoLine}`
+    : bodyText;
+
   const title = `${d.label} — ${d.brokerageName} | YachtPics`;
-  const description = bodyText.length > 155 ? bodyText.slice(0, 152).trimEnd() + "…" : bodyText;
+  const description = pageText.length > 155 ? pageText.slice(0, 152).trimEnd() + "…" : pageText;
+
+  const pageUrl = `${SITE}/${d.sitePage}/${d.slug}/index.html`;
 
   const ld = {
     "@context": "https://schema.org",
     "@type": "ImageGallery",
     name: `${d.label} — ${d.brokerageName}`,
-    description: bodyText,
-    url: `${SITE}/${d.sitePage}/${d.slug}/index.html`,
+    description: pageText,
+    url: pageUrl,
     provider: { "@type": "Organization", name: "YachtPics", url: SITE },
     image: d.photos,
   };
-  const ldScript = `<script type="application/ld+json">${JSON.stringify(ld)}</script>`;
+
+  // A separate VideoObject per video. This is what lets Google show the page as
+  // a video result — a real second route in, which matters given how many boat
+  // pages sit crawled-but-not-indexed on photos alone.
+  const videoLd = d.videos.map((v) => ({
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    name: `${d.label} — walkthrough video`,
+    description: pageText,
+    contentUrl: v.url,
+    ...(v.poster ? { thumbnailUrl: [v.poster] } : {}),
+    uploadDate: new Date().toISOString().slice(0, 10),
+    embedUrl: pageUrl,
+  }));
+
+  const ldScript = [ld, ...videoLd]
+    .map((o) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`)
+    .join("\n");
+
+  // Video sits above the photographs: it's the thing a broker most wants seen,
+  // and on a video-only boat it's the whole page.
+  //
+  // preload="none" is deliberate — without it every visitor downloads the start
+  // of a 300MB file whether or not they press play. The poster frame carries the
+  // page until they do.
+  const videoBlock = hasVideo
+    ? `<section style="padding:40px 0 ${hasPhotos ? "8px" : "24px"}">
+    <div class="wrap">
+      ${d.videos
+        .map(
+          (v) => `<video class="yp-video" controls preload="none" playsinline${v.poster ? ` poster="${v.poster}"` : ""}>
+        <source src="${v.url}" type="video/mp4">
+        Your browser can't play this video. <a href="${v.url}">Download it instead</a>.
+      </video>`
+        )
+        .join("\n      ")}
+    </div>
+  </section>`
+    : "";
 
   const thumbs = d.photos
     .map(
@@ -199,7 +263,9 @@ ${nav(2)}
     </div>
   </div>
 
-  <section style="padding:40px 0 24px">
+  ${videoBlock}
+
+  ${hasPhotos ? `<section style="padding:40px 0 24px">
     <div class="wrap">
       <div class="yp-stage" id="ypStage">
         <img class="yp-layer" id="ypA" alt="${esc(d.vesselName)} — yacht photography by YachtPics" decoding="sync">
@@ -220,7 +286,7 @@ ${nav(2)}
       </div>
       <div class="yp-thumbs" id="ypThumbs" hidden>${thumbs}</div>
     </div>
-  </section>
+  </section>` : ""}
 
   <section style="padding:0 0 96px">
     <div class="wrap">
@@ -249,6 +315,8 @@ ${nav(2)}
 </main>
 
 <style>
+.yp-video{width:100%;max-height:min(74vh,760px);background:#0c1420;display:block;box-shadow:0 1px 2px rgba(12,20,32,.10),0 8px 24px rgba(12,20,32,.14),0 24px 60px rgba(12,20,32,.10)}
+.yp-video + .yp-video{margin-top:16px}
 .yp-stage{position:relative;height:min(74vh,760px);background:var(--paper);overflow:hidden;display:flex;align-items:center;justify-content:center}
 .yp-layer{position:absolute;inset:0;margin:auto;max-width:calc(100% - 24px);max-height:calc(100% - 24px);width:auto;height:auto;object-fit:contain;opacity:0;box-shadow:0 1px 2px rgba(12,20,32,.10),0 8px 24px rgba(12,20,32,.14),0 24px 60px rgba(12,20,32,.10)}
 .yp-arrow{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--white);color:var(--ink);font-size:24px;line-height:1;cursor:pointer;transition:background .2s}

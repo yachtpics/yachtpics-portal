@@ -1,18 +1,88 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
-import { includesPhotos, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
+import { includesPhotos, includesVideo, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
+import { r2Configured, r2Exists, r2Put, r2PublicUrl } from "@/lib/r2";
+import type { SiteVideo } from "@/lib/siteTemplates";
 
 /**
  * Is the media host that serves public video configured yet?
  *
- * Video for the website is going to Cloudflare R2 rather than Supabase —
- * bandwidth on R2 is free, which matters when a boat page streams a 300MB clip
- * to anyone who lands on it. Until those credentials exist, video simply isn't
- * published and pages fall back to photos.
+ * Video for the website goes to Cloudflare R2 rather than Supabase — bandwidth
+ * on R2 is free, which matters when a boat page streams a 300MB clip to anyone
+ * who lands on it. Until those credentials exist, video isn't published and
+ * pages fall back to photos.
  */
 function videoPublishReady(): boolean {
-  return Boolean(process.env.R2_PUBLIC_BASE_URL && process.env.R2_ACCESS_KEY_ID);
+  return r2Configured();
+}
+
+/**
+ * Copy a listing's videos to the public media host and return their URLs.
+ *
+ * ONLY videos on a boat being published reach this bucket — it is world
+ * readable, so nothing lands there that hasn't been deliberately put on the
+ * public website. Client video stays private in Supabase.
+ *
+ * `in_slideshow` is respected: a video hidden from the client slideshow is one
+ * we've been told not to show, and that judgement applies at least as strongly
+ * to a public web page.
+ *
+ * Keyed by video id, so re-publishing a boat doesn't re-upload anything and
+ * URLs stay stable for caching.
+ */
+async function syncVideos(listingId: string, sitePage: string, slug: string): Promise<SiteVideo[]> {
+  const svc = service();
+  const { data: rows } = await svc
+    .from("videos")
+    .select("id, storage_path, filename, thumbnail_path, in_slideshow, display_order, created_at")
+    .eq("listing_id", listingId)
+    .eq("in_slideshow", true)
+    .order("display_order", { ascending: true })
+    .order("created_at", { ascending: true });
+
+  if (!rows?.length) return [];
+
+  const out: SiteVideo[] = [];
+  for (const v of rows) {
+    const src = v.storage_path as string;
+    const ext = (src.split(".").pop() || "mp4").toLowerCase();
+    const key = `${sitePage}/${slug}/${v.id}.${ext}`;
+
+    try {
+      // Already there from a previous publish — the id-based key means the
+      // bytes can't be stale, so there's nothing to redo.
+      if (!(await r2Exists(key))) {
+        const { data: blob } = await svc.storage.from("listing-videos").download(src);
+        if (!blob) continue;
+        const bytes = Buffer.from(await blob.arrayBuffer());
+        await r2Put(key, bytes, ext === "mov" ? "video/quicktime" : "video/mp4");
+      }
+    } catch {
+      // One video failing shouldn't sink the whole page — publish the rest.
+      continue;
+    }
+
+    // The still we captured at upload time doubles as the video's poster frame,
+    // so the page shows the boat rather than a black rectangle before play.
+    let poster: string | null = null;
+    if (v.thumbnail_path) {
+      const posterKey = `${sitePage}/${slug}/poster-${v.id}.jpg`;
+      try {
+        if (!(await r2Exists(posterKey))) {
+          const { data: blob } = await svc.storage.from("listing-photos").download(v.thumbnail_path as string);
+          if (blob) await r2Put(posterKey, Buffer.from(await blob.arrayBuffer()), "image/jpeg");
+        }
+        poster = r2PublicUrl(posterKey);
+      } catch {
+        poster = null;
+      }
+    }
+
+    out.push({ url: r2PublicUrl(key), poster, filename: (v.filename as string) ?? null });
+  }
+
+  return out;
 }
 
 // Publishes a listing to yachtpics.com. Two independent vetoes apply, per the
@@ -362,12 +432,19 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   const media: SiteMedia = isSiteMedia(l.site_media) ? l.site_media : "photos";
   const wantsPhotos = includesPhotos(media) || !videoPublishReady();
 
+  const wantsVideo = includesVideo(media) && videoPublishReady();
+
   const photos = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug) : [];
-  if (photos.length === 0) {
+  const videos = wantsVideo ? await syncVideos(l.id, brokerage.site_page, slug) : [];
+
+  // A page has to have something on it. Photo-only boats fail as they always
+  // did; a video boat whose video didn't copy across says so plainly rather
+  // than shipping an empty page.
+  if (photos.length === 0 && videos.length === 0) {
     return {
       error: wantsPhotos
         ? "No visible photos to publish."
-        : "Nothing to publish — this boat is set to video only and video publishing isn't live yet.",
+        : "Nothing to publish — no video made it across to the media host.",
     };
   }
 
@@ -393,6 +470,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     brokerEmail: broker?.display_email ?? null,
     brokerPhone: broker?.phone ?? null,
     photos,
+    videos,
   };
 
   const files: SiteFile[] = [{ path: `${brokerage.site_page}/${slug}/index.html`, content: boatPage(data) }];
