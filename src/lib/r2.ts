@@ -1,4 +1,11 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  HeadObjectCommand,
+  GetObjectCommand,
+} from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 /**
  * Cloudflare R2 — where video for the public website lives.
@@ -84,5 +91,91 @@ export async function r2Exists(key: string): Promise<boolean> {
     return true;
   } catch {
     return false;
+  }
+}
+
+// ── Private video bucket ────────────────────────────────────────────────────
+//
+// A second bucket, deliberately NOT public. R2 makes a whole bucket public or
+// not — there is no per-file setting — so client video cannot share the bucket
+// the website serves from. Everything here is reached through short-lived
+// signed links, the same shape of protection Supabase gave us.
+
+export const R2_VIDEO_BUCKET = process.env.R2_VIDEO_BUCKET ?? "yachtpics-video";
+
+export function r2VideoConfigured(): boolean {
+  return Boolean(
+    process.env.R2_ACCOUNT_ID &&
+    process.env.R2_ACCESS_KEY_ID &&
+    process.env.R2_SECRET_ACCESS_KEY &&
+    process.env.R2_VIDEO_BUCKET
+  );
+}
+
+/**
+ * A temporary URL to read one private object.
+ *
+ * Six hours by default — long enough that a broker can start a large download
+ * and not have it die halfway, short enough that a link copied out of the page
+ * and forwarded on stops working. Matches the window the Supabase signed URLs
+ * already used, so nothing about the experience changes.
+ */
+export async function r2SignedGetUrl(
+  key: string,
+  opts: { expiresIn?: number; downloadAs?: string } = {}
+): Promise<string> {
+  const cmd = new GetObjectCommand({
+    Bucket: R2_VIDEO_BUCKET,
+    Key: key,
+    // Makes the browser save the file under its original name rather than the
+    // storage key, which is a timestamped path nobody wants on their desktop.
+    ...(opts.downloadAs
+      ? { ResponseContentDisposition: `attachment; filename="${opts.downloadAs.replace(/"/g, "")}"` }
+      : {}),
+  });
+  return getSignedUrl(r2(), cmd, { expiresIn: opts.expiresIn ?? 60 * 60 * 6 });
+}
+
+/**
+ * A temporary URL the browser can upload one file to.
+ *
+ * Uploads go straight from the broker's machine to Cloudflare. They must not
+ * pass through our server: these are hundreds of megabytes, and a serverless
+ * function has both a time limit and a request size limit that a 1.4GB drone
+ * clip would sail past.
+ */
+export async function r2SignedPutUrl(
+  key: string,
+  contentType: string,
+  expiresIn = 60 * 60 * 2
+): Promise<string> {
+  const cmd = new PutObjectCommand({
+    Bucket: R2_VIDEO_BUCKET,
+    Key: key,
+    ContentType: contentType,
+  });
+  return getSignedUrl(r2(), cmd, { expiresIn });
+}
+
+export async function r2VideoPut(key: string, body: Uint8Array | Buffer, contentType: string): Promise<void> {
+  await r2().send(new PutObjectCommand({
+    Bucket: R2_VIDEO_BUCKET,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+  }));
+}
+
+export async function r2VideoDelete(key: string): Promise<void> {
+  await r2().send(new DeleteObjectCommand({ Bucket: R2_VIDEO_BUCKET, Key: key }));
+}
+
+/** Size in bytes, or null if it isn't there. Used to verify a migrated copy. */
+export async function r2VideoSize(key: string): Promise<number | null> {
+  try {
+    const res = await r2().send(new HeadObjectCommand({ Bucket: R2_VIDEO_BUCKET, Key: key }));
+    return res.ContentLength ?? null;
+  } catch {
+    return null;
   }
 }

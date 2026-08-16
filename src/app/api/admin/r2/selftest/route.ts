@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { r2Configured, r2MissingConfig, r2Put, r2Delete, r2PublicUrl, R2_BUCKET } from "@/lib/r2";
+import {
+  r2Configured, r2MissingConfig, r2Put, r2Delete, r2PublicUrl, R2_BUCKET,
+  r2VideoConfigured, r2VideoPut, r2VideoDelete, r2SignedGetUrl, R2_VIDEO_BUCKET,
+} from "@/lib/r2";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -100,11 +103,90 @@ export async function GET() {
     });
   }
 
+  // 4. The private video bucket. Separate bucket, separate failure mode — most
+  // likely an API token still scoped to the public bucket only. Checked before
+  // any video is trusted to it.
+  const privateResult = await checkPrivateBucket();
+
   return NextResponse.json({
-    ok: true,
-    bucket: R2_BUCKET,
-    publicBase: r2PublicUrl("").replace(/\/$/, ""),
-    cleaned,
-    message: "R2 is working — wrote a file, served it over the custom domain, and cleaned it up.",
+    ok: privateResult.ok,
+    publicBucket: { ok: true, bucket: R2_BUCKET, publicBase: r2PublicUrl("").replace(/\/$/, ""), cleaned },
+    privateBucket: privateResult,
+    message: privateResult.ok
+      ? "Both buckets are working — public serves over the custom domain, private signs temporary links."
+      : `The website bucket is fine. The private video bucket isn't ready: ${privateResult.detail}`,
   });
+}
+
+/**
+ * Write, read back through a signed link, and delete — in the private bucket.
+ *
+ * Deliberately fetches through the signed URL rather than the API: that is how
+ * a broker's browser will actually reach a video, so it's what needs proving.
+ */
+async function checkPrivateBucket(): Promise<{ ok: boolean; bucket?: string; detail?: string; hint?: string }> {
+  if (!r2VideoConfigured()) {
+    return {
+      ok: false,
+      detail: "R2_VIDEO_BUCKET isn't set.",
+      hint: "Add it in Vercel and redeploy.",
+    };
+  }
+
+  const key = `_selftest/${Date.now()}.txt`;
+  const body = `yachtpics private selftest ${new Date().toISOString()}`;
+
+  try {
+    await r2VideoPut(key, Buffer.from(body, "utf8"), "text/plain; charset=utf-8");
+  } catch (e) {
+    return {
+      ok: false,
+      bucket: R2_VIDEO_BUCKET,
+      detail: e instanceof Error ? e.message : String(e),
+      hint: "Most likely the API token is still scoped to the website bucket only, or the bucket name doesn't match.",
+    };
+  }
+
+  try {
+    const url = await r2SignedGetUrl(key, { expiresIn: 120 });
+    const res = await fetch(url, { cache: "no-store" });
+    const text = res.ok ? await res.text() : "";
+    if (!res.ok || text.trim() !== body) {
+      await r2VideoDelete(key).catch(() => {});
+      return {
+        ok: false,
+        bucket: R2_VIDEO_BUCKET,
+        detail: `Signed link returned ${res.status} and didn't match what was written.`,
+      };
+    }
+  } catch (e) {
+    await r2VideoDelete(key).catch(() => {});
+    return { ok: false, bucket: R2_VIDEO_BUCKET, detail: e instanceof Error ? e.message : String(e) };
+  }
+
+  // It must NOT be reachable without a signature — that's the whole reason this
+  // bucket is separate. A public private-bucket would be worse than no move.
+  let publiclyExposed = false;
+  const base = process.env.R2_PUBLIC_BASE_URL;
+  if (base) {
+    try {
+      const res = await fetch(`${base.replace(/\/+$/, "")}/${key}`, { cache: "no-store" });
+      publiclyExposed = res.ok;
+    } catch {
+      publiclyExposed = false;
+    }
+  }
+
+  await r2VideoDelete(key).catch(() => {});
+
+  if (publiclyExposed) {
+    return {
+      ok: false,
+      bucket: R2_VIDEO_BUCKET,
+      detail: "The private bucket answered over the public domain — it isn't private.",
+      hint: "Check that no custom domain or public access is enabled on the video bucket.",
+    };
+  }
+
+  return { ok: true, bucket: R2_VIDEO_BUCKET };
 }
