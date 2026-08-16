@@ -310,6 +310,14 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         {/* "fit" floats the whole print on the paper with its shadow; "fill" stays a
             flush edge-to-edge crop. Same hero_fit convention as the flyer. */}
         <div className="relative w-24 sm:w-32 shrink-0 self-stretch min-h-[4.5rem] bg-ink-50 border-r border-hairline overflow-hidden flex items-center justify-center p-1">
+          {/* Nothing to show at all — no photos, and no video still (an older
+              video, or one the browser couldn't decode). A film icon reads
+              better than an empty grey box. */}
+          {!heroUrl && (
+            <svg className="w-7 h-7 text-ink-300" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+            </svg>
+          )}
           {heroUrl && (
             // Signed URL — raw <img> on purpose (never next/image).
             // eslint-disable-next-line @next/next/no-img-element

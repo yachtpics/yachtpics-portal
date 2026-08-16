@@ -5,9 +5,12 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 
 export async function POST(req: NextRequest) {
   try {
-    const { videoId, storagePath } = await req.json();
-    if (!videoId || !storagePath) {
-      return NextResponse.json({ error: "Missing videoId or storagePath" }, { status: 400 });
+    // storagePath is still accepted for compatibility with callers that send
+    // it, but is deliberately ignored — the row is the authority on where the
+    // file actually lives.
+    const { videoId } = await req.json();
+    if (!videoId) {
+      return NextResponse.json({ error: "Missing videoId" }, { status: 400 });
     }
 
     const supabaseUser = await createServerClient();
@@ -22,7 +25,7 @@ export async function POST(req: NextRequest) {
 
     const { data: video } = await supabaseAdmin
       .from("videos")
-      .select("id, listing_id")
+      .select("id, listing_id, storage_path, thumbnail_path")
       .eq("id", videoId)
       .single();
 
@@ -32,7 +35,19 @@ export async function POST(req: NextRequest) {
     const access = await assertListingAccess(supabaseAdmin, video.listing_id, user.id);
     if (access instanceof NextResponse) return access;
 
-    await supabaseAdmin.storage.from("listing-videos").remove([storagePath]);
+    // Delete the path recorded against the row, NOT the one the caller sent.
+    // Access is checked per listing, but the path arrived in the request body
+    // and this runs with the service role — so a caller entitled to delete one
+    // video could have named any file in the bucket and had it removed.
+    await supabaseAdmin.storage.from("listing-videos").remove([video.storage_path]);
+
+    // The still captured from this video lives in the photos bucket. Remove it
+    // too — it's useless without the video, and orphaned files would quietly
+    // accumulate against the storage bill.
+    if (video.thumbnail_path) {
+      await supabaseAdmin.storage.from("listing-photos").remove([video.thumbnail_path]);
+    }
+
     const { error: dbError } = await supabaseAdmin
       .from("videos")
       .delete()

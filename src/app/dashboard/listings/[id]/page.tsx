@@ -23,6 +23,7 @@ import ContentRightsModal from "@/components/ContentRightsModal";
 import ListingQRCode from "@/components/ListingQRCode";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 import ListingSkeleton from "./_components/ListingSkeleton";
+import { uploadListingVideo } from "@/lib/uploadListingVideo";
 
 interface Photo {
   id: string;
@@ -173,6 +174,10 @@ export default function BrokerListingPage() {
   const [uploadingDoc, setUploadingDoc] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [videoDeleteError, setVideoDeleteError] = useState<string | null>(null);
+  const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  // Who owns this listing — video files are stored under their folder rather
+  // than the uploader's, so an assistant's uploads stay with the broker's media.
+  const [listingBrokerId, setListingBrokerId] = useState<string | null>(null);
   const [deletingDocIds, setDeletingDocIds] = useState<Set<string>>(new Set());
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
@@ -348,6 +353,7 @@ export default function BrokerListingPage() {
 
     const photos_raw = p ?? [];
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
+    setListingBrokerId(brokerId);
 
     // Wave 2 — the three reads that needed a result from wave 1.
     // The subscription lookup goes through the API (service role) so RLS
@@ -729,53 +735,57 @@ export default function BrokerListingPage() {
   async function handleVideoFiles(files: FileList | null) {
     if (!files) return;
     const { data: { user } } = await supabase.auth.getUser();
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!user || !session) return;
+    if (!user) return;
     setUploadingVideo(true);
     setVideoUploadProgress(0);
+    setVideoUploadError(null);
     const fileArr = Array.from(files).filter(f =>
       f.type === "video/mp4" || f.type === "video/quicktime" ||
       f.name.toLowerCase().endsWith(".mp4") || f.name.toLowerCase().endsWith(".mov")
     );
     if (fileArr.length === 0) { setUploadingVideo(false); return; }
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+
+    // Shared with both create forms (see uploadListingVideo), so a video added
+    // here behaves identically to one added when the listing was made — same
+    // storage layout, same progress reporting, and it captures a still frame
+    // for use as the listing's cover when there are no photos.
+    const failures: string[] = [];
     for (let i = 0; i < fileArr.length; i++) {
-      const file = fileArr[i];
-      const path = `${user.id}/${id}/${Date.now()}-${file.name}`;
-      // Use XHR so we get real byte-level upload progress (fetch has no progress API)
-      const ok = await new Promise<boolean>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const base = (i / fileArr.length) * 100;
-            const slice = (e.loaded / e.total) * (100 / fileArr.length);
-            setVideoUploadProgress(Math.round(base + slice));
-          }
-        };
-        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
-        xhr.onerror = () => resolve(false);
-        xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
-        xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-        xhr.setRequestHeader("cache-control", "max-age=3600");
-        xhr.setRequestHeader("content-type", file.type || "video/mp4");
-        xhr.send(file);
+      const result = await uploadListingVideo({
+        supabase,
+        file: fileArr[i],
+        listingId: id,
+        // Files sit under the listing owner's folder, not the uploader's, so an
+        // assistant's uploads stay filed with the rest of the broker's media.
+        pathOwnerId: listingBrokerId ?? user.id,
+        uploadedBy: user.id,
+        displayOrder: videos.length + i,
+        onProgress: (pct) => {
+          const base = (i / fileArr.length) * 100;
+          setVideoUploadProgress(Math.round(base + (pct / fileArr.length)));
+        },
       });
-      if (ok) {
-        const { data: newVideo } = await supabase.from("videos").insert({
-          listing_id: id,
-          storage_path: path,
-          filename: file.name,
-          uploaded_by: user.id,
-          display_order: videos.length + i,
-        }).select().single();
-        if (newVideo) {
-          const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
-          setVideos(prev => [...prev, { ...newVideo, url: signed?.signedUrl ?? null }]);
-        }
+
+      if (result.ok) {
+        const { data: signed } = await supabase.storage
+          .from("listing-videos")
+          .createSignedUrl(result.video.storage_path, 3600);
+        setVideos(prev => [...prev, { ...result.video, url: signed?.signedUrl ?? null }]);
+      } else {
+        // Previously a failed upload still drove the bar to 100% and simply
+        // left the video missing, with nothing said.
+        failures.push(`${fileArr[i].name} — ${result.error}`);
       }
       setVideoUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
     }
     setUploadingVideo(false);
+    if (failures.length > 0) {
+      setVideoUploadError(
+        failures.length === 1
+          ? `Couldn't upload ${failures[0]}`
+          : `${failures.length} videos didn't upload:\n${failures.join("\n")}`
+      );
+    }
   }
 
   async function deleteVideo(videoId: string, storagePath: string) {
@@ -1595,6 +1605,13 @@ export default function BrokerListingPage() {
           <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
             <span>{videoDeleteError}</span>
             <button onClick={() => setVideoDeleteError(null)} className="shrink-0 font-bold text-danger-600 hover:text-danger-700" aria-label="Dismiss">×</button>
+          </div>
+        )}
+
+        {videoUploadError && (
+          <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
+            <span className="whitespace-pre-line">{videoUploadError}</span>
+            <button onClick={() => setVideoUploadError(null)} className="shrink-0 font-bold text-danger-600 hover:text-danger-700" aria-label="Dismiss">×</button>
           </div>
         )}
 

@@ -3,8 +3,10 @@
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
+import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
 
 interface Broker {
   id: string;
@@ -24,6 +26,9 @@ export default function NewListingPage() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  // Set when the listing was created but a video failed, so there's still a
+  // way through to it rather than being stranded on the form.
+  const [createdListingId, setCreatedListingId] = useState<string | null>(null);
 
   const [customVesselType, setCustomVesselType] = useState(false);
   const [form, setForm] = useState({
@@ -43,6 +48,30 @@ export default function NewListingPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Video. Independent of photos — a listing may be video only.
+  const [videoFiles, setVideoFiles] = useState<File[]>([]);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoIndex, setVideoIndex] = useState(0);
+  const [videoRejected, setVideoRejected] = useState("");
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
+  function handleVideoFiles(files: FileList | null) {
+    if (!files) return;
+    const all = Array.from(files);
+    const ok = all.filter(isSupportedVideo);
+    setVideoRejected(
+      ok.length < all.length
+        ? `${all.length - ok.length} file${all.length - ok.length !== 1 ? "s" : ""} skipped — only .mp4 and .mov can be played in a browser.`
+        : ""
+    );
+    setVideoFiles((prev) => [...prev, ...ok]);
+  }
+
+  function removeVideo(index: number) {
+    setVideoFiles((prev) => prev.filter((_, i) => i !== index));
+  }
 
   useEffect(() => {
     supabase
@@ -131,8 +160,45 @@ export default function NewListingPage() {
       setUploading(false);
     }
 
-    // 3. If coming from broker invite flow and photos were uploaded, auto-notify broker
-    if (fromInvite && photos.length > 0) {
+    // 3. Videos — after the photos, since they're far larger and this way the
+    // quick part of the job is already saved. Files live under the broker's id,
+    // matching the photos above, even though an admin is doing the uploading.
+    if (videoFiles.length > 0) {
+      setUploadingVideo(true);
+      const { data: { user } } = await supabase.auth.getUser();
+      const failures: string[] = [];
+      if (user) {
+        for (let i = 0; i < videoFiles.length; i++) {
+          setVideoIndex(i);
+          setVideoProgress(0);
+          const result = await uploadListingVideo({
+            supabase,
+            file: videoFiles[i],
+            listingId: listing.id,
+            pathOwnerId: form.broker_id,
+            uploadedBy: user.id,
+            displayOrder: i,
+            onProgress: setVideoProgress,
+          });
+          if (!result.ok) failures.push(`${videoFiles[i].name} — ${result.error}`);
+        }
+      }
+      setUploadingVideo(false);
+
+      // Listing and photos are saved. Don't redirect as though everything
+      // worked — say what didn't, and offer the way through.
+      if (failures.length > 0) {
+        setError(
+          `The listing was created, but ${failures.length === 1 ? "this video didn't upload" : "these videos didn't upload"}:\n${failures.join("\n")}`
+        );
+        setSaving(false);
+        setCreatedListingId(listing.id);
+        return;
+      }
+    }
+
+    // 4. If coming from broker invite flow and media was uploaded, auto-notify broker
+    if (fromInvite && (photos.length > 0 || videoFiles.length > 0)) {
       await fetch("/api/email/notify-broker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -143,6 +209,12 @@ export default function NewListingPage() {
       router.push(`/admin/listings/${listing.id}`);
     }
   }
+
+  // Names whatever is actually attached, so it's clear the video is included.
+  const attachedLabel = [
+    photos.length > 0 ? `${photos.length} photo${photos.length !== 1 ? "s" : ""}` : null,
+    videoFiles.length > 0 ? `${videoFiles.length} video${videoFiles.length !== 1 ? "s" : ""}` : null,
+  ].filter(Boolean).join(" + ");
 
   const inputClass = "w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-400 rounded-ctl px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500 transition-colors duration-fast ease-quiet";
   const labelClass = "block label-caps mb-1.5";
@@ -177,7 +249,17 @@ export default function NewListingPage() {
       )}
 
       {error && (
-        <div className="mb-6 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-600">{error}</div>
+        <div className="mb-6 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-600">
+          <p className="whitespace-pre-line">{error}</p>
+          {createdListingId && (
+            <Link
+              href={`/admin/listings/${createdListingId}`}
+              className="mt-2 inline-block font-semibold underline underline-offset-2 hover:text-danger-700"
+            >
+              Go to the listing →
+            </Link>
+          )}
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -364,6 +446,68 @@ export default function NewListingPage() {
           )}
         </section>
 
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-1">Video</h2>
+          <p className="text-ink-500 text-sm mb-4">
+            Optional, and independent of photos — a listing can be video only.
+          </p>
+
+          <div
+            onClick={() => videoInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleVideoFiles(e.dataTransfer.files); }}
+            className="border-2 border-dashed border-hairline-strong rounded-card p-8 text-center cursor-pointer hover:border-accent-500 transition-colors duration-fast ease-quiet mb-4"
+          >
+            <p className="text-ink-500 text-sm">Click or drag video here</p>
+            <p className="text-ink-400 text-xs mt-1">MP4 or MOV</p>
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept={VIDEO_ACCEPT}
+              multiple
+              className="hidden"
+              onChange={(e) => handleVideoFiles(e.target.files)}
+            />
+          </div>
+
+          {videoRejected && <p className="text-xs text-warn-700 mb-3">{videoRejected}</p>}
+
+          {videoFiles.length > 0 && (
+            <ul className="space-y-2">
+              {videoFiles.map((file, i) => (
+                <li key={i} className="flex items-center gap-3 border border-hairline rounded-ctl px-3 py-2.5">
+                  <svg className="w-4 h-4 text-ink-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                    <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                  </svg>
+                  <span className="text-sm text-ink-900 truncate flex-1 min-w-0">{file.name}</span>
+                  <span className="text-xs text-ink-400 shrink-0 tabular-nums">{formatFileSize(file.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeVideo(i)}
+                    className="text-ink-400 hover:text-danger-600 transition-colors duration-fast shrink-0 w-5 h-5 flex items-center justify-center"
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {uploadingVideo && (
+            <div className="mt-4">
+              <div className="flex justify-between text-xs text-ink-500 mb-1">
+                <span>Uploading video{videoFiles.length > 1 ? ` ${videoIndex + 1} of ${videoFiles.length}` : ""}…</span>
+                <span className="tabular-nums">{videoProgress}%</span>
+              </div>
+              <div className="bg-ink-100 rounded-full h-2">
+                <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${videoProgress}%` }} />
+              </div>
+              <p className="text-xs text-ink-400 mt-1.5">Keep this page open until it finishes.</p>
+            </div>
+          )}
+        </section>
+
         <div className="flex justify-end gap-3">
           <button
             type="button"
@@ -378,10 +522,10 @@ export default function NewListingPage() {
             className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm"
           >
             {saving
-              ? (fromInvite ? "Saving & notifying broker…" : "Creating...")
+              ? (fromInvite ? "Saving & notifying broker…" : "Creating…")
               : fromInvite
-                ? `Save & Notify Broker${photos.length > 0 ? ` (${photos.length} photo${photos.length !== 1 ? "s" : ""})` : ""}`
-                : `Create Listing${photos.length > 0 ? ` & Upload ${photos.length} Photo${photos.length !== 1 ? "s" : ""}` : ""}`}
+                ? `Save & Notify Broker${attachedLabel ? ` (${attachedLabel})` : ""}`
+                : `Create Listing${attachedLabel ? ` & Upload ${attachedLabel}` : ""}`}
           </button>
         </div>
       </form>
