@@ -24,6 +24,7 @@ import ListingQRCode from "@/components/ListingQRCode";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 import ListingSkeleton from "./_components/ListingSkeleton";
 import { uploadListingVideo } from "@/lib/uploadListingVideo";
+import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 
 interface Photo {
   id: string;
@@ -74,6 +75,12 @@ export default function BrokerListingPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  // Pending destructive actions, held until confirmed. Deleting media here is
+  // permanent — the file leaves storage — so nothing irreversible happens on a
+  // single click.
+  const [pendingVideoDelete, setPendingVideoDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
+  const [pendingDocDelete, setPendingDocDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkCategorizing, setBulkCategorizing] = useState(false);
@@ -1178,7 +1185,7 @@ export default function BrokerListingPage() {
                     {downloading ? `Zipping... ${downloadProgress}%` : `Download ${selectedIds.size}`}
                   </button>
                   <button
-                    onClick={deleteSelected}
+                    onClick={() => setConfirmDeleteSelected(true)}
                     disabled={deleting}
                     className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
                   >
@@ -1548,6 +1555,59 @@ export default function BrokerListingPage() {
         window.document.body
       )}
 
+      {/* Deleting media is permanent — the file leaves storage entirely. Each
+          of these names what's going and says so, rather than a bare
+          "Are you sure?" that people learn to click straight through. */}
+      <ConfirmDeleteDialog
+        open={pendingVideoDelete !== null}
+        title="Delete this video?"
+        body={
+          <>
+            <span className="font-medium text-ink-700 break-all">{pendingVideoDelete?.name}</span> will be
+            permanently removed from this listing. This can&apos;t be undone, and anyone you&apos;ve already
+            sent a video link to will no longer be able to download it.
+          </>
+        }
+        confirmLabel="Delete video"
+        busy={pendingVideoDelete ? deletingVideoIds.has(pendingVideoDelete.id) : false}
+        onCancel={() => setPendingVideoDelete(null)}
+        onConfirm={() => {
+          if (!pendingVideoDelete) return;
+          const target = pendingVideoDelete;
+          setPendingVideoDelete(null);
+          deleteVideo(target.id, target.storagePath);
+        }}
+      />
+
+      <ConfirmDeleteDialog
+        open={pendingDocDelete !== null}
+        title="Delete this document?"
+        body={
+          <>
+            <span className="font-medium text-ink-700 break-all">{pendingDocDelete?.name}</span> will be
+            permanently removed from this listing. This can&apos;t be undone.
+          </>
+        }
+        confirmLabel="Delete document"
+        onCancel={() => setPendingDocDelete(null)}
+        onConfirm={() => {
+          if (!pendingDocDelete) return;
+          const target = pendingDocDelete;
+          setPendingDocDelete(null);
+          deleteDocument(target.id, target.storagePath);
+        }}
+      />
+
+      <ConfirmDeleteDialog
+        open={confirmDeleteSelected}
+        title={`Delete ${selectedIds.size} photo${selectedIds.size !== 1 ? "s" : ""}?`}
+        body="These photos will be permanently removed from this listing. This can't be undone."
+        confirmLabel={`Delete ${selectedIds.size}`}
+        busy={deleting}
+        onCancel={() => setConfirmDeleteSelected(false)}
+        onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected(); }}
+      />
+
       {/* Delete All confirmation dialog */}
       {confirmDeleteAll && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
@@ -1662,7 +1722,11 @@ export default function BrokerListingPage() {
                     Download
                   </button>
                   <button
-                    onClick={() => deleteVideo(video.id, video.storage_path)}
+                    onClick={() => setPendingVideoDelete({
+                      id: video.id,
+                      storagePath: video.storage_path,
+                      name: video.filename ?? "this video",
+                    })}
                     className="text-xs font-medium text-danger-500 hover:text-danger-600 transition-colors shrink-0"
                   >
                     Delete
@@ -1875,7 +1939,11 @@ export default function BrokerListingPage() {
                   Download
                 </button>
                 <button
-                  onClick={() => deleteDocument(doc.id, doc.storage_path)}
+                  onClick={() => setPendingDocDelete({
+                    id: doc.id,
+                    storagePath: doc.storage_path,
+                    name: doc.filename ?? "this document",
+                  })}
                   className="text-xs font-medium text-danger-500 hover:text-danger-600 transition-colors shrink-0"
                 >
                   Delete

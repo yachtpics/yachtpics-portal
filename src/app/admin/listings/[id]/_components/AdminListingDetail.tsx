@@ -8,6 +8,7 @@ import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { orderPhotos } from "@/lib/photoOrder";
+import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
 
@@ -126,6 +127,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+  // Held until confirmed — deleting media is permanent, so nothing irreversible
+  // happens on a single click.
+  const [pendingVideoDelete, setPendingVideoDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
+  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [bulkCategory, setBulkCategory] = useState("");
@@ -976,7 +981,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                       )}
                     </div>
                     <button
-                      onClick={deleteSelected}
+                      onClick={() => setConfirmDeleteSelected(true)}
                       disabled={deleting}
                       className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
                     >
@@ -1005,6 +1010,39 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
         </div>
+
+        {/* Deleting media is permanent — the file leaves storage entirely, so
+            these name what's going rather than asking a bare "Are you sure?". */}
+        <ConfirmDeleteDialog
+          open={pendingVideoDelete !== null}
+          title="Delete this video?"
+          body={
+            <>
+              <span className="font-medium text-ink-700 break-all">{pendingVideoDelete?.name}</span> will be
+              permanently removed from this listing. This can&apos;t be undone, and any video download link
+              already sent will no longer include it.
+            </>
+          }
+          confirmLabel="Delete video"
+          busy={pendingVideoDelete ? deletingVideoIds.has(pendingVideoDelete.id) : false}
+          onCancel={() => setPendingVideoDelete(null)}
+          onConfirm={() => {
+            if (!pendingVideoDelete) return;
+            const target = pendingVideoDelete;
+            setPendingVideoDelete(null);
+            deleteVideo(target.id, target.storagePath);
+          }}
+        />
+
+        <ConfirmDeleteDialog
+          open={confirmDeleteSelected}
+          title={`Delete ${selectedIds.size} photo${selectedIds.size !== 1 ? "s" : ""}?`}
+          body="These photos will be permanently removed from this listing. This can't be undone."
+          confirmLabel={`Delete ${selectedIds.size}`}
+          busy={deleting}
+          onCancel={() => setConfirmDeleteSelected(false)}
+          onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected(); }}
+        />
 
         {/* Delete All confirmation */}
         {confirmDeleteAll && (
@@ -1258,7 +1296,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     </p>
                   </div>
                   <button
-                    onClick={() => deleteVideo(video.id, video.storage_path)}
+                    onClick={() => setPendingVideoDelete({
+                      id: video.id,
+                      storagePath: video.storage_path,
+                      name: video.filename ?? "this video",
+                    })}
                     className="text-xs font-medium text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet shrink-0"
                   >
                     Delete
