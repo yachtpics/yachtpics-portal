@@ -9,6 +9,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { orderPhotos } from "@/lib/photoOrder";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
+import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
 
@@ -38,6 +39,7 @@ interface Listing {
   is_shared?: boolean | null;
   in_showcase?: boolean | null;
   publish_to_site?: boolean | null;
+  site_media?: string | null;
   site_page?: string | null;
   showcase_opt_out?: boolean | null;
   slideshow_slug?: string | null;
@@ -114,6 +116,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [showcaseBusy, setShowcaseBusy] = useState(false);
   const [onSite, setOnSite] = useState(listing.publish_to_site === true);
   const [siteBusy, setSiteBusy] = useState(false);
+  // What this boat shows on yachtpics.com. Separate from whether it's on the
+  // site at all, and separate from the videos' in_slideshow flag (which governs
+  // the client slideshow, not the public website).
+  const [siteMedia, setSiteMedia] = useState<SiteMedia>(
+    (listing.site_media as SiteMedia) ?? "photos"
+  );
+  const [siteMediaBusy, setSiteMediaBusy] = useState(false);
   const [sitePage, setSitePage] = useState(listing.site_page ?? "");
   const [pages, setPages] = useState(sitePages);
   const [slideshowPublished, setSlideshowPublished] = useState(listing.slideshow_published === true);
@@ -472,6 +481,41 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
+  /**
+   * Choose what this boat puts on the website: photos, video, or both.
+   *
+   * Saved immediately, but the live page only changes on the next publish —
+   * said plainly in the UI, because a setting that looks applied but isn't is
+   * exactly how a boat ends up on the site showing the wrong thing.
+   */
+  async function chooseSiteMedia(next: SiteMedia) {
+    if (next === siteMedia || siteMediaBusy) return;
+    const prev = siteMedia;
+    setSiteMedia(next); // optimistic
+    setSiteMediaBusy(true);
+    try {
+      const res = await fetch(`/api/admin/listings/${listing.id}/site-media`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ siteMedia: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error ?? "Failed");
+      setMessage(
+        onSite
+          ? `Saved — re-publish to update the live page.`
+          : `Saved.`
+      );
+      setTimeout(() => setMessage(""), 5000);
+    } catch (e) {
+      setSiteMedia(prev); // revert
+      setMessage(e instanceof Error ? e.message : "Couldn't save that.");
+      setTimeout(() => setMessage(""), 5000);
+    } finally {
+      setSiteMediaBusy(false);
+    }
+  }
+
   // Publish to yachtpics.com. Separate pipeline from Recently Photographed —
   // this one puts the boat on the public brokerage page with a portal slideshow.
   async function togglePublishSite() {
@@ -699,6 +743,43 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               )}
               {!sitePage && (
                 <span className="text-xs text-ink-400">Pick one to enable publishing.</span>
+              )}
+            </div>
+          )}
+
+          {/* What goes on the page. Only shown once a brokerage page is chosen,
+              since it's meaningless before that. Video options are disabled with
+              a reason when the boat has none, rather than silently doing
+              nothing. */}
+          {sitePage && (
+            <div className="mt-2 flex items-center gap-2 flex-wrap">
+              <span className="text-xs text-ink-400">Show on the page:</span>
+              <div className="inline-flex rounded-ctl border border-hairline-strong overflow-hidden">
+                {SITE_MEDIA_OPTIONS.map((opt) => {
+                  const needsVideo = opt.value !== "photos";
+                  const blocked = needsVideo && videos.length === 0;
+                  const active = siteMedia === opt.value;
+                  return (
+                    <button
+                      key={opt.value}
+                      onClick={() => chooseSiteMedia(opt.value)}
+                      disabled={siteMediaBusy || blocked}
+                      title={blocked ? "This boat has no video uploaded" : opt.title}
+                      className={`text-xs font-medium px-3 py-1.5 transition-colors duration-fast ease-quiet disabled:opacity-40 disabled:cursor-not-allowed ${
+                        active
+                          ? "bg-accent-500 text-ink-950"
+                          : "bg-white text-ink-600 hover:bg-ink-50"
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {onSite && (
+                <span className="text-xs text-ink-400">
+                  Re-publish to apply.
+                </span>
               )}
             </div>
           )}

@@ -1,6 +1,19 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
+import { includesPhotos, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
+
+/**
+ * Is the media host that serves public video configured yet?
+ *
+ * Video for the website is going to Cloudflare R2 rather than Supabase —
+ * bandwidth on R2 is free, which matters when a boat page streams a 300MB clip
+ * to anyone who lands on it. Until those credentials exist, video simply isn't
+ * published and pages fall back to photos.
+ */
+function videoPublishReady(): boolean {
+  return Boolean(process.env.R2_PUBLIC_BASE_URL && process.env.R2_ACCESS_KEY_ID);
+}
 
 // Publishes a listing to yachtpics.com. Two independent vetoes apply, per the
 // brief: ours (publish_to_site) and the broker's (showcase_opt_out — the
@@ -41,6 +54,7 @@ type ListingRow = {
   site_slug: string | null;
   hero_photo_id: string | null;
   photo_order_manual: boolean | null;
+  site_media: string | null;
   broker_id: string;
 };
 
@@ -290,7 +304,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   const { data: listing } = await svc
     .from("listings")
-    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, broker_id")
+    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, site_media, broker_id")
     .eq("id", listingId)
     .maybeSingle();
   if (!listing) return { error: "Listing not found" };
@@ -339,8 +353,23 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     };
   }
 
-  const photos = await syncPhotos(l, brokerage.site_page, slug);
-  if (photos.length === 0) return { error: "No visible photos to publish." };
+  // What this boat shows on the site: photos, video, or both.
+  //
+  // Video publishing isn't wired up yet (it waits on the R2 media host), so a
+  // "video" choice would otherwise render a page with nothing on it. Until then
+  // photos are included regardless, and the guard resolves itself the moment
+  // video publishing goes live — no second edit needed here.
+  const media: SiteMedia = isSiteMedia(l.site_media) ? l.site_media : "photos";
+  const wantsPhotos = includesPhotos(media) || !videoPublishReady();
+
+  const photos = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug) : [];
+  if (photos.length === 0) {
+    return {
+      error: wantsPhotos
+        ? "No visible photos to publish."
+        : "Nothing to publish — this boat is set to video only and video publishing isn't live yet.",
+    };
+  }
 
   // Persist the slug so the URL is stable even if the boat is renamed later.
   await svc
