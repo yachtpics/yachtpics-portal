@@ -218,6 +218,25 @@ export default function BrokerListingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Thumbnails are requested the instant the page mounts, alongside everything
+  // else — not after. Signing them server-side measured at ~855ms, and it used
+  // to start only once all the other loading had finished, so that time was
+  // added on the end rather than spent while the rest was already in flight.
+  // This only needs the listing id, which comes straight from the URL, so
+  // there is nothing for it to wait on.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/thumbs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: id, width: 400 }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (!cancelled && d?.urls) setThumbs(d.urls); })
+      .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
+    return () => { cancelled = true; };
+  }, [id]);
+
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (lightboxIndex === null) return;
@@ -259,7 +278,14 @@ export default function BrokerListingPage() {
    * second wave that also runs in parallel.
    */
   async function loadData() {
-    const { data: { user } } = await supabase.auth.getUser();
+    // getSession() reads the already-stored token locally. getUser() sends it
+    // to Supabase's auth server to be re-validated, which measured at ~460ms
+    // on a live load — and because it ran first, every query on the page sat
+    // waiting behind it. Nothing is loosened by this: row-level security still
+    // validates the token on the server for every single query below, so the
+    // browser's copy is only being used to know which id to ask about.
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
     if (!user) return;
 
     // Wave 1 — every independent read at once.
@@ -354,17 +380,6 @@ export default function BrokerListingPage() {
     }
 
     setLoading(false);
-
-    // Thumbnails are deliberately not awaited — the page is usable without
-    // them and each tile shows a skeleton until its resized url lands.
-    fetch("/api/thumbs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId: id, width: 400 }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.urls) setThumbs(d.urls); })
-      .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
   }
 
   async function handleDocFiles(files: FileList | null) {
