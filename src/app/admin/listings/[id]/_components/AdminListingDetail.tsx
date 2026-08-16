@@ -90,6 +90,20 @@ type Lead = { id: string; name: string | null; email: string | null; phone: stri
 export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
+  // Resized thumbnails keyed by photo id, signed once in the background. The
+  // grid shows the full-size original until they land, so nothing blocks.
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    fetch("/api/thumbs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: listing.id, width: 400 }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.urls) setThumbs(d.urls); })
+      .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
+  }, [listing.id]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(listing.status);
@@ -1060,7 +1074,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     }
                   >
                     {photo.url ? (
-                      <OrientedThumbnail url={`/api/thumb/${photo.id}?w=400`} filename={photo.filename} />
+                      <OrientedThumbnail url={thumbs[photo.id] ?? photo.url} filename={photo.filename} />
                     ) : (
                       <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
                     )}
@@ -1294,8 +1308,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             {photos.map((p, i) => (
               <button key={p.id} onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
                 style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid var(--accent)" : "none" }}>
-                {/* Filmstrip is 56px wide — the smallest transform is plenty. */}
-                <img src={`/api/thumb/${p.id}?w=200`} alt="" loading="lazy" decoding="async" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />
+                {/* Filmstrip renders at 56px — the resized version is plenty. */}
+                {(thumbs[p.id] ?? p.url) && (
+                  <img src={thumbs[p.id] ?? p.url!} alt="" loading="lazy" decoding="async" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />
+                )}
               </button>
             ))}
           </div>
@@ -1306,7 +1322,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   );
 }
 
-function OrientedThumbnail({ url, filename }: { url: string; filename: string | null }) {
+function OrientedThumbnail({ url, filename }: { url: string | null; filename: string | null }) {
   const [isVertical, setIsVertical] = useState(false);
   const ref = useRef<HTMLImageElement>(null);
 
@@ -1324,8 +1340,10 @@ function OrientedThumbnail({ url, filename }: { url: string; filename: string | 
     // eslint-disable-next-line @next/next/no-img-element
     <img
       ref={ref}
-      src={url}
+      src={url ?? undefined}
       alt={filename ?? ""}
+      loading="lazy"
+      decoding="async"
       onLoad={(e) => {
         const img = e.currentTarget;
         setIsVertical(img.naturalHeight > img.naturalWidth);

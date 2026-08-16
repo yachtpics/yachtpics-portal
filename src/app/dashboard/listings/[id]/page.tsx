@@ -58,6 +58,9 @@ export default function BrokerListingPage() {
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
+  // Resized thumbnails, keyed by photo id. Fetched once in the background; the
+  // grid falls back to the full-size url until they arrive, so nothing blocks.
+  const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -284,6 +287,18 @@ export default function BrokerListingPage() {
     const withUrls = photosWithUrls;
 
     setPhotos(withUrls);
+
+    // Kick off thumbnail signing without awaiting it — the grid renders
+    // immediately on the full-size urls and swaps to the light ones as soon as
+    // they land.
+    fetch("/api/thumbs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ listingId: id, width: 400 }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.urls) setThumbs(d.urls); })
+      .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
 
     const { data: docs } = await supabase.from("documents")
       .select("id, storage_path, filename, created_at")
@@ -1272,6 +1287,7 @@ export default function BrokerListingPage() {
               <SortablePhotoCard
                 key={photo.id}
                 photo={photo}
+                thumbUrl={thumbs[photo.id]}
                 index={photos.indexOf(photo)}
                 isSelected={isSelected}
                 selectMode={selectMode}
@@ -1959,10 +1975,12 @@ function relativeTime(date: Date): string {
 
 // ─── Sortable photo card ───────────────────────────────────────────────────────
 function SortablePhotoCard({
-  photo, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
+  photo, thumbUrl, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
   onSetHero, onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
 }: {
   photo: { id: string; url: string | null; filename: string | null; category: string | null; is_visible: boolean };
+  /** Light resized version for the grid; falls back to the original until ready. */
+  thumbUrl?: string;
   index: number;
   isSelected: boolean;
   selectMode: boolean;
@@ -2048,10 +2066,11 @@ function SortablePhotoCard({
               {!imgLoaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                // Resized thumbnail, not the full-size original. The originals
-                // average ~2 MB; a 200-photo listing was pulling ~420 MB to draw
-                // a grid. The lightbox and downloads still use photo.url.
-                src={`/api/thumb/${photo.id}?w=400`}
+                // Resized thumbnail once it's signed; the full-size original
+                // until then. Originals average ~2 MB, so a 200-photo listing
+                // was pulling ~420 MB just to draw a grid. The lightbox and
+                // downloads still use photo.url.
+                src={thumbUrl ?? photo.url}
                 alt={photo.filename ?? ""}
                 loading={index < 4 ? "eager" : "lazy"}
                 decoding="async"
