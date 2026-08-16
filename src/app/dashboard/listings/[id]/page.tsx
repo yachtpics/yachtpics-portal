@@ -5,7 +5,8 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import JSZip from "jszip";
+// JSZip is loaded on demand inside the download handler, not up front — it's a
+// sizeable library and it's only needed when someone actually zips photos.
 import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
   type DragEndEvent,
@@ -614,6 +615,7 @@ export default function BrokerListingPage() {
     // Multiple photos — ZIP
     // Fetch in parallel batches of 8; use STORE (no compression) since JPEGs
     // are already compressed — this makes zip generation 5-10x faster.
+    const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
     const BATCH = 8;
     let fetched = 0;

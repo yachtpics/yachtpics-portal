@@ -2,8 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import JSZip from "jszip";
 import { createClient } from "@/lib/supabase/client";
+
+// JSZip is only needed when someone actually downloads photos, but importing it
+// at the top meant every broker downloaded the whole zip library just to LOOK at
+// their listings. Loaded on demand instead, inside handleDownload.
 
 type Listing = {
   id: string;
@@ -167,6 +170,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         url: signedData[i]?.signedUrl ?? null,
       }));
 
+      const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       const BATCH = 8;
       let fetched = 0;
