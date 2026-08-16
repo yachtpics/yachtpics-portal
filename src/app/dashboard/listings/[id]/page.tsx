@@ -22,6 +22,7 @@ import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
 import ListingQRCode from "@/components/ListingQRCode";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
+import ListingSkeleton from "./_components/ListingSkeleton";
 
 interface Photo {
   id: string;
@@ -977,7 +978,10 @@ export default function BrokerListingPage() {
     }
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading...</div>;
+  // This — not loading.tsx — is what people actually see after clicking a boat.
+  // It used to be the word "Loading..." in a small box, which is easy to read as
+  // nothing having happened.
+  if (loading) return <ListingSkeleton />;
   if (!listing) return null;
 
   return (
