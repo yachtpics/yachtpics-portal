@@ -11,11 +11,28 @@ export default async function ListingsPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
+  // Your role, the listings themselves, and which of them you're a co-broker
+  // on are three independent reads. Fetched together so the page waits once
+  // rather than three times.
+  //
+  // Row-level security decides what this user can see: their own boats, the
+  // boats of brokers they assist / manage, plus any listing individually shared
+  // into their brokerage. We just read listings and let RLS do the filtering.
+  const [{ data: profile }, { data }, { data: coRows }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("listings")
+      .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, make, model, is_shared, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("listing_co_brokers")
+      .select("listing_id")
+      .eq("broker_id", user.id),
+  ]);
 
   const isAssistant = profile?.role === "assistant";
 
@@ -37,14 +54,6 @@ export default async function ListingsPage() {
     slideshow_published?: boolean | null;
   };
 
-  // Row-level security decides what this user can see: their own boats, the
-  // boats of brokers they assist / manage, plus any listing individually shared
-  // into their brokerage. We just read listings and let RLS do the filtering.
-  const { data } = await supabase
-    .from("listings")
-    .select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, make, model, is_shared, slideshow_slug, slideshow_published, broker_id, profiles:broker_id(first_name, last_name, display_email)")
-    .order("updated_at", { ascending: false });
-
   const listings: ListingItem[] = (data ?? []).map((l) => {
     const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
     const brokerName = p?.first_name
@@ -54,10 +63,6 @@ export default async function ListingsPage() {
   });
 
   // Which of these listings is the current user a co-broker on (vs. owner)?
-  const { data: coRows } = await supabase
-    .from("listing_co_brokers")
-    .select("listing_id")
-    .eq("broker_id", user.id);
   const coBrokerIds = new Set((coRows ?? []).map((r) => r.listing_id as string));
 
   // Rows whose owner's plan has lapsed get sharing/sending locked (downloads
@@ -66,29 +71,45 @@ export default async function ListingsPage() {
   const service = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const ownerIds = Array.from(new Set(listings.map((l) => l.broker_id).filter(Boolean))) as string[];
   const lockedOwners = new Set<string>();
-  await Promise.all(ownerIds.map(async (bid) => {
-    const { status } = await getEffectiveAccessStatus(service, bid);
-    if (!hasAccess(status)) lockedOwners.add(bid);
-  }));
+
+  // The access checks and the cover-photo lookup are unrelated, so they run
+  // side by side rather than the photos waiting on the billing checks.
+  const [, heroRowsRes] = await Promise.all([
+    Promise.all(ownerIds.map(async (bid) => {
+      const { status } = await getEffectiveAccessStatus(service, bid);
+      if (!hasAccess(status)) lockedOwners.add(bid);
+    })),
+    listings.length > 0
+      ? supabase.rpc("listing_hero_photos", { p_listing_ids: listings.map((l) => l.id) })
+      : Promise.resolve({ data: [] }),
+  ]);
   const lockedListingIds = listings.filter((l) => l.broker_id && lockedOwners.has(l.broker_id)).map((l) => l.id);
 
   // Cover photo per row, resolved server-side. One RPC (DISTINCT ON, honoring
   // the chosen hero_photo_id and falling back to the first visible photo) plus
-  // one batched signing call — instead of 2-3 client round trips per row.
+  // signing — instead of 2-3 client round trips per row.
+  //
+  // These are signed WITH a resize. A cover thumbnail is a few hundred pixels
+  // on screen; serving the full-size original meant a broker with 40 listings
+  // downloaded the better part of 80 MB to look at a list. Supabase only
+  // accepts a transform when signing one url at a time, so the signing is
+  // per-photo — but it all happens in parallel, in one wave.
   const heroes: Record<string, { url: string; fit: "fit" | "fill" }> = {};
-  if (listings.length > 0) {
-    const { data: heroRows } = await supabase.rpc("listing_hero_photos", {
-      p_listing_ids: listings.map((l) => l.id),
-    });
-    const rows = (heroRows ?? []) as { listing_id: string; storage_path: string; hero_fit: string | null }[];
-    if (rows.length > 0) {
-      const paths = Array.from(new Set(rows.map((r) => r.storage_path)));
-      const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
-      const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl] as const));
-      for (const r of rows) {
-        const url = urlByPath.get(r.storage_path);
-        if (url) heroes[r.listing_id] = { url, fit: r.hero_fit === "fill" ? "fill" : "fit" };
-      }
+  const rows = ((heroRowsRes as { data: unknown }).data ?? []) as { listing_id: string; storage_path: string; hero_fit: string | null }[];
+  if (rows.length > 0) {
+    const paths = Array.from(new Set(rows.map((r) => r.storage_path)));
+    const urlByPath = new Map<string, string>();
+    await Promise.all(paths.map(async (path) => {
+      const { data: signed } = await supabase.storage
+        .from("listing-photos")
+        .createSignedUrl(path, 3600, {
+          transform: { width: 600, height: 600, resize: "contain", quality: 72 },
+        });
+      if (signed?.signedUrl) urlByPath.set(path, signed.signedUrl);
+    }));
+    for (const r of rows) {
+      const url = urlByPath.get(r.storage_path);
+      if (url) heroes[r.listing_id] = { url, fit: r.hero_fit === "fill" ? "fill" : "fit" };
     }
   }
 

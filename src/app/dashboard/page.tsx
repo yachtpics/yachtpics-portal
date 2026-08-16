@@ -19,17 +19,21 @@ export default async function DashboardPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("first_name, last_name, role")
-    .eq("id", user.id)
-    .single();
+  // Who you are and the Recently Photographed strip don't depend on each
+  // other, so they're fetched together rather than one waiting on the other.
+  const [{ data: profile }, { data: scData }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("first_name, last_name, role")
+      .eq("id", user.id)
+      .single(),
+    // Recently Photographed rotating strip (shared by broker + assistant views).
+    supabase.rpc("showcase_listings"),
+  ]);
 
   const isAssistant = profile?.role === "assistant";
   const firstName = profile?.first_name ?? "there";
 
-  // Recently Photographed rotating strip (shared by broker + assistant views).
-  const { data: scData } = await supabase.rpc("showcase_listings");
   type ScRow = { listing_id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; location: string | null; broker_name: string | null; hero_storage_path: string | null };
   const scRows = ((scData ?? []) as ScRow[]).slice(0, 12);
   let featured: FeaturedBoat[] = [];
@@ -37,9 +41,19 @@ export default async function DashboardPage() {
     const svc = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const paths = Array.from(new Set(scRows.map((r) => r.hero_storage_path).filter(Boolean))) as string[];
     const urls = new Map<string, string>();
+    // Signed WITH a resize. This strip shows up to 12 boats on every dashboard
+    // load; at full size that was tens of megabytes fetched to fill a row of
+    // small cards. Supabase only accepts a transform when signing one url at a
+    // time, so these are signed individually — but all at once.
     if (paths.length > 0) {
-      const { data: signed } = await svc.storage.from("listing-photos").createSignedUrls(paths, 3600);
-      for (const s of signed ?? []) if (s.signedUrl && s.path) urls.set(s.path, s.signedUrl);
+      await Promise.all(paths.map(async (path) => {
+        const { data: signed } = await svc.storage
+          .from("listing-photos")
+          .createSignedUrl(path, 3600, {
+            transform: { width: 800, height: 800, resize: "contain", quality: 72 },
+          });
+        if (signed?.signedUrl) urls.set(path, signed.signedUrl);
+      }));
     }
     featured = scRows.map((r) => ({
       id: r.listing_id,
@@ -144,29 +158,34 @@ export default async function DashboardPage() {
   }
 
   // ── Broker dashboard ─────────────────────────────────────────────────────
-  const { data: listings } = await supabase
-    .from("listings")
-    .select("id, vessel_name, location, status, updated_at")
-    .eq("broker_id", user.id)
-    .order("updated_at", { ascending: false })
-    .limit(5);
-
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("plan, status, trial_ends_at")
-    .eq("broker_id", user.id)
-    .single();
-
-  const { data: brokerDetails } = await supabase
-    .from("broker_details")
-    .select("brokerage_name, logo_url")
-    .eq("id", user.id)
-    .single();
-
-  const { count: shootCount } = await supabase
-    .from("shoots")
-    .select("*", { count: "exact", head: true })
-    .eq("broker_id", user.id);
+  // Four independent reads — issued together, not queued behind one another.
+  const [
+    { data: listings },
+    { data: subscription },
+    { data: brokerDetails },
+    { count: shootCount },
+  ] = await Promise.all([
+    supabase
+      .from("listings")
+      .select("id, vessel_name, location, status, updated_at")
+      .eq("broker_id", user.id)
+      .order("updated_at", { ascending: false })
+      .limit(5),
+    supabase
+      .from("subscriptions")
+      .select("plan, status, trial_ends_at")
+      .eq("broker_id", user.id)
+      .single(),
+    supabase
+      .from("broker_details")
+      .select("brokerage_name, logo_url")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("shoots")
+      .select("*", { count: "exact", head: true })
+      .eq("broker_id", user.id),
+  ]);
 
   const activeListings = listings?.filter((l) => l.status === "active").length ?? 0;
 

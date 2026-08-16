@@ -58,8 +58,9 @@ export default function BrokerListingPage() {
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  // Resized thumbnails, keyed by photo id. Fetched once in the background; the
-  // grid falls back to the full-size url until they arrive, so nothing blocks.
+  // Resized thumbnails, keyed by photo id. Fetched once in the background; each
+  // tile shows a skeleton until its url arrives, so nothing blocks and nothing
+  // requests a full-size original.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -241,56 +242,121 @@ export default function BrokerListingPage() {
     });
   }, [lightboxIndex, photos]);
 
+  /**
+   * Everything this page needs, in two waves instead of a queue.
+   *
+   * This used to be a dozen `await`s stacked end to end — profile, then
+   * listing, then subscription, then photos, then sign them, then documents,
+   * then videos, then sign those, then sends, then views, then leads — and
+   * `setLoading(false)` only fired after the last one. Each is a separate
+   * network round trip, so the spinner sat there for the SUM of all of them
+   * even though the photos had been ready since round trip four.
+   *
+   * None of the table reads depend on each other, so they go out together.
+   * Only three things genuinely need something first — signing photo urls
+   * needs the photo rows, signing video urls needs the video rows, and the
+   * subscription lookup needs the listing's broker_id — so those form a
+   * second wave that also runs in parallel.
+   */
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { data: profileData } = await supabase.from("profiles").select("role, is_brokerage_admin").eq("id", user.id).single();
-    setIsBrokerageAdmin(profileData?.is_brokerage_admin === true);
-
+    // Wave 1 — every independent read at once.
     // Row-level security governs access: own boats, boats of brokers you assist
     // or manage, and any listing individually shared into your brokerage.
-    const { data: l } = await supabase.from("listings")
-      .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit")
-      .eq("id", id)
-      .single();
+    const [
+      { data: profileData },
+      { data: l },
+      { data: p },
+      { data: docs },
+      { data: vids },
+      { data: sends },
+      { data: viewRows },
+      { data: leadRows },
+    ] = await Promise.all([
+      supabase.from("profiles").select("role, is_brokerage_admin").eq("id", user.id).single(),
+      supabase.from("listings")
+        .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit")
+        .eq("id", id)
+        .single(),
+      supabase.from("photos")
+        .select("id, storage_path, filename, category, display_order, is_visible")
+        .eq("listing_id", id)
+        .order("display_order"),
+      supabase.from("documents")
+        .select("id, storage_path, filename, created_at")
+        .eq("listing_id", id)
+        .order("created_at"),
+      supabase.from("videos")
+        .select("id, storage_path, filename, created_at, in_slideshow")
+        .eq("listing_id", id)
+        .order("created_at"),
+      supabase.from("client_sends")
+        .select("id, client_email, sent_at, included_slideshow, document_count, message")
+        .eq("listing_id", id)
+        .order("sent_at", { ascending: false }),
+      supabase.from("slideshow_views")
+        .select("viewed_at")
+        .eq("listing_id", id)
+        .order("viewed_at", { ascending: false }),
+      supabase.from("listing_leads")
+        .select("id, name, email, phone, message, status, source, created_at")
+        .eq("listing_id", id)
+        .order("created_at", { ascending: false }),
+    ]);
 
     if (!l) { router.push("/dashboard/listings"); return; }
+
+    setIsBrokerageAdmin(profileData?.is_brokerage_admin === true);
     setListing(l);
     setIsShared((l as unknown as { is_shared: boolean }).is_shared === true);
     setHeroPhotoId((l as unknown as { hero_photo_id: string | null }).hero_photo_id ?? null);
     setHeroFit((l as unknown as { hero_fit: string | null }).hero_fit === "fill" ? "fill" : "fit");
+    setDocuments(docs ?? []);
+    setClientSends(sends ?? []);
+    setViewTimestamps((viewRows ?? []).map(r => new Date(r.viewed_at)));
+    setLeads((leadRows ?? []) as Lead[]);
 
+    const photos_raw = p ?? [];
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
-    // Use the API (service role) so RLS doesn't block assistants from reading
-    // the broker's subscription row.
-    const subRes = await fetch(`/api/subscription/status?brokerId=${brokerId}`);
-    const subData = subRes.ok ? await subRes.json() : null;
+
+    // Wave 2 — the three reads that needed a result from wave 1.
+    // The subscription lookup goes through the API (service role) so RLS
+    // doesn't block assistants from reading the broker's subscription row.
+    const [subData, signedData, vidSigned] = await Promise.all([
+      fetch(`/api/subscription/status?brokerId=${brokerId}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null),
+      photos_raw.length
+        ? supabase.storage.from("listing-photos")
+            .createSignedUrls(photos_raw.map((photo) => photo.storage_path), 3600)
+            .then((r) => r.data)
+        : Promise.resolve(null),
+      vids?.length
+        ? supabase.storage.from("listing-videos")
+            .createSignedUrls(vids.map((v) => v.storage_path), 3600)
+            .then((r) => r.data)
+        : Promise.resolve(null),
+    ]);
+
     setSubStatus(subData?.status ?? null);
     setAccessStatus((subData?.status as AccessStatus) ?? "no_access");
 
-    const { data: p } = await supabase.from("photos")
-      .select("id, storage_path, filename, category, display_order, is_visible")
-      .eq("listing_id", id)
-      .order("display_order");
+    // Index-based signed URL mapping — Supabase preserves order.
+    setPhotos(photos_raw.map((photo, i) => ({ ...photo, url: signedData?.[i]?.signedUrl ?? null })));
 
-    const photos_raw = p ?? [];
-    // Use index-based signed URL mapping — Supabase preserves order
-    const photosWithUrls: (typeof photos_raw[0] & { url: string | null })[] = [];
-    if (photos_raw.length > 0) {
-      const paths = photos_raw.map(photo => photo.storage_path);
-      const { data: signedData } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
-      for (let i = 0; i < photos_raw.length; i++) {
-        photosWithUrls.push({ ...photos_raw[i], url: signedData?.[i]?.signedUrl ?? null });
-      }
+    if (vids?.length) {
+      const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
+      setVideos(vids.map(v => ({ ...v, url: vidUrlMap.get(v.storage_path) ?? null })));
+    } else {
+      setVideos([]);
     }
-    const withUrls = photosWithUrls;
 
-    setPhotos(withUrls);
+    setLoading(false);
 
-    // Kick off thumbnail signing without awaiting it — the grid renders
-    // immediately on the full-size urls and swaps to the light ones as soon as
-    // they land.
+    // Thumbnails are deliberately not awaited — the page is usable without
+    // them and each tile shows a skeleton until its resized url lands.
     fetch("/api/thumbs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -299,45 +365,6 @@ export default function BrokerListingPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (d?.urls) setThumbs(d.urls); })
       .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
-
-    const { data: docs } = await supabase.from("documents")
-      .select("id, storage_path, filename, created_at")
-      .eq("listing_id", id)
-      .order("created_at");
-    setDocuments(docs ?? []);
-
-    const { data: vids } = await supabase.from("videos")
-      .select("id, storage_path, filename, created_at, in_slideshow")
-      .eq("listing_id", id)
-      .order("created_at");
-    if (vids && vids.length > 0) {
-      const vidPaths = vids.map(v => v.storage_path);
-      const { data: vidSigned } = await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 3600);
-      const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
-      setVideos(vids.map(v => ({ ...v, url: vidUrlMap.get(v.storage_path) ?? null })));
-    } else {
-      setVideos([]);
-    }
-
-    const { data: sends } = await supabase.from("client_sends")
-      .select("id, client_email, sent_at, included_slideshow, document_count, message")
-      .eq("listing_id", id)
-      .order("sent_at", { ascending: false });
-    setClientSends(sends ?? []);
-
-    const { data: viewRows } = await supabase.from("slideshow_views")
-      .select("viewed_at")
-      .eq("listing_id", id)
-      .order("viewed_at", { ascending: false });
-    setViewTimestamps((viewRows ?? []).map(r => new Date(r.viewed_at)));
-
-    const { data: leadRows } = await supabase.from("listing_leads")
-      .select("id, name, email, phone, message, status, source, created_at")
-      .eq("listing_id", id)
-      .order("created_at", { ascending: false });
-    setLeads((leadRows ?? []) as Lead[]);
-
-    setLoading(false);
   }
 
   async function handleDocFiles(files: FileList | null) {
