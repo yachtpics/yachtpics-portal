@@ -24,7 +24,10 @@ export const maxDuration = 30;
  */
 
 const ALLOWED_WIDTHS = [200, 400, 800];
-const CHUNK = 25; // parallel signing batch — enough to be quick, not enough to get rate-limited
+// Signing is a network call per photo, and the chunks run one after another —
+// so a small chunk on a 227-photo listing meant ~10 sequential round trips.
+// Wider batches cut that to two or three.
+const CHUNK = 100;
 
 export async function POST(req: NextRequest) {
   const supabase = await createServerClient();

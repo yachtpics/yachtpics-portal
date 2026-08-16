@@ -1073,8 +1073,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                       : setLightboxIndex(idx)
                     }
                   >
+                    {/* Only ever the resized url — never the original. Falling back
+                        to photo.url would make the browser pull every full-size
+                        file (~2 MB each) on first paint. */}
                     {photo.url ? (
-                      <OrientedThumbnail url={thumbs[photo.id] ?? photo.url} filename={photo.filename} />
+                      <OrientedThumbnail url={thumbs[photo.id] ?? null} filename={photo.filename} />
                     ) : (
                       <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
                     )}

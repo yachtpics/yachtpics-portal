@@ -2063,14 +2063,17 @@ function SortablePhotoCard({
         >
           {photo.url ? (
             <>
-              {!imgLoaded && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
-              {/* eslint-disable-next-line @next/next/no-img-element */}
+              {(!imgLoaded || !thumbUrl) && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
+              {/* Deliberately renders NOTHING until the resized url arrives.
+                  Falling back to photo.url looks harmless but makes the browser
+                  fetch every full-size original (~2 MB each) the instant the
+                  page paints — which is the exact cost we're removing. A brief
+                  skeleton is much cheaper than 227 originals.
+                  The lightbox and downloads still use photo.url. */}
+              {thumbUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
-                // Resized thumbnail once it's signed; the full-size original
-                // until then. Originals average ~2 MB, so a 200-photo listing
-                // was pulling ~420 MB just to draw a grid. The lightbox and
-                // downloads still use photo.url.
-                src={thumbUrl ?? photo.url}
+                src={thumbUrl}
                 alt={photo.filename ?? ""}
                 loading={index < 4 ? "eager" : "lazy"}
                 decoding="async"
@@ -2084,6 +2087,7 @@ function SortablePhotoCard({
                   !imgLoaded ? "opacity-0" : photo.is_visible ? "opacity-100" : "opacity-40"
                 }`}
               />
+              )}
             </>
           ) : (
             <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
