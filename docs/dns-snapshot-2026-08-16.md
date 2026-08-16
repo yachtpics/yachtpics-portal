@@ -17,6 +17,14 @@ ns78.domaincontrol.com
 ```
 (GoDaddy)
 
+## Nameservers after the move
+
+```
+justin.ns.cloudflare.com
+rafe.ns.cloudflare.com
+```
+(Cloudflare — assigned to this account, not interchangeable with any other pair)
+
 ## Records that must exist after the move
 
 | Type  | Name           | Value                                        | Purpose |
