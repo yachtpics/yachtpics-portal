@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 
 // JSZip is only needed when someone actually downloads photos, but importing it
@@ -62,6 +63,22 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   // signed server-side in one batched pass (see listing_hero_photos), so the
   // list paints in a single shot instead of 2-3 round trips per row.
   const [heroLoaded, setHeroLoaded] = useState(false);
+
+  // Opening state. A hover highlight tells you the row is clickable; it does
+  // not tell you your click landed — which is why a slow open reads as a
+  // missed click and gets clicked again. Driving the navigation through a
+  // transition lets the row say "Opening…" from the instant it's pressed until
+  // the next page is ready, however long that takes.
+  const router = useRouter();
+  const [isOpening, startOpening] = useTransition();
+  const href = `/dashboard/listings/${listing.id}`;
+
+  function handleOpen(e: React.MouseEvent<HTMLAnchorElement>) {
+    // Leave the browser's own behaviour alone for open-in-new-tab / new-window.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    startOpening(() => router.push(href));
+  }
 
   async function handleShare() {
     if (!listing.slideshow_slug) return;
@@ -280,7 +297,16 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   return (
     <div className="bg-white border border-hairline rounded-card shadow-elev-1 hover:shadow-elev-2 pr-3 sm:pr-4 flex items-stretch justify-between overflow-hidden transition-shadow duration-base ease-quiet">
       {/* Left — the photograph first, then the vessel */}
-      <Link href={`/dashboard/listings/${listing.id}`} className="flex flex-1 min-w-0 items-stretch gap-3 sm:gap-4 pr-2 group">
+      <Link
+        href={href}
+        onClick={handleOpen}
+        aria-busy={isOpening}
+        className={`relative flex flex-1 min-w-0 items-stretch gap-3 sm:gap-4 pr-2 group transition-opacity duration-fast ease-quiet ${
+          isOpening ? "opacity-55" : ""
+        }`}
+      >
+        {/* Accent rule down the edge — the row's own "yes, I heard you". */}
+        {isOpening && <span aria-hidden className="absolute left-0 top-0 bottom-0 w-0.5 bg-accent-500" />}
         {/* "fit" floats the whole print on the paper with its shadow; "fill" stays a
             flush edge-to-edge crop. Same hero_fit convention as the flyer. */}
         <div className="relative w-24 sm:w-32 shrink-0 self-stretch min-h-[4.5rem] bg-ink-50 border-r border-hairline overflow-hidden flex items-center justify-center p-1">
@@ -316,14 +342,24 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
               </span>
             )}
           </p>
-          <p className="text-xs text-ink-400 mt-0.5 truncate">
-            {[
-              listing.year,
-              listing.vessel_type,
-              listing.length_ft ? `${listing.length_ft}′` : null,
-              listing.location,
-            ].filter(Boolean).join(" · ")}
-          </p>
+          {isOpening ? (
+            <p className="text-xs text-accent-700 mt-0.5 flex items-center gap-1.5 font-medium">
+              <svg className="w-3 h-3 animate-spin shrink-0" viewBox="0 0 24 24" fill="none" aria-hidden>
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Opening…
+            </p>
+          ) : (
+            <p className="text-xs text-ink-400 mt-0.5 truncate">
+              {[
+                listing.year,
+                listing.vessel_type,
+                listing.length_ft ? `${listing.length_ft}′` : null,
+                listing.location,
+              ].filter(Boolean).join(" · ")}
+            </p>
+          )}
           {showBroker && listing.broker_name && (
             <p className="text-xs text-accent-700 mt-1 truncate">{listing.broker_name}</p>
           )}
