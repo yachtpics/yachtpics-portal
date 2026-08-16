@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
+import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
 import Link from "next/link";
 
 export default function InviteBrokerPage() {
@@ -35,6 +36,29 @@ export default function InviteBrokerPage() {
   });
 
   const [photos, setPhotos] = useState<{ file: File; category: string; preview: string }[]>([]);
+
+  // Video, on the same footing as photos — a first job can be video only.
+  const [videoFiles, setVideoFiles] = useState<File[]>([]);
+  const [videoProgress, setVideoProgress] = useState(0);
+  const [videoRejected, setVideoRejected] = useState("");
+  const [videoFailures, setVideoFailures] = useState<string[]>([]);
+  const videoInputRef = useRef<HTMLInputElement>(null);
+
+  function handleVideoFiles(files: FileList | null) {
+    if (!files) return;
+    const all = Array.from(files);
+    const ok = all.filter(isSupportedVideo);
+    setVideoRejected(
+      ok.length < all.length
+        ? `${all.length - ok.length} file${all.length - ok.length !== 1 ? "s" : ""} skipped — only .mp4 and .mov can be played in a browser.`
+        : ""
+    );
+    setVideoFiles((prev) => [...prev, ...ok]);
+  }
+
+  function removeVideo(index: number) {
+    setVideoFiles((prev) => prev.filter((_, i) => i !== index));
+  }
   const [customCategories, setCustomCategories] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
@@ -100,6 +124,7 @@ export default function InviteBrokerPage() {
           email: broker.email,
           brokerage: broker.brokerage,
           photosReady: photos.length > 0,
+          videoReady: videoFiles.length > 0,
           assistantEmail: broker.assistantEmail || undefined,
           assistantFirstName: broker.assistantFirstName || undefined,
           assistantLastName: broker.assistantLastName || undefined,
@@ -112,7 +137,8 @@ export default function InviteBrokerPage() {
           model: vessel.model || undefined,
           askingPrice: vessel.askingPrice ? parseFloat(vessel.askingPrice) : undefined,
           location: vessel.location || undefined,
-          createListing: !!(vessel.vesselName || photos.length > 0),
+          // A video-only first job still needs a listing to hang it on.
+          createListing: !!(vessel.vesselName || photos.length > 0 || videoFiles.length > 0),
         }),
       });
       const inviteData = await inviteRes.json();
@@ -148,6 +174,31 @@ export default function InviteBrokerPage() {
         }
       }
 
+      // Step 3: Videos, after the photos — much larger files, so the quick part
+      // of the job is safely saved first.
+      const failures: string[] = [];
+      if (videoFiles.length > 0 && listingId) {
+        const { data: { user } } = await supabase.auth.getUser();
+        for (let i = 0; i < videoFiles.length; i++) {
+          setVideoProgress(0);
+          setProgress(`Uploading video ${i + 1} of ${videoFiles.length}…`);
+          const result = await uploadListingVideo({
+            supabase,
+            file: videoFiles[i],
+            listingId,
+            // Under the new broker's folder, matching the photos above.
+            pathOwnerId: brokerId,
+            uploadedBy: user?.id ?? brokerId,
+            displayOrder: i,
+            onProgress: setVideoProgress,
+          });
+          if (!result.ok) failures.push(`${videoFiles[i].name} — ${result.error}`);
+        }
+      }
+      // The broker account is created either way, so don't hide this — but
+      // don't lose the temp password by erroring out of the success screen.
+      setVideoFailures(failures);
+
       setSuccess({
         brokerId,
         tempPassword: inviteData.brokerTempPassword ?? "",
@@ -167,6 +218,15 @@ export default function InviteBrokerPage() {
     setTimeout(() => setCopied(false), 2000);
   }
 
+  // Names whatever is attached, so it's clear the video is part of the send.
+  const attached = [
+    photos.length > 0 ? `${photos.length} Photo${photos.length !== 1 ? "s" : ""}` : null,
+    videoFiles.length > 0 ? `${videoFiles.length} Video${videoFiles.length !== 1 ? "s" : ""}` : null,
+  ].filter(Boolean);
+  const inviteLabel = attached.length > 0
+    ? `Send Invite & Upload ${attached.join(" + ")}`
+    : "Send Invite";
+
   const inputClass = "w-full border border-hairline-strong rounded-ctl px-3 py-2.5 text-sm text-ink-900 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500";
   const labelClass = "block label-caps mb-1.5";
 
@@ -183,6 +243,22 @@ export default function InviteBrokerPage() {
           <p className="text-ink-500 text-sm mb-6">
             Account created and login details sent to {broker.email}. Share the temporary password with them if needed.
           </p>
+
+          {/* Shown here rather than as an error, so the temp password above is
+              never lost just because a video didn't make it. */}
+          {videoFailures.length > 0 && (
+            <div className="bg-danger-50 border border-danger-200 rounded-card p-5 mb-4">
+              <p className="text-xs font-semibold text-danger-700 uppercase tracking-wide mb-2">
+                {videoFailures.length === 1 ? "A video didn't upload" : "Some videos didn't upload"}
+              </p>
+              <ul className="text-sm text-danger-700 space-y-1 mb-2">
+                {videoFailures.map((f, i) => <li key={i} className="break-all">{f}</li>)}
+              </ul>
+              <p className="text-xs text-danger-600">
+                The broker and listing were created. Add the video from the listing page.
+              </p>
+            </div>
+          )}
 
           <div className="bg-warn-50 border border-warn-200 rounded-card p-5 mb-4">
             <p className="text-xs font-semibold text-warn-700 uppercase tracking-wide mb-3">Broker Login Details</p>
@@ -431,6 +507,62 @@ export default function InviteBrokerPage() {
           )}
         </div>
 
+        {/* Video */}
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-1">Video</h2>
+          <p className="text-xs text-ink-500 mb-4">
+            Optional, and independent of photos — a first job can be video only.
+          </p>
+
+          <div
+            onClick={() => videoInputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={(e) => { e.preventDefault(); handleVideoFiles(e.dataTransfer.files); }}
+            className="border-2 border-dashed border-ink-200 rounded-card p-8 text-center cursor-pointer hover:border-accent-500 transition-colors duration-fast ease-quiet mb-4"
+          >
+            <p className="text-ink-400 text-sm">Click or drag video here</p>
+            <p className="text-ink-300 text-xs mt-1">MP4 or MOV</p>
+            <input ref={videoInputRef} type="file" accept={VIDEO_ACCEPT} multiple className="hidden"
+              onChange={(e) => handleVideoFiles(e.target.files)} />
+          </div>
+
+          {videoRejected && <p className="text-xs text-warn-700 mb-3">{videoRejected}</p>}
+
+          {videoFiles.length > 0 && (
+            <ul className="space-y-2">
+              {videoFiles.map((file, i) => (
+                <li key={i} className="flex items-center gap-3 border border-hairline rounded-ctl px-3 py-2.5">
+                  <svg className="w-4 h-4 text-ink-400 shrink-0" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+                    <path d="M2 6a2 2 0 012-2h6a2 2 0 012 2v8a2 2 0 01-2 2H4a2 2 0 01-2-2V6zM14.553 7.106A1 1 0 0014 8v4a1 1 0 00.553.894l2 1A1 1 0 0018 13V7a1 1 0 00-1.447-.894l-2 1z" />
+                  </svg>
+                  <span className="text-sm text-ink-900 truncate flex-1 min-w-0">{file.name}</span>
+                  <span className="text-xs text-ink-400 shrink-0 tabular-nums">{formatFileSize(file.size)}</span>
+                  <button type="button" onClick={() => removeVideo(i)}
+                    className="text-ink-400 hover:text-danger-600 transition-colors duration-fast shrink-0 w-5 h-5 flex items-center justify-center"
+                    aria-label={`Remove ${file.name}`}>
+                    &times;
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {/* Real byte progress — these files are large enough that a static
+              "Working…" reads as a hang. */}
+          {loading && videoFiles.length > 0 && videoProgress > 0 && (
+            <div className="mt-4">
+              <div className="flex justify-between text-xs text-ink-500 mb-1">
+                <span>{progress ?? "Uploading video…"}</span>
+                <span className="tabular-nums">{videoProgress}%</span>
+              </div>
+              <div className="bg-ink-100 rounded-full h-2">
+                <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${videoProgress}%` }} />
+              </div>
+              <p className="text-xs text-ink-400 mt-1.5">Keep this page open until it finishes.</p>
+            </div>
+          )}
+        </div>
+
         {error && (
           <div className="bg-danger-50 border border-danger-200 text-danger-700 text-sm rounded-ctl px-4 py-3">{error}</div>
         )}
@@ -438,11 +570,7 @@ export default function InviteBrokerPage() {
         <div className="flex items-center gap-3">
           <button type="submit" disabled={loading}
             className="bg-accent-500 hover:bg-accent-400 disabled:opacity-60 text-ink-950 font-semibold text-sm px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet min-w-[160px]">
-            {loading
-              ? (progress ?? "Working...")
-              : photos.length > 0
-                ? `Send Invite & Upload ${photos.length} Photo${photos.length !== 1 ? "s" : ""}`
-                : "Send Invite"}
+            {loading ? (progress ?? "Working…") : inviteLabel}
           </button>
           <Link href="/admin/brokers" className="text-sm text-ink-500 hover:text-ink-700 transition-colors duration-fast ease-quiet">
             Cancel

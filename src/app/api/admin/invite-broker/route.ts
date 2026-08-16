@@ -14,7 +14,7 @@ function generateTempPassword(): string {
 export async function POST(req: NextRequest) {
   try {
     const {
-      firstName, lastName, email, brokerage, photosReady,
+      firstName, lastName, email, brokerage, photosReady, videoReady,
       assistantEmail, assistantFirstName, assistantLastName,
       vesselName, vesselType, year, lengthFt, make, model, askingPrice, location,
       createListing,
@@ -263,14 +263,26 @@ export async function POST(req: NextRequest) {
     const brokerFirst = firstName;
     const hasVessel = vesselName?.trim();
 
-    const photosReadyBlock = hasVessel && photosReady
+    // A first job can be video only, so the email mustn't promise photos that
+    // were never shot. "Media" as a catch-all reads like software; name what
+    // they actually have.
+    const mediaReady = photosReady || videoReady;
+    const mediaNoun = photosReady && videoReady ? "photos and video"
+      : videoReady ? "video"
+      : "photos";
+    const mediaLabel = photosReady && videoReady ? "Photos &amp; Video Ready"
+      : videoReady ? "Video Ready"
+      : "Photos Ready";
+    const mediaVerb = photosReady && videoReady ? "are" : videoReady ? "is" : "are";
+
+    const photosReadyBlock = hasVessel && mediaReady
       ? [
           "<div style=\"background:#f8f3ea;border:1px solid #eaddc1;border-radius:10px;padding:20px 24px;margin:0 0 28px;\">",
-          "  <p style=\"margin:0 0 6px;font-size:13px;font-weight:600;color:#84662a;text-transform:uppercase;\">Photos Ready</p>",
-          `  <p style="margin:0;font-size:15px;color:#111827;line-height:1.5;">Your professional photos for <strong>${vesselName}</strong> are ready and waiting in your portal. Once you log in, head to your listings to view, download, and share them.</p>`,
+          `  <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#84662a;text-transform:uppercase;">${mediaLabel}</p>`,
+          `  <p style="margin:0;font-size:15px;color:#111827;line-height:1.5;">Your professional ${mediaNoun} for <strong>${vesselName}</strong> ${mediaVerb} ready and waiting in your portal. Once you log in, head to your listings to view, download, and share ${photosReady && videoReady ? "them" : videoReady ? "it" : "them"}.</p>`,
           "</div>",
         ].join("\n")
-      : hasVessel && !photosReady
+      : hasVessel && !mediaReady
       ? [
           "<div style=\"background:#f8f3ea;border:1px solid #eaddc1;border-radius:10px;padding:20px 24px;margin:0 0 28px;\">",
           "  <p style=\"margin:0 0 6px;font-size:13px;font-weight:600;color:#84662a;text-transform:uppercase;\">Photos Coming Soon</p>",
@@ -279,8 +291,8 @@ export async function POST(req: NextRequest) {
         ].join("\n")
       : "";
 
-    const subheading = hasVessel && photosReady
-      ? `Your YachtPics Portal account is set up and your photos for <strong style="color:#111827;">${vesselName}</strong> are ready to view.`
+    const subheading = hasVessel && mediaReady
+      ? `Your YachtPics Portal account is set up and your ${mediaNoun} for <strong style="color:#111827;">${vesselName}</strong> ${mediaVerb} ready to view.`
       : hasVessel
       ? `Your YachtPics Portal account is set up. We're working on your photos for <strong style="color:#111827;">${vesselName}</strong>.`
       : "Your YachtPics Portal account has been created. Use the login details below to get started.";
@@ -318,8 +330,8 @@ export async function POST(req: NextRequest) {
       "</html>",
     ].join("\n");
 
-    const subject = hasVessel && photosReady
-      ? `Your photos are ready — ${vesselName}`
+    const subject = hasVessel && mediaReady
+      ? `Your ${mediaNoun} ${mediaVerb} ready — ${vesselName}`
       : hasVessel
       ? `Your YachtPics Portal is ready — ${vesselName} photos coming soon`
       : "Welcome to YachtPics Portal";
