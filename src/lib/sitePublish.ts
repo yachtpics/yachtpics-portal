@@ -24,9 +24,13 @@ function videoPublishReady(): boolean {
  * readable, so nothing lands there that hasn't been deliberately put on the
  * public website. Client video stays private in Supabase.
  *
- * `in_slideshow` is respected: a video hidden from the client slideshow is one
- * we've been told not to show, and that judgement applies at least as strongly
- * to a public web page.
+ * Deliberately does NOT filter on `in_slideshow`. That flag governs the CLIENT
+ * slideshow inside the portal, and an earlier version of this reused it here on
+ * the reasoning that "hidden means hidden". That was wrong: it made the website
+ * silently depend on an unrelated switch, so a boat set to publish video came
+ * back with "nothing to publish" and no way to guess why. The per-boat
+ * Photos/Video/Both choice is the decision about the website; nothing else
+ * should quietly override it.
  *
  * Keyed by video id, so re-publishing a boat doesn't re-upload anything and
  * URLs stay stable for caching.
@@ -35,9 +39,8 @@ async function syncVideos(listingId: string, sitePage: string, slug: string): Pr
   const svc = service();
   const { data: rows } = await svc
     .from("videos")
-    .select("id, storage_path, filename, thumbnail_path, in_slideshow, display_order, created_at")
+    .select("id, storage_path, filename, thumbnail_path, display_order, created_at")
     .eq("listing_id", listingId)
-    .eq("in_slideshow", true)
     .order("display_order", { ascending: true })
     .order("created_at", { ascending: true });
 
@@ -437,14 +440,26 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   const photos = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug) : [];
   const videos = wantsVideo ? await syncVideos(l.id, brokerage.site_page, slug) : [];
 
-  // A page has to have something on it. Photo-only boats fail as they always
-  // did; a video boat whose video didn't copy across says so plainly rather
-  // than shipping an empty page.
+  // A page has to have something on it. Name the actual cause — the first
+  // version of this said "no video made it across to the media host" whatever
+  // the reason, which sent us looking at Cloudflare when the real problem was
+  // a filter in this file.
   if (photos.length === 0 && videos.length === 0) {
+    if (wantsPhotos) return { error: "No visible photos to publish." };
+
+    if (!videoPublishReady()) {
+      return { error: "Video publishing isn't configured yet — the media host settings are missing." };
+    }
+
+    const { count } = await svc
+      .from("videos")
+      .select("id", { count: "exact", head: true })
+      .eq("listing_id", l.id);
+
     return {
-      error: wantsPhotos
-        ? "No visible photos to publish."
-        : "Nothing to publish — no video made it across to the media host.",
+      error: count
+        ? `This boat has ${count} video${count !== 1 ? "s" : ""}, but ${count !== 1 ? "none" : "it"} could be copied to the media host. Try publishing again; if it keeps failing the file may be too large or damaged.`
+        : "This boat is set to publish video, but no video has been uploaded to it.",
     };
   }
 
