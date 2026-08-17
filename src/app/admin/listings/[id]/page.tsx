@@ -99,7 +99,7 @@ export default async function AdminListingPage({ params, searchParams }: { param
 
   const { data: videos } = await supabase
     .from("videos")
-    .select("id, storage_path, filename, created_at")
+    .select("id, storage_path, filename, created_at, title, description")
     .eq("listing_id", params.id)
     .order("created_at");
   const vidPaths = (videos ?? []).map(v => v.storage_path);

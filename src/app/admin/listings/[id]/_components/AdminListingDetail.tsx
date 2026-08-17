@@ -9,6 +9,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { orderPhotos } from "@/lib/photoOrder";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
+import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
@@ -55,6 +56,8 @@ interface Video {
   filename: string | null;
   created_at: string;
   url: string | null;
+  title?: string | null;
+  description?: string | null;
 }
 
 interface DownloadRecord {
@@ -1375,6 +1378,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     <p className="text-xs text-ink-400 mt-0.5 tabular-nums">
                       {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
                     </p>
+                    {/* What this video IS — becomes the heading above it on the
+                        published boat page. */}
+                    <div className="mt-1.5">
+                      <VideoDetailsEditor
+                        videoId={video.id}
+                        title={video.title ?? null}
+                        description={video.description ?? null}
+                        onSaved={(next) =>
+                          setVideos((prev) => prev.map((v) => (v.id === video.id ? { ...v, ...next } : v)))
+                        }
+                      />
+                    </div>
                   </div>
                   <button
                     onClick={() => setPendingVideoDelete({
