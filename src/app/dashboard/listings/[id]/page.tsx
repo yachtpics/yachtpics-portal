@@ -23,6 +23,7 @@ import ContentRightsModal from "@/components/ContentRightsModal";
 import ListingQRCode from "@/components/ListingQRCode";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 import ListingSkeleton from "./_components/ListingSkeleton";
+import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import { uploadListingVideo } from "@/lib/uploadListingVideo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 
@@ -189,7 +190,7 @@ export default function BrokerListingPage() {
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
   // Videos
-  interface Video { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; }
+  interface Video { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; title?: string | null; description?: string | null; }
   const [videos, setVideos] = useState<Video[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
@@ -329,7 +330,7 @@ export default function BrokerListingPage() {
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("videos")
-        .select("id, storage_path, filename, created_at, in_slideshow")
+        .select("id, storage_path, filename, created_at, in_slideshow, title, description")
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("client_sends")
@@ -1707,6 +1708,18 @@ export default function BrokerListingPage() {
                     <p className="text-xs text-ink-400 mt-0.5">
                       {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                     </p>
+                    {/* What this video IS. Shown as the heading above it on the
+                        website — "Aerial Drone Footage" beats a filename. */}
+                    <div className="mt-1.5">
+                      <VideoDetailsEditor
+                        videoId={video.id}
+                        title={video.title ?? null}
+                        description={video.description ?? null}
+                        onSaved={(next) =>
+                          setVideos((prev) => prev.map((v) => (v.id === video.id ? { ...v, ...next } : v)))
+                        }
+                      />
+                    </div>
                   </div>
                   <button
                     onClick={() => toggleVideoSlideshow(video.id, video.in_slideshow)}

@@ -135,8 +135,16 @@ export type BoatPageData = {
 /** One video on a boat page, already copied to the public media host. */
 export type SiteVideo = {
   url: string;
-  /** Still captured at upload time, shown before play instead of a black box. */
+  /**
+   * Frame shown before play. Prefers the boat's chosen cover photo over a still
+   * grabbed from the video — a frame a second into a clip can be a lens flare
+   * or half a dock, and on a photography brand's page that shouldn't be the
+   * first thing a buyer sees.
+   */
   poster: string | null;
+  /** What this video is: "Aerial Drone Footage", "Sea Trial". Not every video is a walkthrough. */
+  title: string | null;
+  description: string | null;
   filename: string | null;
 };
 
@@ -180,9 +188,14 @@ export function boatPage(d: BoatPageData): string {
   // the broker and it gives the page something to be indexed on beyond photos.
   const hasVideo = d.videos.length > 0;
   const hasPhotos = nPhotos > 0;
-  const videoLine = hasVideo
-    ? `A full walkthrough video of ${d.vesselName} is included on this page.`
-    : "";
+  // Name the videos rather than assuming they're walkthroughs — this text is
+  // what search engines read, so it should describe what's actually there.
+  const videoTitles = d.videos.map((v) => v.title?.trim()).filter(Boolean) as string[];
+  const videoLine = !hasVideo
+    ? ""
+    : videoTitles.length
+      ? `This page includes ${videoTitles.length === 1 ? "" : "video: "}${videoTitles.join(", ").toLowerCase()}${videoTitles.length === 1 ? " video" : ""} of ${d.vesselName}.`
+      : `Video of ${d.vesselName} is included on this page.`;
   const pageText = hasPhotos ? (hasVideo ? `${bodyText} ${videoLine}` : bodyText) : videoLine
     ? `YachtPics produced professional video of ${d.vesselName}` +
       (nameish ? `, ${nameish}` : "") +
@@ -211,8 +224,8 @@ export function boatPage(d: BoatPageData): string {
   const videoLd = d.videos.map((v) => ({
     "@context": "https://schema.org",
     "@type": "VideoObject",
-    name: `${d.label} — walkthrough video`,
-    description: pageText,
+    name: v.title?.trim() ? `${d.label} — ${v.title.trim()}` : `${d.label} — video`,
+    description: v.description?.trim() || pageText,
     contentUrl: v.url,
     ...(v.poster ? { thumbnailUrl: [v.poster] } : {}),
     uploadDate: new Date().toISOString().slice(0, 10),
@@ -234,10 +247,16 @@ export function boatPage(d: BoatPageData): string {
     <div class="wrap">
       ${d.videos
         .map(
-          (v) => `<video class="yp-video" controls preload="none" playsinline${v.poster ? ` poster="${v.poster}"` : ""}>
-        <source src="${v.url}" type="video/mp4">
-        Your browser can't play this video. <a href="${v.url}">Download it instead</a>.
-      </video>`
+          (v) => `<figure class="yp-videowrap">
+        <figcaption class="yp-videocap">
+          <p class="kicker" style="color:var(--gold)">${esc(v.title?.trim() || "Video")}</p>
+          ${v.description?.trim() ? `<p class="yp-videodesc">${esc(v.description.trim())}</p>` : ""}
+        </figcaption>
+        <video class="yp-video" controls preload="none" playsinline${v.poster ? ` poster="${v.poster}"` : ""}>
+          <source src="${v.url}" type="video/mp4">
+          Your browser can't play this video. <a href="${v.url}">Download it instead</a>.
+        </video>
+      </figure>`
         )
         .join("\n      ")}
     </div>
@@ -315,6 +334,10 @@ ${nav(2)}
 </main>
 
 <style>
+.yp-videowrap{margin:0}
+.yp-videowrap + .yp-videowrap{margin-top:36px}
+.yp-videocap{margin:0 0 12px}
+.yp-videodesc{color:var(--ink-soft);line-height:1.6;font-size:15px;margin:6px 0 0;max-width:760px}
 .yp-video{width:100%;max-height:min(74vh,760px);background:#0c1420;display:block;box-shadow:0 1px 2px rgba(12,20,32,.10),0 8px 24px rgba(12,20,32,.14),0 24px 60px rgba(12,20,32,.10)}
 .yp-video + .yp-video{margin-top:16px}
 .yp-stage{position:relative;height:min(74vh,760px);background:var(--paper);overflow:hidden;display:flex;align-items:center;justify-content:center}

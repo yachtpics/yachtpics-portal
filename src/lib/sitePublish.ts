@@ -35,11 +35,16 @@ function videoPublishReady(): boolean {
  * Keyed by video id, so re-publishing a boat doesn't re-upload anything and
  * URLs stay stable for caching.
  */
-async function syncVideos(listingId: string, sitePage: string, slug: string): Promise<SiteVideo[]> {
+async function syncVideos(
+  listingId: string,
+  sitePage: string,
+  slug: string,
+  heroPhotoUrl: string | null
+): Promise<SiteVideo[]> {
   const svc = service();
   const { data: rows } = await svc
     .from("videos")
-    .select("id, storage_path, filename, thumbnail_path, display_order, created_at")
+    .select("id, storage_path, filename, thumbnail_path, title, description, display_order, created_at")
     .eq("listing_id", listingId)
     .order("display_order", { ascending: true })
     .order("created_at", { ascending: true });
@@ -66,10 +71,17 @@ async function syncVideos(listingId: string, sitePage: string, slug: string): Pr
       continue;
     }
 
-    // The still we captured at upload time doubles as the video's poster frame,
-    // so the page shows the boat rather than a black rectangle before play.
-    let poster: string | null = null;
-    if (v.thumbnail_path) {
+    // Poster frame, in order of preference:
+    //   1. the boat's cover photo — already on the public host, and it's the
+    //      shot deliberately chosen to represent this vessel
+    //   2. the still captured from the video at upload
+    //   3. nothing, and the browser shows a black box
+    //
+    // The cover photo wins because a frame grabbed a second into a clip can be
+    // a lens flare or half a dock, and on a page selling a yacht — for a
+    // photography business — that shouldn't be the first thing anyone sees.
+    let poster: string | null = heroPhotoUrl;
+    if (!poster && v.thumbnail_path) {
       const posterKey = `${sitePage}/${slug}/poster-${v.id}.jpg`;
       try {
         if (!(await r2Exists(posterKey))) {
@@ -82,7 +94,13 @@ async function syncVideos(listingId: string, sitePage: string, slug: string): Pr
       }
     }
 
-    out.push({ url: r2PublicUrl(key), poster, filename: (v.filename as string) ?? null });
+    out.push({
+      url: r2PublicUrl(key),
+      poster,
+      title: (v.title as string | null) ?? null,
+      description: (v.description as string | null) ?? null,
+      filename: (v.filename as string) ?? null,
+    });
   }
 
   return out;
@@ -438,7 +456,12 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   const wantsVideo = includesVideo(media) && videoPublishReady();
 
   const photos = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug) : [];
-  const videos = wantsVideo ? await syncVideos(l.id, brokerage.site_page, slug) : [];
+  // syncPhotos returns the ordered list, so the first entry IS the cover photo
+  // (the chosen hero, or the first in the walk-the-boat order). That's what the
+  // video player uses as its poster.
+  const videos = wantsVideo
+    ? await syncVideos(l.id, brokerage.site_page, slug, photos[0] ?? null)
+    : [];
 
   // A page has to have something on it. Name the actual cause — the first
   // version of this said "no video made it across to the media host" whatever
