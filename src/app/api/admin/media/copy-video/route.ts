@@ -82,27 +82,52 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ alreadyThere: true, key });
     }
 
-    // Size comes from storage rather than the row — it's the authority, and the
-    // part maths has to match the actual bytes.
-    const { data: obj } = await svc
-      .schema("storage")
-      .from("objects")
-      .select("metadata")
-      .eq("bucket_id", "listing-videos")
-      .eq("name", src)
-      .maybeSingle();
-
-    const totalBytes = Number((obj?.metadata as { size?: number } | null)?.size ?? 0);
-    if (!totalBytes) {
-      return NextResponse.json({ error: "Couldn't determine the file size." }, { status: 400 });
-    }
-
     // A 6-hour signed link outlives the copy comfortably, even on a slow one.
     const { data: signed } = await svc.storage
       .from("listing-videos")
       .createSignedUrl(src, 60 * 60 * 6);
     if (!signed?.signedUrl) {
       return NextResponse.json({ error: "Couldn't read the source video." }, { status: 400 });
+    }
+
+    // Ask the file how big it is, by requesting a single byte and reading the
+    // total out of the Content-Range header.
+    //
+    // The obvious approach — reading `size` from Supabase's storage.objects
+    // table — doesn't work: that schema isn't exposed through the API even to
+    // the service key, so the lookup came back empty and the copy refused to
+    // start. This asks the same source the copy will actually read from, which
+    // is the honest thing to measure anyway, and it doubles as a check that the
+    // signed link works and supports ranges before we commit to a multipart
+    // upload.
+    let totalBytes = 0;
+    try {
+      const probe = await fetch(signed.signedUrl, {
+        headers: { Range: "bytes=0-0" },
+        cache: "no-store",
+      });
+      const range = probe.headers.get("content-range"); // "bytes 0-0/1302545678"
+      const total = range?.split("/")[1];
+      totalBytes = Number(total ?? 0);
+
+      if (!totalBytes) {
+        // No Content-Range means ranges aren't supported, which would make the
+        // part-by-part copy impossible — better to say so than to half-try.
+        const len = probe.headers.get("content-length");
+        if (probe.status === 200 && len) {
+          return NextResponse.json({
+            error: "The source didn't accept a partial request, so this file can't be copied in parts.",
+          }, { status: 400 });
+        }
+      }
+    } catch (e) {
+      return NextResponse.json({
+        error: `Couldn't reach the video file: ${e instanceof Error ? e.message : "unknown error"}`,
+      }, { status: 502 });
+    }
+
+    if (!totalBytes) {
+      return NextResponse.json({ error: "Couldn't determine the file size." }, { status: 400 });
     }
 
     const uploadId = await startCopy(R2_BUCKET, key, contentType);

@@ -664,6 +664,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </h1>
           <p className="text-ink-500 text-sm mt-0.5">
             {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
+            {/* These details were read-only here, so a typo at upload could only
+                be fixed by deleting the listing and re-uploading every photo. */}
+            <Link
+              href={`/admin/listings/${listing.id}/edit`}
+              className="ml-2 text-xs font-medium text-accent-700 hover:text-accent-600 transition-colors duration-fast whitespace-nowrap"
+            >
+              Edit details
+            </Link>
           </p>
           <p className="text-ink-500 text-xs mt-1">Broker: {brokerName}</p>
           {canShare && (
