@@ -10,6 +10,7 @@ import { guessCategory } from "@/lib/guessCategory";
 import { orderPhotos } from "@/lib/photoOrder";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
+import PrepareVideoForSite from "@/components/PrepareVideoForSite";
 import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
@@ -785,6 +786,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                 </span>
               )}
             </div>
+          )}
+
+          {/* Video has to reach the media host BEFORE publishing — a 1.2GB file
+              can't be copied inside the publish request. This does it in parts,
+              with real progress. */}
+          {sitePage && siteMedia !== "photos" && videos.length > 0 && (
+            <PrepareVideoForSite videos={videos.map((v) => ({ id: v.id, filename: v.filename }))} />
           )}
           {listing.showcase_opt_out && (
             <p className="mt-1.5 text-xs text-warn-700">

@@ -57,19 +57,16 @@ async function syncVideos(
     const ext = (src.split(".").pop() || "mp4").toLowerCase();
     const key = `${sitePage}/${slug}/${v.id}.${ext}`;
 
-    try {
-      // Already there from a previous publish — the id-based key means the
-      // bytes can't be stale, so there's nothing to redo.
-      if (!(await r2Exists(key))) {
-        const { data: blob } = await svc.storage.from("listing-videos").download(src);
-        if (!blob) continue;
-        const bytes = Buffer.from(await blob.arrayBuffer());
-        await r2Put(key, bytes, ext === "mov" ? "video/quicktime" : "video/mp4");
-      }
-    } catch {
-      // One video failing shouldn't sink the whole page — publish the rest.
-      continue;
-    }
+    // The file must ALREADY be on the media host. Publishing does not copy it.
+    //
+    // The first version copied here, inline: download the whole video, then
+    // upload it. That crashed on the first real boat — a 1.2GB drone file is
+    // more memory than a serverless function has and more time than it gets, so
+    // the request died and the browser received an HTML error page instead of
+    // an answer. Copying now happens beforehand, in 64MB parts, driven from the
+    // admin page where it can show progress and survive a dropped connection
+    // (see /api/admin/media/copy-video). Publishing just assembles the page.
+    if (!(await r2Exists(key))) continue;
 
     // Poster frame, in order of preference:
     //   1. the boat's cover photo — already on the public host, and it's the
@@ -80,6 +77,7 @@ async function syncVideos(
     // The cover photo wins because a frame grabbed a second into a clip can be
     // a lens flare or half a dock, and on a page selling a yacht — for a
     // photography business — that shouldn't be the first thing anyone sees.
+    // Posters are a few hundred KB, so they're safe to copy inline here.
     let poster: string | null = heroPhotoUrl;
     if (!poster && v.thumbnail_path) {
       const posterKey = `${sitePage}/${slug}/poster-${v.id}.jpg`;
@@ -481,7 +479,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
     return {
       error: count
-        ? `This boat has ${count} video${count !== 1 ? "s" : ""}, but ${count !== 1 ? "none" : "it"} could be copied to the media host. Try publishing again; if it keeps failing the file may be too large or damaged.`
+        ? `This boat's video hasn't been copied to the media host yet. Use "Prepare video for the website" on this page first — it copies the file in the background and shows progress.`
         : "This boat is set to publish video, but no video has been uploaded to it.",
     };
   }
