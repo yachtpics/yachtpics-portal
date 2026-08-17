@@ -535,7 +535,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed");
       setOnSite(next);
-      if (!next) setMessage("Removed from the website.");
+      if (!next) {
+        setMessage(
+          data.warning
+            ? `Removed from the website — ${data.warning}`
+            : "Removed from the website — the boat page is deleted and its video is off the media host. Photos and video stay in the portal."
+        );
+      }
       else if (data.previewOnly) setMessage(`Generated ${data.label} — ${data.reason}`);
       else setMessage(`Published to yachtpics.com — ${data.uploaded?.length ?? 0} page(s) uploaded.`);
       setTimeout(() => setMessage(""), 6000);
