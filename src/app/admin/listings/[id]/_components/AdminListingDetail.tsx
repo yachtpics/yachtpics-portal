@@ -677,15 +677,22 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </h1>
           <p className="text-ink-500 text-sm mt-0.5">
             {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
-            {/* These details were read-only here, so a typo at upload could only
-                be fixed by deleting the listing and re-uploading every photo. */}
-            <Link
-              href={`/admin/listings/${listing.id}/edit`}
-              className="ml-2 text-xs font-medium text-accent-700 hover:text-accent-600 transition-colors duration-fast whitespace-nowrap"
-            >
-              Edit details
-            </Link>
           </p>
+          {/* A bordered control rather than a text link. As a link tucked on the
+              end of the specs line it was genuinely hard to find — it took three
+              looks to spot, which is the interface being wrong rather than the
+              person. These details were read-only until now, so a typo at upload
+              could only be fixed by deleting the listing and re-uploading every
+              photo. */}
+          <Link
+            href={`/admin/listings/${listing.id}/edit`}
+            className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet"
+          >
+            <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor" aria-hidden>
+              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+            </svg>
+            Edit vessel details
+          </Link>
           <p className="text-ink-500 text-xs mt-1">Broker: {brokerName}</p>
           {canShare && (
             <button
