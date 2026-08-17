@@ -807,9 +807,16 @@ export default function BrokerListingPage() {
       });
       // Only drop it from the list once the server confirms — otherwise a
       // refused delete looks like it worked and the video returns on reload.
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
         throw new Error(data.error ?? `Delete failed (${res.status})`);
+      }
+      // The video is gone from the portal either way. This only fires when the
+      // published website page couldn't be rewritten — worth saying, because
+      // until it is, the page still shows a player for a video that no longer
+      // exists.
+      if (data.siteWarning) {
+        setVideoDeleteError(String(data.siteWarning) + " Re-publish the boat to fix it.");
       }
       setVideos(prev => prev.filter(v => v.id !== videoId));
     } catch (e) {
