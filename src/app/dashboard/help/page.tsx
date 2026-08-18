@@ -8,6 +8,9 @@ const sections = [
       "You'll receive an invite email from YachtPics — click 'Set Up Your Account' and create a password.",
       "Your profile is pre-filled with your name and email. Complete the rest under My Profile.",
       "If you have an assistant, they may already be linked and ready to help before you even log in.",
+      "Signing in later: use your email and password, or click 'Email me a sign-in link' on the login page and we'll send a one-click link — no password to remember.",
+      "If a reset or sign-in link says it's expired, use the Resend button right on that screen to get a fresh one.",
+      "After signing in you land on My Listings, with your newest boat spotlighted at the top.",
     ],
   },
   {
@@ -26,8 +29,9 @@ const sections = [
     steps: [
       "Create a new listing and upload photos yourself, or listings appear automatically when YachtPics delivers. Click any listing to open it.",
       "Drag and drop photos to reorder them. Click a photo to open the full-screen lightbox.",
-      "Use categories (Exterior, Interior, Cockpit, etc.) to organize photos — clients see these labels in the slideshow.",
-      "Toggle the eye icon on any photo to hide it from the client view without deleting it.",
+      "Click 'Sort to standard order' to rewrite the order into the standard walk-through — outside, up top, cockpit, engine room, then the interior. Drag from there to fine-tune.",
+      "Use categories (Profiles, Foredeck, Cockpit, Skylounge, Beach Club, Engine Room, staterooms and more) to organize photos — clients see these labels in the slideshow.",
+      "Toggle the eye icon on any photo to hide it. Hidden photos stay on your listing but are left out of both the client slideshow and client downloads.",
       "Switch to Select mode to bulk-download, bulk-hide, bulk-delete, or bulk-assign categories to multiple photos at once.",
       "In Select mode, choose photos then pick a category from the dropdown and click Apply to update them all at once.",
       "When uploading photos from a mobile device, a prompt will appear if categories can't be detected automatically — just pick the category before uploading.",
@@ -47,6 +51,16 @@ const sections = [
   },
   {
     num: "05",
+    title: "Listing Documents",
+    steps: [
+      "Open any listing and scroll to the Listing Documents section.",
+      "Click Upload PDF to add brochures, spec sheets, survey summaries — anything a buyer should have in hand.",
+      "Documents live on the listing, not inside the slideshow. You pick which ones to attach each time you use Send to Client.",
+      "To remove one, click Delete on its card.",
+    ],
+  },
+  {
+    num: "06",
     title: "Publishing & Sharing with Clients",
     steps: [
       "Set it up first: drag photos into the order you want, hide any you don't want shown, and tap the ★ on your best shot to make it the cover.",
@@ -57,7 +71,7 @@ const sections = [
     ],
   },
   {
-    num: "06",
+    num: "07",
     title: "Shoots & Invoices",
     steps: [
       "Every completed shoot is logged here automatically — no action needed.",
@@ -66,7 +80,7 @@ const sections = [
     ],
   },
   {
-    num: "07",
+    num: "08",
     title: "Billing & Subscription",
     steps: [
       "Photo downloads are always free — no subscription required, even after your trial ends.",
@@ -75,28 +89,41 @@ const sections = [
     ],
   },
   {
-    num: "08",
+    num: "09",
     title: "Working with Assistants",
     steps: [
       "Assistants can manage listings, upload photos and videos, and send slideshows on your behalf.",
       "To add an assistant, go to My Profile → Assistants, enter their email, and click Add.",
       "New assistants will receive an invite email and be linked to your account automatically.",
       "Assistants see all your listings but cannot access billing or change your account settings.",
+      "Assistants get their own My Brokers page listing every broker they work for, so they can jump straight into the right boat.",
       "To remove an assistant, go to My Profile → Assistants and click Remove next to their name.",
     ],
   },
   {
-    num: "09",
+    num: "10",
+    title: "Sharing Within Your Brokerage",
+    steps: [
+      "If you're a brokerage admin, every listing has a 'Share with brokerage' button near the top.",
+      "Turn it on and that boat becomes visible to every broker in your brokerage — handy for co-brokering, or covering while someone's out.",
+      "Once shared the button reads 'Shared with brokerage'. Click it again to stop sharing.",
+      "Sharing changes nothing else: your client slideshow, sending, and downloads all work exactly the same.",
+      "The Brokerage page in the sidebar lists everyone on your brokerage's account in one place.",
+    ],
+  },
+  {
+    num: "11",
     title: "Marketing Tools",
     steps: [
       "Cover photo: tap the ★ on a photo to make it the cover used on your spec sheet and social posts. If none is set, the first photo is used.",
+      "Flyer cover: next to the photos, switch between Fit (show all) and Fill (crop) to control how that cover sits on your spec sheet — Fit shows the whole photo, Fill fills the space edge-to-edge.",
       "Spec Sheet: open a listing and click Spec Sheet for a clean, branded, printable one-pager with the specs, your logo, and a QR code — ready to print or email.",
       "Social Post: click Social Post to turn any photo into a branded, post-ready image with a caption and hashtags written for you. Download and post to Instagram or Facebook.",
       "QR code: once a listing's slideshow is published, it gets its own QR code. Add it to a flyer or dock sign so buyers scan straight to your gallery.",
     ],
   },
   {
-    num: "10",
+    num: "12",
     title: "Buyer Inquiries",
     steps: [
       "Your published slideshow has a Request Info button buyers can use to reach out.",
@@ -106,33 +133,52 @@ const sections = [
     ],
   },
   {
-    num: "11",
+    num: "13",
     title: "Recently Photographed",
     steps: [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
+      "A rotating strip of featured boats also appears on your dashboard — tap it to open the full showcase gallery.",
       "YachtPics curates which boats appear. If a client is after a certain type of boat, browse here and reach the listing broker directly using the phone and email on each card.",
       "Keeping a boat quiet? Open the listing and check 'Keep this a pocket listing' to hide it from the showcase — even if we've featured it. Nothing else changes; your photos, downloads, and client sharing are unaffected.",
+    ],
+  },
+  {
+    num: "14",
+    title: "Tips & Tricks",
+    steps: [
+      "Tips (in the sidebar) is a browsable library of short how-tos for getting more out of the portal.",
+      "Topics include photo order and curation, working with assistants, installing the portal as an app on your phone, magic-link sign-in, sharing across your office, and co-brokering.",
+      "We email a new tip each week — every one lands on this page, so you can read ahead or catch up anytime.",
+      "Each tip ends with a button that takes you straight to the part of the portal it's about.",
     ],
   },
 ];
 
 const quickRef = [
-  ["Share a listing with a client", "My Listings → listing → Share Slideshow"],
+  ["Publish a slideshow", "My Listings → listing → Client Slideshow → Create Slideshow"],
+  ["Share a listing with a client", "My Listings → listing → Send to Client"],
   ["Quickly send a listing to a client", "My Listings → Send button on listing row"],
   ["Download all photos for a listing", "My Listings → Download button on listing row"],
   ["View who opened your slideshow", "My Listings → listing → Sent History"],
   ["Reorder photos", "My Listings → listing → drag and drop"],
+  ["Put photos in the standard walk-through order", "My Listings → listing → Sort to standard order"],
   ["Hide a photo from clients", "My Listings → listing → eye icon on photo"],
   ["Bulk-delete or bulk-download photos", "My Listings → listing → Select mode"],
   ["Assign a category to multiple photos", "My Listings → listing → Select mode → category dropdown → Apply"],
+  ["Sign in without a password", "Login page → Email me a sign-in link"],
   ["Change your password", "My Profile → Change Password"],
-  ["Upload a video", "My Listings → listing → Videos section → Add Video"],
+  ["Upload a video", "My Listings → listing → Listing Videos → Upload MP4"],
+  ["Upload a brochure or PDF", "My Listings → listing → Listing Documents → Upload PDF"],
   ["Set the cover photo", "My Listings → listing → ★ on a photo"],
+  ["Change how the cover fits the spec sheet", "My Listings → listing → Flyer cover → Fit / Fill"],
   ["Make a branded spec sheet", "My Listings → listing → Spec Sheet"],
   ["Create a social post", "My Listings → listing → Social Post"],
   ["Hide a video from the slideshow", "My Listings → listing → video → Hide from slideshow"],
   ["Send a video on its own", "My Listings → listing → Send to Client → tick the video"],
   ["See buyer inquiries", "My Listings → listing → Inquiries section"],
+  ["Share a boat with your whole brokerage", "My Listings → listing → Share with brokerage"],
+  ["See everyone on your brokerage account", "Sidebar → Brokerage"],
+  ["Assistants: see all your brokers", "Sidebar → My Brokers"],
   ["Browse tips & tricks", "Sidebar → Tips"],
   ["Upload your logo", "My Profile → Company Logo"],
   ["Add or remove an assistant", "My Profile → Assistants"],
