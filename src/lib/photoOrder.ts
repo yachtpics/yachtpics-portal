@@ -15,6 +15,9 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   // Exterior + upper decks
   "Profiles",
   "Profiles Running",
+  // Aerials sit with the exterior beauty shots rather than off on their own —
+  // a buyer scrolling wants the boat from the air right after the profiles.
+  "Aerial",
   "Tower",
   "Flybridge",
   "Enclosed Flybridge",

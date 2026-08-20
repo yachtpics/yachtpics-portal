@@ -1173,6 +1173,15 @@ export default function BrokerListingPage() {
                       {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
                         <option key={cat} value={cat}>{cat}</option>
                       ))}
+                      {/* Custom categories were missing here while the admin
+                          version had them — so a category added on one screen
+                          simply wasn't offered on the other, with nothing to
+                          explain why. */}
+                      {customCategories
+                        .filter((c) => !(PHOTO_CATEGORIES as readonly string[]).includes(c.name))
+                        .map((c) => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
                       <option value="Other">Other</option>
                     </select>
                     {bulkCategory && (

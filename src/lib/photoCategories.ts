@@ -1,4 +1,5 @@
 export const PHOTO_CATEGORIES = [
+  "Aerial",
   "Aft Cabin",
   "Aft Deck",
   "Aft Port Guest Stateroom",

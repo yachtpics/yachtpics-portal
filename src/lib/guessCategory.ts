@@ -28,6 +28,12 @@ const ALIASES: Record<string, string> = {
   // Unambiguous in a yacht context: a "running" or "underway" shot is the boat
   // moving. There's no other area these could mean.
   running:     "Profiles Running",
+  // Drone footage is almost never named "aerial" — it comes off the card as
+  // DJI_..., or the photographer types "drone" or "overhead".
+  drone:       "Aerial",
+  aerial:      "Aerial",
+  overhead:    "Aerial",
+  dji:         "Aerial",
   underway:    "Profiles Running",
   cruising:    "Profiles Running",
   // NOTE: no bare "deck" → Cockpit alias. A deck can be many areas (sun deck,
