@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { unpublishFromSite } from "@/lib/sitePublish";
 
 export const runtime = "nodejs";
 
@@ -28,7 +29,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   );
 
   const { data: me } = await service.from("profiles").select("role").eq("id", user.id).single();
-  const { data: listing } = await service.from("listings").select("broker_id").eq("id", listingId).single();
+  const { data: listing } = await service
+    .from("listings")
+    .select("broker_id, publish_to_site")
+    .eq("id", listingId)
+    .single();
   if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
 
   let allowed = me?.role === "admin" || listing.broker_id === user.id;
@@ -54,6 +59,29 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { error } = await service.from("listings").update({ showcase_opt_out: optOut }).eq("id", listingId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // A boat marked private AFTER it went live has to actually come down.
+  //
+  // Setting the flag alone used to leave the page sitting on yachtpics.com,
+  // which made the veto cosmetic: the broker asked for a pocket listing and
+  // the boat stayed reachable by anyone with the address. Six Waterfront boats
+  // ended up in exactly that state before this was caught (2026-08-21).
+  //
+  // Takedown failures are reported but don't fail the request — the broker's
+  // instruction is recorded either way, and a stuck page is a YachtPics
+  // problem to chase, not something to bounce back at them.
+  if (optOut && listing.publish_to_site) {
+    const { warnings, error: takedownError } = await unpublishFromSite(listingId);
+    if (takedownError || warnings.length) {
+      return NextResponse.json({
+        success: true,
+        optOut,
+        removedFromSite: !takedownError,
+        warning: takedownError ?? warnings.join(" "),
+      });
+    }
+    return NextResponse.json({ success: true, optOut, removedFromSite: true });
+  }
 
   return NextResponse.json({ success: true, optOut });
 }

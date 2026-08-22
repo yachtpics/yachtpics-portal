@@ -728,15 +728,21 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </button>
           <button
             onClick={togglePublishSite}
-            disabled={siteBusy || listing.showcase_opt_out === true || !sitePage}
+            // The pocket-listing veto blocks putting a boat UP, never taking
+            // one DOWN. Disabling both directions locked the switch on boats
+            // that were published before the broker marked them private —
+            // exactly when it needs to work.
+            disabled={siteBusy || (listing.showcase_opt_out === true && !onSite) || !sitePage}
             title={
-              listing.showcase_opt_out
-                ? "Pocket listing — the broker vetoed this"
-                : !sitePage
-                  ? "Pick a website page first"
-                  : onSite
-                    ? "Live on yachtpics.com"
-                    : "Publish this boat to yachtpics.com with a portal slideshow"
+              listing.showcase_opt_out && onSite
+                ? "Pocket listing — take it off the website"
+                : listing.showcase_opt_out
+                  ? "Pocket listing — the broker vetoed this"
+                  : !sitePage
+                    ? "Pick a website page first"
+                    : onSite
+                      ? "Live on yachtpics.com"
+                      : "Publish this boat to yachtpics.com with a portal slideshow"
             }
             className={`mt-2 ml-0 sm:ml-2 inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
               onSite

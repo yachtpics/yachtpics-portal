@@ -2,7 +2,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
 import { includesPhotos, includesVideo, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
-import { r2Configured, r2Exists, r2Put, r2PublicUrl } from "@/lib/r2";
+import { r2Configured, r2Exists, r2Put, r2PublicUrl, r2Delete } from "@/lib/r2";
+import { ftpConfigured, uploadFiles, deleteFiles } from "@/lib/siteFtp";
 import type { SiteVideo } from "@/lib/siteTemplates";
 
 /**
@@ -388,6 +389,78 @@ export async function renderSitePage(sitePage: string): Promise<SiteFile | null>
  * regenerated brokerage page. Returns the files rather than uploading them, so
  * the caller can preview before pushing anything live.
  */
+/**
+ * Take a boat off yachtpics.com.
+ *
+ * Unpublishing means OFF the website — not merely unlinked. So: switch the
+ * record off, delete the boat page, delete its video from the public media
+ * host, and rewrite the brokerage page so the link goes with it. Photos stay
+ * in the portal, video stays in the portal — the broker loses nothing, and the
+ * boat can go back up later.
+ *
+ * Shared by two callers so a boat always comes down the same way:
+ *   - the admin publish switch (an explicit decision by YachtPics), and
+ *   - the broker's pocket-listing veto (marking a boat private after it went
+ *     live has to actually take it down, or the veto means nothing).
+ */
+export async function unpublishFromSite(
+  listingId: string
+): Promise<{ warnings: string[]; error?: string }> {
+  const svc = service();
+  const warnings: string[] = [];
+
+  await svc
+    .from("listings")
+    .update({ publish_to_site: false, published_at: null })
+    .eq("id", listingId);
+
+  const { data: l } = await svc
+    .from("listings")
+    .select("site_page, site_slug")
+    .eq("id", listingId)
+    .maybeSingle();
+
+  const sitePage = (l?.site_page as string | null) ?? (await resolveSitePage(listingId));
+  const slug = (l?.site_slug as string | null) ?? null;
+
+  // Deletes ONLY from the public website bucket (yachtpics-media). The
+  // portal's own private copy lives in a different bucket and is never touched
+  // here, so the broker can still watch and send the video afterwards.
+  //
+  // Public video goes first: it shouldn't be watchable a moment longer than
+  // necessary. Photos in the public bucket are left alone — orphaned but
+  // harmless, and keeping them makes re-publishing quick.
+  if (sitePage && slug && r2Configured()) {
+    const { data: vids } = await svc
+      .from("videos")
+      .select("id, storage_path")
+      .eq("listing_id", listingId);
+    for (const v of vids ?? []) {
+      const ext = ((v.storage_path as string).split(".").pop() || "mp4").toLowerCase();
+      await r2Delete(`${sitePage}/${slug}/${v.id}.${ext}`).catch(() => {
+        warnings.push("A video couldn't be removed from the media host.");
+      });
+      await r2Delete(`${sitePage}/${slug}/poster-${v.id}.jpg`).catch(() => {});
+    }
+  }
+
+  if (ftpConfigured()) {
+    if (sitePage && slug) {
+      const res = await deleteFiles([`${sitePage}/${slug}/index.html`]);
+      if (res.error) warnings.push(`The boat page couldn't be deleted: ${res.error}`);
+    }
+    if (sitePage) {
+      const page = await renderSitePage(sitePage);
+      if (page) {
+        const res = await uploadFiles([page]);
+        if (res.error) return { warnings, error: res.error };
+      }
+    }
+  }
+
+  return { warnings };
+}
+
 export async function buildListingFiles(listingId: string): Promise<{ files: SiteFile[]; slug: string; label: string } | { error: string }> {
   const svc = service();
 
