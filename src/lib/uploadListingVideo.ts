@@ -102,10 +102,10 @@ export async function uploadListingVideo({
     };
     xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status });
     xhr.onerror = () => resolve({ ok: false, status: 0 });
-    // PUT to the signed address. The content type must match what was signed —
-    // it's part of the signature.
+    // PUT to the signed address. The header must be the type the SERVER signed,
+    // not the browser's guess — they can differ, and a mismatch fails as a 403.
     xhr.open("PUT", ticket.url);
-    xhr.setRequestHeader("content-type", contentType);
+    xhr.setRequestHeader("content-type", String(ticket.contentType ?? contentType));
     xhr.send(file);
   });
 

@@ -195,9 +195,13 @@ export async function POST(req: NextRequest) {
         error: "Cloudflare doesn't have this file — refusing to delete the Supabase copy.",
       }, { status: 502 });
     }
-    const { error } = await svc.storage.from("listing-videos").remove([key]);
+    const { data: removed, error } = await svc.storage.from("listing-videos").remove([key]);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ cleaned: true, freedBytes: size });
+    // Only count space actually freed. Videos uploaded straight to Cloudflare
+    // never had a Supabase copy, and a repeat cleanup run finds nothing — both
+    // would otherwise inflate the reported number.
+    const actuallyRemoved = (removed?.length ?? 0) > 0;
+    return NextResponse.json({ cleaned: true, freedBytes: actuallyRemoved ? size : 0 });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

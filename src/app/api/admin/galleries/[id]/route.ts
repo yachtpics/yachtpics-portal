@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
+import { r2VideoDelete } from "@/lib/r2";
 
 export const runtime = "nodejs";
 
@@ -57,9 +58,17 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (photos && photos.length > 0) {
     await admin.storage.from("listing-photos").remove(photos.map((p) => p.storage_path));
   }
-  const { data: videos } = await admin.from("videos").select("storage_path").eq("gallery_id", params.id);
-  if (videos && videos.length > 0) {
-    await admin.storage.from("listing-videos").remove(videos.map((v) => v.storage_path));
+  // Video files live in whichever store each row says — deleting only from
+  // Supabase would orphan every Cloudflare-hosted file forever, because the
+  // row (the only pointer to it) is about to cascade away.
+  const { data: videos } = await admin.from("videos").select("storage_path, storage_host").eq("gallery_id", params.id);
+  const sbVideos = (videos ?? []).filter((v) => v.storage_host !== "r2").map((v) => v.storage_path);
+  const r2Videos = (videos ?? []).filter((v) => v.storage_host === "r2").map((v) => v.storage_path);
+  if (sbVideos.length > 0) {
+    await admin.storage.from("listing-videos").remove(sbVideos);
+  }
+  for (const key of r2Videos) {
+    await r2VideoDelete(key).catch(() => {});
   }
 
   // Cascades remove photo/video rows, gallery_access, views, downloads

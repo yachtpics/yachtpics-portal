@@ -43,7 +43,14 @@ export async function POST(req: NextRequest) {
     const access = await assertListingAccess(svc, video.listing_id, user.id, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
 
-    const url = await signVideoUrl(svc, video, { asDownload: body.asDownload === true });
+    // A filename-less row still needs a name in the disposition — without one
+    // the cross-origin download attribute is ignored and the video plays
+    // instead of saving.
+    const url = await signVideoUrl(
+      svc,
+      { ...video, filename: video.filename ?? "video.mp4" },
+      { asDownload: body.asDownload === true }
+    );
     if (!url) return NextResponse.json({ error: "Couldn't sign that video." }, { status: 502 });
     return NextResponse.json({ url });
   }

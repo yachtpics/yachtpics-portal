@@ -32,7 +32,10 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  const filename = typeof body?.filename === "string" ? body.filename : "video.mp4";
+  // Path separators are stripped from the filename before it becomes part of a
+  // storage key — "../" from a client must never steer where a file lands.
+  const rawName = typeof body?.filename === "string" ? body.filename : "video.mp4";
+  const filename = rawName.replace(/[\/\\]/g, "_").replace(/\.\.+/g, ".") || "video.mp4";
   const contentType =
     typeof body?.contentType === "string" && body.contentType.startsWith("video/")
       ? body.contentType
@@ -74,5 +77,9 @@ export async function POST(req: NextRequest) {
     r2SignedGetUrl(path, { expiresIn: 60 * 60 * 6 }),
   ]);
 
-  return NextResponse.json({ url, path, playbackUrl });
+  // contentType is echoed back because the PUT's header must match the one
+  // the signature covers EXACTLY. The browser's idea of the file's type can
+  // differ from what was signed (some machines report .mp4 files as
+  // application/octet-stream), and a mismatch fails as a baffling 403.
+  return NextResponse.json({ url, path, playbackUrl, contentType });
 }

@@ -167,7 +167,8 @@ export default function GalleryDetail({
           xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
           xhr.onerror = () => resolve(false);
           xhr.open("PUT", ticket.url);
-          xhr.setRequestHeader("content-type", file.type || "video/mp4");
+          // The type the server signed, not the browser's guess — must match.
+          xhr.setRequestHeader("content-type", String(ticket.contentType ?? file.type ?? "video/mp4"));
           xhr.send(file);
         });
         if (!uploaded) throw new Error("the transfer didn't complete");
@@ -217,11 +218,19 @@ export default function GalleryDetail({
 
   async function deleteVideo(v: Video) {
     if (!confirm("Remove this video?")) return;
-    // r2-hosted gallery videos can't be deleted from the browser (private
-    // bucket, server-only credentials); the row goes and the file is swept by
-    // the admin cleanup. Supabase-hosted ones are removed directly as before.
-    await supabase.storage.from("listing-videos").remove([v.storage_path]);
-    await supabase.from("videos").delete().eq("id", v.id);
+    // Through the API, because the file may live on the private Cloudflare
+    // bucket, which the browser has no credentials to delete from. The route
+    // clears whichever store holds it.
+    const res = await fetch("/api/videos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId: v.id }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setVideoError(`Couldn't delete that video — ${data.error ?? res.statusText}.`);
+      return;
+    }
     setVideos((prev) => prev.filter((x) => x.id !== v.id));
   }
 

@@ -123,7 +123,7 @@ export default function MediaMigrationPage() {
 
     setCurrent("");
     setFailures(fails);
-    setPhase(fails.length && !queue.length ? "error" : "done");
+    setPhase("done");
   }
 
   async function cleanup() {
@@ -131,7 +131,9 @@ export default function MediaMigrationPage() {
       !confirm(
         `Delete the Supabase copies of ${doneCount} migrated video${doneCount !== 1 ? "s" : ""}? ` +
         `Each is re-verified on Cloudflare immediately before deletion. This is the only ` +
-        `irreversible step — do it only after the portal has been playing video normally for a few days.`
+        `irreversible step. Wait at least 7 DAYS after the migration before doing this: ` +
+        `video links emailed to clients before the move point at Supabase and stay valid ` +
+        `for a week — deleting sooner would break them.`
       )
     )
       return;

@@ -37,9 +37,15 @@ export async function POST(req: NextRequest) {
 
     if (!video) return NextResponse.json({ error: "Video not found" }, { status: 404 });
 
-    // Verify caller is the broker or a linked assistant
-    const access = await assertListingAccess(supabaseAdmin, video.listing_id, user.id);
-    if (access instanceof NextResponse) return access;
+    // Listing videos: the listing's own access rule. Gallery videos have no
+    // listing — they're admin-managed, so admin is the requirement.
+    if (video.listing_id) {
+      const access = await assertListingAccess(supabaseAdmin, video.listing_id, user.id);
+      if (access instanceof NextResponse) return access;
+    } else {
+      const { data: me } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
+    }
 
     // Delete the path recorded against the row, NOT the one the caller sent.
     // Access is checked per listing, but the path arrived in the request body
@@ -50,11 +56,15 @@ export async function POST(req: NextRequest) {
     // migration a video that's been moved has its bytes on Cloudflare and
     // nothing in Supabase — removing from the wrong one would silently leave
     // the real file behind, paid for and orphaned.
+    // During the migration a video can exist in BOTH stores at once — moved to
+    // Cloudflare, Supabase copy kept as the safety net until cleanup. Deleting
+    // a video must clear both, or the row disappears while one copy stays
+    // behind, paid for and unfindable. Removing a path that isn't there is a
+    // harmless no-op in either store.
     if (video.storage_host === "r2") {
       await r2VideoDelete(video.storage_path).catch(() => {});
-    } else {
-      await supabaseAdmin.storage.from("listing-videos").remove([video.storage_path]);
     }
+    await supabaseAdmin.storage.from("listing-videos").remove([video.storage_path]);
 
     // The still captured from this video lives in the photos bucket. Remove it
     // too — it's useless without the video, and orphaned files would quietly
@@ -77,7 +87,9 @@ export async function POST(req: NextRequest) {
     // public website — the worst version of this bug, because the broker
     // believes it's gone. Remove the public copy first (that alone stops it
     // being watchable), then rewrite the page so the player disappears too.
-    const siteResult = await removeFromWebsite(supabaseAdmin, video.listing_id, videoId, video.storage_path);
+    const siteResult = video.listing_id
+      ? await removeFromWebsite(supabaseAdmin, video.listing_id, videoId, video.storage_path)
+      : {};
 
     return NextResponse.json({ success: true, ...siteResult });
   } catch (err) {

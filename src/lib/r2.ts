@@ -130,11 +130,11 @@ export async function r2SignedGetUrl(
     Key: key,
     // Makes the browser save the file under its original name rather than the
     // storage key, which is a timestamped path nobody wants on their desktop.
-    ...(opts.downloadAs
-      ? { ResponseContentDisposition: `attachment; filename="${opts.downloadAs.replace(/"/g, "")}"` }
-      : {}),
+    ...(opts.downloadAs ? { ResponseContentDisposition: contentDisposition(opts.downloadAs) } : {}),
   });
-  return getSignedUrl(r2(), cmd, { expiresIn: opts.expiresIn ?? 60 * 60 * 6 });
+  // Seven days is SigV4's hard ceiling; anything longer makes signing throw,
+  // and several callers swallow errors — the video would just silently vanish.
+  return getSignedUrl(r2(), cmd, { expiresIn: Math.min(opts.expiresIn ?? 60 * 60 * 6, 604800) });
 }
 
 /**
@@ -211,4 +211,18 @@ export async function r2EnsureVideoCors(): Promise<void> {
       ],
     },
   }));
+}
+
+/**
+ * A Content-Disposition value that survives accented and non-Latin filenames.
+ *
+ * S3-compatible stores reject non-ASCII in response-content-disposition at
+ * request time — the signing succeeds and the link 400s only when clicked,
+ * which is the worst place to find out. RFC 5987 encoding (an ASCII fallback
+ * plus a percent-encoded filename*) is what every browser actually reads.
+ */
+function contentDisposition(filename: string): string {
+  const ascii = filename.replace(/["\\]/g, "").replace(/[^\x20-\x7e]/g, "_");
+  const encoded = encodeURIComponent(filename).replace(/['()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
