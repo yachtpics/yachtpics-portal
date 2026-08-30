@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { signVideoUrls } from "@/lib/videoUrls";
 
 export const runtime = "nodejs";
 
@@ -47,7 +48,7 @@ export async function POST(_req: NextRequest, { params }: { params: { slug: stri
       .order("display_order");
     const { data: videos } = await supabase
       .from("videos")
-      .select("storage_path, created_at")
+      .select("id, storage_path, storage_host, created_at")
       .eq("gallery_id", gallery.id)
       .order("created_at");
 
@@ -60,16 +61,13 @@ export async function POST(_req: NextRequest, { params }: { params: { slug: stri
       ? await supabase.storage.from("listing-photos").createSignedUrls(photoPaths, TTL)
       : { data: [] };
 
-    const videoPaths = (videos ?? []).map((v) => v.storage_path);
-    const { data: vs } = videoPaths.length
-      ? await supabase.storage.from("listing-videos").createSignedUrls(videoPaths, TTL)
-      : { data: [] };
+    const vmap = await signVideoUrls(supabase, videos ?? [], { expiresIn: TTL });
 
     // Returned in the same order the slideshow renders them, so the client can
     // line them up by index without needing ids it doesn't have.
     return NextResponse.json({
       photos: (photos ?? []).map((p) => (ps ?? []).find((d) => d.path === p.storage_path)?.signedUrl ?? null),
-      videos: (videos ?? []).map((v) => (vs ?? []).find((d) => d.path === v.storage_path)?.signedUrl ?? null),
+      videos: (videos ?? []).map((v) => vmap.get(v.id) ?? null),
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

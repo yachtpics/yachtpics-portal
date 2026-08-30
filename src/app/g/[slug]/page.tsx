@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import GallerySlideshow from "./_components/GallerySlideshow";
+import { withVideoUrls } from "@/lib/videoUrls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -55,16 +56,11 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
 
   const { data: videos } = await supabase
     .from("videos")
-    .select("storage_path, filename, created_at")
+    .select("id, storage_path, storage_host, filename, created_at")
     .eq("gallery_id", gallery.id)
     .order("created_at");
-  const vpaths = (videos ?? []).map((v) => v.storage_path);
-  const { data: vsigned } = vpaths.length > 0
-    ? await supabase.storage.from("listing-videos").createSignedUrls(vpaths, 7200)
-    : { data: [] };
-  const vmap = new Map((vsigned ?? []).map((d) => [d.path, d.signedUrl]));
-  const videoSlides = (videos ?? [])
-    .map((v) => ({ url: vmap.get(v.storage_path) ?? null, filename: v.filename }))
+  const videoSlides = (await withVideoUrls(supabase, videos ?? [], { expiresIn: 7200 }))
+    .map((v) => ({ url: v.url, filename: v.filename ?? null }))
     .filter((s): s is { url: string; filename: string | null } => !!s.url);
 
   return <GallerySlideshow slug={gallery.slug} title={gallery.title} photos={photoSlides} videos={videoSlides} downloadsEnabled={downloadsEnabled} />;

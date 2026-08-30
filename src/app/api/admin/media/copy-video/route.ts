@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { R2_BUCKET, r2Configured, r2Exists } from "@/lib/r2";
 import { startCopy, copyPart, finishCopy, abortCopy, partCount, partRange, type PartRef } from "@/lib/r2ChunkedCopy";
 import { boatSlug } from "@/lib/siteTemplates";
+import { signVideoUrl } from "@/lib/videoUrls";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -40,7 +41,7 @@ export async function POST(req: NextRequest) {
 
   const { data: video } = await svc
     .from("videos")
-    .select("id, storage_path, filename, listing_id")
+    .select("id, storage_path, storage_host, filename, listing_id")
     .eq("id", videoId)
     .maybeSingle();
   if (!video?.listing_id) return NextResponse.json({ error: "Video not found" }, { status: 404 });
@@ -83,12 +84,13 @@ export async function POST(req: NextRequest) {
     }
 
     // A 6-hour signed link outlives the copy comfortably, even on a slow one.
-    const { data: signed } = await svc.storage
-      .from("listing-videos")
-      .createSignedUrl(src, 60 * 60 * 6);
-    if (!signed?.signedUrl) {
+    // Signed from whichever store holds the file — after the migration the
+    // source is the private Cloudflare bucket, not Supabase.
+    const sourceUrl = await signVideoUrl(svc, video, { expiresIn: 60 * 60 * 6 });
+    if (!sourceUrl) {
       return NextResponse.json({ error: "Couldn't read the source video." }, { status: 400 });
     }
+    const signed = { signedUrl: sourceUrl };
 
     // Ask the file how big it is, by requesting a single byte and reading the
     // total out of the Content-Range header.

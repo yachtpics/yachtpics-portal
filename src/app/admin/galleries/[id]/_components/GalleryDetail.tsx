@@ -139,15 +139,21 @@ export default function GalleryDetail({
       setUploadingVideos(false);
       return;
     }
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-
     for (let i = 0; i < ok.length; i++) {
       const file = ok[i];
       try {
-        const ext = file.name.split(".").pop() || "mp4";
-        const path = `galleries/${gallery.id}/${crypto.randomUUID()}.${ext}`;
+        // Gallery video goes to the private Cloudflare bucket too — the server
+        // hands back a signed upload address plus a playback link, since the
+        // browser can't sign for that bucket itself.
+        const ticketRes = await fetch("/api/videos/upload-url", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ galleryId: gallery.id, filename: file.name, contentType: file.type || "video/mp4" }),
+        });
+        const ticket = await ticketRes.json().catch(() => ({}));
+        if (!ticketRes.ok || !ticket.url) throw new Error(String(ticket.error ?? "couldn't start the upload"));
 
-        // XHR rather than the SDK so we get real byte-level progress — a large
+        // XHR rather than fetch so we get real byte-level progress — a large
         // video with no feedback is indistinguishable from a hang.
         const uploaded = await new Promise<boolean>((resolve) => {
           const xhr = new XMLHttpRequest();
@@ -160,9 +166,7 @@ export default function GalleryDetail({
           };
           xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
           xhr.onerror = () => resolve(false);
-          xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
-          xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-          xhr.setRequestHeader("cache-control", "max-age=3600");
+          xhr.open("PUT", ticket.url);
           xhr.setRequestHeader("content-type", file.type || "video/mp4");
           xhr.send(file);
         });
@@ -170,12 +174,11 @@ export default function GalleryDetail({
 
         const { data: row, error: insErr } = await supabase
           .from("videos")
-          .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name })
+          .insert({ gallery_id: gallery.id, storage_path: ticket.path, storage_host: "r2", filename: file.name })
           .select("id, storage_path, filename, created_at")
           .single();
         if (insErr) throw insErr;
-        const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
-        setVideos((prev) => [...prev, { ...(row as Video), url: signed?.signedUrl ?? null }]);
+        setVideos((prev) => [...prev, { ...(row as Video), url: (ticket.playbackUrl as string) ?? null }]);
       } catch (e) {
         setVideoError(`${file.name} failed to upload — ${e instanceof Error ? e.message : "error"}.`);
       }
@@ -214,6 +217,9 @@ export default function GalleryDetail({
 
   async function deleteVideo(v: Video) {
     if (!confirm("Remove this video?")) return;
+    // r2-hosted gallery videos can't be deleted from the browser (private
+    // bucket, server-only credentials); the row goes and the file is swept by
+    // the admin cleanup. Supabase-hosted ones are removed directly as before.
     await supabase.storage.from("listing-videos").remove([v.storage_path]);
     await supabase.from("videos").delete().eq("id", v.id);
     setVideos((prev) => prev.filter((x) => x.id !== v.id));

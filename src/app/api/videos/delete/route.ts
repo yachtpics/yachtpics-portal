@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { r2Configured, r2Delete } from "@/lib/r2";
+import { r2Configured, r2Delete, r2VideoDelete } from "@/lib/r2";
 import { buildListingFiles } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
 
     const { data: video } = await supabaseAdmin
       .from("videos")
-      .select("id, listing_id, storage_path, thumbnail_path")
+      .select("id, listing_id, storage_path, storage_host, thumbnail_path")
       .eq("id", videoId)
       .single();
 
@@ -45,7 +45,16 @@ export async function POST(req: NextRequest) {
     // Access is checked per listing, but the path arrived in the request body
     // and this runs with the service role — so a caller entitled to delete one
     // video could have named any file in the bucket and had it removed.
-    await supabaseAdmin.storage.from("listing-videos").remove([video.storage_path]);
+    //
+    // The file lives in whichever store the row says it does. During the
+    // migration a video that's been moved has its bytes on Cloudflare and
+    // nothing in Supabase — removing from the wrong one would silently leave
+    // the real file behind, paid for and orphaned.
+    if (video.storage_host === "r2") {
+      await r2VideoDelete(video.storage_path).catch(() => {});
+    } else {
+      await supabaseAdmin.storage.from("listing-videos").remove([video.storage_path]);
+    }
 
     // The still captured from this video lives in the photos bucket. Remove it
     // too — it's useless without the video, and orphaned files would quietly

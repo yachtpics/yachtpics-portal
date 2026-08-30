@@ -203,9 +203,6 @@ export default function NewListingPage() {
             supabase,
             file: videoFiles[i],
             listingId,
-            // Stored under the broker who owns the listing, matching the photos
-            // above, so an assistant's uploads don't end up filed separately.
-            pathOwnerId: brokerId,
             uploadedBy: user.id,
             displayOrder: i,
             onProgress: setVideoProgress,

@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import DownloadPageClient from "./_components/DownloadPageClient";
+import { signVideoUrl } from "@/lib/videoUrls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -102,28 +103,25 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
   const { data: videos } = wantsVideos
     ? await supabase
         .from("videos")
-        .select("id, storage_path, filename, created_at")
+        .select("id, storage_path, storage_host, filename, created_at")
         .eq("listing_id", link.listing_id)
         .order("created_at")
     : { data: [] };
 
-  const vidPaths = (videos ?? []).map((v) => v.storage_path);
-  const { data: vidSigned } =
-    vidPaths.length > 0
-      ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 60 * 60 * 6)
-      : { data: [] };
-  const vidUrlMap = new Map((vidSigned ?? []).map((d) => [d.path, d.signedUrl]));
-
-  const videosWithUrls = (videos ?? []).map((v, i) => {
-    const previewUrl = vidUrlMap.get(v.storage_path) ?? null;
-    const dlName = v.filename && /\.\w+$/.test(v.filename) ? v.filename : `${v.filename ?? "video"}.mp4`;
-    return {
-      id: v.id,
-      previewUrl,
-      downloadUrl: previewUrl ? `${previewUrl}&download=${encodeURIComponent(dlName)}` : null,
-      label: v.filename ?? `Video ${i + 1}`,
-    };
-  });
+  // Two links per video: preview, and download-forced. They must be signed
+  // separately — appending &download= to a signed URL only worked on Supabase;
+  // an R2 signature covers the whole query string, so a tacked-on parameter
+  // invalidates the link. signVideoUrl bakes the disposition in for either host.
+  const videosWithUrls = await Promise.all(
+    (videos ?? []).map(async (v, i) => {
+      const dlName = v.filename && /\.\w+$/.test(v.filename) ? v.filename : `${v.filename ?? "video"}.mp4`;
+      const [previewUrl, downloadUrl] = await Promise.all([
+        signVideoUrl(supabase, v, { expiresIn: 60 * 60 * 6 }),
+        signVideoUrl(supabase, { ...v, filename: dlName }, { expiresIn: 60 * 60 * 6, asDownload: true }),
+      ]);
+      return { id: v.id, previewUrl, downloadUrl, label: v.filename ?? `Video ${i + 1}` };
+    })
+  );
 
   const vesselName = listing?.vessel_name ?? "Vessel";
 

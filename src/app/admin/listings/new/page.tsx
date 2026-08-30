@@ -175,7 +175,6 @@ export default function NewListingPage() {
             supabase,
             file: videoFiles[i],
             listingId: listing.id,
-            pathOwnerId: form.broker_id,
             uploadedBy: user.id,
             displayOrder: i,
             onProgress: setVideoProgress,

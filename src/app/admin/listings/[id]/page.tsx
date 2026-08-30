@@ -3,6 +3,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import AdminListingDetail from "./_components/AdminListingDetail";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { withVideoUrls } from "@/lib/videoUrls";
 
 type DownloadProfile = { first_name: string | null; last_name: string | null; display_email: string | null };
 type DownloadRecord = {
@@ -99,18 +100,10 @@ export default async function AdminListingPage({ params, searchParams }: { param
 
   const { data: videos } = await supabase
     .from("videos")
-    .select("id, storage_path, filename, created_at, title, description")
+    .select("id, storage_path, storage_host, filename, created_at, title, description")
     .eq("listing_id", params.id)
     .order("created_at");
-  const vidPaths = (videos ?? []).map(v => v.storage_path);
-  const { data: vidSigned } = vidPaths.length > 0
-    ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 3600)
-    : { data: [] };
-  const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
-  const videosWithUrls = (videos ?? []).map(v => ({
-    ...v,
-    url: vidUrlMap.get(v.storage_path) ?? null,
-  }));
+  const videosWithUrls = await withVideoUrls(supabase, videos ?? [], { expiresIn: 3600 });
 
   // Collect all non-standard categories used across every listing so they're
   // available in the dropdown on any listing page

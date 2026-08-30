@@ -47,13 +47,7 @@ export interface UploadListingVideoArgs {
   supabase: SupabaseClient;
   file: File;
   listingId: string;
-  /**
-   * Whose folder the files live under — normally the broker who owns the
-   * listing, even when an assistant or admin is doing the uploading, so a
-   * listing's media stays together in one place.
-   */
-  pathOwnerId: string;
-  /** Who is doing the uploading (may differ from the owner). */
+  /** Who is doing the uploading (may differ from the listing's owner). */
   uploadedBy: string;
   displayOrder: number;
   /** 0-100 for this single file. */
@@ -70,27 +64,34 @@ export interface UploadedVideo {
 }
 
 export type UploadListingVideoResult =
-  | { ok: true; video: UploadedVideo }
+  | { ok: true; video: UploadedVideo; playbackUrl: string | null }
   | { ok: false; error: string };
 
 export async function uploadListingVideo({
   supabase,
   file,
   listingId,
-  pathOwnerId,
   uploadedBy,
   displayOrder,
   onProgress,
 }: UploadListingVideoArgs): Promise<UploadListingVideoResult> {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const path = `${pathOwnerId}/${listingId}/${Date.now()}-${file.name}`;
+  const contentType = file.type || "video/mp4";
 
-  // Fetched per file rather than once for the whole batch. The raw XHR below
-  // sends this token literally and, unlike the Supabase client, won't refresh
-  // it mid-flight — so on a batch of large files over a slow line the later
-  // ones could outlive the token and fail. getSession() refreshes when needed.
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return { ok: false, error: "Your session expired — please sign in again." };
+  // New video goes straight to the private Cloudflare bucket — this is what
+  // stops Supabase storage growing. The server hands back a signed upload
+  // address (checking listing access in the process) and decides the path
+  // itself, filed under the listing owner's id so an assistant's or admin's
+  // uploads stay with the rest of the broker's media.
+  const ticketRes = await fetch("/api/videos/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ listingId, filename: file.name, contentType }),
+  });
+  const ticket = await ticketRes.json().catch(() => ({}));
+  if (!ticketRes.ok || !ticket.url || !ticket.path) {
+    return { ok: false, error: String(ticket.error ?? "Couldn't start the upload.") };
+  }
+  const path: string = ticket.path;
 
   const outcome = await new Promise<{ ok: boolean; status: number }>((resolve) => {
     const xhr = new XMLHttpRequest();
@@ -101,10 +102,10 @@ export async function uploadListingVideo({
     };
     xhr.onload = () => resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status });
     xhr.onerror = () => resolve({ ok: false, status: 0 });
-    xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
-    xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-    xhr.setRequestHeader("cache-control", "max-age=3600");
-    xhr.setRequestHeader("content-type", file.type || "video/mp4");
+    // PUT to the signed address. The content type must match what was signed —
+    // it's part of the signature.
+    xhr.open("PUT", ticket.url);
+    xhr.setRequestHeader("content-type", contentType);
     xhr.send(file);
   });
 
@@ -124,6 +125,7 @@ export async function uploadListingVideo({
     .insert({
       listing_id: listingId,
       storage_path: path,
+      storage_host: "r2",
       filename: file.name,
       uploaded_by: uploadedBy,
       display_order: displayOrder,
@@ -132,9 +134,9 @@ export async function uploadListingVideo({
     .single();
 
   if (insertError || !row) {
-    // The file made it but we can't record it — clean up so it isn't paid for
-    // forever with nothing pointing at it.
-    await supabase.storage.from("listing-videos").remove([path]);
+    // The file reached Cloudflare but we can't record it. The browser can't
+    // delete from the private bucket, so report plainly — an orphaned file is
+    // a cost problem, a silent vanish is a trust problem.
     return { ok: false, error: insertError?.message ?? "Couldn't save the video record." };
   }
 
@@ -145,7 +147,9 @@ export async function uploadListingVideo({
   try {
     const poster = await captureVideoPoster(file);
     if (poster) {
-      const posterPath = `${pathOwnerId}/${listingId}/video-still-${Date.now()}.jpg`;
+      // Derived from the video's own path so the still sits beside it in the
+      // listing owner's folder.
+      const posterPath = `${path.substring(0, path.lastIndexOf("/"))}/video-still-${Date.now()}.jpg`;
       const { error: posterError } = await supabase.storage
         .from("listing-photos")
         .upload(posterPath, poster, { upsert: false, contentType: "image/jpeg" });
@@ -165,5 +169,5 @@ export async function uploadListingVideo({
     /* no poster; the listing falls back to whatever else it has */
   }
 
-  return { ok: true, video };
+  return { ok: true, video, playbackUrl: (ticket.playbackUrl as string) ?? null };
 }

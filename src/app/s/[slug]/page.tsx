@@ -6,6 +6,7 @@ import SlideshowViewer from "./SlideshowViewer";
 import { orderPhotos } from "@/lib/photoOrder";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import { withVideoUrls } from "@/lib/videoUrls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -83,7 +84,7 @@ export default async function PublicSlideshowPage({
         .order("display_order"),
       supabase
         .from("videos")
-        .select("id, storage_path, filename")
+        .select("id, storage_path, storage_host, filename")
         .eq("listing_id", listing.id)
         .eq("in_slideshow", true)
         .order("created_at"),
@@ -114,16 +115,8 @@ export default async function PublicSlideshowPage({
     url: urlMap.get(photo.storage_path) ?? null,
   }));
 
-  // Sign video URLs
-  const vidPaths = (rawVideos ?? []).map(v => v.storage_path);
-  const { data: vidSigned } = vidPaths.length > 0
-    ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 7200)
-    : { data: [] };
-  const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
-  const videos = (rawVideos ?? []).map(v => ({
-    ...v,
-    url: vidUrlMap.get(v.storage_path) ?? null,
-  }));
+  // Sign video URLs from whichever store holds each file.
+  const videos = await withVideoUrls(supabase, rawVideos ?? [], { expiresIn: 7200 });
 
   const broker = {
     name:

@@ -186,8 +186,6 @@ export default function InviteBrokerPage() {
             supabase,
             file: videoFiles[i],
             listingId,
-            // Under the new broker's folder, matching the photos above.
-            pathOwnerId: brokerId,
             uploadedBy: user?.id ?? brokerId,
             displayOrder: i,
             onProgress: setVideoProgress,

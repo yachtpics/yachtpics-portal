@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import {
   r2Configured, r2MissingConfig, r2Put, r2Delete, r2PublicUrl, R2_BUCKET,
   r2VideoConfigured, r2VideoPut, r2VideoDelete, r2SignedGetUrl, R2_VIDEO_BUCKET,
+  r2EnsureVideoCors,
 } from "@/lib/r2";
 
 export const runtime = "nodejs";
@@ -135,6 +136,20 @@ async function checkPrivateBucket(): Promise<{ ok: boolean; bucket?: string; det
 
   const key = `_selftest/${Date.now()}.txt`;
   const body = `yachtpics private selftest ${new Date().toISOString()}`;
+
+  // Browser uploads and zip downloads need CORS on this bucket, and a fresh
+  // bucket has none. Applying it here makes the self-test the one switch that
+  // readies an environment.
+  try {
+    await r2EnsureVideoCors();
+  } catch (e) {
+    return {
+      ok: false,
+      bucket: R2_VIDEO_BUCKET,
+      detail: `Couldn't set CORS on the bucket: ${e instanceof Error ? e.message : String(e)}`,
+      hint: "Browser uploads will fail until this succeeds — likely the API token lacks bucket-settings permission.",
+    };
+  }
 
   try {
     await r2VideoPut(key, Buffer.from(body, "utf8"), "text/plain; charset=utf-8");

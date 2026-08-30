@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import ClientGalleryView from "./_components/ClientGalleryView";
+import { withVideoUrls } from "@/lib/videoUrls";
 
 export const dynamic = "force-dynamic";
 
@@ -51,7 +52,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
 
   const { data: videos } = await service
     .from("videos")
-    .select("id, storage_path, filename, created_at, uploaded_by")
+    .select("id, storage_path, storage_host, filename, created_at, uploaded_by")
     .eq("gallery_id", params.id)
     .order("created_at");
 
@@ -67,16 +68,11 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
     const adminIds = new Set((uploaders ?? []).filter((u) => u.role === "admin").map((u) => u.id));
     mediaByYachtPics = uploaderIds.every((id) => adminIds.has(id));
   }
-  const vidPaths = (videos ?? []).map((v) => v.storage_path);
-  const { data: vs } = vidPaths.length > 0
-    ? await service.storage.from("listing-videos").createSignedUrls(vidPaths, 7200)
-    : { data: [] };
-  const vmap = new Map((vs ?? []).map((d) => [d.path, d.signedUrl]));
-  const videosWithUrls = (videos ?? []).map((v) => ({
-    id: v.id,
-    filename: v.filename,
-    url: vmap.get(v.storage_path) ?? null,
-  }));
+  // Signed by whichever store actually holds each file — Supabase or the
+  // private Cloudflare bucket — so this page doesn't care where the migration
+  // has got to.
+  const videosWithUrls = (await withVideoUrls(service, videos ?? [], { expiresIn: 7200 }))
+    .map((v) => ({ id: v.id, filename: v.filename, url: v.url }));
 
   const expired = gallery.expires_at ? new Date(gallery.expires_at).getTime() < Date.now() : false;
   const slideshowUrl = gallery.slideshow_published ? `https://portal.yachtpics.com/g/${gallery.slug}` : null;

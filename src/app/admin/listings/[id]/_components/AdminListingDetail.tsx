@@ -11,6 +11,7 @@ import { orderPhotos } from "@/lib/photoOrder";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import PrepareVideoForSite from "@/components/PrepareVideoForSite";
+import { uploadListingVideo } from "@/lib/uploadListingVideo";
 import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
@@ -576,47 +577,27 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
     setUploadingVideo(true);
     setVideoUploadProgress(0);
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    // Shared with the create forms and the broker's Manage page — uploads go
+    // straight to the private Cloudflare bucket, which is what stops Supabase
+    // storage growing. The helper returns a playback link, since the browser
+    // can't sign for that bucket itself.
     let failures = 0;
     for (let i = 0; i < fileArr.length; i++) {
-      const file = fileArr[i];
-      const path = `${listing.broker_id}/${listing.id}/${Date.now()}-${file.name}`;
-      // Use XHR so we get real byte-level upload progress (fetch has no progress API)
-      const ok = await new Promise<boolean>((resolve) => {
-        const xhr = new XMLHttpRequest();
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const base = (i / fileArr.length) * 100;
-            const slice = (e.loaded / e.total) * (100 / fileArr.length);
-            setVideoUploadProgress(Math.round(base + slice));
-          }
-        };
-        xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
-        xhr.onerror = () => resolve(false);
-        xhr.open("POST", `${supabaseUrl}/storage/v1/object/listing-videos/${path}`);
-        xhr.setRequestHeader("Authorization", `Bearer ${session.access_token}`);
-        xhr.setRequestHeader("cache-control", "max-age=3600");
-        xhr.setRequestHeader("content-type", file.type || "video/mp4");
-        xhr.send(file);
+      const result = await uploadListingVideo({
+        supabase,
+        file: fileArr[i],
+        listingId: listing.id,
+        uploadedBy: user.id,
+        displayOrder: videos.length + i,
+        onProgress: (pct) => {
+          const base = (i / fileArr.length) * 100;
+          setVideoUploadProgress(Math.round(base + (pct / fileArr.length)));
+        },
       });
-      if (ok) {
-        const { data: newVideo, error: insertError } = await supabase.from("videos").insert({
-          listing_id: listing.id,
-          storage_path: path,
-          filename: file.name,
-          uploaded_by: user.id,
-          display_order: videos.length + i,
-        }).select().single();
-        if (insertError || !newVideo) {
-          // File reached storage but the database record was rejected (e.g. permissions).
-          // Count it as a failure so the user sees an error instead of a silent vanish.
-          console.error("Video record insert failed:", insertError);
-          failures++;
-        } else {
-          const { data: signed } = await supabase.storage.from("listing-videos").createSignedUrl(path, 3600);
-          setVideos(prev => [...prev, { ...newVideo as Video, url: signed?.signedUrl ?? null }]);
-        }
+      if (result.ok) {
+        setVideos(prev => [...prev, { ...(result.video as unknown as Video), url: result.playbackUrl }]);
       } else {
+        console.error("Video upload failed:", result.error);
         failures++;
       }
       setVideoUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));

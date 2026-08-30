@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { signVideoUrls } from "@/lib/videoUrls";
 
 export const runtime = "nodejs";
 
@@ -53,7 +54,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     .eq("gallery_id", params.id);
   const { data: videos } = await service
     .from("videos")
-    .select("id, storage_path")
+    .select("id, storage_path, storage_host")
     .eq("gallery_id", params.id);
 
   // Six hours: comfortably longer than any realistic download session, without
@@ -66,14 +67,10 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     : { data: [] };
   const pmap = new Map((ps ?? []).map((d) => [d.path, d.signedUrl]));
 
-  const videoPaths = (videos ?? []).map((v) => v.storage_path);
-  const { data: vs } = videoPaths.length
-    ? await service.storage.from("listing-videos").createSignedUrls(videoPaths, TTL)
-    : { data: [] };
-  const vmap = new Map((vs ?? []).map((d) => [d.path, d.signedUrl]));
+  const vmap = await signVideoUrls(service, videos ?? [], { expiresIn: TTL });
 
   return NextResponse.json({
     photos: Object.fromEntries((photos ?? []).map((p) => [p.id, pmap.get(p.storage_path) ?? null])),
-    videos: Object.fromEntries((videos ?? []).map((v) => [v.id, vmap.get(v.storage_path) ?? null])),
+    videos: Object.fromEntries((videos ?? []).map((v) => [v.id, vmap.get(v.id) ?? null])),
   });
 }

@@ -190,7 +190,7 @@ export default function BrokerListingPage() {
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
   // Videos
-  interface Video { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; title?: string | null; description?: string | null; }
+  interface Video { id: string; storage_path: string; storage_host?: string | null; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; title?: string | null; description?: string | null; }
   const [videos, setVideos] = useState<Video[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
@@ -330,7 +330,7 @@ export default function BrokerListingPage() {
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("videos")
-        .select("id, storage_path, filename, created_at, in_slideshow, title, description")
+        .select("id, storage_path, storage_host, filename, created_at, in_slideshow, title, description")
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("client_sends")
@@ -375,10 +375,18 @@ export default function BrokerListingPage() {
             .createSignedUrls(photos_raw.map((photo) => photo.storage_path), 3600)
             .then((r) => r.data)
         : Promise.resolve(null),
+      // Videos are signed by the server, not here: some now live on the
+      // private Cloudflare bucket, whose credentials the browser doesn't have.
+      // The API answers from whichever store holds each file.
       vids?.length
-        ? supabase.storage.from("listing-videos")
-            .createSignedUrls(vids.map((v) => v.storage_path), 3600)
-            .then((r) => r.data)
+        ? fetch("/api/videos/signed-urls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ listingId: id }),
+          })
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => (d?.urls ?? null) as Record<string, string> | null)
+            .catch(() => null)
         : Promise.resolve(null),
     ]);
 
@@ -389,8 +397,7 @@ export default function BrokerListingPage() {
     setPhotos(photos_raw.map((photo, i) => ({ ...photo, url: signedData?.[i]?.signedUrl ?? null })));
 
     if (vids?.length) {
-      const vidUrlMap = new Map((vidSigned ?? []).map(d => [d.path, d.signedUrl]));
-      setVideos(vids.map(v => ({ ...v, url: vidUrlMap.get(v.storage_path) ?? null })));
+      setVideos(vids.map(v => ({ ...v, url: vidSigned?.[v.id] ?? null })));
     } else {
       setVideos([]);
     }
@@ -763,9 +770,6 @@ export default function BrokerListingPage() {
         supabase,
         file: fileArr[i],
         listingId: id,
-        // Files sit under the listing owner's folder, not the uploader's, so an
-        // assistant's uploads stay filed with the rest of the broker's media.
-        pathOwnerId: listingBrokerId ?? user.id,
         uploadedBy: user.id,
         displayOrder: videos.length + i,
         onProgress: (pct) => {
@@ -775,10 +779,9 @@ export default function BrokerListingPage() {
       });
 
       if (result.ok) {
-        const { data: signed } = await supabase.storage
-          .from("listing-videos")
-          .createSignedUrl(result.video.storage_path, 3600);
-        setVideos(prev => [...prev, { ...result.video, url: signed?.signedUrl ?? null }]);
+        // Playback link comes with the upload ticket — the browser can't sign
+        // links for the private Cloudflare bucket itself.
+        setVideos(prev => [...prev, { ...result.video, storage_host: "r2", url: result.playbackUrl }]);
       } else {
         // Previously a failed upload still drove the bar to 100% and simply
         // left the video missing, with nothing said.
@@ -831,11 +834,20 @@ export default function BrokerListingPage() {
     await supabase.from("videos").update({ in_slideshow: !current }).eq("id", videoId);
   }
 
-  async function downloadVideo(storagePath: string, filename: string | null) {
-    const { data } = await supabase.storage.from("listing-videos").createSignedUrl(storagePath, 60);
-    if (!data?.signedUrl) return;
+  async function downloadVideo(videoId: string, filename: string | null) {
+    // Signed by the server so it works wherever the file lives, with the
+    // download disposition baked into the link — the a.download attribute is
+    // ignored for cross-origin URLs, so the header is what actually makes the
+    // browser save rather than play.
+    const res = await fetch("/api/videos/signed-urls", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ videoId, asDownload: true }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.url) return;
     const a = window.document.createElement("a");
-    a.href = data.signedUrl;
+    a.href = data.url;
     a.download = filename ?? "video.mp4";
     a.click();
   }
@@ -1745,7 +1757,7 @@ export default function BrokerListingPage() {
                     {video.in_slideshow ? "Hide from slideshow" : "Show in slideshow"}
                   </button>
                   <button
-                    onClick={() => downloadVideo(video.storage_path, video.filename)}
+                    onClick={() => downloadVideo(video.id, video.filename)}
                     className="text-xs font-medium text-ink-400 hover:text-ink-600 transition-colors shrink-0"
                   >
                     Download

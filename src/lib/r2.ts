@@ -4,6 +4,7 @@ import {
   DeleteObjectCommand,
   HeadObjectCommand,
   GetObjectCommand,
+  PutBucketCorsCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -178,4 +179,36 @@ export async function r2VideoSize(key: string): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+
+/**
+ * Allow the portal's own pages to talk to the video bucket from the browser.
+ *
+ * Browsers block cross-origin PUTs and fetches unless the bucket explicitly
+ * permits them, and an R2 bucket permits nothing by default — so without this,
+ * every direct upload and every zip download of an r2-hosted video fails with
+ * an opaque network error. Applied idempotently by the self-test, so a fresh
+ * environment fixes itself the first time the test is run.
+ *
+ * GET is included because gallery zip downloads fetch video bytes with
+ * JavaScript; plain <video> playback never needed CORS.
+ */
+export async function r2EnsureVideoCors(): Promise<void> {
+  await r2().send(new PutBucketCorsCommand({
+    Bucket: R2_VIDEO_BUCKET,
+    CORSConfiguration: {
+      CORSRules: [
+        {
+          AllowedOrigins: [
+            "https://portal.yachtpics.com",
+            "http://localhost:3000",
+          ],
+          AllowedMethods: ["GET", "PUT", "HEAD"],
+          AllowedHeaders: ["content-type"],
+          MaxAgeSeconds: 3600,
+        },
+      ],
+    },
+  }));
 }

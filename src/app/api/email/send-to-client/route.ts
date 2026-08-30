@@ -5,6 +5,7 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { logEmail } from "@/lib/logEmail";
+import { signVideoUrl } from "@/lib/videoUrls";
 
 export async function POST(req: NextRequest) {
   try {
@@ -89,16 +90,13 @@ export async function POST(req: NextRequest) {
     if (videoIds?.length > 0) {
       const { data: vids } = await supabaseAdmin
         .from("videos")
-        .select("id, storage_path, filename")
+        .select("id, storage_path, storage_host, filename")
         .in("id", videoIds)
         .eq("listing_id", listingId);
+      // A week, matching the document links above — these sit in an inbox.
       for (const v of vids ?? []) {
-        const { data: signed } = await supabaseAdmin.storage
-          .from("listing-videos")
-          .createSignedUrl(v.storage_path, 60 * 60 * 24 * 7);
-        if (signed?.signedUrl) {
-          videoLinks.push({ filename: v.filename ?? "video.mp4", url: signed.signedUrl });
-        }
+        const url = await signVideoUrl(supabaseAdmin, v, { expiresIn: 60 * 60 * 24 * 7 });
+        if (url) videoLinks.push({ filename: v.filename ?? "video.mp4", url });
       }
     }
 

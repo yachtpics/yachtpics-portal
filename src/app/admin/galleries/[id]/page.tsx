@@ -2,6 +2,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import GalleryDetail from "./_components/GalleryDetail";
 import RefreshOnMount from "@/components/RefreshOnMount";
+import { withVideoUrls } from "@/lib/videoUrls";
 
 export const dynamic = "force-dynamic";
 
@@ -35,15 +36,10 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
   // Videos
   const { data: videos } = await supabase
     .from("videos")
-    .select("id, storage_path, filename, created_at")
+    .select("id, storage_path, storage_host, filename, created_at")
     .eq("gallery_id", params.id)
     .order("created_at");
-  const vidPaths = (videos ?? []).map((v) => v.storage_path);
-  const { data: vidSigned } = vidPaths.length > 0
-    ? await supabase.storage.from("listing-videos").createSignedUrls(vidPaths, 3600)
-    : { data: [] };
-  const vidUrlMap = new Map((vidSigned ?? []).map((d) => [d.path, d.signedUrl]));
-  const videosWithUrls = (videos ?? []).map((v) => ({ ...v, url: vidUrlMap.get(v.storage_path) ?? null }));
+  const videosWithUrls = await withVideoUrls(supabase, videos ?? [], { expiresIn: 3600 });
 
   // Recipients + activity
   const [{ data: accessRows }, { data: views }, { data: downloads }, { data: opens }] = await Promise.all([
