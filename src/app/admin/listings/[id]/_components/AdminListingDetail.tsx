@@ -581,7 +581,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     // straight to the private Cloudflare bucket, which is what stops Supabase
     // storage growing. The helper returns a playback link, since the browser
     // can't sign for that bucket itself.
-    let failures = 0;
+    const failed: string[] = [];
     for (let i = 0; i < fileArr.length; i++) {
       const result = await uploadListingVideo({
         supabase,
@@ -598,14 +598,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         setVideos(prev => [...prev, { ...(result.video as unknown as Video), url: result.playbackUrl }]);
       } else {
         console.error("Video upload failed:", result.error);
-        failures++;
+        // Name the actual reason. A generic "check your connection" once hid a
+        // real fault for days — the truth is always more useful.
+        failed.push(`${fileArr[i].name} — ${result.error}`);
       }
       setVideoUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
     }
     setUploadingVideo(false);
     if (videoInputRef.current) videoInputRef.current.value = "";
-    if (failures > 0) {
-      setVideoError(`${failures} video${failures > 1 ? "s" : ""} failed to upload. Please check your connection and try again.`);
+    if (failed.length > 0) {
+      setVideoError(`${failed.length > 1 ? `${failed.length} videos didn't upload. ` : ""}${failed.join(" · ")}`);
     } else if (rejected > 0) {
       setVideoError(`${rejected} file${rejected > 1 ? "s were" : " was"} skipped — only MP4 and MOV videos are supported.`);
     }

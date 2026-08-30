@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
 
 type Photo = { id: string; storage_path: string; filename: string | null; category: string | null; display_order: number | null; is_visible: boolean | null; url: string | null };
 type Video = { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null };
@@ -142,44 +143,26 @@ export default function GalleryDetail({
     for (let i = 0; i < ok.length; i++) {
       const file = ok[i];
       try {
-        // Gallery video goes to the private Cloudflare bucket too — the server
-        // hands back a signed upload address plus a playback link, since the
-        // browser can't sign for that bucket itself.
-        const ticketRes = await fetch("/api/videos/upload-url", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ galleryId: gallery.id, filename: file.name, contentType: file.type || "video/mp4" }),
+        // Gallery video goes to the private Cloudflare bucket through the same
+        // drop-proof transport listings use: large files travel as retried
+        // 32MB pieces, so a connection hiccup costs seconds, not the file.
+        const uploaded = await uploadVideoToPrivateBucket({
+          file,
+          target: { galleryId: gallery.id },
+          onProgress: (pct) => {
+            const base = (i / ok.length) * 100;
+            setVideoProgress(Math.round(base + pct / ok.length));
+          },
         });
-        const ticket = await ticketRes.json().catch(() => ({}));
-        if (!ticketRes.ok || !ticket.url) throw new Error(String(ticket.error ?? "couldn't start the upload"));
-
-        // XHR rather than fetch so we get real byte-level progress — a large
-        // video with no feedback is indistinguishable from a hang.
-        const uploaded = await new Promise<boolean>((resolve) => {
-          const xhr = new XMLHttpRequest();
-          xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-              const base = (i / ok.length) * 100;
-              const slice = (e.loaded / e.total) * (100 / ok.length);
-              setVideoProgress(Math.round(base + slice));
-            }
-          };
-          xhr.onload = () => resolve(xhr.status >= 200 && xhr.status < 300);
-          xhr.onerror = () => resolve(false);
-          xhr.open("PUT", ticket.url);
-          // The type the server signed, not the browser's guess — must match.
-          xhr.setRequestHeader("content-type", String(ticket.contentType ?? file.type ?? "video/mp4"));
-          xhr.send(file);
-        });
-        if (!uploaded) throw new Error("the transfer didn't complete");
+        if (!uploaded.ok) throw new Error(uploaded.error);
 
         const { data: row, error: insErr } = await supabase
           .from("videos")
-          .insert({ gallery_id: gallery.id, storage_path: ticket.path, storage_host: "r2", filename: file.name })
+          .insert({ gallery_id: gallery.id, storage_path: uploaded.path, storage_host: "r2", filename: file.name })
           .select("id, storage_path, filename, created_at")
           .single();
         if (insErr) throw insErr;
-        setVideos((prev) => [...prev, { ...(row as Video), url: (ticket.playbackUrl as string) ?? null }]);
+        setVideos((prev) => [...prev, { ...(row as Video), url: uploaded.playbackUrl }]);
       } catch (e) {
         setVideoError(`${file.name} failed to upload — ${e instanceof Error ? e.message : "error"}.`);
       }

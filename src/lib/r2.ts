@@ -5,6 +5,7 @@ import {
   HeadObjectCommand,
   GetObjectCommand,
   PutBucketCorsCommand,
+  UploadPartCommand,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -154,6 +155,29 @@ export async function r2SignedPutUrl(
     Bucket: R2_VIDEO_BUCKET,
     Key: key,
     ContentType: contentType,
+  });
+  return getSignedUrl(r2(), cmd, { expiresIn });
+}
+
+/**
+ * A temporary URL the browser can upload ONE PIECE of a file to.
+ *
+ * Large uploads go up as numbered parts so a dropped connection costs one
+ * 32MB piece instead of the whole file. Deliberately signs no content-type:
+ * the browser sends the pieces as raw bytes, and one less signed header is
+ * one less way for a hair's-difference mismatch to fail as a baffling 403.
+ */
+export async function r2SignedPartUrl(
+  key: string,
+  uploadId: string,
+  partNumber: number,
+  expiresIn = 60 * 60 * 6
+): Promise<string> {
+  const cmd = new UploadPartCommand({
+    Bucket: R2_VIDEO_BUCKET,
+    Key: key,
+    UploadId: uploadId,
+    PartNumber: partNumber,
   });
   return getSignedUrl(r2(), cmd, { expiresIn });
 }

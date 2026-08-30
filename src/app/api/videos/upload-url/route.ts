@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { assertListingAccess } from "@/lib/assertListingAccess";
 import { r2SignedPutUrl, r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
+import { resolveVideoUploadTarget, sanitizeVideoContentType } from "@/lib/videoUploadTarget";
 
 export const runtime = "nodejs";
 
@@ -32,45 +32,18 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => ({}));
-  // Path separators are stripped from the filename before it becomes part of a
-  // storage key — "../" from a client must never steer where a file lands.
-  const rawName = typeof body?.filename === "string" ? body.filename : "video.mp4";
-  const filename = rawName.replace(/[\/\\]/g, "_").replace(/\.\.+/g, ".") || "video.mp4";
-  const contentType =
-    typeof body?.contentType === "string" && body.contentType.startsWith("video/")
-      ? body.contentType
-      : "video/mp4";
+  const contentType = sanitizeVideoContentType(body?.contentType);
 
   const svc = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  let path: string;
-
-  if (body?.listingId) {
-    const access = await assertListingAccess(svc, body.listingId, user.id, { includeCoBroker: true });
-    if (access instanceof NextResponse) return access;
-
-    // Filed under the listing OWNER's id — an assistant's or admin's uploads
-    // belong with the rest of the broker's media, not in a separate folder.
-    const { data: listing } = await svc
-      .from("listings")
-      .select("broker_id")
-      .eq("id", body.listingId)
-      .maybeSingle();
-    if (!listing?.broker_id) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
-
-    path = `${listing.broker_id}/${body.listingId}/${Date.now()}-${filename}`;
-  } else if (body?.galleryId) {
-    const { data: me } = await svc.from("profiles").select("role").eq("id", user.id).maybeSingle();
-    if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
-
-    const ext = filename.split(".").pop() || "mp4";
-    path = `galleries/${body.galleryId}/${crypto.randomUUID()}.${ext}`;
-  } else {
-    return NextResponse.json({ error: "Missing listingId or galleryId" }, { status: 400 });
-  }
+  // Who may upload where — the same function the multipart route uses, so the
+  // two upload paths can never disagree about access or file layout.
+  const target = await resolveVideoUploadTarget(svc, user.id, body);
+  if (target instanceof NextResponse) return target;
+  const path = target.path;
 
   const [url, playbackUrl] = await Promise.all([
     r2SignedPutUrl(path, contentType),
