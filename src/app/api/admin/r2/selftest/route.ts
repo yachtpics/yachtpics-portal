@@ -138,17 +138,18 @@ async function checkPrivateBucket(): Promise<{ ok: boolean; bucket?: string; det
   const body = `yachtpics private selftest ${new Date().toISOString()}`;
 
   // Browser uploads and zip downloads need CORS on this bucket, and a fresh
-  // bucket has none. Applying it here makes the self-test the one switch that
-  // readies an environment.
+  // bucket has none. Try to apply it — but an Object Read & Write token isn't
+  // allowed to change bucket settings, so Access Denied here is expected when
+  // the policy was pasted in the Cloudflare dashboard by hand instead. That's
+  // a fine way to do it; report it as a note, not a failure. The genuine test
+  // of CORS is whether a real upload works.
+  let corsNote: string | undefined;
   try {
     await r2EnsureVideoCors();
-  } catch (e) {
-    return {
-      ok: false,
-      bucket: R2_VIDEO_BUCKET,
-      detail: `Couldn't set CORS on the bucket: ${e instanceof Error ? e.message : String(e)}`,
-      hint: "Browser uploads will fail until this succeeds — likely the API token lacks bucket-settings permission.",
-    };
+  } catch {
+    corsNote =
+      "The API token can't manage bucket settings, so CORS must be set by hand in the Cloudflare " +
+      "dashboard (bucket → Settings → CORS Policy). If uploads work, it's already done.";
   }
 
   try {
@@ -203,5 +204,5 @@ async function checkPrivateBucket(): Promise<{ ok: boolean; bucket?: string; det
     };
   }
 
-  return { ok: true, bucket: R2_VIDEO_BUCKET };
+  return { ok: true, bucket: R2_VIDEO_BUCKET, ...(corsNote ? { corsNote } : {}) };
 }
