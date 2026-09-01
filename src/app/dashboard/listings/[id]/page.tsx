@@ -839,13 +839,21 @@ export default function BrokerListingPage() {
     // download disposition baked into the link — the a.download attribute is
     // ignored for cross-origin URLs, so the header is what actually makes the
     // browser save rather than play.
+    setVideoDeleteError(null);
     const res = await fetch("/api/videos/signed-urls", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ videoId, asDownload: true }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.url) return;
+    if (!res.ok || !data.url) {
+      // Failing silently here left a broker staring at a button that "did
+      // nothing" — and guessing at reasons. Name the actual failure.
+      setVideoDeleteError(
+        `Couldn't start that download — ${data.error ?? `the server answered ${res.status}`}. Downloading your videos is always free; this is a technical problem, not a billing one.`
+      );
+      return;
+    }
     const a = window.document.createElement("a");
     a.href = data.url;
     a.download = filename ?? "video.mp4";
@@ -1710,7 +1718,11 @@ export default function BrokerListingPage() {
             className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-hairline-strong cursor-pointer hover:border-accent-500" : "border-hairline cursor-default"}`}
           >
             {!hasAccess(accessStatus)
-              ? <p className="text-ink-400 text-sm"><Link href="/dashboard/billing" className="text-accent-700 font-medium hover:underline">Subscribe</Link> to upload videos</p>
+              ? <p className="text-ink-400 text-sm">
+                  No videos on this listing yet. Downloading delivered videos is always free —{" "}
+                  <Link href="/dashboard/billing" className="text-accent-700 font-medium hover:underline">subscribing</Link>{" "}
+                  is only needed to upload your own.
+                </p>
               : <p className="text-ink-400 text-sm">No videos yet — click to upload an MP4</p>
             }
           </div>
