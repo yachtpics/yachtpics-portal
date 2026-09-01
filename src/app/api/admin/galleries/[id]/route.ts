@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { r2VideoDelete } from "@/lib/r2";
+import { logMediaDeletion } from "@/lib/mediaDeletionLog";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   if (auth.error) return auth.error;
   const { admin } = auth;
 
+  const { data: gallery } = await admin.from("galleries").select("title").eq("id", params.id).maybeSingle();
+
   const { data: photos } = await admin.from("photos").select("storage_path").eq("gallery_id", params.id);
   if (photos && photos.length > 0) {
     await admin.storage.from("listing-photos").remove(photos.map((p) => p.storage_path));
@@ -61,7 +64,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   // Video files live in whichever store each row says — deleting only from
   // Supabase would orphan every Cloudflare-hosted file forever, because the
   // row (the only pointer to it) is about to cascade away.
-  const { data: videos } = await admin.from("videos").select("storage_path, storage_host").eq("gallery_id", params.id);
+  const { data: videos } = await admin.from("videos").select("storage_path, storage_host, filename, created_at").eq("gallery_id", params.id);
   const sbVideos = (videos ?? []).filter((v) => v.storage_host !== "r2").map((v) => v.storage_path);
   const r2Videos = (videos ?? []).filter((v) => v.storage_host === "r2").map((v) => v.storage_path);
   if (sbVideos.length > 0) {
@@ -74,5 +77,35 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
   // Cascades remove photo/video rows, gallery_access, views, downloads
   const { error } = await admin.from("galleries").delete().eq("id", params.id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // A whole gallery going away is exactly the event the deletion log exists
+  // for. One row for the photos, one per video (videos are individually
+  // identifiable and individually missed).
+  const galleryTitle = (gallery?.title as string | null) ?? null;
+  if (photos && photos.length > 0) {
+    await logMediaDeletion(admin, {
+      mediaType: "photo",
+      actorId: auth.userId,
+      galleryId: params.id,
+      contextName: galleryTitle,
+      photoCount: photos.length,
+      storageHost: "supabase",
+      extra: { via: "gallery deleted" },
+    });
+  }
+  for (const v of videos ?? []) {
+    await logMediaDeletion(admin, {
+      mediaType: "video",
+      actorId: auth.userId,
+      galleryId: params.id,
+      contextName: galleryTitle,
+      filename: (v.filename as string | null) ?? null,
+      storagePath: v.storage_path as string,
+      storageHost: (v.storage_host as string) ?? "supabase",
+      uploadedAt: (v.created_at as string) ?? null,
+      extra: { via: "gallery deleted" },
+    });
+  }
+
   return NextResponse.json({ success: true });
 }

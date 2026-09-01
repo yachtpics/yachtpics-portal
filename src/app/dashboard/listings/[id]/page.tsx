@@ -578,15 +578,13 @@ export default function BrokerListingPage() {
     if (selectedIds.size === 0) return;
     setDeleting(true);
     const toDelete = photos.filter((p) => selectedIds.has(p.id));
-    await Promise.all(
-      toDelete.map((p) =>
-        fetch("/api/photos/delete", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photoId: p.id, storagePath: p.storage_path }),
-        })
-      )
-    );
+    // One call for the whole batch — the server deletes them together and
+    // records the action as a single entry in the deletion log.
+    await fetch("/api/photos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoIds: toDelete.map((p) => p.id) }),
+    });
     setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
     setSelectedIds(new Set());
     setSelectMode(false);
@@ -598,8 +596,13 @@ export default function BrokerListingPage() {
   async function deleteAll() {
     setDeleting(true);
     setConfirmDeleteAll(false);
-    await Promise.all(photos.map((p) => supabase.storage.from("listing-photos").remove([p.storage_path])));
-    await supabase.from("photos").delete().eq("listing_id", id);
+    // Through the delete API rather than raw storage calls — same permission
+    // checks as every other deletion, and it lands in the deletion log.
+    await fetch("/api/photos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoIds: photos.map((p) => p.id) }),
+    });
     setPhotos([]);
     setSelectedIds(new Set());
     setSelectMode(false);

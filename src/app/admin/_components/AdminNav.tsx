@@ -19,6 +19,7 @@ import {
   Megaphone,
   Lightbulb,
   Lock,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -40,6 +41,7 @@ const navItems: NavItem[] = [
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
+  { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
   { label: "Video Migration", href: "/admin/media", icon: Film },
   { label: "Announce", href: "/admin/announce", icon: Megaphone },
   { label: "Tips", href: "/admin/tips", icon: Lightbulb },

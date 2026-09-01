@@ -174,8 +174,13 @@ export default function GalleryDetail({
 
   async function deletePhoto(p: Photo) {
     if (!confirm("Remove this photo?")) return;
-    await supabase.storage.from("listing-photos").remove([p.storage_path]);
-    await supabase.from("photos").delete().eq("id", p.id);
+    // Through the delete API so it lands in the deletion log like every other
+    // removal — gallery photos included.
+    await fetch("/api/photos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoIds: [p.id] }),
+    });
     setPhotos((prev) => prev.filter((x) => x.id !== p.id));
   }
 

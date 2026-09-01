@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { r2Configured, r2Delete, r2VideoDelete } from "@/lib/r2";
+import { r2Configured, r2Delete, r2VideoDelete, r2VideoSize } from "@/lib/r2";
+import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { buildListingFiles } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
 
     const { data: video } = await supabaseAdmin
       .from("videos")
-      .select("id, listing_id, storage_path, storage_host, thumbnail_path")
+      .select("id, listing_id, gallery_id, storage_path, storage_host, thumbnail_path, filename, created_at, uploaded_by")
       .eq("id", videoId)
       .single();
 
@@ -61,6 +62,22 @@ export async function POST(req: NextRequest) {
     // a video must clear both, or the row disappears while one copy stays
     // behind, paid for and unfindable. Removing a path that isn't there is a
     // harmless no-op in either store.
+    // The file's size, captured BEFORE deletion — afterwards nobody can ask.
+    let bytes: number | null = null;
+    if (video.storage_host === "r2") {
+      bytes = await r2VideoSize(video.storage_path).catch(() => null);
+    } else {
+      try {
+        const { data: signed } = await supabaseAdmin.storage
+          .from("listing-videos")
+          .createSignedUrl(video.storage_path, 60);
+        if (signed?.signedUrl) {
+          const probe = await fetch(signed.signedUrl, { headers: { Range: "bytes=0-0" }, cache: "no-store" });
+          bytes = Number(probe.headers.get("content-range")?.split("/")[1]) || null;
+        }
+      } catch { /* size is a nicety */ }
+    }
+
     if (video.storage_host === "r2") {
       await r2VideoDelete(video.storage_path).catch(() => {});
     }
@@ -90,6 +107,52 @@ export async function POST(req: NextRequest) {
     const siteResult = video.listing_id
       ? await removeFromWebsite(supabaseAdmin, video.listing_id, videoId, video.storage_path)
       : {};
+
+    // Write the permanent record — who deleted what, from which boat, how big
+    // it was, and when it had been uploaded. This is the row that answers
+    // "was there ever a video on this listing?" months from now.
+    {
+      let contextName: string | null = null;
+      let brokerName: string | null = null;
+      if (video.listing_id) {
+        const { data: l } = await supabaseAdmin
+          .from("listings")
+          .select("vessel_name, make, model, broker_id")
+          .eq("id", video.listing_id)
+          .maybeSingle();
+        contextName = listingDisplayName(l);
+        if (l?.broker_id) {
+          const { data: b } = await supabaseAdmin
+            .from("profiles").select("first_name, last_name").eq("id", l.broker_id).maybeSingle();
+          brokerName = profileDisplayName(b);
+        }
+      } else if (video.gallery_id) {
+        const { data: g } = await supabaseAdmin
+          .from("galleries").select("title").eq("id", video.gallery_id).maybeSingle();
+        contextName = (g?.title as string | null) ?? null;
+      }
+      let uploadedByName: string | null = null;
+      if (video.uploaded_by) {
+        const { data: u } = await supabaseAdmin
+          .from("profiles").select("first_name, last_name").eq("id", video.uploaded_by).maybeSingle();
+        uploadedByName = profileDisplayName(u);
+      }
+      await logMediaDeletion(supabaseAdmin, {
+        mediaType: "video",
+        actorId: user.id,
+        listingId: video.listing_id,
+        galleryId: video.gallery_id,
+        contextName,
+        brokerName,
+        filename: video.filename,
+        storagePath: video.storage_path,
+        storageHost: video.storage_host,
+        bytes,
+        uploadedAt: video.created_at,
+        uploadedByName,
+        extra: siteResult,
+      });
+    }
 
     return NextResponse.json({ success: true, ...siteResult });
   } catch (err) {

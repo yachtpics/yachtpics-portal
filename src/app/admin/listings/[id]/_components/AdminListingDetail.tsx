@@ -297,9 +297,20 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setTimeout(() => setMessage(""), 2500);
   }
 
-  async function deletePhoto(photoId: string, storagePath: string) {
-    await supabase.storage.from("listing-photos").remove([storagePath]);
-    await supabase.from("photos").delete().eq("id", photoId);
+  // All photo deletions go through the delete API rather than raw storage
+  // calls: the server verifies access, deletes the recorded path, and writes
+  // the deletion log — the record that answers "what happened to the photos
+  // on this boat?" long after they're gone.
+  async function deletePhotosViaApi(photoIds: string[]) {
+    await fetch("/api/photos/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoIds }),
+    });
+  }
+
+  async function deletePhoto(photoId: string, _storagePath: string) {
+    await deletePhotosViaApi([photoId]);
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
   }
@@ -308,8 +319,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (selectedIds.size === 0) return;
     setDeleting(true);
     const toDelete = photos.filter((p) => selectedIds.has(p.id));
-    await Promise.all(toDelete.map((p) => supabase.storage.from("listing-photos").remove([p.storage_path])));
-    await Promise.all(toDelete.map((p) => supabase.from("photos").delete().eq("id", p.id)));
+    await deletePhotosViaApi(toDelete.map((p) => p.id));
     setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
     setSelectedIds(new Set());
     setSelectMode(false);
@@ -321,8 +331,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   async function deleteAll() {
     setDeleting(true);
     setConfirmDeleteAll(false);
-    await Promise.all(photos.map((p) => supabase.storage.from("listing-photos").remove([p.storage_path])));
-    await supabase.from("photos").delete().eq("listing_id", listing.id);
+    await deletePhotosViaApi(photos.map((p) => p.id));
     setPhotos([]);
     setSelectedIds(new Set());
     setSelectMode(false);
