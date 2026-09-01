@@ -35,6 +35,9 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Swim Platform",
   "Beach Club",
   "Cockpit",
+  // Seating rides with the cockpit shots — on the center consoles it's bow and
+  // cockpit seating, which a buyer reads as part of the same walk around deck.
+  "Seating",
   "Aft Deck",
 
   // Machinery — early, per Charlie's order
@@ -66,6 +69,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Starboard Passageway",
   "Cabin",
   "Aft Cabin",
+  "Aft Berth",
 
   // Guest accommodation — each stateroom followed by its own head
   "Forward Cabin",

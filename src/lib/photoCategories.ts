@@ -1,5 +1,6 @@
 export const PHOTO_CATEGORIES = [
   "Aerial",
+  "Aft Berth",
   "Aft Cabin",
   "Aft Deck",
   "Aft Port Guest Stateroom",
@@ -67,6 +68,7 @@ export const PHOTO_CATEGORIES = [
   "Profiles",
   "Profiles Running",
   "Salon",
+  "Seating",
   "Skylounge",
   "Skylounge Aft Deck",
   "Skylounge Day Head",
