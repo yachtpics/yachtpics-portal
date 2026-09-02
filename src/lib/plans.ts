@@ -40,3 +40,20 @@ export const OFFICE_PLAN = {
   brokerCap: 8,
   priceId: "price_1TkUDuK5G1w3hzIsSBIAigXP",
 };
+
+/**
+ * Look up the plan a Stripe price ID belongs to, including the Office plan.
+ * Returns null for an unknown or missing price — e.g. a comped account, or
+ * a price created in Stripe that hasn't been added here yet.
+ */
+export function planForPriceId(
+  priceId: string | null | undefined
+): { name: string; price: number } | null {
+  if (!priceId) return null;
+  const plan = PLANS.find((p) => p.priceId === priceId);
+  if (plan) return { name: plan.name, price: plan.price };
+  if (OFFICE_PLAN.priceId === priceId) {
+    return { name: OFFICE_PLAN.name, price: OFFICE_PLAN.price };
+  }
+  return null;
+}

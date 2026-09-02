@@ -42,6 +42,41 @@ export function getAccessStatus(sub: SubRow | null): AccessStatus {
   return "no_access";
 }
 
+/* ------------------------------------------------------------------ *
+ * Billing helpers — REPORTING ONLY. Never use these to gate features.
+ *
+ * getAccessStatus()/hasAccess() above answer "what may this broker do?"
+ * and deliberately treat a hand-unlocked (comped) account exactly like a
+ * paid one, because comped brokers must keep working normally.
+ *
+ * These two answer a different question: "is Stripe actually charging
+ * anyone?" That distinction is what the admin pages need, so that staff
+ * and test accounts stop being counted as revenue.
+ * ------------------------------------------------------------------ */
+
+export interface BillingSubRow extends SubRow {
+  stripe_price_id?: string | null;
+  current_period_end?: string | null;
+}
+
+/**
+ * True only when a real Stripe subscription is attached and live.
+ *
+ * Note we ignore the `plan` text column entirely — nothing keeps it in
+ * sync after checkout, so it can still read "free" for a paying broker.
+ * The Stripe fields are the source of truth.
+ */
+export function isStripePaid(sub: BillingSubRow | null): boolean {
+  if (!sub?.stripe_subscription_id) return false;
+  return sub.status === "active" || sub.status === "trialing";
+}
+
+/** Unlocked by hand — staff, demo or comped. Full access, no billing. */
+export function isComped(sub: BillingSubRow | null): boolean {
+  if (!sub) return false;
+  return sub.status === "active" && !sub.stripe_subscription_id;
+}
+
 export function trialDaysRemaining(trialEndsAt: string | null): number {
   if (!trialEndsAt) return 0;
   return Math.max(

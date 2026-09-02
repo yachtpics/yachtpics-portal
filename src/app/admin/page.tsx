@@ -1,7 +1,7 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
-import { PLANS } from "@/lib/plans";
-import { getAccessStatus } from "@/lib/subscriptionAccess";
+import { planForPriceId } from "@/lib/plans";
+import { getAccessStatus, isStripePaid, isComped } from "@/lib/subscriptionAccess";
 import RepublishLiveBoats from "./_components/RepublishLiveBoats";
 import RetiredPages from "./_components/RetiredPages";
 
@@ -33,7 +33,7 @@ export default async function AdminPage() {
     { data: recentShoots },
     { data: retiredPages },
   ] = await Promise.all([
-    service.from("profiles").select("id").eq("role", "broker"),
+    service.from("profiles").select("id, first_name, last_name, display_email").eq("role", "broker"),
     service.from("subscriptions").select("broker_id, status, stripe_subscription_id, stripe_price_id, trial_ends_at"),
     service.from("listings").select("*", { count: "exact", head: true }),
     service.from("shoots").select("amount_cents").eq("payment_status", "pending"),
@@ -51,23 +51,42 @@ export default async function AdminPage() {
   ]);
 
   // ---- Revenue + subscription mix ----
-  const priceById = new Map(PLANS.map((p) => [p.priceId, p.price]));
+  //
+  // "Paying" requires a live Stripe subscription. Comped accounts (staff,
+  // demo, test) also carry status 'active', so counting on status alone
+  // used to report them as customers and overstate the headcount next to
+  // an MRR figure of $0 for each of them.
   const subByBroker = new Map((subs ?? []).map((s) => [s.broker_id as string, s]));
 
-  let paying = 0;
+  const payingBrokers: { name: string; planName: string | null; price: number }[] = [];
   let mrr = 0;
+  let comped = 0;
   let onTrial = 0;
   let expiringSoon = 0;
   let expired = 0;
 
   for (const b of brokers ?? []) {
     const sub = subByBroker.get(b.id) ?? null;
-    const isPaid = sub && (sub.status === "active" || (sub.status === "trialing" && sub.stripe_subscription_id));
-    if (isPaid) {
-      paying++;
-      mrr += priceById.get(sub!.stripe_price_id as string) ?? 0;
+
+    if (isStripePaid(sub)) {
+      const plan = planForPriceId(sub!.stripe_price_id as string | null);
+      payingBrokers.push({
+        name:
+          b.first_name
+            ? `${b.first_name} ${b.last_name ?? ""}`.trim()
+            : (b.display_email ?? "Broker"),
+        planName: plan?.name ?? null,
+        price: plan?.price ?? 0,
+      });
+      mrr += plan?.price ?? 0;
       continue;
     }
+
+    if (isComped(sub)) {
+      comped++;
+      continue;
+    }
+
     const status = getAccessStatus(
       sub ? { status: sub.status, stripe_subscription_id: sub.stripe_subscription_id, trial_ends_at: sub.trial_ends_at } : null
     );
@@ -76,6 +95,8 @@ export default async function AdminPage() {
     else if (status === "trial_expired") expired++;
   }
 
+  payingBrokers.sort((a, b) => b.price - a.price);
+  const paying = payingBrokers.length;
   const brokerCount = (brokers ?? []).length;
 
   // ---- Storage ----
@@ -99,7 +120,28 @@ export default async function AdminPage() {
         <div className="bg-ink-950 text-white rounded-card p-5">
           <p className="label-caps-inverse">Monthly Recurring</p>
           <p className="text-3xl font-light tabular-nums mt-1">{money(mrr)}</p>
-          <p className="text-ink-400 text-xs mt-1">{paying} paying {paying === 1 ? "broker" : "brokers"}</p>
+          <p className="text-ink-400 text-xs mt-1">
+            {paying} paying {paying === 1 ? "broker" : "brokers"}
+            {comped > 0 && <span className="text-ink-500"> · {comped} comped</span>}
+          </p>
+          {payingBrokers.length > 0 && (
+            <ul className="mt-3 pt-3 border-t border-white/10 space-y-1.5">
+              {payingBrokers.slice(0, 5).map((b) => (
+                <li key={b.name} className="flex items-baseline justify-between gap-3 text-xs">
+                  <span className="truncate text-white/90">{b.name}</span>
+                  <span className="text-ink-400 tabular-nums shrink-0">
+                    {b.planName ?? "Unknown"}
+                    {b.price > 0 && ` · $${b.price}`}
+                  </span>
+                </li>
+              ))}
+              {payingBrokers.length > 5 && (
+                <li className="text-xs text-ink-400 pt-0.5">
+                  +{payingBrokers.length - 5} more
+                </li>
+              )}
+            </ul>
+          )}
         </div>
         <Link href="/admin/trials" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
           <p className="label-caps">On Trial</p>
