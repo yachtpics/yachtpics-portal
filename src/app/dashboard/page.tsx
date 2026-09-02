@@ -7,6 +7,7 @@ import EnableNotifications from "@/components/EnableNotifications";
 import FeaturedStrip, { type FeaturedBoat } from "@/components/FeaturedStrip";
 import { Badge, Card } from "@/components/ui";
 import type { BadgeTone } from "@/components/ui";
+import { planLabel } from "@/lib/subscriptionAccess";
 
 function statusTone(status: string): BadgeTone {
   if (status === "active") return "success";
@@ -173,7 +174,7 @@ export default async function DashboardPage() {
       .limit(5),
     supabase
       .from("subscriptions")
-      .select("plan, status, trial_ends_at")
+      .select("status, trial_ends_at, stripe_subscription_id, stripe_price_id")
       .eq("broker_id", user.id)
       .single(),
     supabase
@@ -280,7 +281,7 @@ export default async function DashboardPage() {
             <HelpTip text="Your current subscription tier. Photo downloads are always free. A paid plan unlocks the slideshow builder." detail="Go to Billing to upgrade or manage your plan." position="below" />
           </div>
           <p className="text-3xl font-light text-ink-900 capitalize">
-            {subscription?.status === "trialing" ? "Trial" : (subscription?.plan ?? "Free")}
+            {planLabel(subscription ?? null)}
           </p>
         </div>
       </Card>

@@ -1,3 +1,5 @@
+import { planForPriceId } from "@/lib/plans";
+
 /**
  * Subscription access logic — single source of truth.
  *
@@ -75,6 +77,23 @@ export function isStripePaid(sub: BillingSubRow | null): boolean {
 export function isComped(sub: BillingSubRow | null): boolean {
   if (!sub) return false;
   return sub.status === "active" && !sub.stripe_subscription_id;
+}
+
+/**
+ * The plan name to show a broker or on an admin screen.
+ *
+ * Derived from the Stripe price ID rather than the old `subscriptions.plan`
+ * text column. That column was written once at signup and never updated
+ * again, so a paying broker's own dashboard read "Free". Price ID comes
+ * straight from Stripe on every webhook, so it cannot drift.
+ */
+export function planLabel(sub: BillingSubRow | null): string {
+  if (isStripePaid(sub)) {
+    return planForPriceId(sub!.stripe_price_id)?.name ?? "Paid";
+  }
+  if (isComped(sub)) return "Complimentary";
+  if (sub?.status === "trialing") return "Trial";
+  return "Free";
 }
 
 export function trialDaysRemaining(trialEndsAt: string | null): number {

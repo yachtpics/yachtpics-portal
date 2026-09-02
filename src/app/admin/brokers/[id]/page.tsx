@@ -8,6 +8,7 @@ import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 import BrokerContactEditor from "./_components/BrokerContactEditor";
 import AddedByEditor from "./_components/AddedByEditor";
 import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
+import { planLabel } from "@/lib/subscriptionAccess";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
   const supabase = await createClient();
@@ -16,7 +17,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     await Promise.all([
       supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
-      supabase.from("subscriptions").select("plan, status, trial_ends_at, current_period_end").eq("broker_id", params.id).single(),
+      supabase.from("subscriptions").select("status, trial_ends_at, current_period_end, stripe_subscription_id, stripe_price_id").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
       supabase.from("shoots").select("id, shoot_date, amount_cents, payment_status, invoice_number, listings:listing_id(vessel_name)").eq("broker_id", params.id).order("shoot_date", { ascending: false }).limit(10),
       supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
@@ -164,7 +165,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
               ? `Trial · ${trialDays} day${trialDays !== 1 ? "s" : ""} left`
               : subscription?.status ?? "—"}
           </span>
-          <p className="text-sm text-ink-500 mt-2 capitalize">Plan: {subscription?.plan ?? "free"}</p>
+          <p className="text-sm text-ink-500 mt-2">Plan: {planLabel(subscription ?? null)}</p>
           {subscription?.current_period_end && (
             <p className="text-xs text-ink-500 mt-1 tabular-nums">
               Renews {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}

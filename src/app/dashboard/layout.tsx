@@ -43,7 +43,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   const role = profile?.role ?? "broker";
 
   const { data: subscription } = role === "broker"
-    ? await supabase.from("subscriptions").select("plan, status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single()
+    ? await supabase.from("subscriptions").select("status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single()
     : { data: null };
 
   // Start the 30-day trial on first login: if this broker's trial hasn't been

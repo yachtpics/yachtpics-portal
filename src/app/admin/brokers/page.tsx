@@ -10,7 +10,7 @@ export default async function AdminBrokersPage() {
     .select(`
       id, first_name, last_name, display_email, phone, created_at, welcomed_at, invited_by, email_bounced_at, email_bounce_reason,
       broker_details(brokerage_name),
-      subscriptions(plan, status, trial_ends_at)
+      subscriptions(status, trial_ends_at)
     `)
     .eq("role", "broker")
     .order("last_name", { ascending: true })
@@ -29,7 +29,7 @@ export default async function AdminBrokersPage() {
 
   const shaped: BrokerRow[] = (brokers ?? []).map((broker) => {
     const details = broker.broker_details as { brokerage_name: string | null } | { brokerage_name: string | null }[] | null;
-    const sub = broker.subscriptions as { plan: string; status: string; trial_ends_at: string | null }[] | null;
+    const sub = broker.subscriptions as { status: string; trial_ends_at: string | null }[] | null;
     const brokerage = (Array.isArray(details) ? details[0]?.brokerage_name : details?.brokerage_name) ?? "—";
     const status = sub?.[0]?.status ?? "—";
     const trialDays = sub?.[0]?.trial_ends_at

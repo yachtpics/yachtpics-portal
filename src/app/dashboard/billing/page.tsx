@@ -13,7 +13,6 @@ type Subscription = {
   stripe_subscription_id: string | null;
   current_period_end: string | null;
   trial_ends_at: string | null;
-  plan: string | null;
 };
 
 export default function BillingPage() {
@@ -31,7 +30,7 @@ export default function BillingPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at, plan").eq("broker_id", user.id).single();
+      const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at").eq("broker_id", user.id).single();
       setSub(data ?? null);
       setLoading(false);
     }
