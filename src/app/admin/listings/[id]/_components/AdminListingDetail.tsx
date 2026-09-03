@@ -189,6 +189,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setUploading(true);
     setUploadProgress(0);
     const fileArr = Array.from(files);
+    // Stamp WHICH admin uploaded these. It used to be null, which made every
+    // admin upload anonymous — "who uploaded this?" had no answer beyond
+    // "YachtPics". The by-YachtPics checks look the role up by id, so a
+    // stamped admin still counts as ours.
+    const { data: { user } } = await supabase.auth.getUser();
 
     for (let i = 0; i < fileArr.length; i++) {
       const file = fileArr[i];
@@ -208,6 +213,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           category,
           display_order: photos.length + i,
           is_visible: true,
+          uploaded_by: user?.id ?? null,
         }).select().single();
 
         if (newPhoto) {

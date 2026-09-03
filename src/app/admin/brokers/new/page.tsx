@@ -149,8 +149,9 @@ export default function InviteBrokerPage() {
       const brokerId = inviteData.brokerId;
       const listingId: string | null = inviteData.listingId ?? null;
 
-      // Step 2: Upload photos
+      // Step 2: Upload photos — stamped with which admin delivered them.
       if (photos.length > 0 && listingId) {
+        const { data: { user: uploader } } = await supabase.auth.getUser();
         for (let i = 0; i < photos.length; i++) {
           setProgress(`Uploading photo ${i + 1} of ${photos.length}…`);
           const photo = photos[i];
@@ -169,6 +170,7 @@ export default function InviteBrokerPage() {
               category: photo.category,
               display_order: i,
               is_visible: true,
+              uploaded_by: uploader?.id ?? null,
             });
           }
         }

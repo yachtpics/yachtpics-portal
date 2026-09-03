@@ -53,7 +53,9 @@ Things to explore:
 - **Function limits:** Pro lifts execution duration/size limits, which matters for large uploads and heavier jobs.
 
 **Cost:** ~$20/mo per member. Low cost, removes several constraints at once.
-**Trigger to upgrade:** any of — approaching 100 GB bandwidth, needing more crons/longer functions, or simply formalizing commercial use. A monthly reminder is set to check usage.
+**Trigger to upgrade:** any of — approaching 100 GB bandwidth, needing more crons/longer functions, or simply formalizing commercial use.
+
+**Status (Sept 2026):** still on Hobby, but the commercial-use point is now real — there is 1 paying broker ($29/mo, Starter). The `vercel-upgrade-watch` task checks monthly and counts a paying broker only when a live Stripe subscription is attached; comped and trial accounts are reported separately so they can't be mistaken for revenue. It nudges softly at 1–2 paying brokers and recommends upgrading at 3+, or at 3,000 slideshow views in 30 days.
 
 ---
 

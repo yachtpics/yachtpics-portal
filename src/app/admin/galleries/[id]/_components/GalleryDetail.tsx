@@ -89,6 +89,8 @@ export default function GalleryDetail({
     if (!fileList || fileList.length === 0) return;
     setUploadingPhotos(true);
     setMsg("");
+    // Stamped with which admin uploaded — "who put these here?" has a name.
+    const { data: { user: uploader } } = await supabase.auth.getUser();
     let order = photos.length;
     for (const file of Array.from(fileList)) {
       try {
@@ -98,7 +100,7 @@ export default function GalleryDetail({
         if (upErr) throw upErr;
         const { data: row, error: insErr } = await supabase
           .from("photos")
-          .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name, display_order: order++, is_visible: true })
+          .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name, display_order: order++, is_visible: true, uploaded_by: uploader?.id ?? null })
           .select("id, storage_path, filename, category, display_order, is_visible")
           .single();
         if (insErr) throw insErr;
@@ -158,7 +160,7 @@ export default function GalleryDetail({
 
         const { data: row, error: insErr } = await supabase
           .from("videos")
-          .insert({ gallery_id: gallery.id, storage_path: uploaded.path, storage_host: "r2", filename: file.name })
+          .insert({ gallery_id: gallery.id, storage_path: uploaded.path, storage_host: "r2", filename: file.name, uploaded_by: session.user.id })
           .select("id, storage_path, filename, created_at")
           .single();
         if (insErr) throw insErr;

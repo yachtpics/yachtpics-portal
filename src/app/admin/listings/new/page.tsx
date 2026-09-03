@@ -132,9 +132,11 @@ export default function NewListingPage() {
       return;
     }
 
-    // 2. Upload photos
+    // 2. Upload photos — stamped with WHICH admin is doing the delivering, so
+    // "who uploaded these?" has a name, not a shrug.
     if (photos.length > 0) {
       setUploading(true);
+      const { data: { user: uploader } } = await supabase.auth.getUser();
       for (let i = 0; i < photos.length; i++) {
         const photo = photos[i];
         const ext = photo.file.name.split(".").pop();
@@ -152,6 +154,7 @@ export default function NewListingPage() {
             category: photo.category,
             display_order: i,
             is_visible: true,
+            uploaded_by: uploader?.id ?? null,
           });
         }
 
