@@ -36,6 +36,9 @@ export async function GET(req: NextRequest) {
   if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/announce");
   if (dow === 2) jobs.push("/api/cron/tips");
   if (dow === 4) jobs.push("/api/cron/storage-report");
+  // Deletes the Supabase copies of migrated videos. Self-gated: sleeps until
+  // Sept 7 2026 (a week after the migration), no-ops after Sept 30.
+  jobs.push("/api/cron/video-cleanup");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never
