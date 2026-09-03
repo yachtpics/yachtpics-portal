@@ -74,12 +74,92 @@ export async function POST(req: NextRequest) {
       .eq("broker_id", userId);
   }
 
+  /**
+   * Tell Charlie the moment money moves. He found out about his newest
+   * subscriber days late, from a dashboard he happened to open — the win
+   * should arrive as an email the minute the checkout clears, and a
+   * cancellation deserves the same immediacy for the opposite reason.
+   * Best-effort: a notification hiccup must never fail the webhook, or
+   * Stripe would retry and double-process the event.
+   */
+  async function notifyCharlie(subscription: Stripe.Subscription, kind: "new" | "canceled") {
+    try {
+      if (!process.env.RESEND_API_KEY) return;
+
+      // Who is this? A brokerage office plan, or an individual broker.
+      let who = "A broker";
+      let detail = "";
+      const brokerageId = subscription.metadata?.brokerage_id;
+      if (brokerageId) {
+        const { data: b } = await supabase.from("brokerages").select("name").eq("id", brokerageId).maybeSingle();
+        who = b?.name ? `${b.name} (office plan)` : "A brokerage (office plan)";
+      } else {
+        let userId = subscription.metadata?.supabase_user_id;
+        if (!userId && subscription.customer) {
+          const { data } = await supabase
+            .from("subscriptions").select("broker_id")
+            .eq("stripe_customer_id", subscription.customer as string).single();
+          userId = data?.broker_id;
+        }
+        if (userId) {
+          const { data: p } = await supabase
+            .from("profiles").select("first_name, last_name, display_email").eq("id", userId).maybeSingle();
+          const name = [p?.first_name, p?.last_name].filter(Boolean).join(" ");
+          who = name || p?.display_email || "A broker";
+          if (p?.display_email && name) detail = p.display_email;
+        }
+      }
+
+      const price = subscription.items.data[0]?.price;
+      const amount = price?.unit_amount
+        ? `$${(price.unit_amount / 100).toFixed(0)}/${price.recurring?.interval ?? "mo"}`
+        : "";
+      const plan = [price?.nickname, amount].filter(Boolean).join(" — ");
+
+      const isNew = kind === "new";
+      const subject = isNew
+        ? `🎉 New subscriber: ${who}${amount ? ` (${amount})` : ""}`
+        : `Subscription canceled: ${who}`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
+        <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+          <div style="background:#050b14;padding:28px 40px;">
+            <p style="margin:0;font-size:18px;font-weight:600;color:#ffffff;">YachtPics <span style="color:#c39e4e;">Portal</span> — Billing</p>
+          </div>
+          <div style="padding:32px 40px;">
+            <p style="margin:0 0 4px;font-size:24px;font-weight:700;color:#111827;">${isNew ? "New subscriber 🎉" : "Subscription canceled"}</p>
+            <p style="margin:0 0 12px;font-size:15px;color:#374151;line-height:1.6;"><strong>${who}</strong>${detail ? ` &lt;${detail}&gt;` : ""}${plan ? ` — ${plan}` : ""}</p>
+            <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">${isNew
+              ? "Their payment cleared and the portal has already unlocked their account. Might be a nice moment for a personal welcome text."
+              : "Their paid features are off; their photos and downloads stay available as always. Worth a check-in to hear why."}</p>
+          </div>
+        </div>
+      </body></html>`;
+
+      await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "YachtPics Portal <hello@yachtpics.com>",
+          to: "charlie@yachtpics.com",
+          subject,
+          html,
+        }),
+      });
+    } catch { /* never fail the webhook over a notification */ }
+  }
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === "subscription" && session.subscription) {
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
         await upsertSubscription(subscription);
+        // Checkout completing IS the "someone just subscribed" moment — the
+        // subscription.created/updated events fire repeatedly and would spam.
+        await notifyCharlie(subscription, "new");
       }
       break;
     }
@@ -90,6 +170,7 @@ export async function POST(req: NextRequest) {
     }
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
+      await notifyCharlie(subscription, "canceled");
       const brokerageId = subscription.metadata?.brokerage_id;
       if (brokerageId) {
         await supabase.from("brokerages").update({
