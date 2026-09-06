@@ -1,5 +1,9 @@
 # Working with Charlie on the YachtPics Portal
 
+> **Starting fresh? Read `docs/where-we-are.md` first.** It's the running
+> handoff note — what just shipped, what's waiting to be pushed, and which
+> threads are still open. Keep it current when you finish something notable.
+
 ## Mission
 
 We are building the best media delivery system for yacht brokers. It has to be
