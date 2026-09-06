@@ -14,10 +14,9 @@ git push
 ```
 
 Vercel builds in a minute or two. Nobody else can run it — it needs his
-GitHub login. (If git complains about a lock file, delete
-`.git\index.lock` first — the cloud session couldn't remove it.) The
-`_to_delete/` folder at the repo root holds two stale lock files this session
-moved out of `.git`; it can be deleted.
+GitHub login. The `_to_delete/` folder at the repo root (git-ignored) holds
+lock files and temp objects the cloud session couldn't delete from `.git`;
+the whole folder can simply be deleted.
 
 **2. Add one environment variable in Vercel** so the AI features switch on:
 Vercel → yachtpics-portal → Settings → Environment Variables →
