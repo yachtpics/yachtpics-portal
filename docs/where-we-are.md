@@ -1,86 +1,124 @@
-# Where we are — September 5, 2026
+# Where we are — September 6, 2026 (evening)
 
 A handoff note, written so a fresh session can pick up mid-stream. Charlie is
-shooting in Grenada Sept 6–9; he has the Claude Desktop app open on the home
-computer and remote-desktop access if something needs his hands.
+shooting in Grenada Sept 6–9. He asked for a deep-dive on "the next big
+thing" (see `docs/next-big-thing.md`), read it, and said build all of it —
+so this session did. Everything below is **committed but not pushed.**
 
-## The one thing that matters right now
+## The two things that matter right now
 
-**There are commits waiting to be pushed.** Everything below marked "shipped"
-is committed but only reaches the live portal when Charlie runs, from
-`C:\Users\charl\yachtpics-portal`:
+**1. Push.** From `C:\Users\charl\yachtpics-portal`:
 
 ```
 git push
 ```
 
-Nobody else can run it — it needs his GitHub login in his own terminal, and
-Claude can't type into terminals. If he's away, that means remote desktop.
+Vercel builds in a minute or two. Nobody else can run it — it needs his
+GitHub login. (If git complains about a lock file, delete
+`.git\index.lock` first — the cloud session couldn't remove it.) The
+`_to_delete/` folder at the repo root holds two stale lock files this session
+moved out of `.git`; it can be deleted.
 
-## Recently finished
+**2. Add one environment variable in Vercel** so the AI features switch on:
+Vercel → yachtpics-portal → Settings → Environment Variables →
+`ANTHROPIC_API_KEY` = a key from console.anthropic.com → redeploy. Without it
+the portal behaves exactly as before (the filename guess, the category
+prompt, no Draft button). `ANTHROPIC_MODEL` is optional (defaults to
+`claude-haiku-4-5`).
 
-**Video storage moved to Cloudflare.** All 106 videos now serve from the
-private R2 bucket (`videos.storage_host = 'r2'`). Supabase kept safety copies
-for a week because emailed video links stay valid 7 days.
+## What shipped today (all five items from the deep-dive)
 
-- The 6 Cayleigh & Izzie dive videos were cleaned up early on Sept 3 (4.08 GB
-  freed) — Charlie's own family footage, and he has the originals.
-- The remaining ~27 GB delete themselves automatically: a new cron
-  (`/api/cron/video-cleanup`, dispatched from `/api/cron/daily`) activates
-  Sept 7, verifies each file on Cloudflare immediately before deleting its
-  Supabase copy, skips anything unconfirmed, and emails Charlie a receipt.
-  It no-ops after Sept 30. **This only runs if the push above happened.**
-- Storage was ~91 GB of a 100 GB quota; expect ~64 GB after cleanup.
+**Listing Reel** — `Reel` button next to Social Post on every listing.
+Turns the photos (slideshow order, cover first) into a 9:16 reel (~28s, up to
+10 photos) or a 16:9 film (~54s, up to 14). Title card with vessel name /
+builder / length / staterooms / price / location (price and location can be
+switched off), slow push-in or "whole photo on a soft backdrop", broker end
+card with logo and contact, quiet YachtPics credit. Renders **in the
+browser** with WebCodecs via the `mediabunny` package (new dependency) —
+no server, no render service, no per-video cost. Silent by design (add
+trending audio in Instagram). The film can be added to the listing as a
+video in one click ("— The Film"), which puts it in the slideshow and Send to
+Client. Watermarked for lapsed plans. Needs Chrome/Edge/Safari; Firefox 130+.
+Files: `src/app/dashboard/listings/[id]/reel/page.tsx`, `src/lib/canvasText.ts`.
 
-**Uploads survive bad connections.** A single large PUT was dying whenever
-Charlie's connection hiccupped (live testing: 40 MB failed, 120 MB passed,
-300 MB died at 31%). Files over 32 MB now upload as numbered parts, each
-retried up to 3 times — verified live on a 304 MB test that survived two
-mid-upload drops. See `src/lib/uploadListingVideo.ts` and
-`src/app/api/videos/multipart/route.ts`.
+**Listing Intelligence** —
+- Send to Client now has a Client Name field and every send gets a token;
+  the slideshow link in the email is `?src=send&t=<token>`. Opens are
+  attributed by name: push + email say "Mark opened your slideshow" and Sent
+  History shows exact open counts (`client_sends.token/client_name/
+  open_count/last_opened_at`). Sends before Sept 7 keep the old "gallery
+  viewed since" wording, honestly.
+- The public slideshow records per-photo dwell (≥1.5s), a heart to save
+  photos (kept in the viewer's browser), video plays, 360° tour clicks,
+  Details opens, and a per-session summary (seconds on page, photos seen).
+  New table `slideshow_events`; new columns on `slideshow_views`. Route:
+  `/api/slideshow/event`. Anonymous — random per-tab session id, no cookies.
+- **Engagement panel** on the listing page (views, unique visitors, time per
+  visit, saved photos, 30-day bars, "what buyers linger on" with thumbnails,
+  where views come from). `src/components/ListingEngagement.tsx`,
+  `src/lib/engagement.ts`, `/api/listings/[id]/engagement`.
+- **Seller Report** at `/report/listing/[id]` — one letter page, broker
+  branded, print / save as PDF, forward to the owner.
 
-**Deletion log.** Every photo/video deletion now writes a row to
-`media_deletions` — who, what, which boat, file size, and when it had been
-uploaded — snapshotted as text so the log outlives the listing it refers to.
-Visible at **/admin/deletions**. Born from a real support mystery ("was there
-ever a video on this boat?") that took an hour of database archaeology.
+**AI at upload** (only when `ANTHROPIC_API_KEY` is set) —
+- Photos the filename can't place are labelled by a vision model right after
+  upload (the category prompt is skipped). "Label photos" button relabels
+  anything still Other; when nothing is Other it becomes "Re-label photos"
+  (everything not set by hand). Hand-set categories are never overwritten
+  (`photos.category_source` = manual / filename / ai).
+  `src/lib/ai.ts`, `/api/photos/categorize`.
+- "Draft with AI" on Edit Listing writes a description from specs + six
+  photos in the portal's register; lands in the textarea, saved only when the
+  broker saves. `/api/listings/[id]/describe`.
 
-**Admin uploads are attributed.** They used to record no uploader at all, so
-"who uploaded these?" could only be answered "YachtPics" — not Charlie or
-Samantha. Now stamped like broker uploads always were. Not backfillable.
+**360° tour + deck plan** — `listings.tour_url`, `listings.deck_plan_path`.
+Edit Listing has a new section. Slideshow shows a "360° Tour" tab-button and
+the deck plan under Details. Tour link is validated server-side (http/https).
 
-**Subscription notifications.** The Stripe webhook now emails Charlie the
-moment a checkout clears (who, plan, price) and when one cancels. He found out
-about his newest subscriber days late from a dashboard he happened to open.
+**Listing readiness** — the strip under the listing title: 9 checks (12+
+photos, cover, labels, 5 core specs, description, published, video, tour,
+docs), each unmet one a link to where it gets fixed.
+`src/components/ListingReadiness.tsx`.
 
-**Photo categories.** Added "Seating" (sorts with the cockpit/deck shots) and
-"Aft Berth" (sorts with the cabins), plus "Aerial" earlier.
+Help page updated for all of the above. User-guide PDF **not** regenerated.
 
-## Open threads
+## Database
 
-- **Natural 9 video needs its line.** Charlie uploaded a full interior /
-  exterior / drone film for the 2009 Sunseeker 121 (listing
+Migration applied live on Sept 6 via the Supabase MCP (additive only) and
+saved as `supabase/migrations/20260906_listing_intelligence_reel_tour_ai.sql`.
+
+## What to check after the push
+
+1. Open any listing → **Reel** → Make the reel. Expect a progress bar, then
+   a playable video. Download it; it should play on a phone. Try Film, then
+   "Add film to this listing" → it appears in the Videos section.
+2. Send to Client with a name → open the link from the email → the broker
+   gets "Name opened your slideshow" and Sent History shows "opened it 1 time".
+3. In the slideshow: heart a photo, sit on a few, open Details. Back on the
+   listing, the Engagement panel fills in within a minute (flushes every 8s).
+4. Engagement → Seller Report → prints to one page.
+5. After adding the key: upload an `IMG_1234.jpg` — it should get a real
+   category on its own. Edit Listing → Draft with AI.
+
+## Open threads (carried forward)
+
+- **Natural 9 video needs its line** — listing
   `576a46c9-3809-41c3-a5cd-c0ae5281a206`, video
-  `036be9af-ed02-4b5e-9f78-a6380a3c9c37`) and was choosing a title. The
-  recommendation on the table: title **"Natural 9 — The Film"**, line
-  *"Interiors, exteriors, and aerials of this 2009 Sunseeker 121, start to
-  finish."* Set via the editor under the video on the listing page.
-- **Joe Yeni (joe@yenimarine.com)** — trial expired July 30, still actively
-  listing (4 boats), downloaded 80 photos three weeks after expiry. He's the
-  warmest subscription prospect on the board. He texted about a "subscribe"
-  message while looking for a video on *Above & Beyond* — that listing has
-  photos only, never had a video; the message he hit was the upload prompt in
-  the empty video section, since reworded. **Downloads are always free** —
-  that's the product; the subscription is for the extras.
-- A scheduled task runs **Sept 8** to verify the cleanup freed the space and
-  report back.
-- Parked: site-photos bucket (~20 GB) could move to Cloudflare next; boat-page
-  SEO for not-indexed pages; Brian Nopper broker site.
+  `036be9af-ed02-4b5e-9f78-a6380a3c9c37`. Suggested: **"Natural 9 — The
+  Film"** / *Interiors, exteriors, and aerials of this 2009 Sunseeker 121,
+  start to finish.*
+- **Joe Yeni (joe@yenimarine.com)** — warmest subscription prospect;
+  downloads are always free, the subscription is for the tools (and now the
+  Reel and the Seller Report are two more reasons).
+- Video cleanup cron activates Sept 7; a scheduled task on **Sept 8** checks
+  it freed ~27 GB.
+- Parked: site-photos bucket to Cloudflare; boat-page SEO; Brian Nopper site;
+  the closing-gift feature (GROWTH_IDEAS §7) — the moat, next in line.
 
 ## Habits worth keeping
 
-- Verify against the real thing before declaring victory — run the query, load
-  the page, test the upload. Several bugs here were only found that way.
-- When something fails, say the actual reason. A generic "check your
-  connection" hid a real fault for days and cost a confused support text.
+- Verify against the real thing before declaring victory. This session could
+  only typecheck and lint (no browser, no `next build` — the Linux VM has the
+  Windows swc binary); the checks above are the real test.
+- When something fails, say the actual reason.
 - Copy before delete, verify bytes, and put a gap between the two.

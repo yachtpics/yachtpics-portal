@@ -26,6 +26,8 @@ import ListingSkeleton from "./_components/ListingSkeleton";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import { uploadListingVideo } from "@/lib/uploadListingVideo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
+import ListingEngagement from "@/components/ListingEngagement";
+import ListingReadiness from "@/components/ListingReadiness";
 
 interface Photo {
   id: string;
@@ -44,11 +46,52 @@ export default function BrokerListingPage() {
   const id = params.id as string;
 
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
-  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean; showcase_opt_out: boolean } | null>(null);
+  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean; showcase_opt_out: boolean; year: number | null; length_ft: number | null; make: string | null; asking_price: number | null; vessel_type: string | null; staterooms: number | null; description: string | null; tour_url: string | null } | null>(null);
   const [optOutBusy, setOptOutBusy] = useState(false);
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [heroFit, setHeroFit] = useState<"fit" | "fill">("fit");
   const [sortingPhotos, setSortingPhotos] = useState(false);
+  // AI photo labelling — on only when the server has a key. Checked once.
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [labeling, setLabeling] = useState(false);
+  const [labelNote, setLabelNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/photos/categorize").then((r) => (r.ok ? r.json() : null)).then((d) => setAiConfigured(!!d?.configured)).catch(() => {});
+  }, []);
+
+  /**
+   * Ask the vision model to label photos that are still "Other" (or, with
+   * `force`, everything a person hasn't set by hand). Updates the grid in
+   * place. Quiet on failure — labelling is a convenience, never a blocker.
+   */
+  async function labelWithAi(photoIds?: string[], force = false) {
+    if (!aiConfigured) return 0;
+    setLabeling(true);
+    setLabelNote(null);
+    try {
+      const res = await fetch("/api/photos/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: id, photoIds, force }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const updated: { id: string; category: string }[] = data?.updated ?? [];
+      if (updated.length) {
+        const map = new Map(updated.map((u) => [u.id, u.category]));
+        setPhotos((prev) => prev.map((p) => (map.has(p.id) ? { ...p, category: map.get(p.id)! } : p)));
+      }
+      if (!res.ok && data?.error) setLabelNote(`Labelling stopped: ${data.error}`);
+      else if (data?.considered === 0) setLabelNote("Nothing left to label.");
+      else setLabelNote(`${updated.length} photo${updated.length === 1 ? "" : "s"} labelled${data?.unsure ? ` · ${data.unsure} left as Other` : ""}.`);
+      setTimeout(() => setLabelNote(null), 5000);
+      return updated.length;
+    } catch {
+      return 0;
+    } finally {
+      setLabeling(false);
+    }
+  }
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -164,7 +207,10 @@ export default function BrokerListingPage() {
   const docInputRef = useRef<HTMLInputElement>(null);
 
   // Sent history + view tracking
-  interface ClientSend { id: string; client_email: string; sent_at: string; included_slideshow: boolean; document_count: number; message: string | null; }
+  interface ClientSend { id: string; client_email: string; client_name: string | null; sent_at: string; included_slideshow: boolean; document_count: number; message: string | null; open_count: number | null; last_opened_at: string | null; }
+  // Sends before this date went out without a tracked link, so their opens can
+  // only be inferred from anonymous views. Everything after is exact.
+  const TRACKED_SINCE = new Date("2026-09-07T00:00:00Z");
   const [clientSends, setClientSends] = useState<ClientSend[]>([]);
   const [viewTimestamps, setViewTimestamps] = useState<Date[]>([]);
 
@@ -200,6 +246,7 @@ export default function BrokerListingPage() {
   // Send to client
   const [sendModal, setSendModal] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
+  const [sendName, setSendName] = useState("");
   const [sendMessage, setSendMessage] = useState("");
   const [sendSlideshow, setSendSlideshow] = useState(true);
   const [sendDocIds, setSendDocIds] = useState<Set<string>>(new Set());
@@ -318,7 +365,7 @@ export default function BrokerListingPage() {
     ] = await Promise.all([
       supabase.from("profiles").select("role, is_brokerage_admin").eq("id", user.id).single(),
       supabase.from("listings")
-        .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit")
+        .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit, year, length_ft, make, asking_price, vessel_type, staterooms, description, tour_url")
         .eq("id", id)
         .single(),
       supabase.from("photos")
@@ -334,7 +381,7 @@ export default function BrokerListingPage() {
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("client_sends")
-        .select("id, client_email, sent_at, included_slideshow, document_count, message")
+        .select("id, client_email, client_name, sent_at, included_slideshow, document_count, message, open_count, last_opened_at")
         .eq("listing_id", id)
         .order("sent_at", { ascending: false }),
       supabase.from("slideshow_views")
@@ -473,9 +520,10 @@ export default function BrokerListingPage() {
     if (!files) return;
     const fileArr = Array.from(files);
 
-    // If any files can't be auto-categorized, prompt before uploading
+    // If any files can't be auto-categorized, prompt before uploading — unless
+    // the model can label them after upload, in which case just go.
     const uncategorized = fileArr.filter((f) => guessCategory(f.name) === "Other");
-    if (uncategorized.length > 0) {
+    if (uncategorized.length > 0 && !aiConfigured) {
       setPendingFiles(fileArr);
       setPendingCategory("Other");
       return;
@@ -491,6 +539,7 @@ export default function BrokerListingPage() {
     setUploading(true);
     setUploadProgress(0);
     setPendingFiles(null);
+    const needsLabel: string[] = [];
 
     for (let i = 0; i < fileArr.length; i++) {
       const file = fileArr[i];
@@ -500,15 +549,16 @@ export default function BrokerListingPage() {
       const { error } = await supabase.storage.from("listing-photos").upload(path, file, { upsert: false });
 
       if (!error) {
-        const category = overrideCategory && guessCategory(file.name) === "Other"
-          ? overrideCategory
-          : guessCategory(file.name);
+        const guessed = guessCategory(file.name);
+        const usedOverride = !!overrideCategory && guessed === "Other";
+        const category = usedOverride ? overrideCategory! : guessed;
 
         const { data: newPhoto } = await supabase.from("photos").insert({
           listing_id: id,
           storage_path: path,
           filename: file.name,
           category,
+          category_source: usedOverride ? "manual" : "filename",
           display_order: photos.length + i,
           is_visible: true,
           uploaded_by: user.id,
@@ -517,6 +567,7 @@ export default function BrokerListingPage() {
         if (newPhoto) {
           const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrl(path, 3600);
           setPhotos((prev) => [...prev, { ...newPhoto, url: signed?.signedUrl ?? null } as Photo]);
+          if (category === "Other") needsLabel.push(newPhoto.id);
         }
       }
       setUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
@@ -525,6 +576,9 @@ export default function BrokerListingPage() {
     setUploading(false);
     setMessage(`${fileArr.length} photo${fileArr.length !== 1 ? "s" : ""} uploaded.`);
     setTimeout(() => setMessage(""), 3000);
+
+    // Anything the filename couldn't place, the model labels now.
+    if (needsLabel.length && aiConfigured) await labelWithAi(needsLabel);
   }
 
 
@@ -746,7 +800,8 @@ export default function BrokerListingPage() {
   }
 
   async function updateCategory(photoId: string, category: string) {
-    await supabase.from("photos").update({ category }).eq("id", photoId);
+    // A category a person chose is never overwritten by the model.
+    await supabase.from("photos").update({ category, category_source: "manual" }).eq("id", photoId);
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
   }
 
@@ -873,6 +928,7 @@ export default function BrokerListingPage() {
         body: JSON.stringify({
           listingId: id,
           clientEmail: sendEmail,
+          clientName: sendName,
           message: sendMessage,
           includeSlideshow: sendSlideshow,
           documentIds: Array.from(sendDocIds),
@@ -890,6 +946,7 @@ export default function BrokerListingPage() {
         setSendModal(false);
         setSendSuccess(false);
         setSendEmail("");
+        setSendName("");
         setSendMessage("");
         setSendSlideshow(true);
         setSendDocIds(new Set());
@@ -1119,6 +1176,9 @@ export default function BrokerListingPage() {
             <Link href={`/dashboard/listings/${id}/social`} className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
               Social Post
             </Link>
+            <Link href={`/dashboard/listings/${id}/reel`} className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
+              Reel
+            </Link>
           </div>
           <p className="text-ink-500 text-sm mt-1">{listing.location ?? ""}</p>
           {isBrokerageAdmin && (
@@ -1252,6 +1312,19 @@ export default function BrokerListingPage() {
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
       </div>
 
+      {/* Readiness — what's done, what would make the listing land better */}
+      <ListingReadiness
+        listingId={id}
+        photoCount={photos.filter((p) => p.is_visible).length}
+        uncategorized={photos.filter((p) => p.is_visible && (!p.category || p.category === "Other")).length}
+        hasCover={!!heroPhotoId}
+        published={!!listing.slideshow_published}
+        hasVideo={videos.length > 0}
+        hasDocs={documents.length > 0}
+        hasTour={!!listing.tour_url}
+        specs={{ year: listing.year, length_ft: listing.length_ft, make: listing.make, asking_price: listing.asking_price, vessel_type: listing.vessel_type, location: listing.location, staterooms: listing.staterooms, description: listing.description }}
+      />
+
       {hasAccess(accessStatus) && !listing.slideshow_published && (
         <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-warn-50 border border-warn-200 text-warn-800">
           <span className="font-semibold">Publish your slideshow to send this listing to a client.</span>{" "}
@@ -1325,6 +1398,7 @@ export default function BrokerListingPage() {
         </div>
       )}
 
+      <div id="photos" className="scroll-mt-24" />
       {photos.length === 0 ? (
         <div
           onClick={() => hasAccess(accessStatus) && requireRights(() => fileInputRef.current?.click())}
@@ -1371,14 +1445,27 @@ export default function BrokerListingPage() {
           {photos.length > 1 && (
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <p className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</p>
-              <button
-                onClick={sortToStandardOrder}
-                disabled={sortingPhotos}
-                title="Rewrite the order to the standard walk-through: outside, up top, cockpit, engine room, then the interior"
-                className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
-              >
-                {sortingPhotos ? "Sorting…" : "Sort to standard order"}
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {labelNote && <span className="text-xs text-ink-500">{labelNote}</span>}
+                {aiConfigured && (
+                  <button
+                    onClick={() => labelWithAi(undefined, photos.every((p) => p.category && p.category !== "Other"))}
+                    disabled={labeling}
+                    title={photos.some((p) => !p.category || p.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo you haven't set by hand"}
+                    className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
+                  >
+                    {labeling ? "Labelling…" : photos.some((p) => !p.category || p.category === "Other") ? "Label photos" : "Re-label photos"}
+                  </button>
+                )}
+                <button
+                  onClick={sortToStandardOrder}
+                  disabled={sortingPhotos}
+                  title="Rewrite the order to the standard walk-through: outside, up top, cockpit, engine room, then the interior"
+                  className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
+                >
+                  {sortingPhotos ? "Sorting…" : "Sort to standard order"}
+                </button>
+              </div>
             </div>
           )}
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
@@ -1439,6 +1526,20 @@ export default function BrokerListingPage() {
             </div>
 
             <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
+              {/* Client name — so opens show up as "Mark opened it", not "someone" */}
+              <div>
+                <label className="block text-xs font-semibold text-ink-600 mb-1.5">Client Name <span className="text-ink-400 font-normal">(optional)</span></label>
+                <input
+                  type="text"
+                  value={sendName}
+                  onChange={(e) => setSendName(e.target.value)}
+                  placeholder="Mark Johnson"
+                  autoComplete="off"
+                  className="w-full bg-white border border-hairline-strong text-ink-900 placeholder-ink-300 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-500 transition-colors"
+                />
+                <p className="text-[11px] text-ink-400 mt-1">You&rsquo;ll be told by name when they open it.</p>
+              </div>
+
               {/* Client email */}
               <div>
                 <label className="block text-xs font-semibold text-ink-600 mb-1.5">Client Email <span className="text-danger-500">*</span></label>
@@ -1676,7 +1777,7 @@ export default function BrokerListingPage() {
       )}
 
       {/* Video section */}
-      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+      <div id="videos" className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6 scroll-mt-24">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
             <h2 className="label-caps text-ink-600">Listing Videos</h2>
@@ -1795,7 +1896,7 @@ export default function BrokerListingPage() {
       </div>
 
       {/* Slideshow section */}
-      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+      <div id="slideshow" className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6 scroll-mt-24">
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <h2 className="label-caps text-ink-600">Client Slideshow</h2>
@@ -1928,7 +2029,7 @@ export default function BrokerListingPage() {
       )}
 
       {/* Documents section */}
-      <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+      <div id="documents" className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6 scroll-mt-24">
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
             <h2 className="label-caps text-ink-600">Listing Documents</h2>
@@ -2058,6 +2159,9 @@ export default function BrokerListingPage() {
         )}
       </div>
 
+      {/* Engagement — who's looking, how long, at what */}
+      <ListingEngagement listingId={id} thumbs={thumbs} />
+
       {/* Sent History section */}
       <div className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1">
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
@@ -2091,7 +2195,9 @@ export default function BrokerListingPage() {
               return (
                 <li key={send.id} className="px-6 py-4 flex items-start justify-between gap-4">
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-ink-900 truncate">{send.client_email}</p>
+                    <p className="text-sm font-medium text-ink-900 truncate">
+                      {send.client_name ? <>{send.client_name} <span className="text-ink-400 font-normal">· {send.client_email}</span></> : send.client_email}
+                    </p>
                     {send.message && (
                       <p className="text-xs text-ink-400 mt-0.5 line-clamp-1 italic">&ldquo;{send.message}&rdquo;</p>
                     )}
@@ -2107,13 +2213,23 @@ export default function BrokerListingPage() {
                     </div>
                     {send.included_slideshow && (
                       <div className="mt-2">
-                        {lastViewed ? (
+                        {(send.open_count ?? 0) > 0 ? (
                           <span className="flex items-center gap-1.5 text-[11px] text-success-600 font-medium">
                             <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                             </svg>
-                            Opened {viewsSince.length} {viewsSince.length === 1 ? "time" : "times"} · Last {relativeTime(lastViewed)}
+                            {send.client_name ? send.client_name.split(" ")[0] : "They"} opened it {send.open_count} {send.open_count === 1 ? "time" : "times"}{send.last_opened_at ? ` · Last ${relativeTime(new Date(send.last_opened_at))}` : ""}
+                          </span>
+                        ) : sentAt >= TRACKED_SINCE ? (
+                          <span className="text-[11px] text-ink-400">Not yet opened</span>
+                        ) : lastViewed ? (
+                          <span className="flex items-center gap-1.5 text-[11px] text-success-600 font-medium">
+                            <svg className="w-3 h-3 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                            </svg>
+                            Gallery viewed {viewsSince.length} {viewsSince.length === 1 ? "time" : "times"} since · Last {relativeTime(lastViewed)}
                           </span>
                         ) : (
                           <span className="text-[11px] text-ink-400">Not yet opened</span>

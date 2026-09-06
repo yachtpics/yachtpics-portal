@@ -9,7 +9,7 @@ import { signVideoUrl } from "@/lib/videoUrls";
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId, clientEmail, message, includeSlideshow, documentIds, videoIds } = await req.json();
+    const { listingId, clientEmail, clientName, message, includeSlideshow, documentIds, videoIds } = await req.json();
     if (!listingId || !clientEmail) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
@@ -64,8 +64,24 @@ export async function POST(req: NextRequest) {
     const brokerage = brokerDetails?.brokerage_name ?? "";
     const brokerEmail = profile?.display_email;
     const vesselName = listing.vessel_name ?? "this vessel";
-    const slideshowUrl = listing.slideshow_published && listing.slideshow_slug
-      ? `https://portal.yachtpics.com/s/${listing.slideshow_slug}`
+    const wantsSlideshow = !!(includeSlideshow && listing.slideshow_published && listing.slideshow_slug);
+
+    // Log the send FIRST so it carries a token. The slideshow link in the email
+    // is stamped with that token, which is how an open gets attributed to this
+    // recipient by name instead of showing up as an anonymous view.
+    const { data: sendRow } = await supabaseAdmin.from("client_sends").insert({
+      listing_id: listingId,
+      broker_id: listing.broker_id,
+      sent_by: user.id,
+      client_email: clientEmail,
+      client_name: typeof clientName === "string" && clientName.trim() ? clientName.trim().slice(0, 80) : null,
+      message: message || null,
+      included_slideshow: wantsSlideshow,
+      document_count: Array.isArray(documentIds) ? documentIds.length : 0,
+    }).select("id, token").single();
+
+    const slideshowUrl = wantsSlideshow
+      ? `https://portal.yachtpics.com/s/${listing.slideshow_slug}?src=send${sendRow?.token ? `&t=${sendRow.token}` : ""}`
       : null;
 
     const docLinks: { filename: string; url: string }[] = [];
@@ -148,6 +164,7 @@ export async function POST(req: NextRequest) {
         <div style="padding:40px;">
           <h1 style="margin:0 0 6px;font-size:22px;font-weight:700;color:#111827;">${vesselName}</h1>
           <p style="margin:0 0 24px;font-size:14px;color:#6b7280;">Sent by ${brokerName}${brokerage ? ` &middot; ${brokerage}` : ""}</p>
+          ${sendRow && typeof clientName === "string" && clientName.trim() ? `<p style="margin:0 0 16px;font-size:15px;color:#374151;">Hi ${clientName.trim().split(" ")[0].replace(/[<>&]/g, "")},</p>` : ""}
           ${messageBlock}
           ${slideshowBlock}
           ${videosBlock}
@@ -189,20 +206,17 @@ export async function POST(req: NextRequest) {
       sentBy: user.id,
     });
 
-    if (!res.ok) return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
+    if (!res.ok) {
+      // The email never left — don't leave a phantom row in Sent History.
+      if (sendRow?.id) await supabaseAdmin.from("client_sends").delete().eq("id", sendRow.id);
+      return NextResponse.json({ error: data.message ?? "Failed to send" }, { status: 500 });
+    }
 
-    // Log the send for history tracking (broker_id = listing owner, sent_by = actual sender)
-    await supabaseAdmin.from("client_sends").insert({
-      listing_id: listingId,
-      broker_id: listing.broker_id,
-      sent_by: user.id,
-      client_email: clientEmail,
-      message: message || null,
-      included_slideshow: !!(includeSlideshow && slideshowUrl),
-      document_count: docLinks.length,
-    });
+    if (sendRow?.id && docLinks.length !== (Array.isArray(documentIds) ? documentIds.length : 0)) {
+      await supabaseAdmin.from("client_sends").update({ document_count: docLinks.length }).eq("id", sendRow.id);
+    }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, sendId: sendRow?.id ?? null });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

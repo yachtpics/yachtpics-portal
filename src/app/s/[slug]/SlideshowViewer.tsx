@@ -58,6 +58,41 @@ interface Props {
   videos?: Video[];
   brokerId?: string;
   source?: string;
+  /** Token from a tracked Send-to-Client link — attributes this visit to a named recipient. */
+  sendToken?: string | null;
+  /** Matterport / VRCloud / Kuula etc. Opens in a new tab. */
+  tourUrl?: string | null;
+  /** Signed URL of the deck plan image, if the broker uploaded one. */
+  deckPlanUrl?: string | null;
+}
+
+type EventKind = "dwell" | "favorite" | "unfavorite" | "video_play" | "tour_click" | "deck_plan_view" | "details_view";
+
+/** A per-visit id — random, kept for this tab only, never a cookie. */
+function getSessionId(slug: string): string {
+  const key = `ss_session_${slug}`;
+  try {
+    const existing = sessionStorage.getItem(key);
+    if (existing) return existing;
+    const fresh = Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    sessionStorage.setItem(key, fresh);
+    return fresh;
+  } catch {
+    return Math.random().toString(36).slice(2, 10);
+  }
+}
+
+/** Favorites live in the viewer's browser so they survive a reload. */
+function loadFavorites(slug: string): Set<string> {
+  try {
+    const raw = localStorage.getItem(`ss_fav_${slug}`);
+    return new Set(raw ? (JSON.parse(raw) as string[]) : []);
+  } catch {
+    return new Set();
+  }
+}
+function saveFavorites(slug: string, favs: Set<string>) {
+  try { localStorage.setItem(`ss_fav_${slug}`, JSON.stringify(Array.from(favs))); } catch { /* private mode */ }
 }
 
 /**
@@ -124,7 +159,7 @@ function FadePhoto({
   );
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId, source = "link" }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl = null }: Props) {
   // Videos first, then photos — unified slide array
   const slides = useMemo<Slide[]>(() => [
     ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
@@ -142,6 +177,71 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [broker, setBroker] = useState<BrokerInfo>(initialBroker);
   const [verticalIds, setVerticalIds] = useState<Set<string>>(new Set());
+
+  // ── Engagement (anonymous) ─────────────────────────────────────────────
+  // What the viewer lingers on and saves is what the broker most wants to
+  // know. Events queue up and flush every few seconds, and on the way out
+  // via sendBeacon so the last dwell isn't lost.
+  const sessionIdRef = useRef<string>("");
+  const queueRef = useRef<{ kind: EventKind; photoId?: string; videoId?: string; value?: number }[]>([]);
+  const startedAtRef = useRef<number>(0);
+  const seenRef = useRef<Set<string>>(new Set());
+  const slideEnteredAtRef = useRef<number>(0);
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [favPulse, setFavPulse] = useState<string | null>(null);
+
+  const flush = useCallback((final = false) => {
+    const events = queueRef.current.splice(0, 60);
+    const durationS = startedAtRef.current ? Math.round((Date.now() - startedAtRef.current) / 1000) : 0;
+    if (!events.length && !final) return;
+    const payload = JSON.stringify({
+      listingId,
+      slug,
+      sessionId: sessionIdRef.current,
+      sendToken,
+      events,
+      session: { durationS, photosSeen: seenRef.current.size },
+    });
+    try {
+      if (final && typeof navigator !== "undefined" && "sendBeacon" in navigator) {
+        navigator.sendBeacon("/api/slideshow/event", new Blob([payload], { type: "application/json" }));
+        return;
+      }
+    } catch { /* fall through to fetch */ }
+    fetch("/api/slideshow/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
+  }, [listingId, slug, sendToken]);
+
+  const track = useCallback((e: { kind: EventKind; photoId?: string; videoId?: string; value?: number }) => {
+    queueRef.current.push(e);
+    if (queueRef.current.length >= 20) flush();
+  }, [flush]);
+
+  useEffect(() => {
+    sessionIdRef.current = getSessionId(slug);
+    startedAtRef.current = Date.now();
+    slideEnteredAtRef.current = Date.now();
+    setFavorites(loadFavorites(slug));
+    const timer = setInterval(() => flush(), 8000);
+    const onHide = () => { if (document.visibilityState === "hidden") flush(true); };
+    const onPageHide = () => flush(true);
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [slug, flush]);
+
+  function toggleFavorite(photoId: string) {
+    const next = new Set(favorites);
+    const on = !next.has(photoId);
+    if (on) next.add(photoId); else next.delete(photoId);
+    saveFavorites(slug, next);
+    setFavorites(next);
+    track({ kind: on ? "favorite" : "unfavorite", photoId });
+    if (on) { setFavPulse(photoId); setTimeout(() => setFavPulse(null), 600); }
+  }
 
   // Inquiry form
   const [inquireOpen, setInquireOpen] = useState(false);
@@ -186,9 +286,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       fetch("/api/slideshow/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, slug, source }),
+        body: JSON.stringify({ listingId, slug, source, sendToken, sessionId: getSessionId(slug) }),
       }).catch(() => {});
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listingId, slug]);
 
   useEffect(() => {
@@ -211,6 +312,16 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   const goTo = useCallback((idx: number) => {
     if (idx === current || idx < 0 || idx >= slides.length) return;
+    // How long did they sit on the slide they're leaving? Under 1.5s is a
+    // flick-past, not a look — don't count it.
+    const leaving = slides[current];
+    const dwellMs = Date.now() - slideEnteredAtRef.current;
+    if (leaving && leaving.type === "photo" && dwellMs >= 1500) {
+      track({ kind: "dwell", photoId: leaving.id, value: Math.round(dwellMs / 1000) });
+    }
+    slideEnteredAtRef.current = Date.now();
+    const arriving = slides[idx];
+    if (arriving && arriving.type === "photo") seenRef.current.add(arriving.id);
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     setOutgoing(current);
     setIncomingReady(false);
@@ -221,7 +332,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       });
     });
     fadeTimerRef.current = setTimeout(() => setOutgoing(null), 1300);
-  }, [current, slides.length]);
+  }, [current, slides, track]);
 
   const prev = useCallback(() => goTo(current - 1), [goTo, current]);
   const next = useCallback(() => goTo(current + 1), [goTo, current]);
@@ -247,6 +358,11 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       }
     });
   }, [current, slides]);
+
+  useEffect(() => {
+    const first = slides[0];
+    if (first && first.type === "photo") seenRef.current.add(first.id);
+  }, [slides]);
 
   const vesselTitle = [listing.year, listing.make, listing.model, listing.vessel_name]
     .filter(Boolean)
@@ -279,7 +395,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   addSpec("Max Speed", listing.max_speed_kn, " kn");
   addSpec("Hull", listing.hull_material);
   addSpec("Location", listing.location);
-  const hasDetails = specRows.length > 0 || !!listing.description;
+  const hasDetails = specRows.length > 0 || !!listing.description || !!deckPlanUrl;
 
   if (slides.length === 0) {
     return (
@@ -328,9 +444,31 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             All Photos
           </button>
           {hasDetails && (
-            <button onClick={() => setView("details")} className={tabClass(view === "details")}>
+            <button
+              onClick={() => {
+                setView("details");
+                track({ kind: "details_view" });
+                if (deckPlanUrl) track({ kind: "deck_plan_view" });
+              }}
+              className={tabClass(view === "details")}
+            >
               Details
             </button>
+          )}
+          {tourUrl && (
+            <a
+              href={tourUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => { track({ kind: "tour_click" }); flush(); }}
+              className={`${tabClass(false)} inline-flex items-center gap-1.5 text-accent-700 hover:text-accent-600`}
+              title="Open the 360° virtual tour"
+            >
+              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" /><path d="M3 12h18M12 3c3 3.5 3 14.5 0 18M12 3c-3 3.5-3 14.5 0 18" strokeLinecap="round" />
+              </svg>
+              360° Tour
+            </a>
           )}
         </div>
       </div>
@@ -403,6 +541,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   controls
                   playsInline
                   preload="metadata"
+                  onPlay={() => track({ kind: "video_play", videoId: currentSlide.id })}
                   className="absolute inset-0 h-full w-full"
                   style={{
                     zIndex: 1,
@@ -413,6 +552,22 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   }}
                 />
               )
+            )}
+
+            {/* Save this photo — a quiet heart, bottom-right of the stage */}
+            {currentSlide.type === "photo" && (
+              <button
+                onClick={() => toggleFavorite(currentSlide.id)}
+                aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
+                aria-pressed={favorites.has(currentSlide.id)}
+                className={`absolute bottom-3 right-3 z-[3] flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-white shadow-elev-1 transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                  favorites.has(currentSlide.id) ? "text-accent-600" : "text-ink-400 hover:text-ink-700"
+                } ${favPulse === currentSlide.id ? "scale-110" : ""}`}
+              >
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill={favorites.has(currentSlide.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
+                </svg>
+              </button>
             )}
 
             {/* Prev */}
@@ -435,6 +590,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             <p className="label-caps text-ink-600">
               {caption ? `${caption} · ` : ""}
               {current + 1} / {slides.length}
+              {favorites.size > 0 && <span className="text-accent-700"> · {favorites.size} saved</span>}
             </p>
             <button
               onClick={() => setShowThumbs((v) => !v)}
@@ -492,6 +648,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     controls
                     playsInline
                     preload="metadata"
+                    onPlay={() => track({ kind: "video_play", videoId: video.id })}
                     className="w-full max-h-[480px]"
                   />
                 </div>
@@ -520,6 +677,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     onLoad={(e) => handleImgLoad(e, photo.id)}
                     className="absolute inset-0 h-full w-full object-contain"
                   />
+                )}
+                {favorites.has(photo.id) && (
+                  <span className="absolute top-2 right-2 flex h-7 w-7 items-center justify-center rounded-full bg-white/90 text-accent-600 shadow-elev-1" aria-label="Saved">
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
+                    </svg>
+                  </span>
                 )}
                 {/* Caption on demand — the resting state is just the photograph */}
                 <span className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end px-3 pb-2.5 pt-10 bg-gradient-to-t from-ink-950/80 to-transparent opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-base ease-quiet">
@@ -553,6 +717,22 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 <h2 className="label-caps text-ink-600 mb-3">About this yacht</h2>
                 <p className="text-sm text-ink-700 leading-relaxed whitespace-pre-wrap">{listing.description}</p>
               </>
+            )}
+            {deckPlanUrl && (
+              <div className={listing.description || specRows.length > 0 ? "mt-10" : ""}>
+                <h2 className="label-caps text-ink-600 mb-3">Deck plan</h2>
+                <a href={deckPlanUrl} target="_blank" rel="noopener noreferrer" className="block overflow-hidden rounded-[2px] bg-white shadow-print">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={deckPlanUrl} alt="Deck plan" className="w-full h-auto" />
+                </a>
+                <p className="text-xs text-ink-400 mt-2">Tap to open full size.</p>
+              </div>
+            )}
+            {tourUrl && (
+              <a href={tourUrl} target="_blank" rel="noopener noreferrer" onClick={() => { track({ kind: "tour_click" }); flush(); }}
+                className="mt-8 inline-flex items-center gap-2 bg-ink-950 hover:bg-ink-800 text-white text-sm font-semibold px-5 py-2.5 rounded-ctl transition-colors duration-base ease-quiet">
+                Open the 360° virtual tour →
+              </a>
             )}
           </div>
         </div>

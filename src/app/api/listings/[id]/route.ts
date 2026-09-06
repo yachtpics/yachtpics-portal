@@ -49,11 +49,21 @@ export async function PATCH(
       "cruising_speed_kn",
       "max_speed_kn",
       "hull_material",
+      "tour_url",
+      "deck_plan_path",
     ];
 
     const updates: Record<string, unknown> = {};
     for (const key of allowed) {
       if (key in body) updates[key] = body[key];
+    }
+    // A tour link must be a real web address — nothing else gets stored.
+    if ("tour_url" in updates) {
+      const raw = typeof updates.tour_url === "string" ? updates.tour_url.trim() : "";
+      const withScheme = raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw;
+      let ok = false;
+      try { ok = !!withScheme && ["http:", "https:"].includes(new URL(withScheme).protocol); } catch { ok = false; }
+      updates.tour_url = ok ? withScheme.slice(0, 500) : null;
     }
 
     if (Object.keys(updates).length === 0) {

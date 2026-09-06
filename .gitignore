@@ -40,3 +40,4 @@ next-env.d.ts
 portal-storage-usage-history.csv
 portal-storage-check/usage-history.csv
 storage-usage-history.csv
+_to_delete/

@@ -16,12 +16,14 @@ export default async function PublicSlideshowPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams: { src?: string };
+  searchParams: { src?: string; t?: string };
 }) {
   headers();
 
   // Where did this view come from? (qr, send, share, social… defaults to link)
   const source = (searchParams.src ?? "link").toString().slice(0, 24).replace(/[^a-z0-9_-]/gi, "") || "link";
+  // A tracked Send-to-Client link carries a token; opens get attributed to that recipient.
+  const sendToken = (searchParams.t ?? "").toString().slice(0, 40).replace(/[^a-z0-9]/gi, "") || null;
 
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -30,7 +32,7 @@ export default async function PublicSlideshowPage({
 
   const { data: listing } = await supabase
     .from("listings")
-    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id, description, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, hero_photo_id, photo_order_manual")
+    .select("id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id, description, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, hero_photo_id, photo_order_manual, tour_url, deck_plan_path")
     .eq("slideshow_slug", params.slug)
     .eq("slideshow_published", true)
     .single();
@@ -118,6 +120,13 @@ export default async function PublicSlideshowPage({
   // Sign video URLs from whichever store holds each file.
   const videos = await withVideoUrls(supabase, rawVideos ?? [], { expiresIn: 7200 });
 
+  // Deck plan (an image the broker uploaded) — signed like the photos.
+  let deckPlanUrl: string | null = null;
+  if (listing.deck_plan_path) {
+    const { data: dp } = await supabase.storage.from("listing-photos").createSignedUrl(listing.deck_plan_path, 7200);
+    deckPlanUrl = dp?.signedUrl ?? null;
+  }
+
   const broker = {
     name:
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
@@ -138,6 +147,9 @@ export default async function PublicSlideshowPage({
       videos={videos}
       brokerId={listing.broker_id}
       source={source}
+      sendToken={sendToken}
+      tourUrl={listing.tour_url ?? null}
+      deckPlanUrl={deckPlanUrl}
     />
   );
 }

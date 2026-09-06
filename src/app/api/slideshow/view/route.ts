@@ -10,9 +10,11 @@ const THROTTLE_MS = 6 * 60 * 60 * 1000;
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId, slug, source } = await req.json();
+    const { listingId, slug, source, sendToken, sessionId } = await req.json();
     if (!listingId || !slug) return NextResponse.json({ ok: true });
     const src = typeof source === "string" ? source.slice(0, 24).replace(/[^a-z0-9_-]/gi, "") || null : null;
+    const token = typeof sendToken === "string" ? sendToken.slice(0, 40).replace(/[^a-z0-9]/gi, "") || null : null;
+    const session = typeof sessionId === "string" ? sessionId.slice(0, 48).replace(/[^a-z0-9_-]/gi, "") || null : null;
 
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,13 +29,35 @@ export async function POST(req: NextRequest) {
       .eq("listing_id", listingId)
       .gte("viewed_at", new Date(Date.now() - THROTTLE_MS).toISOString());
 
+    // A tracked Send-to-Client link? Attribute the open to that recipient.
+    let send: { id: string; client_email: string; client_name: string | null; open_count: number } | null = null;
+    if (token) {
+      const { data: row } = await supabase
+        .from("client_sends")
+        .select("id, client_email, client_name, open_count")
+        .eq("token", token)
+        .eq("listing_id", listingId)
+        .maybeSingle();
+      if (row) {
+        send = row;
+        await supabase
+          .from("client_sends")
+          .update({ open_count: (row.open_count ?? 0) + 1, last_opened_at: new Date().toISOString() })
+          .eq("id", row.id);
+      }
+    }
+
     await supabase.from("slideshow_views").insert({
       listing_id: listingId,
       slideshow_slug: slug,
       source: src,
+      send_id: send?.id ?? null,
+      session_id: session,
     });
 
-    const isFreshOpen = (recentViews ?? 0) === 0;
+    // A named recipient opening their link is always worth telling the broker
+    // about — that's the whole point of the tracked link.
+    const isFreshOpen = (recentViews ?? 0) === 0 || !!send;
 
     // Notify the broker (and assistants) only on a fresh open.
     if (isFreshOpen) {
@@ -57,9 +81,10 @@ export async function POST(req: NextRequest) {
             // Push (best-effort; requires VAPID keys configured)
             try {
               const { sendPushToUser } = await import("@/lib/sendPush");
+              const who = send ? (send.client_name || send.client_email) : null;
               const payload = {
-                title: "A client is viewing your listing",
-                body: `Someone just opened the slideshow for ${listing.vessel_name ?? "your listing"}.`,
+                title: who ? `${who} is viewing your listing` : "A client is viewing your listing",
+                body: `${who ?? "Someone"} just opened the slideshow for ${listing.vessel_name ?? "your listing"}.`,
                 url: `/dashboard/listings/${listingId}`,
                 tag: `view-${listingId}`,
               };
@@ -75,7 +100,10 @@ export async function POST(req: NextRequest) {
 
             // Email the broker
             if (broker?.display_email) {
-              const subject = `A buyer opened your slideshow — ${listing.vessel_name ?? "your listing"}`;
+              const who = send ? (send.client_name || send.client_email) : null;
+              const subject = who
+                ? `${who} opened your slideshow — ${listing.vessel_name ?? "your listing"}`
+                : `A buyer opened your slideshow — ${listing.vessel_name ?? "your listing"}`;
               const res = await fetch("https://api.resend.com/emails", {
                 method: "POST",
                 headers: {
@@ -90,6 +118,8 @@ export async function POST(req: NextRequest) {
                     firstName: broker.first_name ?? "there",
                     vesselName: listing.vessel_name,
                     listingId,
+                    who,
+                    openCount: send ? (send.open_count ?? 0) + 1 : null,
                   }),
                 }),
               });

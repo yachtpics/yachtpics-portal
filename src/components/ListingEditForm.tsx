@@ -28,6 +28,53 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
   const [error, setError] = useState("");
   const [customVesselType, setCustomVesselType] = useState(false);
 
+  // AI description draft — only offered when the server has a key.
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState("");
+  useEffect(() => {
+    fetch("/api/photos/categorize").then((r) => (r.ok ? r.json() : null)).then((d) => setAiConfigured(!!d?.configured)).catch(() => {});
+  }, []);
+
+  async function draftWithAi() {
+    setDrafting(true);
+    setDraftError("");
+    try {
+      const res = await fetch(`/api/listings/${id}/describe`, { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.description) throw new Error(data?.error ?? "Couldn't write a draft right now.");
+      setForm((f) => ({ ...f, description: data.description }));
+    } catch (err) {
+      setDraftError(err instanceof Error ? err.message : "Couldn't write a draft right now.");
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  // Deck plan — an image, stored beside the listing's photos.
+  const [deckPlanUrl, setDeckPlanUrl] = useState<string | null>(null);
+  const [deckPlanBusy, setDeckPlanBusy] = useState(false);
+  async function uploadDeckPlan(file: File | null) {
+    if (!file) return;
+    setDeckPlanBusy(true);
+    setError("");
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not signed in.");
+      const ext = (file.name.split(".").pop() || "png").toLowerCase();
+      const path = `${user.id}/${id}/deck-plan-${Date.now()}.${ext}`;
+      const { error: upErr } = await supabase.storage.from("listing-photos").upload(path, file, { upsert: false, contentType: file.type || undefined });
+      if (upErr) throw new Error(upErr.message);
+      setForm((f) => ({ ...f, deck_plan_path: path }));
+      const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrl(path, 3600);
+      setDeckPlanUrl(signed?.signedUrl ?? null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't upload the deck plan.");
+    } finally {
+      setDeckPlanBusy(false);
+    }
+  }
+
   const [form, setForm] = useState({
     vessel_name: "",
     vessel_type: "",
@@ -49,6 +96,8 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
     cruising_speed_kn: "",
     max_speed_kn: "",
     hull_material: "",
+    tour_url: "",
+    deck_plan_path: "",
   });
 
   useEffect(() => {
@@ -60,7 +109,7 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
       // brokers and linked assistants. RLS allows reads by authenticated users.
       const { data } = await supabase
         .from("listings")
-        .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material")
+        .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, tour_url, deck_plan_path")
         .eq("id", id)
         .single();
 
@@ -89,7 +138,13 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
         cruising_speed_kn: data.cruising_speed_kn?.toString() ?? "",
         max_speed_kn: data.max_speed_kn?.toString() ?? "",
         hull_material: data.hull_material ?? "",
+        tour_url: data.tour_url ?? "",
+        deck_plan_path: data.deck_plan_path ?? "",
       });
+      if (data.deck_plan_path) {
+        const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrl(data.deck_plan_path, 3600);
+        setDeckPlanUrl(signed?.signedUrl ?? null);
+      }
       setLoading(false);
     }
     load();
@@ -127,6 +182,8 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
         cruising_speed_kn: form.cruising_speed_kn ? parseFloat(form.cruising_speed_kn) : null,
         max_speed_kn: form.max_speed_kn ? parseFloat(form.max_speed_kn) : null,
         hull_material: form.hull_material || null,
+        tour_url: form.tour_url || null,
+        deck_plan_path: form.deck_plan_path || null,
       }),
     });
 
@@ -216,8 +273,19 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
               <input className={inputClass} value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="North Palm Beach, FL" />
             </div>
             <div className="sm:col-span-2">
-              <label className={labelClass}>Description <span className="text-ink-400 font-normal">(optional)</span></label>
-              <textarea className={`${inputClass} resize-none`} rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Key features, recent upgrades..." />
+              <div className="flex items-center justify-between gap-3 mb-1.5">
+                <label className="label-caps">Description <span className="text-ink-400 font-normal">(optional)</span></label>
+                {aiConfigured && (
+                  <button type="button" onClick={draftWithAi} disabled={drafting}
+                    title="Write a first draft from the specs and photos — you can change every word before saving"
+                    className="text-xs font-semibold text-accent-700 hover:text-accent-600 disabled:opacity-50 transition-colors duration-fast">
+                    {drafting ? "Writing…" : form.description ? "Rewrite with AI" : "Draft with AI"}
+                  </button>
+                )}
+              </div>
+              <textarea className={`${inputClass} resize-y`} rows={form.description.length > 240 ? 7 : 3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Key features, recent upgrades..." />
+              {draftError && <p className="text-xs text-danger-600 mt-1">{draftError}</p>}
+              {aiConfigured && !draftError && <p className="text-xs text-ink-400 mt-1">A draft uses only the specs above and what&rsquo;s visible in the photos. Fill in the specs first for a better one.</p>}
             </div>
             <div>
               <label className={labelClass}>Status</label>
@@ -273,6 +341,37 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
             <div className="sm:col-span-2">
               <label className={labelClass}>Hull Material</label>
               <input className={inputClass} value={form.hull_material} onChange={(e) => setForm({ ...form, hull_material: e.target.value })} placeholder="Fiberglass" />
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
+          <h2 className="text-h2 text-ink-900 mb-1">Virtual tour &amp; deck plan <span className="text-ink-400 font-normal text-sm">(optional)</span></h2>
+          <p className="text-ink-500 text-sm mb-4">Both appear on the client slideshow — a 360° Tour button up top, and the deck plan under Details.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>360° tour link</label>
+              <input className={inputClass} type="url" inputMode="url" value={form.tour_url} onChange={(e) => setForm({ ...form, tour_url: e.target.value })} placeholder="https://my.matterport.com/show/?m=…" />
+              <p className="text-xs text-ink-400 mt-1">Matterport, VRCloud, Kuula, YouTube 360 — any link that opens the tour.</p>
+            </div>
+            <div>
+              <label className={labelClass}>Deck plan / GA</label>
+              {deckPlanUrl && (
+                <div className="mb-2 rounded-ctl border border-hairline bg-ink-50 p-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={deckPlanUrl} alt="Deck plan" className="max-h-40 w-auto mx-auto object-contain" />
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <label className="text-xs font-medium px-3 py-2 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast cursor-pointer">
+                  {deckPlanBusy ? "Uploading…" : deckPlanUrl ? "Replace image" : "Upload image"}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" disabled={deckPlanBusy} onChange={(e) => uploadDeckPlan(e.target.files?.[0] ?? null)} />
+                </label>
+                {deckPlanUrl && (
+                  <button type="button" onClick={() => { setForm({ ...form, deck_plan_path: "" }); setDeckPlanUrl(null); }} className="text-xs text-ink-400 hover:text-danger-600 transition-colors duration-fast">Remove</button>
+                )}
+              </div>
+              <p className="text-xs text-ink-400 mt-1">A PNG or JPG of the layout. Takes effect when you save.</p>
             </div>
           </div>
         </section>

@@ -1,9 +1,13 @@
 // Email sent to a broker when a buyer opens one of their client slideshows.
 const PORTAL = "https://portal.yachtpics.com";
 
-export function buyerViewEmailHtml(opts: { firstName: string; vesselName: string | null; listingId: string }): string {
-  const { firstName, vesselName, listingId } = opts;
+export function buyerViewEmailHtml(opts: { firstName: string; vesselName: string | null; listingId: string; who?: string | null; openCount?: number | null }): string {
+  const { firstName, vesselName, listingId, who, openCount } = opts;
   const boat = vesselName ?? "your listing";
+  const safeWho = who ? who.replace(/[<>&]/g, "") : null;
+  const lead = safeWho
+    ? `<strong style="color:#111827;">${safeWho}</strong> just opened your slideshow for <strong style="color:#111827;">${boat}</strong>${openCount && openCount > 1 ? ` &mdash; that's their ${openCount}${openCount === 2 ? "nd" : openCount === 3 ? "rd" : "th"} look` : ""}. Good moment for a follow-up while it's top of mind.`
+    : `A buyer just opened your slideshow for <strong style="color:#111827;">${boat}</strong>. Good moment for a follow-up while it's top of mind.`;
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -13,8 +17,8 @@ export function buyerViewEmailHtml(opts: { firstName: string; vesselName: string
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
     </div>
     <div style="padding:40px;">
-      <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">Someone's looking, ${firstName}</h1>
-      <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">A buyer just opened your slideshow for <strong style="color:#111827;">${boat}</strong>. Good moment for a follow-up while it's top of mind.</p>
+      <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">${safeWho ? `${safeWho} is looking, ${firstName}` : `Someone's looking, ${firstName}`}</h1>
+      <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6;">${lead}</p>
       <a href="${PORTAL}/dashboard/listings/${listingId}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:700;font-size:15px;padding:13px 28px;border-radius:8px;">View this listing</a>
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
