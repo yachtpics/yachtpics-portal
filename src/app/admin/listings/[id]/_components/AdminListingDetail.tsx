@@ -15,6 +15,7 @@ import { uploadListingVideo } from "@/lib/uploadListingVideo";
 import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
+import ListingEngagement from "@/components/ListingEngagement";
 
 interface Photo {
   id: string;
@@ -101,6 +102,37 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   // Resized thumbnails keyed by photo id, signed once in the background. The
   // grid shows the full-size original until they land, so nothing blocks.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+
+  // AI photo labelling — only offered when the server has a key.
+  const [aiConfigured, setAiConfigured] = useState(false);
+  const [labeling, setLabeling] = useState(false);
+  const [labelNote, setLabelNote] = useState<string | null>(null);
+  useEffect(() => {
+    fetch("/api/photos/categorize").then((r) => (r.ok ? r.json() : null)).then((d) => setAiConfigured(!!d?.configured)).catch(() => {});
+  }, []);
+  async function labelWithAi(force: boolean) {
+    setLabeling(true);
+    setLabelNote(null);
+    try {
+      const res = await fetch("/api/photos/categorize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId: listing.id, force }),
+      });
+      const data = await res.json().catch(() => ({}));
+      const updated: { id: string; category: string }[] = data?.updated ?? [];
+      if (updated.length) {
+        const map = new Map(updated.map((u) => [u.id, u.category]));
+        setPhotos((prev) => prev.map((ph) => (map.has(ph.id) ? { ...ph, category: map.get(ph.id)! } : ph)));
+      }
+      if (!res.ok && data?.error) setLabelNote(`Labelling stopped: ${data.error}`);
+      else if (data?.considered === 0) setLabelNote("Nothing left to label.");
+      else setLabelNote(`${updated.length} labelled${data?.unsure ? ` · ${data.unsure} left as Other` : ""}.`);
+      setTimeout(() => setLabelNote(null), 5000);
+    } finally {
+      setLabeling(false);
+    }
+  }
 
   useEffect(() => {
     fetch("/api/thumbs", {
@@ -691,6 +723,34 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             </svg>
             Edit vessel details
           </Link>
+          <Link
+            href={`/dashboard/listings/${listing.id}/reel`}
+            className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet"
+            title="Turn the photos into a reel or film"
+          >
+            Reel
+          </Link>
+          <a
+            href={`/report/listing/${listing.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet"
+            title="One-page marketing report for the owner"
+          >
+            Seller Report ↗
+          </a>
+          {aiConfigured && (
+            <button
+              type="button"
+              onClick={() => labelWithAi(photos.every((ph) => ph.category && ph.category !== "Other"))}
+              disabled={labeling}
+              className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
+              title={photos.some((ph) => !ph.category || ph.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo not set by hand"}
+            >
+              {labeling ? "Labelling…" : photos.some((ph) => !ph.category || ph.category === "Other") ? "Label photos" : "Re-label photos"}
+            </button>
+          )}
+          {labelNote && <span className="ml-2 text-xs text-ink-500">{labelNote}</span>}
           <p className="text-ink-500 text-xs mt-1">Broker: {brokerName}</p>
           {canShare && (
             <button
@@ -1036,6 +1096,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {/* Public download links (admin only) */}
+      <ListingEngagement listingId={listing.id} thumbs={thumbs} />
+
       <DownloadLinkManager listingId={listing.id} />
 
       {/* Photos section */}
