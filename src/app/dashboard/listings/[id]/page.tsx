@@ -25,6 +25,7 @@ import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 import ListingSkeleton from "./_components/ListingSkeleton";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import { uploadListingVideo } from "@/lib/uploadListingVideo";
+import { reelPromoActive } from "@/lib/reelPromo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
@@ -1176,8 +1177,18 @@ export default function BrokerListingPage() {
             <Link href={`/dashboard/listings/${id}/social`} className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
               Social Post
             </Link>
-            <Link href={`/dashboard/listings/${id}/reel`} className="text-xs font-medium text-ink-500 hover:text-ink-900 border border-hairline-strong hover:border-ink-400 px-2.5 py-1 rounded-ctl transition-colors duration-fast">
+            {/* Flagged while the open house runs — a tool nobody knows about
+                gets used by nobody, and this is the fortnight it has to land. */}
+            <Link
+              href={`/dashboard/listings/${id}/reel`}
+              className={`text-xs font-medium px-2.5 py-1 rounded-ctl transition-colors duration-fast border ${
+                reelPromoActive()
+                  ? "text-ink-900 bg-accent-50 border-accent-300 hover:border-accent-500"
+                  : "text-ink-500 hover:text-ink-900 border-hairline-strong hover:border-ink-400"
+              }`}
+            >
               Reel
+              {reelPromoActive() && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-accent-700">Free</span>}
             </Link>
           </div>
           <p className="text-ink-500 text-sm mt-1">{listing.location ?? ""}</p>

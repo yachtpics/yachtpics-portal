@@ -141,3 +141,71 @@ export async function draftDescription(listing: DescribableListing, imageUrls: s
 
   return ask(blocks, { system, maxTokens: 400 });
 }
+
+export type ReelCopy = {
+  /** A short line for the opening frame — six words at most, or "". */
+  headline: string;
+  /** Ready to paste under the post. */
+  caption: string;
+  hashtags: string[];
+};
+
+/**
+ * Write the words that go with a reel, from the photographs actually chosen.
+ *
+ * This is the part brokers stall on: the film renders in a minute, then the
+ * post sits in the camera roll for a week because nobody wants to write the
+ * caption. So the model sees the same frames the buyer will, in the same order,
+ * with the rooms already named by the photographer — and writes about what's
+ * in them rather than paraphrasing a spec sheet.
+ *
+ * The headline is a suggestion the broker edits or ignores; nothing reaches a
+ * client without them approving it.
+ */
+export async function draftReelCopy(
+  listing: DescribableListing,
+  photos: { url: string; category: string | null }[]
+): Promise<ReelCopy> {
+  const facts = Object.entries({
+    Name: listing.vessel_name, Type: listing.vessel_type, Year: listing.year, Builder: listing.make, Model: listing.model,
+    "Length (ft)": listing.length_ft, Staterooms: listing.staterooms, Heads: listing.heads,
+    "Cruising speed (kn)": listing.cruising_speed_kn, "Max speed (kn)": listing.max_speed_kn, Location: listing.location,
+  }).filter(([, v]) => v !== null && v !== undefined && v !== "").map(([k, v]) => `${k}: ${v}`).join("\n");
+
+  const system = [
+    "You write social copy for a yacht brokerage that photographs the boats itself. The voice is premium and understated:",
+    "specific, calm, confident — the register of Burgess or Edmiston, not a dealership.",
+    "You are given the exact photographs, in the order they appear in a short silent reel, each labelled with the space it shows.",
+    "Write about what is actually visible in those photographs. Never invent equipment, materials, history, or numbers.",
+    "Rules: no exclamation marks. No 'stunning', 'must-see', 'dream', 'turn-key', 'don't miss', 'welcome aboard'. No emoji.",
+    "Do not state the price. Do not open with the vessel name — the film already shows it.",
+    "headline: at most SIX words, no full stop, evoking what the photographs show. It sits over the opening frame. May be \"\" if nothing good fits.",
+    "caption: 2–3 sentences, 35–60 words, for Instagram and Facebook. End with a quiet invitation to enquire — never a hard sell.",
+    "hashtags: 6–9, lowercase, no punctuation beyond the #, mixing the builder, the type and the cruising ground where known.",
+    "Reply with JSON only: {\"headline\":\"...\",\"caption\":\"...\",\"hashtags\":[\"#...\"]}",
+  ].join(" ");
+
+  const blocks: Block[] = [{ type: "text", text: `Facts:\n${facts || "(none provided)"}` }];
+  // Ten frames is the whole reel — enough to write from without paying for more.
+  photos.slice(0, 10).forEach((p, i) => {
+    blocks.push({ type: "text", text: `Frame ${i + 1}${p.category ? ` — ${p.category}` : ""}:` });
+    blocks.push({ type: "image", source: { type: "url", url: p.url } });
+  });
+  blocks.push({ type: "text", text: "Write the headline, caption and hashtags. JSON only." });
+
+  const reply = await ask(blocks, { system, maxTokens: 500 });
+  const parsed = extractJson<Partial<ReelCopy>>(reply);
+  const tidy = (s: unknown) => (typeof s === "string" ? s.trim() : "");
+  const tags = Array.isArray(parsed?.hashtags) ? parsed!.hashtags : [];
+  return {
+    // Trimmed hard: at 44px italic on a 1080-wide frame, 34 characters is the
+    // most that fits on one line. A headline that wraps isn't a headline.
+    headline: tidy(parsed?.headline).replace(/[."']+$/, "").slice(0, 34),
+    caption: tidy(parsed?.caption),
+    hashtags: tags
+      .map((t) => tidy(t))
+      .filter(Boolean)
+      .map((t) => (t.startsWith("#") ? t : `#${t}`))
+      .slice(0, 9),
+  };
+}

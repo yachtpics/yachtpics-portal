@@ -1,4 +1,70 @@
-# Where we are — September 6, 2026 (evening)
+# Where we are — September 9, 2026
+
+Charlie is home from Grenada. Today's session sharpened the Reel, opened it to
+everyone for a fortnight, and wrote the announcement. **Committed by Charlie,
+not by Claude — the sandbox shell was wedged all session, so nothing here has
+been typechecked.** `npx tsc --noEmit` before pushing.
+
+## Today's work (Sept 9)
+
+**The Reel, tightened.** Research first — how Burgess, Edmiston, Northrop &
+Johnson and the luxury-real-estate houses actually present listing film, plus
+2026 reel-length data. Then:
+
+- **~21 seconds** instead of ~28 (average watch time on a Reel is ~19s, and
+  completion rate is what the feed ranks on). Film trimmed to ~41s.
+- **Four looks**, each a complete treatment rather than a colour swap —
+  Editorial (serif caps on a gradient), Cinematic (letterboxed, slow, nothing
+  over the photograph), Gallery (warm off-white, photo inset), Classic (warm,
+  title case, lower-left). `src/lib/reelStyles.ts`.
+- **Title rebuilt.** Measured as a block and placed as a whole, so a two-line
+  name can't climb back into the picture; sits above Instagram's caption
+  furniture. Editorial uses Edmiston's grammar — italic lead-in, name in caps,
+  terminal full stop.
+- **Room labels**, optional and off by default (the top houses don't label).
+  Lower-left, transient, skipped on beauty shots.
+- **Motion answers the subject** — exteriors pull out, interiors push in, the
+  same amount every time. Random per-photo variation is the template tell.
+- **Write with AI** — reads the frames actually chosen, in order, and returns a
+  headline for the opening frame plus a caption and hashtags. Broker edits
+  both; the headline only reaches the film if they tick it. `draftReelCopy` in
+  `src/lib/ai.ts`, route `/api/listings/[id]/reel-copy`. Needs
+  `ANTHROPIC_API_KEY`.
+
+**The open house.** `src/lib/reelPromo.ts` — Sept 9 to Sept 23, the Reel
+unlocked for every account regardless of plan (nothing else changes). Banner on
+the Reel page, "Free" flag on the listing-page button. **Change the dates by
+editing the two constants at the top of that file.**
+
+**Help + Tips.** Help covers the looks, the options and Write with AI, with new
+quick-reference rows. Six new tips appended (`listing-reel`, `reel-copy`,
+`engagement`, `seller-report`, `named-sends`, `tour-and-plan`).
+
+**Announcement.** New campaign type `announcement_reel_2026_09` — the old type
+is retired, so nobody is skipped by dedup. Leads on the Reel and the fortnight.
+**Unapproved by default: nothing sends until Charlie approves it on
+/admin/announce.**
+
+## Competitive position (researched Sept 9)
+
+Worth knowing, and worth using in conversation: **no other yacht platform has a
+self-serve reel generator** — not YATCO, not YachtWorld/Boats Group, not
+IYBA/Yachtbroker.org, not Rightboat. The nearest thing in yachting is a $499/mo
+agency retainer. Per-photo dwell analytics: nobody has it, in yachting or real
+estate. Deck plans: zero competitors show them. Denison and Galati each built
+an owner dashboard in-house *because no vendor sells one*.
+
+Where we're behind: broker-to-broker eblasts (IYBA sells one at $300/mo,
+United blasts 2,000+ brokers), automatic social publishing, and a listing
+*score* with benchmarks rather than a pass/fail checklist — Boats Group is
+publishing hard conversion numbers on theirs. Ranked recommendations are in the
+session transcript; the top three were: make the Seller Report an automatic
+weekly email, add an "what your broker did this week" activity feed to it, and
+turn the readiness checklist into a score.
+
+---
+
+# Previous — September 6, 2026 (evening)
 
 A handoff note, written so a fresh session can pick up mid-stream. Charlie is
 shooting in Grenada Sept 6–9. He asked for a deep-dive on "the next big

@@ -191,6 +191,77 @@ export const TIPS: Tip[] = [
     ctaLabel: "Add a co-broker",
     ctaPath: "/dashboard/listings",
   },
+
+  // ── Batch 3 ─────────────────────────────────────────────────────────────
+  // The Reel and the intelligence tools. The reel tip leads because it's the
+  // one nobody else in the industry can offer.
+  {
+    slug: "listing-reel",
+    subject: "Tip: your photos, as a reel, in about a minute",
+    headline: "A finished reel from the photos you already have",
+    body: [
+      "Open any listing and click Reel. The photos you already have — in the order you've set, your cover shot first — come back as a finished video: a vertical reel for Instagram and Facebook, or a widescreen film you can add to the listing and send to a buyer.",
+      "Pick the look that suits the boat. Editorial is the brochure register, serif and restrained. Cinematic letterboxes the picture and slows everything down. Gallery is light and modern. Classic runs warm and suits sail. Then choose your photos, decide whether the price shows, and make it.",
+      "Reels come out silent on purpose — you add trending audio when you post, which Instagram rewards far more than any track we could supply.",
+    ],
+    ctaLabel: "Make a reel",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "reel-copy",
+    subject: "Tip: the caption, written from your photos",
+    headline: "Stop writing captions from scratch",
+    body: [
+      "On the Reel page there's a Write with AI button. It reads the photographs you actually picked, in the order they appear, and writes a headline for the opening frame plus a caption and hashtags to post with it.",
+      "It writes about what's in the frames — not a paraphrase of the spec sheet. Read it, change anything that isn't right, and post. The headline only goes on the film if you tick the box.",
+    ],
+    ctaLabel: "Try it on a listing",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "engagement",
+    subject: "Tip: see which photo they keep going back to",
+    headline: "What buyers actually look at",
+    body: [
+      "Every listing now has an Engagement panel: how many people opened your slideshow, how many were new, how long they stayed, and — the useful part — which photographs they lingered on and which they saved with the heart button.",
+      "It's worth a look before your next price conversation. If buyers are spending their time on the engine room and skipping the salon, that tells you something no lead count will.",
+    ],
+    ctaLabel: "Open a listing",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "seller-report",
+    subject: "Tip: the answer to \"what are you doing for my boat?\"",
+    headline: "A one-page report for the owner",
+    body: [
+      "In the Engagement panel there's a Seller Report button. It opens a single branded page — your logo, your name — showing the marketing activity and what buyers have been doing with the listing. Print it or save it as a PDF and send it on.",
+      "It turns the most awkward call of the month into a page you send before they ask.",
+    ],
+    ctaLabel: "Make a report",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "named-sends",
+    subject: "Tip: know exactly who opened it",
+    headline: "Put a name on every send",
+    body: [
+      "When you use Send to Client there's now a field for the client's name. Fill it in and the alert you get back says who: \"Mark opened your slideshow\" — and Sent History shows how many times.",
+      "It takes two seconds and it turns a notification into a reason to pick up the phone.",
+    ],
+    ctaLabel: "Send a listing",
+    ctaPath: "/dashboard/listings",
+  },
+  {
+    slug: "tour-and-plan",
+    subject: "Tip: add the walk-through and the layout",
+    headline: "360° tour and deck plan",
+    body: [
+      "On Edit Listing there's a section for a virtual tour link — Matterport, VRCloud, Kuula — and a deck plan image. Add either and buyers get a 360° Tour button on your slideshow and the general arrangement under Details.",
+      "Deck plans are one of the first things a serious buyer asks for, and almost nowhere else shows them next to the photographs.",
+    ],
+    ctaLabel: "Edit a listing",
+    ctaPath: "/dashboard/listings",
+  },
 ];
 
 export const TIP_BY_SLUG: Record<string, Tip> = Object.fromEntries(TIPS.map((t) => [t.slug, t]));
