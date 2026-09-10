@@ -499,21 +499,12 @@ export default function ListingReelPage() {
 
         ctx.save();
         ctx.globalAlpha = a;
-        // The caption sits on the photograph, so it needs its own ground or it
-        // vanishes into a bright hull — a short gradient across the picture's
-        // own bottom edge.
-        const gTop = y - 90 * sc;
-        const g = ctx.createLinearGradient(0, gTop, 0, y + 40 * sc);
-        g.addColorStop(0, rgba(st.ground, 0));
-        g.addColorStop(1, rgba(st.ground, fullBleed ? 0.55 : 0.62));
-        ctx.fillStyle = g;
-        ctx.save();
-        if (!fullBleed) { ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); }
-        ctx.fillRect(r.x, gTop, r.w, 130 * sc);
-        ctx.restore();
-        ctx.fillStyle = st.accent;
-        ctx.fillRect(x, y - 30 * sc, 34 * sc, Math.max(1, 1.5 * sc));
-        ctx.fillStyle = st.light ? st.soft : st.text;
+        // Just the words, on a soft shadow — no panel, no gradient. A tint
+        // fading in and out under every photo pulled the eye off the boat.
+        ctx.shadowColor = "rgba(0,0,0,0.75)";
+        ctx.shadowBlur = 10 * sc;
+        ctx.shadowOffsetY = 2 * sc;
+        ctx.fillStyle = "#ffffff";
         ctx.font = `600 ${size}px ${sans}`;
         ctx.textBaseline = "alphabetic";
         fillTrackedLeft(ctx, label, x, y, 5 * sc);
