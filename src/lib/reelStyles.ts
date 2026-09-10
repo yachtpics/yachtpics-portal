@@ -18,7 +18,7 @@
  * the boat: a 120' tri-deck and a classic sloop should not present alike.
  */
 
-export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic";
+export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic" | "energy";
 
 export type Backdrop =
   | "scrim"      // full-bleed photo, type grounded on a bottom-up gradient
@@ -52,6 +52,12 @@ export type ReelStyle = {
   zoom: number;
   /** Multiplier on the format's base hold — slower styles linger. */
   holdScale: number;
+  /**
+   * How one photo gives way to the next. "dissolve" is the soft crossfade;
+   * "punch" is a hard cut with a quick zoom that settles — the language of a
+   * fast boat, not a tri-deck.
+   */
+  cut: "dissolve" | "punch";
 };
 
 export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
@@ -80,6 +86,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headTrack: 3,
     zoom: 0.08,
     holdScale: 1,
+    cut: "dissolve",
   },
 
   /**
@@ -109,6 +116,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headTrack: 11,
     zoom: 0.05,
     holdScale: 1.15,
+    cut: "dissolve",
   },
 
   /**
@@ -136,6 +144,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headTrack: -1,
     zoom: 0.06,
     holdScale: 0.95,
+    cut: "dissolve",
   },
 
   /**
@@ -163,10 +172,40 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headTrack: 1,
     zoom: 0.07,
     holdScale: 1.05,
+    cut: "dissolve",
+  },
+
+  /**
+   * Energy — for the boats that go fast.
+   *
+   * Hard cuts, a quick zoom that lands and settles on every photo, holds
+   * barely over a second, heavy sans caps. A 39' centre console with triple
+   * outboards has no business crossfading; this is its reel. Still restrained
+   * where it counts — no glitches, no whips, nothing the boat didn't earn.
+   */
+  energy: {
+    key: "energy",
+    name: "Energy",
+    blurb: "Hard cuts, punch-in, fast. For centre consoles and sportfish.",
+    ground: "#06090f",
+    text: "#ffffff",
+    soft: "rgba(255,255,255,0.86)",
+    quiet: "rgba(255,255,255,0.62)",
+    accent: "#f0b429",
+    light: false,
+    backdrop: "scrim",
+    serifHeadline: false,
+    headline: "caps",
+    align: "center",
+    rule: "single",
+    headTrack: -1,
+    zoom: 0.11,
+    holdScale: 0.62,
+    cut: "punch",
   },
 };
 
-export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic"];
+export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic", "energy"];
 
 // ── Brand colours ────────────────────────────────────────────────────────────
 //

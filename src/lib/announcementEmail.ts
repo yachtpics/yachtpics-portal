@@ -49,7 +49,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open any listing and you&rsquo;ll find a new button: <strong style="color:#111827;">Reel</strong>. Click it and the photographs you already have &mdash; in the order you&rsquo;ve set them, your cover shot first &mdash; come back as a finished video. About twenty seconds, ready to post.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Not a slideshow with a logo on the front. You choose the look &mdash; four of them, from the restrained brochure register to a slow letterboxed cut &mdash; and it renders right there in your browser in under a minute. Vertical for Instagram and Facebook, or widescreen to send a buyer and add straight to the listing.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Not a slideshow with a logo on the front. You choose the look &mdash; five of them, from the restrained brochure register to a slow letterboxed cut to a fast hard-cut edit for the centre consoles &mdash; and it renders right there in your browser in under a minute. Vertical for Instagram and Facebook, or widescreen to send a buyer and add straight to the listing.</p>
 
       <div style="margin:0 0 26px;padding:18px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
         <p style="margin:0 0 6px;font-size:15px;color:#6b5a2a;line-height:1.6;"><strong style="color:#4a3d17;">It&rsquo;s open to everyone until ${closes}.</strong></p>

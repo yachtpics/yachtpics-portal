@@ -201,7 +201,7 @@ export const TIPS: Tip[] = [
     headline: "A finished reel from the photos you already have",
     body: [
       "Open any listing and click Reel. The photos you already have — in the order you've set, your cover shot first — come back as a finished video: a vertical reel for Instagram and Facebook, or a widescreen film you can add to the listing and send to a buyer.",
-      "Pick the look that suits the boat. Editorial is the brochure register, serif and restrained. Cinematic letterboxes the picture and slows everything down. Gallery is light and modern. Classic runs warm and suits sail. Then choose your photos, decide whether the price shows, and make it.",
+      "Pick the look that suits the boat. Editorial is the brochure register, serif and restrained. Cinematic letterboxes the picture and slows everything down. Gallery is light and modern. Classic runs warm and suits sail. Energy is hard cuts and a punch-in, built for centre consoles and sportfish. Then choose your photos, decide whether the price shows, and make it.",
       "When it's done, press Send to my phone: a QR code appears, you point your phone at it, and the reel drops into your camera roll. Reels come out silent on purpose — you add trending audio when you post, which Instagram rewards far more than any track we could supply.",
     ],
     ctaLabel: "Make a reel",

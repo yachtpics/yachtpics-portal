@@ -256,19 +256,24 @@ export default function ListingReelPage() {
 
   const selectedPhotos = useMemo(() => photos.filter((p) => chosen.has(p.id)), [photos, chosen]);
 
+  /** A punch look cuts hard — a whisker of overlap so it never flashes black. */
+  const fadeFor = (fmt: Format, key: StyleKey) =>
+    REEL_STYLES[key].cut === "punch" ? 0.08 : SPEC[fmt].fade;
+
   const timeline = useMemo(() => {
     const s = SPEC[format];
     const scale = REEL_STYLES[styleKey].holdScale;
+    const fade = fadeFor(format, styleKey);
     const segs: Segment[] = [];
     let t = 0;
     selectedPhotos.forEach((_, i) => {
       // Every photo after the title holds for exactly the same beat. Varying it
       // per photo is the thing that makes a slideshow feel restless.
       const hold = (i === 0 ? s.titleHold : s.hold) * scale;
-      segs.push({ kind: "photo", index: i, start: t, end: t + hold + s.fade });
+      segs.push({ kind: "photo", index: i, start: t, end: t + hold + fade });
       t += hold;
     });
-    segs.push({ kind: "end", start: t, end: t + s.endHold + s.fade });
+    segs.push({ kind: "end", start: t, end: t + s.endHold + fade });
     return { segs, total: t + s.endHold };
   }, [selectedPhotos, format, styleKey]);
 
@@ -288,6 +293,7 @@ export default function ListingReelPage() {
 
     const s = SPEC[format];
     const st = applyBrand(REEL_STYLES[styleKey], brand);
+    const fade = fadeFor(format, styleKey);
     // Letterbox is a vertical device — bars on an already-widescreen film just
     // shrink the picture, so the cinematic look keeps its type and its slow
     // motion there but drops back to a gradient.
@@ -419,7 +425,7 @@ export default function ListingReelPage() {
 
       const drawPhoto = (i: number, localT: number, hold: number, alpha: number) => {
         const bmp = bitmaps[i];
-        const drift = ease(localT / (hold + s.fade));
+        const drift = ease(localT / (hold + fade));
         ctx.save();
         ctx.globalAlpha = alpha;
 
@@ -434,9 +440,19 @@ export default function ListingReelPage() {
         // random — that difference is most of what separates a film from a
         // slideshow.
         const out = isExterior(selectedPhotos[i]?.category);
-        const from = out ? 1 + st.zoom : 1;
-        const to = out ? 1 : 1 + st.zoom;
-        const k = from + (to - from) * drift;
+        let k: number;
+        if (st.cut === "punch") {
+          // The punch: land tight, snap back most of the way in a third of a
+          // second, then drift the rest. Reads as a cut with impact rather
+          // than a slide — the grammar of a fast boat.
+          const snap = ease(Math.min(1, localT / 0.32));
+          const settle = 1 + st.zoom * 0.35 * (1 - drift);
+          k = (1 + st.zoom) + (settle - (1 + st.zoom)) * snap;
+        } else {
+          const from = out ? 1 + st.zoom : 1;
+          const to = out ? 1 : 1 + st.zoom;
+          k = from + (to - from) * drift;
+        }
 
         const showWhole = fit === "whole" && backdrop !== "letterbox";
         if (!showWhole) {
@@ -766,10 +782,11 @@ export default function ListingReelPage() {
           const hold = sg.kind === "photo"
             ? (sg.index === 0 ? s.titleHold : s.hold) * st.holdScale
             : s.endHold;
-          // Fade in over s.fade (except the very first photo), fade out over the
-          // last s.fade of the segment — the next segment is fading in beneath.
-          const fadeIn = sg.start === 0 ? 1 : ease(local / s.fade);
-          const fadeOut = sg.kind === "end" ? 1 : 1 - ease((local - hold) / s.fade);
+          // Fade in over `fade` (except the very first photo), fade out over the
+          // last `fade` of the segment — the next segment is fading in beneath.
+          // For a punch look `fade` is a few frames: effectively a hard cut.
+          const fadeIn = sg.start === 0 ? 1 : ease(local / fade);
+          const fadeOut = sg.kind === "end" ? 1 : 1 - ease((local - hold) / fade);
           const alpha = Math.min(fadeIn, fadeOut);
           if (sg.kind === "photo") {
             drawPhoto(sg.index, local, hold, alpha);
@@ -777,8 +794,11 @@ export default function ListingReelPage() {
               // Up quickly over the opening push, then held — a name that's only
               // legible for a second reads as a glitch, not a title. Gone just
               // before the photo changes.
-              const tIn = ease((local - 0.3) / 0.6);
-              const tOut = 1 - ease((local - (hold - 0.7)) / 0.6);
+              // A punch look has a shorter title hold, so the name arrives
+              // quicker and stays until the cut.
+              const quick = st.cut === "punch";
+              const tIn = ease((local - (quick ? 0.15 : 0.3)) / (quick ? 0.35 : 0.6));
+              const tOut = 1 - ease((local - (hold - (quick ? 0.35 : 0.7))) / (quick ? 0.3 : 0.6));
               drawTitle(Math.min(tIn, tOut) * alpha);
             } else {
               drawRoomLabel(sg.index, local, hold, alpha);
@@ -1023,7 +1043,7 @@ export default function ListingReelPage() {
       {/* Look — four complete points of view, not colour swaps. */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
           {STYLE_ORDER.map((k) => {
             const stl = REEL_STYLES[k];
             const on = styleKey === k;
