@@ -30,16 +30,27 @@ export function sanitizeVideoContentType(raw: unknown): string {
   return typeof raw === "string" && raw.startsWith("video/") ? raw : "video/mp4";
 }
 
+/** Where short-lived reel hand-offs live. Swept by the daily cron after 48h. */
+export const REEL_SHARE_PREFIX = "reel-shares/";
+
 export async function resolveVideoUploadTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown }
+  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown }
 ): Promise<VideoUploadTarget> {
   const filename = sanitizeVideoFilename(body?.filename);
 
   if (body?.listingId && typeof body.listingId === "string") {
     const access = await assertListingAccess(svc, body.listingId, userId, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
+
+    // A reel being handed to a phone is not part of the listing's media. It
+    // lives under its own prefix — no database row, swept after two days — so
+    // it can't be mistaken for a delivered video or linger as an orphan.
+    if (body?.share === true) {
+      const prefix = `${REEL_SHARE_PREFIX}${body.listingId}/`;
+      return { prefix, path: `${prefix}${Date.now()}-${filename}` };
+    }
 
     const { data: listing } = await svc
       .from("listings")

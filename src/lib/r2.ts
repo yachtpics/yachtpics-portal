@@ -6,6 +6,7 @@ import {
   GetObjectCommand,
   PutBucketCorsCommand,
   UploadPartCommand,
+  ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
@@ -193,6 +194,28 @@ export async function r2VideoPut(key: string, body: Uint8Array | Buffer, content
 
 export async function r2VideoDelete(key: string): Promise<void> {
   await r2().send(new DeleteObjectCommand({ Bucket: R2_VIDEO_BUCKET, Key: key }));
+}
+
+/**
+ * Everything under a prefix in the private bucket, with when it was written.
+ * Used by the sweep that clears short-lived reel hand-offs; deliberately
+ * paginates so a busy fortnight of reels can't be silently truncated.
+ */
+export async function r2VideoListPrefix(prefix: string): Promise<{ key: string; lastModified: Date | null }[]> {
+  const out: { key: string; lastModified: Date | null }[] = [];
+  let token: string | undefined;
+  do {
+    const res = await r2().send(new ListObjectsV2Command({
+      Bucket: R2_VIDEO_BUCKET,
+      Prefix: prefix,
+      ContinuationToken: token,
+    }));
+    for (const o of res.Contents ?? []) {
+      if (o.Key) out.push({ key: o.Key, lastModified: o.LastModified ?? null });
+    }
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return out;
 }
 
 /** Size in bytes, or null if it isn't there. Used to verify a migrated copy. */

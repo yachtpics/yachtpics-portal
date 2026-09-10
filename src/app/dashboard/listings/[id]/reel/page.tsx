@@ -7,7 +7,8 @@ import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
-import { uploadListingVideo } from "@/lib/uploadListingVideo";
+import { uploadListingVideo, uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
+import QRCode from "qrcode";
 import {
   ease,
   fillTrackedCentered,
@@ -56,13 +57,13 @@ const SPEC: Record<Format, {
   // twenty-second one that they do.
   reel: {
     w: 1080, h: 1920, label: "Reel (9:16)", hint: "Instagram Reels, Stories, Facebook",
-    maxPhotos: 10, hold: 1.7, fade: 0.55, titleHold: 3.2, endHold: 2.4, defaultFit: "fill",
+    maxPhotos: 10, hold: 1.7, fade: 0.55, titleHold: 4.2, endHold: 3.0, defaultFit: "fill",
   },
   // The film is a different job — it goes to one buyer who already asked, not to
   // a feed, so it can breathe.
   film: {
     w: 1920, h: 1080, label: "Film (16:9)", hint: "Send to Client, slideshow, YouTube",
-    maxPhotos: 14, hold: 2.6, fade: 0.6, titleHold: 4.0, endHold: 3.0, defaultFit: "whole",
+    maxPhotos: 14, hold: 2.6, fade: 0.6, titleHold: 5.0, endHold: 3.0, defaultFit: "whole",
   },
 };
 
@@ -123,6 +124,13 @@ export default function ListingReelPage() {
   const [writing, setWriting] = useState(false);
   const [copyError, setCopyError] = useState("");
   const [copied, setCopied] = useState(false);
+
+  // "Send to my phone": the reel goes to the bucket for a day, comes back as a
+  // link, and the link becomes a QR code on screen + an email as backup.
+  const [phone, setPhone] = useState<{ qr: string; url: string; emailedTo: string | null } | null>(null);
+  const [sendingPhone, setSendingPhone] = useState(false);
+  const [phonePct, setPhonePct] = useState(0);
+  const [phoneError, setPhoneError] = useState("");
 
   const [supported, setSupported] = useState<boolean | null>(null);
   const [phase, setPhase] = useState<"idle" | "loading" | "rendering" | "done" | "error">("idle");
@@ -259,6 +267,8 @@ export default function ListingReelPage() {
     cancelRef.current = false;
     setResult(null);
     setAdded(false);
+    setPhone(null);
+    setPhoneError("");
     setErrorMsg("");
     setPhase("loading");
     setProgress(0);
@@ -626,6 +636,32 @@ export default function ListingReelPage() {
         const capSize = 28 * sc;
         const items: { h: number; draw: (y: number) => void }[] = [];
 
+        // The boat first, then the person. The last frame is the one a buyer
+        // screenshots — it should carry the name, the essentials and the number
+        // to call, so it works on its own.
+        const endName = name.length > 22 ? 56 * sc : 68 * sc;
+        items.push({ h: endName + 14 * sc, draw: (y) => {
+          ctx.fillStyle = st.text;
+          ctx.font = `600 ${endName}px ${st.serifHeadline ? `${serifFamily}, Georgia, serif` : sans}`;
+          ctx.textAlign = "center";
+          ctx.fillText(st.headline === "caps" || st.headline === "editorial" ? name.toUpperCase() : name, cx, y + endName * 0.8);
+          ctx.textAlign = "left";
+        } });
+        const endSpec = [builder, ...specBits.filter((b) => b !== builder)].filter(Boolean).join("   ·   ");
+        if (endSpec) items.push({ h: capSize + 12 * sc, draw: (y) => {
+          ctx.fillStyle = st.quiet; ctx.font = `600 ${24 * sc}px ${sans}`;
+          fillTrackedCentered(ctx, endSpec.toUpperCase(), cx, y + capSize, 5 * sc);
+        } });
+        if (where) items.push({ h: capSize + 8 * sc, draw: (y) => {
+          ctx.fillStyle = st.soft; ctx.font = `500 ${22 * sc}px ${sans}`;
+          fillTrackedCentered(ctx, where.toUpperCase(), cx, y + capSize, 5 * sc);
+        } });
+        // A hairline between the boat and the broker.
+        items.push({ h: 56 * sc, draw: (y) => {
+          ctx.fillStyle = st.light ? "rgba(20,26,33,0.25)" : "rgba(255,255,255,0.28)";
+          ctx.fillRect(cx - 40 * sc, y + 28 * sc, 80 * sc, Math.max(1, 1.4 * sc));
+        } });
+
         if (logo) {
           const aspect = logo.width / logo.height;
           let lw = 360 * sc, lh = lw / aspect;
@@ -700,9 +736,11 @@ export default function ListingReelPage() {
           if (sg.kind === "photo") {
             drawPhoto(sg.index, local, hold, alpha);
             if (sg.index === 0) {
-              // Up quickly over the opening push, gone before the photo changes.
-              const tIn = ease((local - 0.35) / 0.7);
-              const tOut = 1 - ease((local - (hold - 0.8)) / 0.7);
+              // Up quickly over the opening push, then held — a name that's only
+              // legible for a second reads as a glitch, not a title. Gone just
+              // before the photo changes.
+              const tIn = ease((local - 0.3) / 0.6);
+              const tOut = 1 - ease((local - (hold - 0.7)) / 0.6);
               drawTitle(Math.min(tIn, tOut) * alpha);
             } else {
               drawRoomLabel(sg.index, local, hold, alpha);
@@ -768,6 +806,44 @@ export default function ListingReelPage() {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch { /* clipboard blocked — the text is on screen to select */ }
+  }
+
+  /**
+   * Get the finished reel onto the phone it'll be posted from. Uploads the
+   * rendered file to the private bucket under a short-lived prefix, signs a
+   * 24-hour link, shows it as a QR code and emails it as a backup.
+   */
+  async function sendToPhone() {
+    if (!result || locked || !listing) return;
+    setSendingPhone(true);
+    setPhoneError("");
+    setPhone(null);
+    setPhonePct(0);
+    try {
+      const filename = `${safeName(listing.vessel_name)}-${result.format}.mp4`;
+      const file = new File([result.blob], filename, { type: "video/mp4" });
+      const up = await uploadVideoToPrivateBucket({
+        file,
+        target: { listingId: id, share: true },
+        onProgress: setPhonePct,
+      });
+      if (!up.ok) throw new Error(up.error);
+
+      const res = await fetch(`/api/listings/${id}/reel-link`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: up.path, filename, email: true }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Couldn't make the link.");
+
+      const qr = await QRCode.toDataURL(data.url, { width: 512, margin: 2, color: { dark: "#050b14", light: "#ffffff" } });
+      setPhone({ qr, url: data.url, emailedTo: data.emailedTo ?? null });
+    } catch (err) {
+      setPhoneError(err instanceof Error ? err.message : "Couldn't send it to your phone.");
+    } finally {
+      setSendingPhone(false);
+    }
   }
 
   function download() {
@@ -957,9 +1033,9 @@ export default function ListingReelPage() {
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-sm font-semibold text-ink-900">Write the words</p>
+            <p className="text-sm font-semibold text-ink-900">Generate your headline &amp; caption</p>
             <p className="text-xs text-ink-400 mt-0.5">
-              Reads the photos you picked, in order, and writes a headline for the opening frame and a caption to post with it.
+              Click the button and we&rsquo;ll look at the photos you picked and write a headline for the opening frame plus a caption and hashtags for your post. Edit anything, then copy and go.
             </p>
           </div>
           <button
@@ -1071,6 +1147,10 @@ export default function ListingReelPage() {
               ) : (
                 <>
                   <button onClick={download} className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">⬇ Download MP4</button>
+                  <button onClick={sendToPhone} disabled={sendingPhone}
+                    className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">
+                    {sendingPhone ? `Sending… ${phonePct}%` : "📱 Send to my phone"}
+                  </button>
                   {result.format === "film" && (
                     <button onClick={addToListing} disabled={adding || added}
                       className="text-sm font-semibold px-6 py-2.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 disabled:opacity-50 transition-colors">
@@ -1080,6 +1160,23 @@ export default function ListingReelPage() {
                 </>
               )}
             </div>
+            {phoneError && <p className="mt-3 text-sm text-danger-700 text-center">{phoneError}</p>}
+
+            {phone && (
+              <div className="mt-5 bg-ink-50 border border-hairline rounded-ctl p-5 flex flex-col sm:flex-row items-center gap-5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={phone.qr} alt="Scan to save the reel" className="w-40 h-40 rounded-sm border border-hairline-strong bg-white shrink-0" />
+                <div className="text-sm text-ink-700">
+                  <p className="font-semibold text-ink-900">Point your phone&rsquo;s camera at the code</p>
+                  <p className="text-ink-600 mt-1">Tap the link that pops up and the reel saves to your camera roll. Then open Instagram, choose it, add your audio and caption.</p>
+                  <p className="text-xs text-ink-400 mt-2">
+                    {phone.emailedTo ? `Also emailed to ${phone.emailedTo} as a backup. ` : ""}The link works for 24 hours.
+                    {" "}<a href={phone.url} className="text-accent-700 font-semibold hover:underline" target="_blank" rel="noopener noreferrer">Open it here</a>
+                  </p>
+                </div>
+              </div>
+            )}
+
             {result.format === "film" && !added && !locked && (
               <p className="text-xs text-ink-400 text-center mt-2">Adding it puts the film at the front of your client slideshow and in Send to Client.</p>
             )}

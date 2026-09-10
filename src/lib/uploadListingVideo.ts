@@ -104,7 +104,8 @@ function describePutFailure(status: number): string {
         : `Upload failed (error ${status}).`;
 }
 
-export type PrivateBucketTarget = { listingId: string } | { galleryId: string };
+/** `share: true` files a short-lived hand-off copy under its own prefix. */
+export type PrivateBucketTarget = { listingId: string; share?: boolean } | { galleryId: string };
 
 export type PrivateBucketUploadResult =
   | { ok: true; path: string; playbackUrl: string | null }

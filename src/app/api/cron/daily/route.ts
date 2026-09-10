@@ -39,6 +39,8 @@ export async function GET(req: NextRequest) {
   // Deletes the Supabase copies of migrated videos. Self-gated: sleeps until
   // Sept 7 2026 (a week after the migration), no-ops after Sept 30.
   jobs.push("/api/cron/video-cleanup");
+  // Clears expired "Send to my phone" reel copies (48h) from the private bucket.
+  jobs.push("/api/cron/reel-share-sweep");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never
