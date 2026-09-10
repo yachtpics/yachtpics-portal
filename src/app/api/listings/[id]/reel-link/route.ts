@@ -77,7 +77,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">${boat}</h1>
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open this on your phone and tap the button — the reel saves to your camera roll, ready to post with whatever audio you like.</p>
       <div style="margin:0 0 22px;"><a href="${url}" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">Save the reel</a></div>
-      <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">This link works for ${LINK_HOURS} hours. On iPhone: tap, then use the share icon → Save Video. On Android it downloads straight to your gallery.</p>
+      <p style="margin:0;font-size:13px;color:#6b7280;line-height:1.6;">On iPhone: tap, then use the share icon → Save Video. On Android it downloads straight to your gallery. This pickup link works for ${LINK_HOURS} hours — the reel itself is yours to keep once saved, and you can make it again from the listing any time.</p>
     </div>
   </div>
 </body></html>`;

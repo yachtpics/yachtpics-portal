@@ -31,6 +31,21 @@ Johnson and the luxury-real-estate houses actually present listing film, plus
   `src/lib/ai.ts`, route `/api/listings/[id]/reel-copy`. Needs
   `ANTHROPIC_API_KEY`.
 
+**Later the same day** (all reviewed by an Opus subagent, still untypechecked):
+- **Send to my phone** — rendered reel goes to `reel-shares/<listingId>/` in the
+  private bucket, `/api/listings/[id]/reel-link` signs a 24h download link,
+  shown as a QR (error-correction L, 224–256px — signed URLs are long) and
+  emailed as backup. `/api/cron/reel-share-sweep` deletes copies >48h, from the
+  daily dispatcher. The reel itself is the broker's once saved.
+- **Brand colours** — `broker_details.brand_accent/brand_ground` (migration
+  applied live + saved to `supabase/migrations/20260909_broker_brand_colors.sql`).
+  Two colour inputs + "Match my logo" (dominant saturated hue from the logo
+  bitmap) + reset. `applyBrand` re-derives text colours only when the ground
+  changes. Scrims tint to the ground.
+- End card: vessel name + year/builder/model, hairline, then the broker.
+  Title holds longer (4.2s reel / 5s film). Panel renamed "Generate your
+  headline & caption".
+
 **The open house.** `src/lib/reelPromo.ts` — Sept 9 to Sept 23, the Reel
 unlocked for every account regardless of plan (nothing else changes). Banner on
 the Reel page, "Free" flag on the listing-page button. **Change the dates by

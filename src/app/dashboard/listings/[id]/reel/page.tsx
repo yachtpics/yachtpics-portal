@@ -16,7 +16,10 @@ import {
   loadBitmap,
   wrapLines,
 } from "@/lib/canvasText";
-import { REEL_STYLES, STYLE_ORDER, isExterior, roomLabel, type StyleKey } from "@/lib/reelStyles";
+import {
+  REEL_STYLES, STYLE_ORDER, isExterior, roomLabel, applyBrand, dominantColor, normalizeHex, rgba,
+  type StyleKey, type BrandColors,
+} from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
 
 /**
@@ -107,12 +110,15 @@ export default function ListingReelPage() {
   const [format, setFormat] = useState<Format>("reel");
   const [fit, setFit] = useState<Fit>("fill");
   const [styleKey, setStyleKey] = useState<StyleKey>("editorial");
+  // The broker's own colours, remembered on their profile. Null = the look's.
+  const [brand, setBrand] = useState<BrandColors>({});
+  const [matching, setMatching] = useState(false);
+  const [brandError, setBrandError] = useState("");
+  const brandSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [showPrice, setShowPrice] = useState(true);
   const [showLocation, setShowLocation] = useState(true);
-  // Room captions. The top houses don't label — their films let the photography
-  // speak — so this is a choice rather than a default, and it stays off the
-  // beauty shots either way.
+  // Room captions — the broker's call, off until they turn it on.
   const [showLabels, setShowLabels] = useState(false);
 
   // Words for the reel, written from the frames actually chosen. The headline
@@ -167,7 +173,7 @@ export default function ListingReelPage() {
 
       const [{ data: prof }, { data: det }, { data: ph }, { count }] = await Promise.all([
         supabase.from("profiles").select("first_name, last_name, phone").eq("id", l.broker_id).maybeSingle(),
-        supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url").eq("id", l.broker_id).maybeSingle(),
+        supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
         supabase.from("photos").select("id, storage_path, category, filename, display_order").eq("listing_id", id).eq("is_visible", true).order("display_order"),
         supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
       ]);
@@ -179,6 +185,7 @@ export default function ListingReelPage() {
         website: det?.brokerage_website ?? null,
         logoUrl: det?.logo_url ?? null,
       });
+      setBrand({ accent: normalizeHex(det?.brand_accent), ground: normalizeHex(det?.brand_ground) });
 
       // Same order the slideshow uses: cover first, then the walk-through.
       const ordered = orderPhotos(ph ?? [], { manual: l.photo_order_manual === true, heroId: l.hero_photo_id });
@@ -274,7 +281,7 @@ export default function ListingReelPage() {
     setProgress(0);
 
     const s = SPEC[format];
-    const st = REEL_STYLES[styleKey];
+    const st = applyBrand(REEL_STYLES[styleKey], brand);
     // Letterbox is a vertical device — bars on an already-widescreen film just
     // shrink the picture, so the cinematic look keeps its type and its slow
     // motion there but drops back to a gradient.
@@ -452,17 +459,16 @@ export default function ListingReelPage() {
       /**
        * The room caption.
        *
-       * Lower-left, small, wide-tracked, and gone again in a second and a half —
-       * a label that sits there the whole time covers the very thing it's
-       * describing. Skipped on the title photo, which already has a name on it.
+       * Bottom-left corner, small, wide-tracked, and on screen for as long as
+       * the photograph is — it arrives with the photo and leaves with it,
+       * riding the same crossfade. Skipped on the title photo, which already
+       * has a name on it.
        */
-      const drawRoomLabel = (i: number, localT: number, hold: number, alpha: number) => {
+      const drawRoomLabel = (i: number, localT: number, _hold: number, alpha: number) => {
         if (!showLabels || i === 0) return;
         const label = roomLabel(selectedPhotos[i]?.category);
         if (!label) return;
-        const inT = ease((localT - 0.25) / 0.45);
-        const outT = 1 - ease((localT - (hold - 0.7)) / 0.45);
-        const a = Math.min(inT, outT) * alpha;
+        const a = alpha;
         if (a <= 0.01) return;
 
         const size = 25 * sc;
@@ -478,8 +484,8 @@ export default function ListingReelPage() {
         // a bright hull. On the bars and the light page it doesn't.
         if (backdrop === "scrim") {
           const g = ctx.createLinearGradient(0, y - 90 * sc, 0, y + 40 * sc);
-          g.addColorStop(0, "rgba(5,11,20,0)");
-          g.addColorStop(1, "rgba(5,11,20,0.55)");
+          g.addColorStop(0, rgba(st.ground, 0));
+          g.addColorStop(1, rgba(st.ground, 0.55));
           ctx.fillStyle = g;
           ctx.fillRect(0, y - 90 * sc, W, 130 * sc);
         }
@@ -542,9 +548,11 @@ export default function ListingReelPage() {
 
         // Ground the type — only where it's actually sitting on a photograph.
         if (backdrop === "scrim") {
+          // Tinted to the ground, so a navy brand gets a navy scrim and the
+          // Classic look keeps its warmth without a special case.
           const g = ctx.createLinearGradient(0, H * 0.42, 0, H);
-          g.addColorStop(0, st.key === "classic" ? "rgba(20,16,10,0)" : "rgba(5,11,20,0)");
-          g.addColorStop(1, st.key === "classic" ? "rgba(20,16,10,0.84)" : "rgba(5,11,20,0.84)");
+          g.addColorStop(0, rgba(st.ground, 0));
+          g.addColorStop(1, rgba(st.ground, 0.84));
           ctx.fillStyle = g;
           ctx.fillRect(0, 0, W, H);
         }
@@ -647,14 +655,12 @@ export default function ListingReelPage() {
           ctx.fillText(st.headline === "caps" || st.headline === "editorial" ? name.toUpperCase() : name, cx, y + endName * 0.8);
           ctx.textAlign = "left";
         } });
-        const endSpec = [builder, ...specBits.filter((b) => b !== builder)].filter(Boolean).join("   ·   ");
-        if (endSpec) items.push({ h: capSize + 12 * sc, draw: (y) => {
-          ctx.fillStyle = st.quiet; ctx.font = `600 ${24 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, endSpec.toUpperCase(), cx, y + capSize, 5 * sc);
-        } });
-        if (where) items.push({ h: capSize + 8 * sc, draw: (y) => {
-          ctx.fillStyle = st.soft; ctx.font = `500 ${22 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, where.toUpperCase(), cx, y + capSize, 5 * sc);
+        // Just the year, builder and model under the name. The specs already
+        // had their moment on the opening frame; the last frame is the boat's
+        // name and the person to call.
+        if (builder) items.push({ h: capSize + 12 * sc, draw: (y) => {
+          ctx.fillStyle = st.accent; ctx.font = `600 ${25 * sc}px ${sans}`;
+          fillTrackedCentered(ctx, builder.toUpperCase(), cx, y + capSize, 7 * sc);
         } });
         // A hairline between the boat and the broker.
         items.push({ h: 56 * sc, draw: (y) => {
@@ -766,6 +772,43 @@ export default function ListingReelPage() {
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong while rendering.");
       setPhase("error");
+    }
+  }
+
+  /**
+   * Brand colours: applied to the preview at once, saved to the broker's
+   * profile a moment later so every future reel on every listing remembers
+   * them. Saving is best-effort — a viewer without rights to the row (an admin
+   * on a broker's boat) still gets the colours for this session.
+   */
+  function setBrandColor(next: BrandColors) {
+    setBrand(next);
+    setResult(null);
+    setPhase("idle");
+    if (!listing) return;
+    if (brandSaveRef.current) clearTimeout(brandSaveRef.current);
+    brandSaveRef.current = setTimeout(() => {
+      supabase.from("broker_details")
+        .update({ brand_accent: next.accent ?? null, brand_ground: next.ground ?? null })
+        .eq("id", listing.broker_id)
+        .then(() => { /* best effort */ });
+    }, 600);
+  }
+
+  /** Pull the brand colour out of the logo itself. */
+  async function matchLogo() {
+    if (!broker?.logoUrl) return;
+    setMatching(true);
+    try {
+      const bmp = await loadBitmap(broker.logoUrl);
+      const hex = dominantColor(bmp);
+      if (!hex) throw new Error("Couldn't find a strong colour in the logo — it may be mostly black, white or grey. Pick one by hand instead.");
+      setBrandColor({ ...brand, accent: hex });
+      setBrandError("");
+    } catch (err) {
+      setBrandError(err instanceof Error ? err.message : "Couldn't read the logo.");
+    } finally {
+      setMatching(false);
     }
   }
 
@@ -886,7 +929,8 @@ export default function ListingReelPage() {
   const busy = phase === "loading" || phase === "rendering";
   const seconds = Math.round(timeline.total);
   const promoOn = reelPromoActive();
-  const style = REEL_STYLES[styleKey];
+  const style = applyBrand(REEL_STYLES[styleKey], brand);
+  const brandOn = !!(brand.accent || brand.ground);
   // Nothing to caption if the photos were never categorised.
   const labelsPossible = selectedPhotos.some((p, i) => i > 0 && !!roomLabel(p.category));
 
@@ -971,6 +1015,48 @@ export default function ListingReelPage() {
         </div>
       </div>
 
+      {/* Brand colours — the look's palette, or the broker's own. */}
+      <div className="mb-5">
+        <p className="label-caps text-ink-500 mb-2">Your colours</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="inline-flex items-center gap-2 text-sm text-ink-700 cursor-pointer">
+            <input
+              type="color"
+              value={brand.accent ?? REEL_STYLES[styleKey].accent}
+              onChange={(e) => setBrandColor({ ...brand, accent: e.target.value })}
+              disabled={busy}
+              className="h-8 w-10 rounded-sm border border-hairline-strong bg-white cursor-pointer"
+            />
+            Accent
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-ink-700 cursor-pointer">
+            <input
+              type="color"
+              value={brand.ground ?? REEL_STYLES[styleKey].ground}
+              onChange={(e) => setBrandColor({ ...brand, ground: e.target.value })}
+              disabled={busy}
+              className="h-8 w-10 rounded-sm border border-hairline-strong bg-white cursor-pointer"
+            />
+            Background
+          </label>
+          {broker?.logoUrl && (
+            <button onClick={matchLogo} disabled={busy || matching} className={chip(false)}>
+              {matching ? "Reading logo…" : "Match my logo"}
+            </button>
+          )}
+          {brandOn && (
+            <button onClick={() => setBrandColor({})} disabled={busy} className="text-xs font-semibold text-ink-400 hover:underline">
+              Back to the look&rsquo;s colours
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-ink-400 mt-1.5">
+          Accent is the fine lines and the lead-in; background is the bars, the end card and the page behind the photo.
+          {broker?.logoUrl ? " Match my logo pulls the main colour out of your logo." : ""} Your choice is remembered for every listing.
+        </p>
+        {brandError && <p className="mt-1.5 text-xs text-danger-700">{brandError}</p>}
+      </div>
+
       {/* Options */}
       <div className="grid sm:grid-cols-2 gap-4 mb-5">
         <div>
@@ -1003,7 +1089,7 @@ export default function ListingReelPage() {
           </div>
           <p className="text-xs text-ink-400 mt-1.5">
             Year, builder, length and staterooms always appear when they&rsquo;re filled in.
-            {labelsPossible && " Room labels name each space on screen — the top houses tend to leave them off and let the photography speak, so it's your call."}
+            {labelsPossible && " Room labels name each space in the corner of its photo."}
           </p>
         </div>
       </div>
@@ -1175,7 +1261,7 @@ export default function ListingReelPage() {
                   <p className="font-semibold text-ink-900">Point your phone&rsquo;s camera at the code</p>
                   <p className="text-ink-600 mt-1">Tap the link that pops up and the reel saves to your camera roll. Then open Instagram, choose it, add your audio and caption.</p>
                   <p className="text-xs text-ink-400 mt-2">
-                    {phone.emailedTo ? `Also emailed to ${phone.emailedTo} as a backup. ` : ""}The link works for 24 hours.
+                    {phone.emailedTo ? `Also emailed to ${phone.emailedTo} as a backup. ` : ""}This pickup link works for 24 hours — once the reel is on your phone it&rsquo;s yours to keep, and you can make it again here any time.
                     {" "}<a href={phone.url} className="text-accent-700 font-semibold hover:underline" target="_blank" rel="noopener noreferrer">Open it here</a>
                   </p>
                 </div>

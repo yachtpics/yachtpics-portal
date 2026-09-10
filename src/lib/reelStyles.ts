@@ -168,6 +168,117 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
 
 export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic"];
 
+// ── Brand colours ────────────────────────────────────────────────────────────
+//
+// A broker can replace a look's accent and ground with their own, so a
+// Northrop & Johnson reel comes out navy and an Edmiston one red. Everything
+// downstream of the two colours — light/dark handling, text contrast, scrim
+// tint — is derived here, so a colour swap never leaves white type on a
+// white page.
+
+export type BrandColors = { accent?: string | null; ground?: string | null };
+
+const HEX_RE = /^#?([0-9a-f]{6})$/i;
+
+export function normalizeHex(v: unknown): string | null {
+  if (typeof v !== "string") return null;
+  const m = v.trim().match(HEX_RE);
+  return m ? `#${m[1].toLowerCase()}` : null;
+}
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** Perceived lightness 0..1 (WCAG relative luminance, near enough). */
+export function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex).map((c) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  });
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+
+/** "rgba(r,g,b,a)" from a hex — for scrims tinted to the ground. */
+export function rgba(hex: string, a: number): string {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+/**
+ * A look with the broker's colours applied. Text colours follow the ground:
+ * a light ground gets ink type and a dark one gets bone, whatever the look
+ * started as. The accent is used as given — it's the broker's call.
+ */
+export function applyBrand(base: ReelStyle, brand: BrandColors | null | undefined): ReelStyle {
+  const ground = normalizeHex(brand?.ground) ?? base.ground;
+  const accent = normalizeHex(brand?.accent) ?? base.accent;
+  if (ground === base.ground && accent === base.accent) return base;
+  // Type colours only move when the ground does — a new accent alone must not
+  // flatten Classic's warm bone or Cinematic's quieter greys into the generic set.
+  const groundChanged = ground !== base.ground;
+  const light = groundChanged ? luminance(ground) > 0.3 : base.light;
+  return {
+    ...base,
+    ground,
+    accent,
+    light,
+    ...(groundChanged
+      ? {
+          text: light ? "#141a21" : "#ffffff",
+          soft: light ? "rgba(20,26,33,0.72)" : "rgba(255,255,255,0.84)",
+          quiet: light ? "rgba(20,26,33,0.52)" : "rgba(255,255,255,0.62)",
+        }
+      : {}),
+  };
+}
+
+/**
+ * The colour a logo is "mostly" — the one a designer would pull for the brand.
+ *
+ * Reads the pixels, throws away anything near white, black or grey (those are
+ * paper and ink, not brand), and returns the most common saturated hue. Good
+ * enough to land within a shade of the real brand colour nine times out of
+ * ten, and the broker can nudge it from there.
+ */
+export function dominantColor(bmp: ImageBitmap): string | null {
+  const c = document.createElement("canvas");
+  const size = 64;
+  c.width = size; c.height = size;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+  ctx.drawImage(bmp, 0, 0, size, size);
+  const { data } = ctx.getImageData(0, 0, size, size);
+
+  // Bucket by coarse hue; keep a running average per bucket.
+  const buckets = new Map<number, { n: number; r: number; g: number; b: number }>();
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i + 1], b = data[i + 2], a = data[i + 3];
+    if (a < 128) continue;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const sat = max === 0 ? 0 : (max - min) / max;
+    if (sat < 0.25 || max < 40 || (max > 235 && sat < 0.35)) continue;
+    // Hue in 24 steps.
+    let h = 0;
+    const d = max - min;
+    if (d > 0) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h = Math.round(((h * 60 + 360) % 360) / 15);
+    }
+    const bk = buckets.get(h) ?? { n: 0, r: 0, g: 0, b: 0 };
+    bk.n++; bk.r += r; bk.g += g; bk.b += b;
+    buckets.set(h, bk);
+  }
+  let best: { n: number; r: number; g: number; b: number } | null = null;
+  for (const bk of buckets.values()) if (!best || bk.n > best.n) best = bk;
+  if (!best || best.n < 8) return null;
+  const to2 = (v: number) => Math.round(v / best!.n).toString(16).padStart(2, "0");
+  return `#${to2(best.r)}${to2(best.g)}${to2(best.b)}`;
+}
+
 /**
  * Photo categories shot from off the boat. These pull OUT (revealing where she
  * sits); everything inside pushes IN (drawing you aboard). Motion that answers
