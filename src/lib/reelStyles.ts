@@ -272,10 +272,13 @@ export function dominantColor(bmp: ImageBitmap): string | null {
     bk.n++; bk.r += r; bk.g += g; bk.b += b;
     buckets.set(h, bk);
   }
-  let best: { n: number; r: number; g: number; b: number } | null = null;
-  for (const bk of buckets.values()) if (!best || bk.n > best.n) best = bk;
-  if (!best || best.n < 8) return null;
-  const to2 = (v: number) => Math.round(v / best!.n).toString(16).padStart(2, "0");
+  // Array.from rather than for…of: the project compiles to a target that
+  // can't iterate a Map directly.
+  const all = Array.from(buckets.values());
+  if (all.length === 0) return null;
+  const best = all.reduce((a, b) => (b.n > a.n ? b : a));
+  if (best.n < 8) return null;
+  const to2 = (v: number) => Math.round(v / best.n).toString(16).padStart(2, "0");
   return `#${to2(best.r)}${to2(best.g)}${to2(best.b)}`;
 }
 
