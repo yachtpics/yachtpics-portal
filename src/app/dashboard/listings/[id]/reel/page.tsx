@@ -486,7 +486,8 @@ export default function ListingReelPage() {
         const a = alpha;
         if (a <= 0.01) return;
 
-        const size = 25 * sc;
+        // Big enough to read on a phone held at arm's length — 25px was not.
+        const size = 38 * sc;
         // Bottom-left corner of the PICTURE, wherever it landed — a portrait
         // floated in the frame gets its caption at its own foot, not the
         // frame's. A full-bleed crop keeps the caption above Instagram's UI.
@@ -501,13 +502,13 @@ export default function ListingReelPage() {
         ctx.globalAlpha = a;
         // Just the words, on a soft shadow — no panel, no gradient. A tint
         // fading in and out under every photo pulled the eye off the boat.
-        ctx.shadowColor = "rgba(0,0,0,0.75)";
-        ctx.shadowBlur = 10 * sc;
-        ctx.shadowOffsetY = 2 * sc;
+        ctx.shadowColor = "rgba(0,0,0,0.8)";
+        ctx.shadowBlur = 14 * sc;
+        ctx.shadowOffsetY = 3 * sc;
         ctx.fillStyle = "#ffffff";
         ctx.font = `600 ${size}px ${sans}`;
         ctx.textBaseline = "alphabetic";
-        fillTrackedLeft(ctx, label, x, y, 5 * sc);
+        fillTrackedLeft(ctx, label, x, y, 6 * sc);
         ctx.restore();
       };
 
