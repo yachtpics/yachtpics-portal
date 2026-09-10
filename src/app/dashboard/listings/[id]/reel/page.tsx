@@ -114,6 +114,10 @@ export default function ListingReelPage() {
   const [brand, setBrand] = useState<BrandColors>({});
   const [matching, setMatching] = useState(false);
   const [brandError, setBrandError] = useState("");
+  // Whether the viewer IS the listing's broker. Only they get their colour
+  // choices remembered — an admin or assistant trying colours on someone
+  // else's boat must not rewrite that broker's brand.
+  const [isOwner, setIsOwner] = useState(false);
   const brandSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [chosen, setChosen] = useState<Set<string>>(new Set());
   const [showPrice, setShowPrice] = useState(true);
@@ -155,6 +159,8 @@ export default function ListingReelPage() {
         .eq("id", id).single();
       if (!l) { setLoading(false); return; }
       setListing(l as ListingData);
+      const { data: { user: me } } = await supabase.auth.getUser();
+      setIsOwner(!!me && me.id === l.broker_id);
 
       // During the open house the Reel is unlocked for everyone — subscribed,
       // trialling or lapsed. Every other paid tool keeps its own gate.
@@ -785,7 +791,8 @@ export default function ListingReelPage() {
     setBrand(next);
     setResult(null);
     setPhase("idle");
-    if (!listing) return;
+    // Only the broker's own hand writes to their profile.
+    if (!listing || !isOwner) return;
     if (brandSaveRef.current) clearTimeout(brandSaveRef.current);
     brandSaveRef.current = setTimeout(() => {
       supabase.from("broker_details")
@@ -1052,7 +1059,8 @@ export default function ListingReelPage() {
         </div>
         <p className="text-xs text-ink-400 mt-1.5">
           Accent is the fine lines and the lead-in; background is the bars, the end card and the page behind the photo.
-          {broker?.logoUrl ? " Match my logo pulls the main colour out of your logo." : ""} Your choice is remembered for every listing.
+          {broker?.logoUrl ? " Match my logo pulls the main colour out of your logo." : ""}
+          {isOwner ? " Your choice is remembered for every listing." : " Colours chosen here apply to this session only — the broker's own settings are untouched."}
         </p>
         {brandError && <p className="mt-1.5 text-xs text-danger-700">{brandError}</p>}
       </div>
