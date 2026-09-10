@@ -14,7 +14,7 @@ import {
   fillTrackedCentered,
   fillTrackedLeft,
   loadBitmap,
-  wrapLines,
+  wrapTracked,
 } from "@/lib/canvasText";
 import {
   REEL_STYLES, STYLE_ORDER, isExterior, roomLabel, applyBrand, dominantColor, normalizeHex, rgba,
@@ -411,6 +411,12 @@ export default function ListingReelPage() {
         return { x: 0, y: 0, w: W, h: H };
       })();
 
+      // Where the photograph actually landed on the last drawPhoto call — the
+      // window for a full-bleed crop, or the smaller rectangle a whole portrait
+      // or landscape occupies inside it. The room caption anchors to this, so
+      // it sits in the corner of the picture rather than the corner of the frame.
+      let photoRect = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
+
       const drawPhoto = (i: number, localT: number, hold: number, alpha: number) => {
         const bmp = bitmaps[i];
         const drift = ease(localT / (hold + s.fade));
@@ -446,6 +452,7 @@ export default function ListingReelPage() {
           }
           ctx.drawImage(bmp, frame.x + (frame.w - dw) / 2, frame.y + (frame.h - dh) / 2, dw, dh);
           ctx.restore();
+          photoRect = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
         } else {
           // The whole photograph, complete, floated in the window.
           const bd = backdrops[i];
@@ -457,7 +464,9 @@ export default function ListingReelPage() {
           ctx.shadowColor = st.light ? "rgba(20,26,33,0.20)" : "rgba(0,0,0,0.45)";
           ctx.shadowBlur = (st.light ? 30 : 40) * sc;
           ctx.shadowOffsetY = (st.light ? 10 : 12) * sc;
-          ctx.drawImage(bmp, frame.x + (frame.w - dw) / 2, frame.y + (frame.h - dh) / 2, dw, dh);
+          const px = frame.x + (frame.w - dw) / 2, py = frame.y + (frame.h - dh) / 2;
+          ctx.drawImage(bmp, px, py, dw, dh);
+          photoRect = { x: px, y: py, w: dw, h: dh };
         }
         ctx.restore();
       };
@@ -478,23 +487,30 @@ export default function ListingReelPage() {
         if (a <= 0.01) return;
 
         const size = 25 * sc;
-        const x = frame.x + 60 * sc;
-        const y =
-          backdrop === "inset" ? frame.y + frame.h + 58 * sc
-          : backdrop === "letterbox" ? frame.y + frame.h + 62 * sc
-          : H - (format === "reel" ? 330 : 78) * sc;
+        // Bottom-left corner of the PICTURE, wherever it landed — a portrait
+        // floated in the frame gets its caption at its own foot, not the
+        // frame's. A full-bleed crop keeps the caption above Instagram's UI.
+        const r = photoRect;
+        const fullBleed = backdrop === "scrim" && fit === "fill";
+        const x = r.x + 44 * sc;
+        const y = fullBleed
+          ? H - (format === "reel" ? 330 : 78) * sc
+          : r.y + r.h - 40 * sc;
 
         ctx.save();
         ctx.globalAlpha = a;
-        // On a photograph the caption needs its own ground or it disappears into
-        // a bright hull. On the bars and the light page it doesn't.
-        if (backdrop === "scrim") {
-          const g = ctx.createLinearGradient(0, y - 90 * sc, 0, y + 40 * sc);
-          g.addColorStop(0, rgba(st.ground, 0));
-          g.addColorStop(1, rgba(st.ground, 0.55));
-          ctx.fillStyle = g;
-          ctx.fillRect(0, y - 90 * sc, W, 130 * sc);
-        }
+        // The caption sits on the photograph, so it needs its own ground or it
+        // vanishes into a bright hull — a short gradient across the picture's
+        // own bottom edge.
+        const gTop = y - 90 * sc;
+        const g = ctx.createLinearGradient(0, gTop, 0, y + 40 * sc);
+        g.addColorStop(0, rgba(st.ground, 0));
+        g.addColorStop(1, rgba(st.ground, fullBleed ? 0.55 : 0.62));
+        ctx.fillStyle = g;
+        ctx.save();
+        if (!fullBleed) { ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); }
+        ctx.fillRect(r.x, gTop, r.w, 130 * sc);
+        ctx.restore();
         ctx.fillStyle = st.accent;
         ctx.fillRect(x, y - 30 * sc, 34 * sc, Math.max(1, 1.5 * sc));
         ctx.fillStyle = st.light ? st.soft : st.text;
@@ -569,18 +585,34 @@ export default function ListingReelPage() {
         };
 
         ctx.font = `${headWeight} ${nameSize}px ${headFamily}`;
-        const lines = wrapLines(ctx, headText, maxW);
+        // Measured with its tracking — Cinematic's wide caps grow a good 150px
+        // on the way from measure to draw. Editorial's closing full stop is
+        // reserved for too.
+        const nameRoom = maxW - (st.headline === "editorial" ? nameSize * 0.3 : 0);
+        const lines = wrapTracked(ctx, headText, nameRoom, st.headTrack * sc);
 
         // The block is measured before it's drawn, then placed as a whole. On a
         // photograph it sits against the bottom; where the type lives off the
         // picture — in a letterbox bar or under an inset — it hangs from the
         // frame's lower edge. Measuring first is what keeps a two-line name from
         // climbing back into the photograph.
-        const leadH = maker ? (st.headline === "editorial" ? 46 * sc : capSize) + 20 * sc : 0;
+        // The lead-in wraps like everything else — measured with its own
+        // tracking so a long builder line can't spill off the frame.
+        const leadIsItalic = st.headline === "editorial";
+        const leadSize = leadIsItalic ? 44 * sc : capSize;
+        const leadTrack = leadIsItalic ? 1 * sc : 8 * sc;
+        ctx.font = leadIsItalic ? `italic 400 ${leadSize}px ${serifFamily}, Georgia, serif` : `600 ${leadSize}px ${sans}`;
+        const leadLines = maker ? wrapTracked(ctx, leadIsItalic ? maker : maker.toUpperCase(), maxW, leadTrack) : [];
+        const leadLineH = (leadIsItalic ? 46 * sc : capSize) + (leadIsItalic ? 6 : 10) * sc;
+        const leadH = maker ? leadLineH * leadLines.length + 14 * sc : 0;
         const nameH = lines.length * nameSize * 0.94;
         const ruleH = st.rule === "none" ? 0 : 64 * sc;
-        const specH = spec ? capSize + 30 * sc : 0;
-        const blockH = leadH + nameH + ruleH + specH;
+        ctx.font = `600 ${capSize}px ${sans}`;
+        const specLines = spec ? wrapTracked(ctx, spec.toUpperCase(), maxW, 6 * sc) : [];
+        const specLineH = capSize + 12 * sc;
+        const specH = spec ? specLineH * specLines.length + 18 * sc : 0;
+        const whereH = where ? 49 * sc : 0;
+        const blockH = leadH + nameH + ruleH + specH + whereH;
         const offFrame = backdrop === "letterbox" || backdrop === "inset";
         // First baseline of the block.
         // The reel's floor sits high: Instagram lays its caption, handle and
@@ -594,17 +626,12 @@ export default function ListingReelPage() {
           : H - (format === "reel" ? 360 : 140) * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
         if (maker) {
-          if (st.headline === "editorial") {
-            // The italic lowercase lead-in, above the name.
-            ctx.fillStyle = st.accent;
-            ctx.font = `italic 400 ${44 * sc}px ${serifFamily}, Georgia, serif`;
-            put(maker, anchor, y, 1 * sc);
-          } else {
-            ctx.fillStyle = st.accent;
-            ctx.font = `600 ${capSize}px ${sans}`;
-            put(maker.toUpperCase(), anchor, y, 8 * sc);
-          }
-          y += (st.headline === "editorial" ? 46 * sc : capSize) + 20 * sc + nameSize * 0.82;
+          // The lead-in above the name — italic for Editorial, tracked caps
+          // for the rest — one line or several, never past the edge.
+          ctx.fillStyle = st.accent;
+          ctx.font = leadIsItalic ? `italic 400 ${leadSize}px ${serifFamily}, Georgia, serif` : `600 ${leadSize}px ${sans}`;
+          leadLines.forEach((ln, li) => put(ln, anchor, y + li * leadLineH, leadTrack));
+          y += leadLineH * (leadLines.length - 1) + (leadIsItalic ? 46 * sc : capSize) + 20 * sc + nameSize * 0.82;
         }
 
         ctx.fillStyle = st.text;
@@ -629,8 +656,8 @@ export default function ListingReelPage() {
         if (spec) {
           ctx.fillStyle = st.quiet;
           ctx.font = `600 ${capSize}px ${sans}`;
-          put(spec.toUpperCase(), anchor, y, 6 * sc);
-          y += capSize + 26 * sc;
+          specLines.forEach((ln, li) => put(ln, anchor, y + li * specLineH, 6 * sc));
+          y += specLineH * (specLines.length - 1) + capSize + 26 * sc;
         }
 
         if (where) {
@@ -664,10 +691,17 @@ export default function ListingReelPage() {
         // Just the year, builder and model under the name. The specs already
         // had their moment on the opening frame; the last frame is the boat's
         // name and the person to call.
-        if (builder) items.push({ h: capSize + 12 * sc, draw: (y) => {
-          ctx.fillStyle = st.accent; ctx.font = `600 ${25 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, builder.toUpperCase(), cx, y + capSize, 7 * sc);
-        } });
+        if (builder) {
+          // Measured with its tracking and wrapped if it must — "2023 HATTERAS
+          // 105 RAISED PILOTHOUSE MOTORYACHT" is wider than the frame.
+          ctx.font = `600 ${25 * sc}px ${sans}`;
+          const bLines = wrapTracked(ctx, builder.toUpperCase(), W - 140 * sc, 7 * sc);
+          const lineH = capSize + 10 * sc;
+          items.push({ h: lineH * bLines.length + 2 * sc, draw: (y) => {
+            ctx.fillStyle = st.accent; ctx.font = `600 ${25 * sc}px ${sans}`;
+            bLines.forEach((ln, li) => fillTrackedCentered(ctx, ln, cx, y + capSize + li * lineH, 7 * sc));
+          } });
+        }
         // A hairline between the boat and the broker.
         items.push({ h: 56 * sc, draw: (y) => {
           ctx.fillStyle = st.light ? "rgba(20,26,33,0.25)" : "rgba(255,255,255,0.28)";

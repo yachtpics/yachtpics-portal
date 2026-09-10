@@ -39,6 +39,28 @@ export function fillTrackedLeft(
   }
 }
 
+/**
+ * Word-wrap TRACKED text against the current ctx.font. `wrapLines` measures
+ * without tracking, so a wide-tracked caps line it thinks fits can still run
+ * off both edges — the builder line on an end card was the first casualty.
+ */
+export function wrapTracked(ctx: CanvasRenderingContext2D, text: string, maxW: number, track: number): string[] {
+  if (trackedWidth(ctx, text, track) <= maxW) return [text];
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(" ")) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (line && trackedWidth(ctx, candidate, track) > maxW) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 /** Greedy word-wrap against the current ctx.font. */
 export function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   if (ctx.measureText(text).width <= maxW) return [text];
