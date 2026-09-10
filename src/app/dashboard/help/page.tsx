@@ -187,6 +187,7 @@ const quickRef = [
   ["Change how a reel looks", "My Listings → listing → Reel → Look"],
   ["Name each room on screen in a reel", "My Listings → listing → Reel → Room labels"],
   ["Write a caption from the reel's photos", "My Listings → listing → Reel → Write with AI"],
+  ["Get a reel onto your phone to post", "My Listings → listing → Reel → Send to my phone"],
   ["Label photos automatically", "My Listings → listing → Label photos"],
   ["Draft a description", "My Listings → listing → Edit → Draft with AI"],
   ["Add a 360° tour or deck plan", "My Listings → listing → Edit → Virtual tour & deck plan"],
