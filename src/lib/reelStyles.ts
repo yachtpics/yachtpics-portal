@@ -339,17 +339,12 @@ export function isExterior(category: string | null | undefined): boolean {
 }
 
 /**
- * The on-screen room caption.
- *
- * Deliberately not shown for "Other" (says nothing) or for exterior beauty
- * shots (a profile shot labelled PROFILES is noise). Off by default in the
- * top-tier styles' spirit — the luxury houses don't label — but on tap for
- * brokers who want a buyer to know exactly which stateroom they're looking at.
+ * The on-screen room caption. Every categorised photo gets one when labels are
+ * on — the broker chose them, so the broker gets them. Only "Other" (which
+ * says nothing) stays blank.
  */
 export function roomLabel(category: string | null | undefined): string | null {
   const c = (category ?? "").trim();
-  if (!c) return null;
-  const lower = c.toLowerCase();
-  if (lower === "other" || lower === "profiles" || lower === "profiles running") return null;
+  if (!c || c.toLowerCase() === "other") return null;
   return c.toUpperCase();
 }

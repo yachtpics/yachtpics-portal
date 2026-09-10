@@ -119,7 +119,9 @@ export default function ListingReelPage() {
   // else's boat must not rewrite that broker's brand.
   const [isOwner, setIsOwner] = useState(false);
   const brandSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [chosen, setChosen] = useState<Set<string>>(new Set());
+  // An ORDERED list, not a set: the order the broker taps is the order the
+  // reel plays. The number on each thumbnail is its place in the film.
+  const [chosen, setChosen] = useState<string[]>([]);
   const [showPrice, setShowPrice] = useState(true);
   const [showLocation, setShowLocation] = useState(true);
   // Room captions — the broker's call, off until they turn it on.
@@ -203,7 +205,7 @@ export default function ListingReelPage() {
       }));
       const withThumbs: Photo[] = ordered.map((p, i) => ({ ...p, thumb: thumbs[i] }));
       setPhotos(withThumbs);
-      setChosen(new Set(withThumbs.slice(0, SPEC.reel.maxPhotos).map((p) => p.id)));
+      setChosen(withThumbs.slice(0, SPEC.reel.maxPhotos).map((p) => p.id));
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -237,24 +239,27 @@ export default function ListingReelPage() {
     setResult(null);
     setPhase("idle");
     setChosen((prev) => {
-      const inOrder = photos.filter((p) => prev.has(p.id)).slice(0, SPEC[f].maxPhotos);
-      const base = inOrder.length ? inOrder : photos.slice(0, SPEC[f].maxPhotos);
-      return new Set(base.map((p) => p.id));
+      // Keep the broker's order, just trimmed to the new format's cap.
+      const kept = prev.slice(0, SPEC[f].maxPhotos);
+      return kept.length ? kept : photos.slice(0, SPEC[f].maxPhotos).map((p) => p.id);
     });
   }
 
   function togglePhoto(pid: string) {
     setChosen((prev) => {
-      const next = new Set(prev);
-      if (next.has(pid)) next.delete(pid);
-      else if (next.size < SPEC[format].maxPhotos) next.add(pid);
-      return next;
+      // Tap to add at the end; tap again to remove and let the rest close up.
+      if (prev.includes(pid)) return prev.filter((x) => x !== pid);
+      if (prev.length >= SPEC[format].maxPhotos) return prev;
+      return [...prev, pid];
     });
     setResult(null);
     setPhase("idle");
   }
 
-  const selectedPhotos = useMemo(() => photos.filter((p) => chosen.has(p.id)), [photos, chosen]);
+  const selectedPhotos = useMemo(() => {
+    const byId = new Map(photos.map((p) => [p.id, p]));
+    return chosen.map((id) => byId.get(id)).filter((p): p is Photo => !!p);
+  }, [photos, chosen]);
 
   /** A punch look cuts hard — a whisker of overlap so it never flashes black. */
   const fadeFor = (fmt: Format, key: StyleKey) =>
@@ -1151,16 +1156,16 @@ export default function ListingReelPage() {
       {/* Photo picker */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <p className="label-caps text-ink-500">Photos · {chosen.size} of {s.maxPhotos}</p>
+          <p className="label-caps text-ink-500">Photos · {chosen.length} of {s.maxPhotos}</p>
           <div className="flex gap-3">
-            <button onClick={() => { setChosen(new Set(photos.slice(0, s.maxPhotos).map((p) => p.id))); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-accent-700 hover:underline">First {s.maxPhotos}</button>
-            <button onClick={() => { setChosen(new Set()); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-ink-400 hover:underline">Clear</button>
+            <button onClick={() => { setChosen(photos.slice(0, s.maxPhotos).map((p) => p.id)); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-accent-700 hover:underline">First {s.maxPhotos}</button>
+            <button onClick={() => { setChosen([]); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-ink-400 hover:underline">Clear</button>
           </div>
         </div>
-        <p className="text-xs text-ink-400 mb-2">In slideshow order, cover first. Tap to include or leave out — the first photo you choose gets the title.</p>
+        <p className="text-xs text-ink-400 mt-1.5 mb-2">Tap photos in the order you want them to play — the number shows each one&rsquo;s place, and the first gets the title. Tap again to remove one. &ldquo;First {s.maxPhotos}&rdquo; takes them in slideshow order, cover first.</p>
         <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
           {photos.map((p) => {
-            const on = chosen.has(p.id);
+            const on = chosen.includes(p.id);
             const idx = selectedPhotos.findIndex((q) => q.id === p.id);
             return (
               <button key={p.id} onClick={() => togglePhoto(p.id)} disabled={busy} title={p.category ?? p.filename ?? ""}
@@ -1255,7 +1260,7 @@ export default function ListingReelPage() {
             {busy ? (
               <button onClick={() => { cancelRef.current = true; }} className="text-sm font-medium px-4 py-2.5 rounded-ctl border border-hairline-strong text-ink-600 hover:border-ink-400 transition-colors">Cancel</button>
             ) : (
-              <button onClick={render} disabled={chosen.size === 0 || supported === false}
+              <button onClick={render} disabled={chosen.length === 0 || supported === false}
                 className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-ink-950 text-sm font-semibold px-5 py-2.5 rounded-ctl transition-colors">
                 {result ? "Make it again" : `Make the ${format === "reel" ? "reel" : "film"}`}
               </button>
