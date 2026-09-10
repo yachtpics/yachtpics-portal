@@ -837,7 +837,12 @@ export default function ListingReelPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.url) throw new Error(data.error ?? "Couldn't make the link.");
 
-      const qr = await QRCode.toDataURL(data.url, { width: 512, margin: 2, color: { dark: "#050b14", light: "#ffffff" } });
+      // A signed link is ~700 characters — a dense code. Lowest error correction
+      // keeps the module count down so a phone can read it from arm's length.
+      const qr = await QRCode.toDataURL(data.url, {
+        width: 640, margin: 2, errorCorrectionLevel: "L",
+        color: { dark: "#050b14", light: "#ffffff" },
+      });
       setPhone({ qr, url: data.url, emailedTo: data.emailedTo ?? null });
     } catch (err) {
       setPhoneError(err instanceof Error ? err.message : "Couldn't send it to your phone.");
@@ -1165,7 +1170,7 @@ export default function ListingReelPage() {
             {phone && (
               <div className="mt-5 bg-ink-50 border border-hairline rounded-ctl p-5 flex flex-col sm:flex-row items-center gap-5">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={phone.qr} alt="Scan to save the reel" className="w-40 h-40 rounded-sm border border-hairline-strong bg-white shrink-0" />
+                <img src={phone.qr} alt="Scan to save the reel" className="w-56 h-56 sm:w-64 sm:h-64 rounded-sm border border-hairline-strong bg-white shrink-0" />
                 <div className="text-sm text-ink-700">
                   <p className="font-semibold text-ink-900">Point your phone&rsquo;s camera at the code</p>
                   <p className="text-ink-600 mt-1">Tap the link that pops up and the reel saves to your camera roll. Then open Instagram, choose it, add your audio and caption.</p>

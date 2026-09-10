@@ -33,7 +33,17 @@ export async function GET(req: NextRequest) {
   let kept = 0;
   const failed: string[] = [];
 
-  const objects = await r2VideoListPrefix(REEL_SHARE_PREFIX).catch(() => []);
+  // A listing failure must not look like an empty bucket — that's how files
+  // pile up for months under a cron that reports success every morning.
+  let objects: { key: string; lastModified: Date | null }[];
+  try {
+    objects = await r2VideoListPrefix(REEL_SHARE_PREFIX);
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : "Couldn't list the bucket." },
+      { status: 502 }
+    );
+  }
   for (const o of objects) {
     // No timestamp means we can't prove it's old — leave it for next time
     // rather than delete on a guess.

@@ -100,9 +100,23 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           listingId: params.id,
           subject: `Your reel for ${boat}`,
           status: res.ok ? "sent" : "failed",
+          error: res.ok ? null : (await res.text().catch(() => null))?.slice(0, 500) ?? "Resend error",
           sentBy: user.id,
         });
-      } catch { /* the link still works; the email was the backup */ }
+      } catch (e) {
+        // The link still works; the email was the backup — but a vanished
+        // failure is how a bad sender goes unnoticed for weeks.
+        await logEmail({
+          emailType: "reel_to_phone",
+          recipientEmail: to,
+          recipientId: user.id,
+          listingId: params.id,
+          subject: `Your reel for ${boat}`,
+          status: "failed",
+          error: e instanceof Error ? e.message : "Send failed",
+          sentBy: user.id,
+        });
+      }
     }
   }
 

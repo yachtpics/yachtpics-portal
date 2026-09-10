@@ -84,7 +84,7 @@ export async function resolveVideoUploadTarget(
 export async function assertPathBelongsToTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown },
+  body: { listingId?: unknown; galleryId?: unknown; share?: unknown },
   path: unknown
 ): Promise<NextResponse | { path: string }> {
   if (typeof path !== "string" || !path) {
