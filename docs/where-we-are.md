@@ -46,6 +46,33 @@ Johnson and the luxury-real-estate houses actually present listing film, plus
   Title holds longer (4.2s reel / 5s film). Panel renamed "Generate your
   headline & caption".
 
+**Evening of Sept 10 — Reel refinements, from Charlie's first real use:**
+- Fifth look **Energy** (hard cuts, punch-in, ~15s) for centre consoles and
+  sportfish. `cut: "punch"` on the style drives a near-zero crossfade and the
+  snap-and-settle zoom.
+- Photos play **in tap order** (`chosen` is now an ordered array; number on the
+  thumbnail = place in the film). "First N" = slideshow order, cover first.
+- Room labels: plain white text with a drop shadow (no gradient), 38px,
+  bottom-left of the actual picture (portrait or landscape), on for the whole
+  photo, every categorised photo including Profiles. Title photo never gets one.
+- Title holds longer (4.2s reel / 5s film). End card: name + year/builder/model
+  only. Long lines wrap with their tracking (`wrapTracked`).
+- Brand colours save only when the viewer IS the broker (`isOwner`).
+- Announcement text updated for all of the above. Build error on Vercel
+  (Map iteration) fixed.
+
+**NEXT SESSION — Charlie: "there is a lot more we can do with the reels."**
+Ideas already on the table, none started:
+- Music: parked deliberately (no licensing yet). If revisited: 3–5 licensed
+  tracks, beat-synced holds, optional — silent stays the Instagram default.
+- A second cut style as a toggle independent of look (crossfade vs cut).
+- Film-look toggle (light grain + vignette).
+- Tune the Energy punch once Charlie has seen it on the Intrepid/Regulator.
+- Instagram direct publishing: possible via Meta app + App Review (2–4 wks),
+  Business accounts only, no trending audio via API. Not started.
+- Check with Charlie whether the opening frame's spec row should also trim to
+  year/builder/model like the end card did.
+
 **The open house.** `src/lib/reelPromo.ts` — Sept 9 to Sept 23, the Reel
 unlocked for every account regardless of plan (nothing else changes). Banner on
 the Reel page, "Free" flag on the listing-page button. **Change the dates by
