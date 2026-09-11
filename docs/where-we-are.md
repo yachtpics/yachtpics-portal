@@ -20,6 +20,24 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   longer show a literal `&amp;`.
 - Sandbox shell still dead: it's the Sept 8 Windows update ("Failed to start
   Claude's workspace"). File tools fine; Charlie commits and pushes.
+- **Reel polish (rendered every look on Natural 9 and judged the frames).**
+  - Sans looks now typeset in Manrope (read from `--font-sans`), system fonts
+    fallback only; weights 300/500/600/800 preloaded. Gallery headline weight
+    300; Energy 800, tracking -3.
+  - Cinematic: window 1.85 → 1.66:1; spec line no longer collides with the name
+    (84px name→spec gap for every look, rule or not); room caption sits under
+    the picture, centred, in the look's soft colour — never on the photograph.
+    Same for Gallery.
+  - Gallery: always shows the whole photograph (no square crop), no inner
+    margin, title hangs from the photo's real bottom edge; framing chips hidden
+    for it.
+  - Hairlines 2.2px @ 70% (were 1.4px, invisible after H.264).
+  - End card rewritten: vessel name 96/82/68px in the look's own family, weight,
+    tracking and casing; broker name 48px regular; brokerage; contact falls back
+    to the broker's display_email when no phone/website; more air before
+    "Request a private showing". Blurred plate only for full-bleed whole-photo
+    mode (was bleeding over Gallery's page on dark brand grounds).
+  - Picker text: "quietest of the five", Gallery blurb updated.
 
 ## Today's work (Sept 9)
 
@@ -230,6 +248,12 @@ saved as `supabase/migrations/20260906_listing_intelligence_reel_tour_ai.sql`.
 4. Engagement → Seller Report → prints to one page.
 5. After adding the key: upload an `IMG_1234.jpg` — it should get a real
    category on its own. Edit Listing → Draft with AI.
+6. Render Natural 9 in **Cinematic** — the spec line should sit clear of the
+   name, and the room caption should be in the black bar, not on the photo.
+7. Render **Gallery** — the whole yacht should be visible, with the name below
+   it.
+8. Watch any **end card** — the boat name should be the biggest thing on it,
+   and an email should show when the broker has no phone.
 
 ## Open threads (carried forward)
 

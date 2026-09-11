@@ -83,7 +83,7 @@ type ListingData = {
   staterooms: number | null; broker_id: string; hero_photo_id: string | null; photo_order_manual: boolean | null;
 };
 
-type BrokerCard = { name: string; brokerage: string | null; phone: string | null; website: string | null; logoUrl: string | null };
+type BrokerCard = { name: string; brokerage: string | null; phone: string | null; email: string | null; website: string | null; logoUrl: string | null };
 
 type Segment = { kind: "photo"; index: number; start: number; end: number } | { kind: "end"; start: number; end: number };
 
@@ -180,7 +180,7 @@ export default function ListingReelPage() {
       }
 
       const [{ data: prof }, { data: det }, { data: ph }, { count }] = await Promise.all([
-        supabase.from("profiles").select("first_name, last_name, phone").eq("id", l.broker_id).maybeSingle(),
+        supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
         supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
         supabase.from("photos").select("id, storage_path, category, filename, display_order").eq("listing_id", id).eq("is_visible", true).order("display_order"),
         supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
@@ -190,6 +190,7 @@ export default function ListingReelPage() {
         name: [prof?.first_name, prof?.last_name].filter(Boolean).join(" ") || "Broker",
         brokerage: det?.brokerage_name ?? null,
         phone: prof?.phone ?? null,
+        email: prof?.display_email ?? null,
         website: det?.brokerage_website ?? null,
         logoUrl: det?.logo_url ?? null,
       });
@@ -310,11 +311,18 @@ export default function ListingReelPage() {
     try {
       // Fonts first — otherwise the first frames silently fall back.
       const serifFamily = serif.style.fontFamily;
+      // The portal's own sans (Manrope, self-hosted by the root layout as
+      // --font-sans). It goes FIRST: a reel typeset in whatever the machine
+      // happens to have — Segoe on Windows, Roboto on Android — looks like a
+      // template. The system stack is only the fallback.
+      const brandSans = getComputedStyle(document.documentElement).getPropertyValue("--font-sans").trim();
+      const sans = `${brandSans ? `${brandSans}, ` : ""}Manrope, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif`;
       try {
         await Promise.all([
           document.fonts.load(`600 100px ${serifFamily}`),
           document.fonts.load(`400 100px ${serifFamily}`),
           document.fonts.load(`italic 400 44px ${serifFamily}`),
+          ...[300, 500, 600, 800].map((w) => document.fonts.load(`${w} 40px ${sans}`)),
         ]);
         await document.fonts.ready;
       } catch { /* older browser: fall through */ }
@@ -348,7 +356,10 @@ export default function ListingReelPage() {
 
       // Soft backdrops for "whole photo" mode — blurred once per photo, not per frame.
       const backdrops: (HTMLCanvasElement | null)[] = bitmaps.map((bmp) => {
-        if (fit !== "whole" || st.light) return null;
+        // Only the full-bleed "whole photo" mode floats on a blurred plate.
+        // The inset and letterbox looks have their own ground — a blur
+        // painted over the Gallery page (on a dark brand ground) wiped it out.
+        if (fit !== "whole" || st.light || backdrop !== "scrim") return null;
         const c = document.createElement("canvas");
         c.width = Math.round(W / 4); c.height = Math.round(H / 4);
         const bctx = c.getContext("2d")!;
@@ -396,7 +407,6 @@ export default function ListingReelPage() {
       const spec = specBits.join("   ·   ");
       const where = showLocation ? listing.location : null;
 
-      const sans = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Manrope, sans-serif";
       const sc = Math.min(W, H) / 1080; // scale off the short edge
 
       // The window the photograph lives in. Everything else — title, captions,
@@ -404,10 +414,11 @@ export default function ListingReelPage() {
       // the whole composition together instead of piece by piece.
       const frame = (() => {
         if (backdrop === "letterbox") {
-          // 1.85:1 — the classic widescreen band. True 2.39 anamorphic leaves a
-          // 9:16 frame three-quarters black; this keeps the photograph the
-          // point while still reading unmistakably as a letterbox.
-          const bh = Math.min(H * 0.60, W / 1.85);
+          // 1.66:1 — European widescreen. True 2.39 anamorphic leaves a 9:16
+          // frame three-quarters black and 1.85 still shaved a 3:2 photograph
+          // hard; this shows nearly the whole frame the photographer composed
+          // while still reading unmistakably as a letterbox.
+          const bh = Math.min(H * 0.60, W / 1.66);
           // Sits a little above centre: the type below it needs more room than
           // the bar above, and an image parked dead-centre reads as an accident.
           return { x: 0, y: (H - bh) / 2 - H * 0.06, w: W, h: bh };
@@ -459,7 +470,10 @@ export default function ListingReelPage() {
           k = from + (to - from) * drift;
         }
 
-        const showWhole = fit === "whole" && backdrop !== "letterbox";
+        // An inset look always shows the complete photograph — cropping a
+        // 121-footer to a square to fill the window loses her bow and stern,
+        // which is the opposite of what a gallery is for.
+        const showWhole = backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox");
         if (!showWhole) {
           // Cover the window.
           const base = Math.max(frame.w / bmp.width, frame.h / bmp.height);
@@ -478,7 +492,9 @@ export default function ListingReelPage() {
           // The whole photograph, complete, floated in the window.
           const bd = backdrops[i];
           if (bd) ctx.drawImage(bd, 0, 0, W, H);
-          const margin = 0.055 * Math.min(frame.w, frame.h);
+          // The inset window already carries its page margin; a second one
+          // inside it shrank the photograph for nothing.
+          const margin = backdrop === "inset" ? 0 : 0.055 * Math.min(frame.w, frame.h);
           const base = Math.min((frame.w - margin * 2) / bmp.width, (frame.h - margin * 2) / bmp.height);
           const zoom = base * (1 + (k - 1) * 0.45);
           const dw = bmp.width * zoom, dh = bmp.height * zoom;
@@ -509,27 +525,37 @@ export default function ListingReelPage() {
 
         // Big enough to read on a phone held at arm's length — 25px was not.
         const size = 38 * sc;
-        // Bottom-left corner of the PICTURE, wherever it landed — a portrait
-        // floated in the frame gets its caption at its own foot, not the
-        // frame's. A full-bleed crop keeps the caption above Instagram's UI.
         const r = photoRect;
-        const fullBleed = backdrop === "scrim" && fit === "fill";
-        const x = r.x + 44 * sc;
-        const y = fullBleed
-          ? H - (format === "reel" ? 330 : 78) * sc
-          : r.y + r.h - 40 * sc;
-
         ctx.save();
         ctx.globalAlpha = a;
-        // Just the words, on a soft shadow — no panel, no gradient. A tint
-        // fading in and out under every photo pulled the eye off the boat.
-        ctx.shadowColor = "rgba(0,0,0,0.8)";
-        ctx.shadowBlur = 14 * sc;
-        ctx.shadowOffsetY = 3 * sc;
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `600 ${size}px ${sans}`;
         ctx.textBaseline = "alphabetic";
-        fillTrackedLeft(ctx, label, x, y, 6 * sc);
+
+        if (backdrop === "letterbox" || backdrop === "inset") {
+          // The looks whose photograph never carries type keep that promise
+          // for the caption too: it sits in the ground beneath the picture,
+          // centred under it like a plate under a print, in the look's own
+          // quiet colour. No shadow — there's nothing to lift it off.
+          ctx.fillStyle = st.soft;
+          ctx.font = `500 ${size}px ${sans}`;
+          fillTrackedCentered(ctx, label, r.x + r.w / 2, r.y + r.h + 58 * sc, 8 * sc);
+        } else {
+          // Bottom-left corner of the PICTURE, wherever it landed — a portrait
+          // floated in the frame gets its caption at its own foot, not the
+          // frame's. A full-bleed crop keeps the caption above Instagram's UI.
+          const fullBleed = fit === "fill";
+          const x = r.x + 44 * sc;
+          const y = fullBleed
+            ? H - (format === "reel" ? 330 : 78) * sc
+            : r.y + r.h - 40 * sc;
+          // Just the words, on a soft shadow — no panel, no gradient. A tint
+          // fading in and out under every photo pulled the eye off the boat.
+          ctx.shadowColor = "rgba(0,0,0,0.8)";
+          ctx.shadowBlur = 14 * sc;
+          ctx.shadowOffsetY = 3 * sc;
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `600 ${size}px ${sans}`;
+          fillTrackedLeft(ctx, label, x, y, 6 * sc);
+        }
         ctx.restore();
       };
 
@@ -537,11 +563,13 @@ export default function ListingReelPage() {
       const drawRule = (cx: number, y: number, width: number, alpha: number, leftAligned: boolean) => {
         if (st.rule === "none") return;
         const x = leftAligned ? cx : cx - width / 2;
-        const h = Math.max(1, 1.4 * sc);
-        ctx.globalAlpha = alpha * 0.5;
+        // 2px, not a hair: H.264 at phone bitrates ate the 1.4px version and
+        // every look that had a rule showed nothing.
+        const h = Math.max(1.5, 2.2 * sc);
+        ctx.globalAlpha = alpha * 0.7;
         ctx.fillStyle = st.light ? st.text : "#ffffff";
         ctx.fillRect(x, y, width, h);
-        if (st.rule === "double") ctx.fillRect(x, y + 5 * sc, width, h);
+        if (st.rule === "double") ctx.fillRect(x, y + 7 * sc, width, h);
         ctx.globalAlpha = alpha;
       };
 
@@ -572,7 +600,7 @@ export default function ListingReelPage() {
         const maxW = W - pad * 2;
         const capSize = 27 * sc;
         const headFamily = st.serifHeadline ? `${serifFamily}, Georgia, serif` : sans;
-        const headWeight = st.serifHeadline ? (st.headline === "caps" ? 400 : 600) : 600;
+        const headWeight = st.serifHeadline ? (st.headline === "caps" ? 400 : 600) : (st.headWeight ?? 600);
 
         // Long names step down rather than wrap into a wall of type.
         const nameSize = (name.length > 26 ? 76 : name.length > 16 ? 94 : 116) * sc;
@@ -619,7 +647,10 @@ export default function ListingReelPage() {
         const leadLineH = (leadIsItalic ? 46 * sc : capSize) + (leadIsItalic ? 6 : 10) * sc;
         const leadH = maker ? leadLineH * leadLines.length + 14 * sc : 0;
         const nameH = lines.length * nameSize * 0.94;
-        const ruleH = st.rule === "none" ? 0 : 64 * sc;
+        // The same breath between the name and the spec row whether a look
+        // draws a rule in it or not — Cinematic's spec was landing on the
+        // name's baseline.
+        const ruleH = 84 * sc;
         ctx.font = `600 ${capSize}px ${sans}`;
         const specLines = spec ? wrapTracked(ctx, spec.toUpperCase(), maxW, 6 * sc) : [];
         const specLineH = capSize + 12 * sc;
@@ -634,8 +665,12 @@ export default function ListingReelPage() {
         // Both branches give the FIRST baseline: the lead-in's if there is one,
         // otherwise the name's (hence the ascent added only in that case). The
         // step from lead-in to name happens once, below — not here as well.
+        // Off the picture, the block hangs from the PHOTOGRAPH's lower edge —
+        // for an inset that's the whole-photo rectangle, which for a
+        // landscape sits well above the window's floor.
+        const under = backdrop === "inset" ? photoRect.y + photoRect.h : frame.y + frame.h;
         let y = offFrame
-          ? frame.y + frame.h + (backdrop === "letterbox" ? 108 : 96) * sc + (maker ? 0 : nameSize * 0.82)
+          ? under + (backdrop === "letterbox" ? 108 : 96) * sc + (maker ? 0 : nameSize * 0.82)
           : H - (format === "reel" ? 360 : 140) * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
         if (maker) {
@@ -658,12 +693,13 @@ export default function ListingReelPage() {
           if (!isLast) y += nameSize * 0.94;
         }
 
+        // 84px from the name's baseline to the spec's, rule or no rule.
         if (st.rule !== "none") {
-          y += 34 * sc;
+          y += 42 * sc;
           drawRule(anchor, y, leftAligned ? 108 * sc : 96 * sc, alpha, leftAligned);
-          y += 30 * sc;
+          y += 42 * sc;
         } else {
-          y += 30 * sc;
+          y += 84 * sc;
         }
 
         if (spec) {
@@ -691,15 +727,29 @@ export default function ListingReelPage() {
         const items: { h: number; draw: (y: number) => void }[] = [];
 
         // The boat first, then the person. The last frame is the one a buyer
-        // screenshots — it should carry the name, the essentials and the number
-        // to call, so it works on its own.
-        const endName = name.length > 22 ? 56 * sc : 68 * sc;
-        items.push({ h: endName + 14 * sc, draw: (y) => {
+        // screenshots — it should carry the name, the essentials and the way
+        // to reach the broker, so it works on its own.
+        //
+        // It is set in the LOOK's own voice: Cinematic's wide light caps,
+        // Gallery's light sans, Editorial's serif. One generic card at the
+        // end undid the choice the broker made at the start.
+        const endFamily = st.serifHeadline ? `${serifFamily}, Georgia, serif` : sans;
+        const endWeight = st.serifHeadline ? (st.headline === "caps" ? 400 : 600) : (st.headWeight ?? 600);
+        // Cased exactly as the title frame cased it.
+        const endText =
+          st.headline === "caps" || st.headline === "editorial" ? name.toUpperCase()
+          : st.headline === "title" ? name.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
+          : name;
+        // The vessel is the largest thing on the card by a clear margin — the
+        // broker's name used to be set nearly as big, which read as a business
+        // card with a boat on it.
+        const endName = (name.length > 22 ? 68 : name.length > 14 ? 82 : 96) * sc;
+        ctx.font = `${endWeight} ${endName}px ${endFamily}`;
+        const endLines = wrapTracked(ctx, endText, W - 120 * sc, st.headTrack * sc);
+        items.push({ h: endName * 0.94 * endLines.length + 16 * sc, draw: (y) => {
           ctx.fillStyle = st.text;
-          ctx.font = `600 ${endName}px ${st.serifHeadline ? `${serifFamily}, Georgia, serif` : sans}`;
-          ctx.textAlign = "center";
-          ctx.fillText(st.headline === "caps" || st.headline === "editorial" ? name.toUpperCase() : name, cx, y + endName * 0.8);
-          ctx.textAlign = "left";
+          ctx.font = `${endWeight} ${endName}px ${endFamily}`;
+          endLines.forEach((ln, li) => fillTrackedCentered(ctx, ln, cx, y + endName * 0.8 + li * endName * 0.94, st.headTrack * sc));
         } });
         // Just the year, builder and model under the name. The specs already
         // had their moment on the opening frame; the last frame is the boat's
@@ -715,10 +765,11 @@ export default function ListingReelPage() {
             bLines.forEach((ln, li) => fillTrackedCentered(ctx, ln, cx, y + capSize + li * lineH, 7 * sc));
           } });
         }
-        // A hairline between the boat and the broker.
-        items.push({ h: 56 * sc, draw: (y) => {
-          ctx.fillStyle = st.light ? "rgba(20,26,33,0.25)" : "rgba(255,255,255,0.28)";
-          ctx.fillRect(cx - 40 * sc, y + 28 * sc, 80 * sc, Math.max(1, 1.4 * sc));
+        // A hairline between the boat and the broker — the same weight as the
+        // title's, so it survives the encode.
+        items.push({ h: 84 * sc, draw: (y) => {
+          ctx.fillStyle = st.light ? "rgba(20,26,33,0.35)" : "rgba(255,255,255,0.40)";
+          ctx.fillRect(cx - 48 * sc, y + 42 * sc, 96 * sc, Math.max(1.5, 2.2 * sc));
         } });
 
         if (logo) {
@@ -728,25 +779,34 @@ export default function ListingReelPage() {
           if (lh > maxLh) { lh = maxLh; lw = lh * aspect; }
           items.push({ h: lh + 44 * sc, draw: (y) => { ctx.globalAlpha = alpha * 0.96; ctx.drawImage(logo!, cx - lw / 2, y, lw, lh); ctx.globalAlpha = alpha; } });
         }
-        const nameSize = 62 * sc;
-        items.push({ h: nameSize + 18 * sc, draw: (y) => {
+        // The person: clearly secondary to the boat. Regular weight, and in
+        // the serif looks the serif at its book weight rather than bold.
+        const nameSize = 48 * sc;
+        items.push({ h: nameSize + 16 * sc, draw: (y) => {
           ctx.fillStyle = st.text;
-          ctx.font = `600 ${nameSize}px ${st.serifHeadline ? `${serifFamily}, Georgia, serif` : sans}`;
+          ctx.font = `${st.serifHeadline ? 500 : 400} ${nameSize}px ${endFamily}`;
           ctx.textAlign = "center";
           ctx.fillText(broker.name, cx, y + nameSize * 0.8); ctx.textAlign = "left";
         } });
-        if (broker.brokerage) items.push({ h: capSize + 26 * sc, draw: (y) => {
-          ctx.fillStyle = st.soft; ctx.font = `600 ${capSize}px ${sans}`;
+        if (broker.brokerage) items.push({ h: capSize + 22 * sc, draw: (y) => {
+          ctx.fillStyle = st.soft; ctx.font = `600 ${capSize - 3 * sc}px ${sans}`;
           fillTrackedCentered(ctx, broker.brokerage!.toUpperCase(), cx, y + capSize, 7 * sc);
         } });
-        const contact = [broker.phone, broker.website?.replace(/^https?:\/\//, "")].filter(Boolean).join("   ·   ");
-        if (contact) items.push({ h: capSize + 60 * sc, draw: (y) => {
+        // Phone and site if we have them; the broker's email if we don't. A
+        // "request a private showing" with nothing under it is a door with
+        // no handle.
+        const contactBits = [broker.phone, broker.website?.replace(/^https?:\/\//, "").replace(/\/$/, "")].filter(Boolean) as string[];
+        if (contactBits.length === 0 && broker.email) contactBits.push(broker.email);
+        const contact = contactBits.join("   ·   ");
+        if (contact) items.push({ h: capSize + 48 * sc, draw: (y) => {
           ctx.fillStyle = st.accent; ctx.font = `500 ${capSize}px ${sans}`;
-          fillTrackedCentered(ctx, contact, cx, y + capSize + 22 * sc, 3 * sc);
+          fillTrackedCentered(ctx, contact, cx, y + capSize + 26 * sc, 3 * sc);
         } });
-        items.push({ h: capSize, draw: (y) => {
-          ctx.fillStyle = st.quiet; ctx.font = `500 ${23 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, "REQUEST A PRIVATE SHOWING", cx, y + capSize, 6 * sc);
+        // The invitation, with real air above it — it closes the card, it
+        // doesn't crowd the contact line.
+        items.push({ h: capSize + 44 * sc, draw: (y) => {
+          ctx.fillStyle = st.quiet; ctx.font = `500 ${22 * sc}px ${sans}`;
+          fillTrackedCentered(ctx, "REQUEST A PRIVATE SHOWING", cx, y + capSize + 40 * sc, 7 * sc);
         } });
 
         const stackH = items.reduce((a, b) => a + b.h, 0);
@@ -1123,6 +1183,9 @@ export default function ListingReelPage() {
           {styleKey === "cinematic" && format === "reel" ? (
             // The letterbox IS the framing — the band is always filled.
             <p className="text-xs text-ink-400">Cinematic fills its letterbox band; there&rsquo;s nothing to choose here.</p>
+          ) : styleKey === "gallery" ? (
+            // The inset always shows the complete photograph.
+            <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>
           ) : (
             <>
               <div className="flex flex-wrap gap-2">

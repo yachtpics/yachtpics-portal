@@ -1,5 +1,5 @@
 /**
- * Reel looks — the four ways a listing film can present itself.
+ * Reel looks — the five ways a listing film can present itself.
  *
  * Drawn from how the top houses actually publish. Three conventions from that
  * research shaped all of this:
@@ -48,6 +48,12 @@ export type ReelStyle = {
   rule: "single" | "double" | "none";
   /** Headline tracking, in px at a 1080 short edge. */
   headTrack: number;
+  /**
+   * Headline weight for the sans looks. The serif looks ignore this (the serif
+   * carries its own weight logic). 300 is the light, modern-brochure register;
+   * 800 is the sportfish poster.
+   */
+  headWeight?: number;
   /** Total push-in over a photo's time on screen. Never past 0.14. */
   zoom: number;
   /** Multiplier on the format's base hold — slower styles linger. */
@@ -92,16 +98,17 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Cinematic — letterboxed, and the quietest of the four.
    *
-   * On a reel the photograph never carries type: it sits in a 1.85:1 window
-   * with the name in the bar beneath. On a film (already widescreen) the bars
-   * would only shrink the picture, so it keeps the type and the slow motion
-   * over a gradient instead. Widest tracking, thinnest weight, least movement.
-   * Best on a big boat with big photography.
+   * On a reel the photograph never carries type — not the name, not a room
+   * caption. It sits in a widescreen window with everything in the bar
+   * beneath. On a film (already widescreen) the bars would only shrink the
+   * picture, so it keeps the type and the slow motion over a gradient
+   * instead. Widest tracking, thinnest weight, least movement. Best on a big
+   * boat with big photography.
    */
   cinematic: {
     key: "cinematic",
     name: "Cinematic",
-    blurb: "Letterboxed on reels, wide-tracked, slow. The quietest of the four.",
+    blurb: "Letterboxed on reels, wide-tracked, slow. The quietest of the five.",
     ground: "#000000",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.72)",
@@ -122,14 +129,14 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Gallery — light, and the only one that isn't dark.
    *
-   * Warm off-white rather than white; the photograph is inset with real margin
-   * and the type sits under it in a tight sans. Reads modern and understated —
-   * the register a builder's own brochure uses.
+   * Warm off-white rather than white; the photograph is shown whole, with real
+   * margin, never cropped — and the type sits under it in a light sans. Reads
+   * modern and understated — the register a builder's own brochure uses.
    */
   gallery: {
     key: "gallery",
     name: "Gallery",
-    blurb: "Warm off-white, photo inset, quiet modern type.",
+    blurb: "Warm off-white, the whole photograph, light modern type.",
     ground: "#f4f2ed",
     text: "#141a21",
     soft: "rgba(20,26,33,0.72)",
@@ -142,6 +149,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     align: "center",
     rule: "single",
     headTrack: -1,
+    headWeight: 300,
     zoom: 0.06,
     holdScale: 0.95,
     cut: "dissolve",
@@ -198,7 +206,8 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headline: "caps",
     align: "center",
     rule: "single",
-    headTrack: -1,
+    headTrack: -3,
+    headWeight: 800,
     zoom: 0.11,
     holdScale: 0.62,
     cut: "punch",
