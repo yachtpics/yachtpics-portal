@@ -74,5 +74,16 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Image transformation is a project-level setting, and if it's ever switched
+  // off Supabase quietly signs the original instead of erroring — so the page
+  // still "works" while downloading full-size files. One line in the logs is
+  // the difference between noticing that and not.
+  const list = Object.values(urls);
+  if (list.length > 0 && list.some((u) => !u.includes("/render/image/"))) {
+    console.warn(
+      "Supabase image transformation appears to be disabled — /api/thumbs is returning full-size originals"
+    );
+  }
+
   return NextResponse.json({ urls });
 }

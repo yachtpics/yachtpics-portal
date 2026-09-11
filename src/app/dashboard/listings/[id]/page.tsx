@@ -29,6 +29,7 @@ import { reelPromoActive } from "@/lib/reelPromo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
+import RetryImg from "@/components/RetryImg";
 
 interface Photo {
   id: string;
@@ -2387,8 +2388,7 @@ function SortablePhotoCard({
                   skeleton is much cheaper than 227 originals.
                   The lightbox and downloads still use photo.url. */}
               {thumbUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
+              <RetryImg
                 src={thumbUrl}
                 alt={photo.filename ?? ""}
                 loading={index < 4 ? "eager" : "lazy"}

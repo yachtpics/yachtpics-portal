@@ -21,6 +21,7 @@ import {
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
+import RetryImg from "@/components/RetryImg";
 
 /**
  * Listing Reel
@@ -1233,8 +1234,7 @@ export default function ListingReelPage() {
             return (
               <button key={p.id} onClick={() => togglePhoto(p.id)} disabled={busy} title={p.category ?? p.filename ?? ""}
                 className={`relative aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${on ? "border-accent-500" : "border-transparent opacity-55 hover:opacity-90"}`}>
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                {p.thumb && <img src={p.thumb} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                {p.thumb && <RetryImg src={p.thumb} alt="" loading="lazy" className="w-full h-full object-cover" />}
                 {on && <span className="absolute top-0.5 left-0.5 text-[10px] font-semibold bg-ink-950/80 text-white rounded px-1">{idx + 1}</span>}
               </button>
             );
