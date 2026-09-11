@@ -1,16 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId, mediaType = "photos" } = await req.json();
-    if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+    const supabase = auth.admin;
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const body = await req.json();
+    const listingId: unknown = body?.listingId;
+    if (typeof listingId !== "string" || !listingId) {
+      return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    }
+    const mediaType: "photos" | "video" | "both" =
+      body?.mediaType === "video" || body?.mediaType === "both" ? body.mediaType : "photos";
+    // When the broker route also runs it pushes the assistants itself; on an
+    // assistant-only send the admin page asks this route to do it instead.
+    const push: boolean = body?.push === true;
 
     // Get listing + broker info
     const { data: listing, error } = await supabase
@@ -36,10 +43,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true, sent: 0, message: "No assistants linked to this broker." });
     }
 
-    type AssistantProfile = { first_name: string | null; last_name: string | null; display_email: string | null };
+    type AssistantProfile = { id: string; first_name: string | null; last_name: string | null; display_email: string | null };
 
     const assistants = links
-      .map((l) => l.profiles as unknown as AssistantProfile | null)
+      .map((l) => {
+        const p = l.profiles as unknown as Omit<AssistantProfile, "id"> | null;
+        return p ? { id: l.assistant_id as string, ...p } : null;
+      })
       .filter((p): p is AssistantProfile => !!p?.display_email);
 
     if (assistants.length === 0) {
@@ -56,7 +66,7 @@ export async function POST(req: NextRequest) {
           }
         : mediaType === "both"
         ? {
-            subjectLabel: "Photos &amp; video",
+            subjectLabel: "Photos & video",
             headingPrefix: "Photos &amp; video ready for",
             blurb: `Professional photos and video for <strong style="color:#111827;">${vesselName}</strong> have been delivered to <strong style="color:#111827;">${brokerName}</strong>'s portal and are ready to share with clients.`,
           }
@@ -102,6 +112,7 @@ export async function POST(req: NextRequest) {
           emailType: mediaType === "video" ? "video_ready" : mediaType === "both" ? "media_ready" : "photos_ready",
           recipientEmail: assistant.display_email!,
           recipientRole: "assistant",
+          recipientId: assistant.id,
           brokerId: listing.broker_id,
           listingId: listing.id,
           subject: `${copy.subjectLabel} ready for ${vesselName} — ${brokerName}'s listing`,
@@ -116,6 +127,26 @@ export async function POST(req: NextRequest) {
 
     const sent = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.filter((r) => r.status === "rejected").length;
+
+    // Assistant-only send: give the assistants the same push the broker route
+    // would have. Best effort — never blocks the email result.
+    if (push && sent > 0) {
+      try {
+        const { sendPushToUser } = await import("@/lib/sendPush");
+        const heading = copy.headingPrefix.replace("&amp;", "&");
+        const payload = {
+          title: `${heading} ${brokerName}`,
+          body: `${vesselName} — view, organise, and send from the listing.`,
+          url: `/dashboard/listings/${listing.id}`,
+          tag: `ready-${listing.id}`,
+        };
+        // Only the assistants who were emailed (and whose email went through).
+        const emailed = assistants.filter((_, i) => results[i].status === "fulfilled");
+        await Promise.all(emailed.map((a) => sendPushToUser(a.id, payload)));
+      } catch {
+        // push not configured / failed
+      }
+    }
 
     return NextResponse.json({ success: true, sent, failed });
   } catch (err) {

@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 export async function POST(req: NextRequest) {
   try {
-    const { listingId, mediaType = "photos" } = await req.json();
-    if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    // Only admins deliver media, so only admins may fire the "ready" email.
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+    const supabase = auth.admin;
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const body = await req.json();
+    const listingId: unknown = body?.listingId;
+    if (typeof listingId !== "string" || !listingId) {
+      return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    }
+    const mediaType: "photos" | "video" | "both" =
+      body?.mediaType === "video" || body?.mediaType === "both" ? body.mediaType : "photos";
+    // The admin page passes false when the send is "broker only", so the
+    // assistants don't get a push for an email they were deliberately left off.
+    const pushAssistants: boolean = body?.pushAssistants !== false;
 
     const { data: listing, error } = await supabase
       .from("listings")
@@ -39,7 +47,7 @@ export async function POST(req: NextRequest) {
           }
         : mediaType === "both"
         ? {
-            subject: `Your photos &amp; video for ${vesselName} are ready`,
+            subject: `Your photos & video for ${vesselName} are ready`,
             heading: "Your photos and video are ready",
             blurb: `Your professional photos and video for <strong style="color:#111827;">${vesselName}</strong> have been delivered and are available in your portal.`,
             cta: "View Your Media",
@@ -68,7 +76,8 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const resendData = await resendRes.json();
+    // Resend can answer with a non-JSON body on a bad day; never let that skip the log row.
+    const resendData: { id?: string; message?: string } = await resendRes.json().catch(() => ({}));
 
     await logEmail({
       emailType: mediaType === "video" ? "video_ready" : mediaType === "both" ? "media_ready" : "photos_ready",
@@ -93,11 +102,13 @@ export async function POST(req: NextRequest) {
         tag: `ready-${listing.id}`,
       };
       await sendPushToUser(listing.broker_id, payload);
-      const { data: links } = await supabase
-        .from("broker_assistants")
-        .select("assistant_id")
-        .eq("broker_id", listing.broker_id);
-      await Promise.all((links ?? []).map((l) => sendPushToUser(l.assistant_id, payload)));
+      if (pushAssistants) {
+        const { data: links } = await supabase
+          .from("broker_assistants")
+          .select("assistant_id")
+          .eq("broker_id", listing.broker_id);
+        await Promise.all((links ?? []).map((l) => sendPushToUser(l.assistant_id, payload)));
+      }
     } catch {
       // push not configured / failed — never block the delivery email
     }

@@ -5,6 +5,22 @@ everyone for a fortnight, and wrote the announcement. **Committed by Charlie,
 not by Claude — the sandbox shell was wedged all session, so nothing here has
 been typechecked.** `npx tsc --noEmit` before pushing.
 
+## Sept 11 (small, before the announcement went out)
+
+- **Reply-to mailbox.** Portal mail comes from `hello@yachtpics.com`; that
+  address didn't exist (bounced). Charlie created it as an alias in GoDaddy
+  Email & Office (Microsoft 365). Test reply received.
+- **"Ready" email: pick the recipient.** Admin listing page now has a second
+  dropdown next to Photos/Video: *Broker & assistant / Broker only / Assistant
+  only*. Button renamed "Send ready email". Broker-only also suppresses the
+  assistants' push; assistant-only gives the assistants the push instead.
+  Message reports exactly who got it and flags failures instead of hiding them.
+- **Both notify routes now require an admin session** (`requireAdmin`) —
+  before this anyone with a listing id could fire the email. Subject lines no
+  longer show a literal `&amp;`.
+- Sandbox shell still dead: it's the Sept 8 Windows update ("Failed to start
+  Claude's workspace"). File tools fine; Charlie commits and pushes.
+
 ## Today's work (Sept 9)
 
 **The Reel, tightened.** Research first — how Burgess, Edmiston, Northrop &
@@ -62,6 +78,14 @@ Johnson and the luxury-real-estate houses actually present listing film, plus
   (Map iteration) fixed.
 
 **NEXT SESSION — Charlie: "there is a lot more we can do with the reels."**
+
+**First job, Charlie's ask:** put **Send to my phone** on the Social Post page
+and anywhere else that generates a deliverable — spec sheet, seller report,
+QR code, anything a broker would want on their phone. The reel version
+(`reel-shares/` prefix, `/api/listings/[id]/reel-link`, QR + email backup,
+48h sweep) is the pattern; generalise the prefix/route so images and PDFs
+ride the same rails.
+
 Ideas already on the table, none started:
 - Music: parked deliberately (no licensing yet). If revisited: 3–5 licensed
   tracks, beat-synced holds, optional — silent stays the Instagram default.

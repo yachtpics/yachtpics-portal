@@ -169,6 +169,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [saving, setSaving] = useState(false);
   const [notifying, setNotifying] = useState(false);
   const [notifyMediaType, setNotifyMediaType] = useState<"photos" | "video" | "both">("photos");
+  // Who gets the "ready" email. "assistant" keeps the broker's inbox quiet when
+  // only their assistant needs to know the files have landed.
+  const [notifyTo, setNotifyTo] = useState<"both" | "broker" | "assistant">("both");
   const [message, setMessage] = useState("");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
@@ -381,28 +384,49 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   async function notifyBroker() {
     setNotifying(true);
     try {
+      const wantBroker = notifyTo !== "assistant";
+      const wantAssistant = notifyTo !== "broker";
+
+      const post = (url: string, extra: Record<string, unknown>) =>
+        fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id, mediaType: notifyMediaType, ...extra }),
+        });
+
       const [brokerRes, assistantRes] = await Promise.all([
-        fetch("/api/email/notify-broker", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id, mediaType: notifyMediaType }),
-        }),
-        fetch("/api/email/notify-assistant", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ listingId: listing.id, mediaType: notifyMediaType }),
-        }),
+        // Broker only → the broker route must not push the assistants either.
+        wantBroker ? post("/api/email/notify-broker", { pushAssistants: wantAssistant }) : Promise.resolve(null),
+        // Assistant only → the assistant route does the push, since the broker route isn't running.
+        wantAssistant ? post("/api/email/notify-assistant", { push: !wantBroker }) : Promise.resolve(null),
       ]);
 
-      const brokerData = await brokerRes.json();
-      if (!brokerRes.ok) throw new Error(brokerData.error ?? "Failed to notify broker");
+      const sentTo: string[] = [];
+      const notes: string[] = [];
 
-      const assistantData = await assistantRes.json();
-      const assistantMsg = assistantData.sent > 0
-        ? ` + ${assistantData.sent} assistant${assistantData.sent !== 1 ? "s" : ""}`
-        : "";
+      if (brokerRes) {
+        const brokerData = await brokerRes.json().catch(() => ({}));
+        if (!brokerRes.ok) throw new Error(brokerData.error ?? "Failed to notify broker");
+        sentTo.push(broker?.display_email ?? brokerName);
+      }
 
-      setMessage(`Notification sent to ${broker?.display_email ?? brokerName}${assistantMsg}.`);
+      if (assistantRes) {
+        const assistantData = await assistantRes.json().catch(() => ({}));
+        if (!assistantRes.ok) throw new Error(assistantData.error ?? "Failed to notify assistant");
+        const n = Number(assistantData.sent ?? 0);
+        const failed = Number(assistantData.failed ?? 0);
+        if (n > 0) sentTo.push(`${n} assistant${n !== 1 ? "s" : ""}`);
+        if (failed > 0) notes.push(`${failed} assistant email${failed !== 1 ? "s" : ""} failed`);
+        else if (n === 0) notes.push(assistantData.message ?? "no assistant linked to this broker");
+      }
+
+      if (sentTo.length === 0) {
+        // Nothing actually went out — say so rather than report a success.
+        setMessage(`Nothing sent — ${notes.join("; ")}.`);
+        return;
+      }
+
+      setMessage(`Notification sent to ${sentTo.join(" + ")}.${notes.length ? ` (${notes.join("; ")})` : ""}`);
     } catch (err) {
       setMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -914,12 +938,23 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <option value="video">Video</option>
             <option value="both">Photos &amp; Video</option>
           </select>
+          <select
+            value={notifyTo}
+            onChange={(e) => setNotifyTo(e.target.value as "both" | "broker" | "assistant")}
+            disabled={notifying}
+            title="Who gets the email"
+            className="text-sm text-ink-700 bg-white border border-hairline-strong rounded-ctl px-3 py-2 focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500"
+          >
+            <option value="both">Broker &amp; assistant</option>
+            <option value="broker">Broker only</option>
+            <option value="assistant">Assistant only</option>
+          </select>
           <button
             onClick={notifyBroker}
             disabled={notifying}
             className="bg-white hover:border-ink-400 hover:text-ink-900 disabled:opacity-50 text-ink-700 text-sm font-medium px-4 py-2 rounded-ctl border border-hairline-strong transition-colors duration-fast ease-quiet"
           >
-            {notifying ? "Sending..." : "📧 Notify Broker"}
+            {notifying ? "Sending..." : "📧 Send ready email"}
           </button>
           <button
             onClick={updateStatus}
