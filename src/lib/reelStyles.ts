@@ -233,7 +233,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Stack — the fast boat's reel, done the way the good ones are done.
    *
-   * Hero frame with the name, a three-photo flash burst, then the frame splits
+   * Hero frame with the name, then the frame splits
    * into three horizontal bands that whip in and swap one per beat. Every
    * landscape photograph shows whole; there are always three views of the
    * boat on screen; the frame is never empty. Timed to a 120 BPM grid so the

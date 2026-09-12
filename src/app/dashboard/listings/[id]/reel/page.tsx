@@ -15,6 +15,7 @@ import {
   fillTrackedLeft,
   loadBitmap,
   wrapTracked,
+  wrapSegments,
 } from "@/lib/canvasText";
 import {
   REEL_STYLES, STYLE_ORDER, isExterior, roomLabel, applyBrand, dominantColor, normalizeHex, rgba,
@@ -359,8 +360,8 @@ export default function ListingReelPage() {
     // it holds a beat and a half longer so it can be read.
     const endHold = s.endHold + (ypBrand && isAdmin ? 1.5 : 0);
 
-    // The Stack look has its own clock — hero, burst, then movements on the
-    // beat. Only on a 9:16 reel; a film has no vertical to stack into.
+    // The Stack look has its own clock — hero, then movements on the beat,
+    // every photo once. Only on a 9:16 reel; a film has no vertical to stack into.
     if (look.layout === "stack" && format === "reel") {
       return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold, seed });
     }
@@ -789,7 +790,9 @@ export default function ListingReelPage() {
         // name's baseline.
         const ruleH = 84 * sc;
         ctx.font = `600 ${capSize}px ${sans}`;
-        const specLines = spec ? wrapTracked(ctx, spec.toUpperCase(), maxW, 6 * sc) : [];
+        // Breaks only between facts, never inside one — "Flybridge Motor
+        // Yacht" stays on a line together.
+        const specLines = spec ? wrapSegments(ctx, specBits.map((b) => b.toUpperCase()), "   ·   ", maxW, 6 * sc) : [];
         const specLineH = capSize + 12 * sc;
         const specH = spec ? specLineH * specLines.length + 18 * sc : 0;
         const whereH = where ? 49 * sc : 0;
@@ -1161,9 +1164,9 @@ export default function ListingReelPage() {
         const u = units[k];
         const local = t - starts[k];
         if (u.kind === "photo") {
-          // In a Stack, the full-frame singles show the whole photograph —
-          // a horizontal floats whole on a soft plate, a vertical fills the
-          // frame. The hero and the burst stay full-bleed.
+          // In a Stack, every full-frame photograph — hero included — is
+          // shown whole: a horizontal floats complete on a soft plate, a
+          // vertical fills the frame.
           const whole = stacked && !u.burst ? true : undefined;
           drawPhoto(u.index, local, u.hold, alpha, whole);
           // Where the type lives off the picture — Gallery's page, Cinematic's

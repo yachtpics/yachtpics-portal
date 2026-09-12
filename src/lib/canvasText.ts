@@ -61,6 +61,34 @@ export function wrapTracked(ctx: CanvasRenderingContext2D, text: string, maxW: n
   return lines;
 }
 
+/**
+ * Wrap a row of SEGMENTS joined by a separator — a spec line like
+ * "121′ · Flybridge Motor Yacht · 4 Staterooms" — breaking only at the
+ * separators, so a phrase never splits mid-way ("Flybridge Motor / Yacht").
+ * A single segment wider than the line falls back to word-wrapping.
+ */
+export function wrapSegments(
+  ctx: CanvasRenderingContext2D,
+  segments: string[],
+  sep: string,
+  maxW: number,
+  track: number,
+): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const seg of segments) {
+    const candidate = line ? `${line}${sep}${seg}` : seg;
+    if (line && trackedWidth(ctx, candidate, track) > maxW) {
+      lines.push(line);
+      line = seg;
+    } else {
+      line = candidate;
+    }
+  }
+  if (line) lines.push(line);
+  return lines.flatMap((ln) => wrapTracked(ctx, ln, maxW, track));
+}
+
 /** Greedy word-wrap against the current ctx.font. */
 export function wrapLines(ctx: CanvasRenderingContext2D, text: string, maxW: number): string[] {
   if (ctx.measureText(text).width <= maxW) return [text];

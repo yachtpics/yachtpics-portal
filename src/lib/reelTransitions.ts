@@ -44,14 +44,17 @@ export const ENERGY_VOCAB: Entry[] = [
   { type: "dip", weight: 6, dur: 0.44 },
 ];
 
-/** Stack: the same family, leaning on the moves that suit a frame changing shape. */
+/**
+ * Stack: the same family, leaning on the moves that suit a frame changing
+ * shape. No flash — Charlie took the strobe out of the Stack altogether;
+ * the boat is meant to be seen.
+ */
 export const STACK_VOCAB: Entry[] = [
-  { type: "whip", weight: 20, dur: 0.30 },
-  { type: "push", weight: 18, dur: 0.34 },
-  { type: "wipe", weight: 20, dur: 0.36 },
-  { type: "zoom", weight: 12, dur: 0.40 },
-  { type: "flash", weight: 12, dur: 0.0 },
-  { type: "dissolve", weight: 12, dur: 0.30 },
+  { type: "whip", weight: 22, dur: 0.30 },
+  { type: "push", weight: 20, dur: 0.34 },
+  { type: "wipe", weight: 22, dur: 0.36 },
+  { type: "zoom", weight: 14, dur: 0.40 },
+  { type: "dissolve", weight: 16, dur: 0.30 },
   { type: "dip", weight: 6, dur: 0.44 },
 ];
 

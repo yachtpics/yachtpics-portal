@@ -8,11 +8,12 @@
  * flash, quick dissolve, dip — so no two consecutive cuts are the same move.
  *
  * Both have an ARC, the thing that makes GoPro's Quik and Apple's Memories
- * feel cut to music: a long open on the hero frame, holds that follow a
- * short-short-long pattern, a three-photo flash burst at the climax just
- * past the middle, and a long landing on the last photograph. The Stack
- * additionally alternates runs of three horizontal bands (one swapping per
- * beat) with full-frame singles, in lengths that vary from boat to boat.
+ * feel cut to music: a long open on the hero frame, varied holds, and a long
+ * landing on the last photograph. Energy adds a three-photo flash burst at
+ * the climax and a short-short-long hold pattern. The Stack — no burst —
+ * alternates runs of three horizontal bands (one swapping per beat) with
+ * full-frame singles, in lengths that vary from boat to boat, every photo
+ * used once.
  *
  * Everything is timed to a 120 BPM grid (0.5s per beat). No audio is baked
  * in — the broker adds a track when they post — but most trending tracks
@@ -157,7 +158,7 @@ export function planSingles(n: number, opts: {
     transitions = Array.from({ length: count }, () => ({ type: "dissolve", dur: dissolve, dir: "left" } as Transition));
   } else {
     // Into and out of every burst frame: a flash cut. Into the end card too
-    // — the landing resolves on a flash, same as the Stack. The rest are dealt.
+    // — the landing resolves on a flash. The rest are dealt.
     const fixed: Record<number, Transition> = {};
     if (burstN > 0) for (let k = burstStart - 1; k < burstStart + burstN; k++) fixed[k] = FLASH_CUT;
     fixed[count - 1] = FLASH_CUT;
@@ -170,59 +171,51 @@ export function planSingles(n: number, opts: {
  * The Stack film.
  *
  * - photo 0: hero with title
- * - movements, alternating: a stack run (three bands whip in, then three
- *   to five swaps on the beat) and one or two full-frame singles
- * - at the halfway mark: the three-photo flash burst (skipped on a short list)
+ * - movements, alternating: a stack run (three bands whip in, then a few
+ *   swaps on the beat) and one or two full-frame singles
  * - the last photograph lands and holds; then the end card
- * The deal cycles through the photos so the film runs to `beat × max(8, n)`
- * — a shot seen as a band and later full-frame is how these are cut.
+ * Every photograph appears exactly once — the film is as long as the photos
+ * make it. No flash burst: Charlie found it too fast for a boat that's
+ * meant to be seen.
  */
 export function planStack(n: number, opts: { heroHold: number; beat: number; endHold: number; seed: number }): Timeline {
   const { heroHold, beat, endHold, seed } = opts;
   const rand = seededRandom(seed * 7 + 3);
   if (n === 0) return finish([{ kind: "end", hold: endHold }], []);
 
-  const burstN = n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
   const units: Unit[] = [{ kind: "photo", index: 0, hold: heroHold, burst: false }];
 
-  // The deal: the photos after the hero in tap order, round and round, so a
-  // shot seen as a band gets its full-frame moment later.
+  // The deal: the photos after the hero, in tap order, each once. The last
+  // one is kept back for the landing.
   const pool: number[] = [];
   for (let i = 1; i < n; i++) pool.push(i);
-  pool.push(0);
   let p = 0;
-  const take = () => pool[p++ % pool.length];
+  const left = () => pool.length - p;
+  const take = () => pool[p++];
   const rows = 3;
 
-  // Fewer than four photos can't stack without a band repeating a photo
-  // its neighbour is showing; those lists run as full-frame singles.
-  const canStack = n >= 4;
-  const target = beat * Math.max(8, n);
-  let elapsed = 0;
-  const fixed: Record<number, Transition> = {};
+  // A run needs three bands, at least one swap and a landing kept back —
+  // six photos. Shorter lists run as full-frame singles.
+  const canStack = n >= 6;
 
   if (n >= 2) {
     let wantStack = canStack;
     let run = 0;
-    let burstDone = burstN === 0;
-    while (elapsed < target) {
-      if (!burstDone && elapsed >= target * 0.5) {
-        // The climax: three photos flash past, a third of a second each,
-        // just past the middle — never straight after the title.
-        const first = units.length;
-        for (let k = 0; k < burstN; k++) units.push({ kind: "photo", index: take(), hold: BURST_DT, burst: true });
-        for (let k = first - 1; k < first + burstN; k++) fixed[k] = FLASH_CUT;
-        elapsed += burstN * BURST_DT;
-        burstDone = true;
-        wantStack = canStack;
-        continue;
-      }
-      if (wantStack) {
-        // A run: bands whip in, then three to five swaps. The bands fill in
-        // a rotating order run to run (so no band is always the stale one),
-        // and each swap replaces the OLDEST band — at most three consecutive
-        // photos on screen, so nothing can double up.
-        const swaps = 3 + Math.floor(rand() * 3);
+    // Everything but the last photo goes into the movements.
+    while (left() > 1) {
+      // A run needs three bands and at least one swap; otherwise singles.
+      if (wantStack && left() - 1 >= rows + 1) {
+        // A run: bands whip in, then three to five swaps (fewer if the list
+        // is running out). The bands fill in a rotating order run to run (so
+        // no band is always the stale one), and each swap replaces the
+        // OLDEST band — at most three consecutive photos on screen, so
+        // nothing can double up.
+        let swaps = Math.min(3 + Math.floor(rand() * 3), left() - 1 - rows);
+        // If what's left after this run couldn't make another run, fold it
+        // into this one and leave a single before the landing — better one
+        // longer run than a tail of four singles.
+        const after = left() - 1 - rows - swaps;
+        if (after > 0 && after < rows + 2) swaps = Math.max(swaps, left() - 1 - rows - 1);
         const events: StackEvent[] = [];
         // The bands arrive from alternating sides; every swap after that is
         // dealt its own move, never the same as the one before.
@@ -239,17 +232,15 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
         }
         const hold = beat * (swaps + 1);
         units.push({ kind: "stack", hold, events });
-        elapsed += hold;
         run++;
         wantStack = false;
       } else {
         // One or two singles — a full-frame breath between runs. A single
         // holds a little longer than a band swap; it's carrying the frame alone.
-        const count = 1 + (rand() < 0.4 ? 1 : 0);
+        const count = Math.min(left() - 1, 1 + (rand() < 0.4 ? 1 : 0));
         for (let c = 0; c < count; c++) {
           const hold = beat * (rand() < 0.5 ? 1.5 : 2);
           units.push({ kind: "photo", index: take(), hold, burst: false });
-          elapsed += hold;
         }
         wantStack = canStack;
       }
@@ -259,10 +250,8 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
     units.push({ kind: "photo", index: take(), hold: beat * 2.6, burst: false });
   }
   units.push({ kind: "end", hold: endHold });
-  // Into the end card: always a flash.
-  fixed[units.length - 2] = FLASH_CUT;
 
-  const transitions = dealTransitions(units.length - 1, STACK_VOCAB, seed, fixed);
+  const transitions = dealTransitions(units.length - 1, STACK_VOCAB, seed);
   return finish(units, transitions);
 }
 
