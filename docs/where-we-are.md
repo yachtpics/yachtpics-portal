@@ -61,6 +61,14 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   `drawPhoto`); hero + burst stay full-bleed. Band swaps are dealt a move each
   (`BandMove`: left/right whip, up/down push, fade, wipe with seam) — never
   the same twice running; the three arrivals alternate sides.
+- **YachtPics ad switch (admin only)** on the Reel page: `YACHTPICS_CARD` /
+  `YACHTPICS_COLORS` in reel/page.tsx; wordmark at
+  `public/brand/yachtpics-logo-white.png` (Charlie copies it from J:); lead-in
+  "Photographed by YachtPics"; CTA "Book your shoot"; both phones; Add-film
+  hidden. Broker reels' credit line now "MADE WITH THE YACHTPICS PORTAL".
+- **Gallery / Cinematic title persists** for the whole reel (Charlie: "a lot
+  of open space that can be used"); windows moved to 42% so a caption above
+  the picture clears the location line.
 - **Safe zone + length.** On 9:16 reels the title, spec and room captions now
   sit in the band from 16% down (Instagram covers the top 14% and bottom 35%);
   picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so

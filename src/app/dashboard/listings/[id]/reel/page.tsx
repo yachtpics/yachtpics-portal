@@ -126,8 +126,9 @@ type BrokerCard = { name: string; brokerage: string | null; phone: string | null
  */
 const YACHTPICS_CARD: BrokerCard = {
   name: "YachtPics",
-  brokerage: "Yacht photography & delivery",
-  phone: null,
+  brokerage: "Yacht photography · The YachtPics Portal",
+  // Charlie, then Samantha.
+  phone: "561-602-9710   ·   561-252-1488",
   email: "hello@yachtpics.com",
   website: "yachtpics.com",
   logoUrl: "/brand/yachtpics-logo-white.png",
@@ -523,13 +524,13 @@ export default function ListingReelPage() {
           // while still reading unmistakably as a letterbox.
           const bh = Math.min(H * 0.60, W / 1.66);
           // The top bar holds the name; the window sits beneath it.
-          return { x: 0, y: topType ? H * 0.40 : (H - bh) / 2 - H * 0.06, w: W, h: bh };
+          return { x: 0, y: topType ? H * 0.42 : (H - bh) / 2 - H * 0.06, w: W, h: bh };
         }
         if (backdrop === "inset") {
           const m = 0.055 * W;
           if (topType) {
             // Name at the head of the page, the print below it.
-            return { x: m, y: H * 0.38, w: W - m * 2, h: H * 0.44 };
+            return { x: m, y: H * 0.42, w: W - m * 2, h: H * 0.44 };
           }
           return { x: m, y: m, w: W - m * 2, h: H * 0.45 };
         }
@@ -952,11 +953,12 @@ export default function ListingReelPage() {
         let y = (H - stackH) / 2;
         for (const it of items) { it.draw(y); y += it.h; }
 
-        // Quiet credit line — the portal's own mark (redundant on our own card).
+        // Quiet credit line — the portal's own mark, the way a good house
+        // signs its work. Redundant on our own card.
         if (!yp) {
           ctx.fillStyle = st.light ? "rgba(20,26,33,0.32)" : "rgba(255,255,255,0.30)";
           ctx.font = `500 ${18 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, "YACHTPICS", cx, H - 60 * sc, 6 * sc);
+          fillTrackedCentered(ctx, "MADE WITH THE YACHTPICS PORTAL", cx, H - 60 * sc, 6 * sc);
         }
         ctx.restore();
       };
@@ -1123,7 +1125,17 @@ export default function ListingReelPage() {
           // frame. The hero and the burst stay full-bleed.
           const whole = stacked && !u.burst ? true : undefined;
           drawPhoto(u.index, local, u.hold, alpha, whole);
-          if (k === 0) drawTitle(titleAlpha(local, u.hold) * alpha);
+          // Where the type lives off the picture — Gallery's page, Cinematic's
+          // bar — it stays up for the whole reel: every frame a captioned
+          // print, rather than a name that leaves and a page left empty.
+          // On a full-bleed look it belongs to the opening frame only.
+          const persistent = topType && (backdrop === "inset" || backdrop === "letterbox");
+          if (k === 0) {
+            const a = persistent ? ease((local - 0.3) / 0.6) : titleAlpha(local, u.hold);
+            drawTitle(a * alpha);
+          } else if (persistent) {
+            drawTitle(alpha);
+          }
           // Burst frames are too quick to read a caption on.
           else if (!u.burst && !stacked) drawRoomLabel(u.index, local, u.hold, alpha);
         } else if (u.kind === "stack") {
