@@ -38,6 +38,16 @@ been typechecked.** `npx tsc --noEmit` before pushing.
     "Request a private showing". Blurred plate only for full-bleed whole-photo
     mode (was bleeding over Gallery's page on dark brand grounds).
   - Picker text: "quietest of the five", Gallery blurb updated.
+- **Transition engine (Sept 12).** Charlie: Energy "too jerky… the
+  transitions are just straight cuts… needs random cuts, fades, wipes, cross
+  dissolves — high-end CapCut/TikTok." `src/lib/reelTransitions.ts`: vocabulary
+  (whip, push, wipe, zoom-through, flash, quick dissolve, dip), weighted deal
+  with no repeats and alternating directions, `drawTransition(ctx, …, a, b)`
+  composes any two whole-frame draws. `src/lib/reelStack.ts` now builds a
+  unified `Timeline` of `units` (photo / stack run / end) + `transitions` for
+  every look (`planSingles` for the five, `planStack` for Stack); quiet looks
+  dissolve as before. Energy softened: zoom .07, holdScale .9 (~30s Full),
+  weight 700, slower snap. Stack uses the same vocabulary between movements.
 - **Safe zone + length.** On 9:16 reels the title, spec and room captions now
   sit in the band from 16% down (Instagram covers the top 14% and bottom 35%);
   picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so

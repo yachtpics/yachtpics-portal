@@ -198,16 +198,16 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Energy — for the boats that go fast.
    *
-   * Opens on a four-photo flash burst, then hard cuts, a quick zoom that lands
-   * and settles on every photo, holds barely over a second, heavy sans caps. A
-   * 39' centre console with triple outboards has no business crossfading; this
-   * is its reel. Still restrained where it counts — no glitches, no whips,
-   * nothing the boat didn't earn.
+   * Opens on a four-photo flash burst, then a dealt vocabulary of cuts —
+   * whip, push, wipe, zoom-through, flash, a quick dissolve, a dip — never
+   * the same move twice running. A soft punch-in settles on every photo.
+   * The register of a good CapCut edit, without the glitches and light
+   * leaks: nothing the boat didn't earn.
    */
   energy: {
     key: "energy",
     name: "Energy",
-    blurb: "Hard cuts, punch-in, fast. For centre consoles and sportfish.",
+    blurb: "Whips, wipes, zoom-throughs — a different cut every time. For centre consoles and sportfish.",
     ground: "#06090f",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.86)",
@@ -219,10 +219,13 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headline: "caps",
     align: "center",
     rule: "single",
-    headTrack: -3,
-    headWeight: 800,
-    zoom: 0.11,
-    holdScale: 0.62,
+    headTrack: -2,
+    headWeight: 700,
+    // A soft settle, not a jolt — the cuts carry the energy now.
+    zoom: 0.07,
+    // ~1.7s a photo on Full: eighteen photos land near thirty seconds, the
+    // floor of the band the feed rewards. The cuts supply the pace.
+    holdScale: 0.9,
     cut: "punch",
     hook: "burst",
   },
@@ -240,7 +243,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   stack: {
     key: "stack",
     name: "Stack",
-    blurb: "Three bands, whip cuts on the beat, flash-burst opener. For go-fasts.",
+    blurb: "Three bands trading on the beat, full-frame breaks, a different cut every time. For go-fasts.",
     ground: "#06090f",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.86)",
@@ -252,9 +255,9 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headline: "caps",
     align: "center",
     rule: "single",
-    headTrack: -3,
-    headWeight: 800,
-    zoom: 0.11,
+    headTrack: -2,
+    headWeight: 700,
+    zoom: 0.07,
     // A band swap every ~1.5s on Full: fast, but each photograph gets three
     // beats on screen before it goes, and eighteen photos land near 36s —
     // inside the band the feed rewards.

@@ -1,22 +1,30 @@
 /**
- * The Stack look's timeline — and the flash-burst hook the Energy look shares.
+ * The reel's timeline — units and the transitions between them.
  *
- * Both are the grammar of a fast boat's reel in 2026: a hero frame with the
- * name, a burst of near-subliminal cuts to grab the thumb, then a steady beat
- * of hard cuts. The Stack adds the three-band layout — three landscape
- * photographs at once, one band swapping per beat — and breaks it up: runs
- * of the stack alternate with full-frame singles, in lengths that vary from
- * boat to boat, so the frame keeps changing shape and never settles into a
- * pattern the eye can predict.
+ * Every look is the same shape underneath: a list of UNITS (a photograph, a
+ * stack run, the end card), each holding for a while, joined by TRANSITIONS
+ * from `reelTransitions`. The quiet looks join every unit with a dissolve.
+ * Energy and Stack deal from a vocabulary — whip, push, wipe, zoom-through,
+ * flash, quick dissolve, dip — so no two consecutive cuts are the same move.
+ *
+ * Both also open the same way: a hero frame with the name, then a burst of
+ * near-subliminal flash cuts to stop the thumb. The Stack then alternates
+ * runs of three horizontal bands (one swapping per beat) with full-frame
+ * singles, in lengths that vary from boat to boat.
  *
  * Everything is timed to a 120 BPM grid (0.5s per beat). No audio is baked
- * in — the broker adds a track when they post — but most trending tracks sit
- * between 100 and 130 BPM, so cuts on this grid land near the beat more
+ * in — the broker adds a track when they post — but most trending tracks
+ * sit between 100 and 130 BPM, so cuts on this grid land near the beat more
  * often than not.
  *
  * Pure functions: the page's duration readout and the renderer both call
- * `planStack`, so they can't disagree about how long the film is.
+ * these, so they can't disagree about how long the film is.
  */
+
+import {
+  dealTransitions, seededRandom, ENERGY_VOCAB, STACK_VOCAB,
+  type Transition,
+} from "./reelTransitions";
 
 /** One beat at 120 BPM. */
 export const BEAT = 0.5;
@@ -30,84 +38,96 @@ export const BURST_MIN_PHOTOS = 7;
 
 /** How long a band takes to swap (whip out / whip in). */
 export const SWAP_DUR = 0.24;
-/** Stagger between the three bands sliding in at the start of the stack. */
+/** Stagger between the three bands sliding in at the start of a run. */
 export const ROW_STAGGER = 0.07;
 
 /** The white flash on a cut: full on the cut frame, gone in a tenth of a second. */
 export const FLASH_DUR = 0.1;
 export const FLASH_PEAK = 0.85;
 
+/** A band fill inside a stack run; `at` is relative to the run's start. */
 export type StackEvent = { row: number; index: number; at: number };
 
-/**
- * A movement of the film after the burst: either a run of the three-band
- * stack, or a single photograph full-frame. They alternate, in varying
- * lengths, so the frame keeps changing shape — a stack that never breaks
- * reads as a template.
- */
-export type StackPhase =
-  | { kind: "stack"; start: number; end: number; events: StackEvent[] }
-  | { kind: "single"; start: number; end: number; index: number; hold: number };
+export type Unit =
+  | { kind: "photo"; index: number; hold: number; burst: boolean }
+  | { kind: "stack"; hold: number; events: StackEvent[] }
+  | { kind: "end"; hold: number };
 
-export type StackPlan = {
-  /** Full-bleed hero photo (index 0) with the title, from t=0. */
-  heroHold: number;
-  /** Flash-burst photos, in order, each starting at `start`. */
-  burst: { index: number; start: number }[];
-  /** When the first movement after the burst begins. */
-  stackStart: number;
-  /** Seconds between band swaps. */
-  beat: number;
-  /** The movements, in time order, back to back. */
-  phases: StackPhase[];
-  /** When the end card cuts in. */
-  endStart: number;
-  /** Total running time. */
+export type Timeline = {
+  units: Unit[];
+  /** When each unit's hold begins. The transition INTO unit k plays from starts[k]. */
+  starts: number[];
+  /** transitions[k] joins unit k to unit k+1. Length units.length - 1. */
+  transitions: Transition[];
   total: number;
-  /** Every hard cut that gets a flash. */
+  /** Every cut that gets a white flash. */
   flashes: number[];
 };
 
-/**
- * A tiny deterministic generator — the rhythm varies from boat to boat but
- * the same boat with the same photos renders the same film every time,
- * which is what a broker expects when they press the button twice.
- */
-function rng(seed: number) {
-  let x = (seed * 2654435761 + 12345) >>> 0;
-  return () => { x = (x * 1664525 + 1013904223) >>> 0; return x / 4294967296; };
+const FLASH_CUT: Transition = { type: "flash", dur: 0, dir: "left" };
+
+function finish(units: Unit[], transitions: Transition[]): Timeline {
+  const starts: number[] = [];
+  let t = 0;
+  units.forEach((u) => { starts.push(t); t += u.hold; });
+  const flashes = transitions.flatMap((tr, k) => (tr.type === "flash" ? [starts[k + 1]] : []));
+  return { units, starts, transitions, total: t, flashes };
 }
 
 /**
- * Lay out a Stack reel for `n` photos in tap order.
+ * The single-photo film — every look but the Stack.
+ *
+ * `vocab` null → dissolves throughout (the quiet looks). With a vocabulary,
+ * the transitions are dealt; with `burst`, the four photos after the title
+ * flash past at a fifth of a second each.
+ */
+export function planSingles(n: number, opts: {
+  titleHold: number; hold: number; endHold: number; dissolve: number;
+  burst: boolean; vocab: "energy" | null; seed: number;
+}): Timeline {
+  const { titleHold, hold, endHold, dissolve, burst, vocab, seed } = opts;
+  const burstN = burst && n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
+  const units: Unit[] = [];
+  for (let i = 0; i < n; i++) {
+    const inBurst = i >= 1 && i <= burstN;
+    units.push({ kind: "photo", index: i, hold: i === 0 ? titleHold : inBurst ? BURST_DT : hold, burst: inBurst });
+  }
+  units.push({ kind: "end", hold: endHold });
+
+  const count = units.length - 1;
+  let transitions: Transition[];
+  if (!vocab) {
+    transitions = Array.from({ length: count }, () => ({ type: "dissolve", dur: dissolve, dir: "left" } as Transition));
+  } else {
+    // Into and out of every burst frame: a flash cut. The rest are dealt.
+    const fixed: Record<number, Transition> = {};
+    for (let k = 0; k <= burstN && burstN > 0; k++) fixed[k] = FLASH_CUT;
+    transitions = dealTransitions(count, ENERGY_VOCAB, seed, fixed);
+  }
+  return finish(units, transitions);
+}
+
+/**
+ * The Stack film.
  *
  * - photo 0: hero with title
  * - photos 1..BURST_MAX: the flash burst (skipped on a short list)
  * - then movements, alternating: a stack run (three bands whip in, then
- *   three to five swaps on the beat) and one or two full-frame singles
- *   (punch-in, flash on the cut). Every remaining photo appears once.
+ *   three to five swaps on the beat) and one or two full-frame singles. The
+ *   deal cycles through the photos so the film runs to `beat × max(8, n)`
+ *   — a shot seen as a band and later full-frame is how these are cut.
  */
-export function planStack(n: number, opts: { heroHold: number; beat: number; endHold: number }): StackPlan {
-  const { heroHold, beat, endHold } = opts;
-  const flashes: number[] = [];
-  const rand = rng(n * 7 + 3);
+export function planStack(n: number, opts: { heroHold: number; beat: number; endHold: number; seed: number }): Timeline {
+  const { heroHold, beat, endHold, seed } = opts;
+  const rand = seededRandom(seed * 7 + 3);
 
-  // Burst.
   const burstN = n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
-  const burst: { index: number; start: number }[] = [];
-  for (let k = 0; k < burstN; k++) {
-    const start = heroHold + k * BURST_DT;
-    burst.push({ index: 1 + k, start });
-    flashes.push(start);
-  }
-  const stackStart = heroHold + burstN * BURST_DT;
+  const units: Unit[] = [{ kind: "photo", index: 0, hold: heroHold, burst: false }];
+  for (let k = 0; k < burstN; k++) units.push({ kind: "photo", index: 1 + k, hold: BURST_DT, burst: true });
 
-  // The deal: the photos after the burst, in tap order, and when they run
-  // out the list comes round again — hero and burst photos included, so a
-  // shot glimpsed for a fifth of a second gets its full-frame moment later.
-  // A photograph appearing twice, once as a band and once full-frame, is
-  // how these reels are cut; a film that stops the moment every photo has
-  // been used once is over before the feed has decided to keep it.
+  // The deal: the photos after the burst, then round again with the hero
+  // and burst photos, so a shot glimpsed for a fifth of a second gets its
+  // full-frame moment later.
   const pool: number[] = [];
   for (let i = 1 + burstN; i < n; i++) pool.push(i);
   for (let i = 0; i <= burstN && i < n; i++) pool.push(i);
@@ -115,33 +135,31 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
   const take = () => pool[p++ % pool.length];
   const rows = 3;
 
-  // How long the movements run: a beat per photo with a floor, so a short
-  // list still gets a real film and a long one gets longer, smoothly.
-  const target = beat * Math.max(8, n);
-
-  const phases: StackPhase[] = [];
-  let t = stackStart;
   // Fewer than four photos can't stack without a band repeating a photo
   // its neighbour is showing; those lists run as full-frame singles.
   const canStack = n >= 4;
+  const target = beat * Math.max(8, n);
+  let elapsed = 0;
+  const fixed: Record<number, Transition> = {};
+  // Into and out of every burst frame: flash cuts. Into the first movement too.
+  for (let k = 0; k <= burstN && burstN > 0; k++) fixed[k] = FLASH_CUT;
+
   if (n >= 2) {
-    // Open on the stack — that's the look's signature — then alternate.
     let wantStack = canStack;
     let run = 0;
-    while (t < stackStart + target) {
+    while (elapsed < target) {
       if (wantStack) {
         // A run: bands whip in, then three to five swaps. The bands fill in
         // a rotating order run to run (so no band is always the stale one),
-        // and each swap replaces the OLDEST band — that keeps at most three
-        // consecutive photos on screen, so nothing can double up.
+        // and each swap replaces the OLDEST band — at most three consecutive
+        // photos on screen, so nothing can double up.
         const swaps = 3 + Math.floor(rand() * 3);
         const events: StackEvent[] = [];
-        for (let r = 0; r < rows; r++) events.push({ row: (r + run) % rows, index: take(), at: t + r * ROW_STAGGER });
-        for (let k = 0; k < swaps; k++) events.push({ row: (k + run) % rows, index: take(), at: t + beat * (k + 1) });
-        const end = t + beat * (swaps + 1);
-        flashes.push(t);
-        phases.push({ kind: "stack", start: t, end, events });
-        t = end;
+        for (let r = 0; r < rows; r++) events.push({ row: (r + run) % rows, index: take(), at: r * ROW_STAGGER });
+        for (let k = 0; k < swaps; k++) events.push({ row: (k + run) % rows, index: take(), at: beat * (k + 1) });
+        const hold = beat * (swaps + 1);
+        units.push({ kind: "stack", hold, events });
+        elapsed += hold;
         run++;
         wantStack = false;
       } else {
@@ -150,18 +168,19 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
         const count = 1 + (rand() < 0.4 ? 1 : 0);
         for (let c = 0; c < count; c++) {
           const hold = beat * (rand() < 0.5 ? 1.5 : 2);
-          flashes.push(t);
-          phases.push({ kind: "single", start: t, end: t + hold, index: take(), hold });
-          t += hold;
+          units.push({ kind: "photo", index: take(), hold, burst: false });
+          elapsed += hold;
         }
         wantStack = canStack;
       }
     }
   }
+  units.push({ kind: "end", hold: endHold });
+  // Into the end card: always a flash.
+  fixed[units.length - 2] = FLASH_CUT;
 
-  const endStart = t;
-  flashes.push(endStart);
-  return { heroHold, burst, stackStart, beat, phases, endStart, total: endStart + endHold, flashes };
+  const transitions = dealTransitions(units.length - 1, STACK_VOCAB, seed, fixed);
+  return finish(units, transitions);
 }
 
 /** White-flash strength at time `t` given the cut times. */
@@ -175,8 +194,9 @@ export function flashAlpha(t: number, cuts: number[]): number {
 }
 
 /**
- * The state of one band at time `t`: which photo is in it, which one is on
- * its way out, and how far through the swap it is (1 = settled).
+ * The state of one band at time `t` (relative to the run's start): which
+ * photo is in it, which one is on its way out, how far through the swap it
+ * is (1 = settled), and when it next swaps (null = end of the run).
  */
 export function rowState(events: StackEvent[], row: number, t: number) {
   let cur: StackEvent | null = null;
@@ -190,8 +210,6 @@ export function rowState(events: StackEvent[], row: number, t: number) {
   }
   if (!cur) return null;
   const p = Math.min(1, (t - cur.at) / SWAP_DUR);
-  // `until`: when this band next swaps — the photo's real lifetime, so its
-  // drift can be paced to finish just as it leaves. null = end of the run.
   return { index: cur.index, since: cur.at, until: next?.at ?? null, prevIndex: prev?.index ?? null, progress: p };
 }
 

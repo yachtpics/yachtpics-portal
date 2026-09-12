@@ -21,7 +21,8 @@ import {
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { planStack, rowState, whipEase, flashAlpha, BURST_DT, BURST_MAX, BURST_MIN_PHOTOS, type StackEvent } from "@/lib/reelStack";
+import { planStack, planSingles, rowState, whipEase, flashAlpha, type StackEvent } from "@/lib/reelStack";
+import { drawTransition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 
 /**
@@ -99,6 +100,11 @@ function capFor(format: Format, length: Length) {
 
 const FPS = 30;
 
+/** A punch look cuts hard — a whisker of overlap so it never flashes black. */
+function fadeFor(fmt: Format, key: StyleKey) {
+  return REEL_STYLES[key].cut === "punch" ? 0.08 : SPEC[fmt].fade;
+}
+
 // Palette now lives with each look in @/lib/reelStyles — a 2D context can't
 // read Tailwind, and the six styles need genuinely different grounds.
 
@@ -111,10 +117,6 @@ type ListingData = {
 };
 
 type BrokerCard = { name: string; brokerage: string | null; phone: string | null; email: string | null; website: string | null; logoUrl: string | null };
-
-type Segment =
-  | { kind: "photo"; index: number; start: number; end: number; hold: number }
-  | { kind: "end"; start: number; end: number; hold: number };
 
 function safeName(s: string | null | undefined) {
   return (s ?? "listing").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "listing";
@@ -314,40 +316,31 @@ export default function ListingReelPage() {
     return chosen.map((id) => byId.get(id)).filter((p): p is Photo => !!p);
   }, [photos, chosen]);
 
-  /** A punch look cuts hard — a whisker of overlap so it never flashes black. */
-  const fadeFor = (fmt: Format, key: StyleKey) =>
-    REEL_STYLES[key].cut === "punch" ? 0.08 : SPEC[fmt].fade;
-
   const timeline = useMemo(() => {
     const look = REEL_STYLES[styleKey];
     const scale = look.holdScale;
-    const fade = fadeFor(format, styleKey);
     const n = selectedPhotos.length;
+    // Same boat, same photos → the same deal of transitions every time.
+    const seed = n * 131 + styleKey.length * 17;
 
-    // The Stack look has its own clock — hero, burst, then bands on the beat.
-    // Only on a 9:16 reel; a film has no vertical to stack into.
+    // The Stack look has its own clock — hero, burst, then movements on the
+    // beat. Only on a 9:16 reel; a film has no vertical to stack into.
     if (look.layout === "stack" && format === "reel") {
-      const plan = planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold: s.endHold });
-      return { segs: [] as Segment[], total: plan.total, plan, flashes: plan.flashes };
+      return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold: s.endHold, seed });
     }
-
-    // A burst hook: the four photos after the title flash past at a fifth of
-    // a second each, then the film settles into its beat.
-    const burstN = look.hook === "burst" && n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
-    const segs: Segment[] = [];
-    const flashes: number[] = [];
-    let t = 0;
-    selectedPhotos.forEach((_, i) => {
-      // Every photo after the title holds for exactly the same beat. Varying it
-      // per photo is the thing that makes a slideshow feel restless.
-      const inBurst = i >= 1 && i <= burstN;
-      const hold = i === 0 ? s.titleHold * scale : inBurst ? BURST_DT : s.hold * scale;
-      if (inBurst || (burstN > 0 && i === burstN + 1)) flashes.push(t);
-      segs.push({ kind: "photo", index: i, start: t, end: t + hold + fade, hold });
-      t += hold;
+    // Every other look: one photograph at a time. Every photo after the
+    // title holds for exactly the same beat — varying it per photo is the
+    // thing that makes a slideshow feel restless. The quiet looks dissolve;
+    // a look with a vocabulary deals its cuts.
+    return planSingles(n, {
+      titleHold: s.titleHold * scale,
+      hold: s.hold * scale,
+      endHold: s.endHold,
+      dissolve: fadeFor(format, styleKey),
+      burst: look.hook === "burst",
+      vocab: look.cut === "punch" ? "energy" : null,
+      seed,
     });
-    segs.push({ kind: "end", start: t, end: t + s.endHold + fade, hold: s.endHold });
-    return { segs, total: t + s.endHold, plan: null, flashes };
     // `s` carries the length's hold, so the total redraws when Length changes.
   }, [selectedPhotos, s, format, styleKey]);
 
@@ -421,15 +414,17 @@ export default function ListingReelPage() {
       let logo: ImageBitmap | null = null;
       if (broker.logoUrl) { try { logo = await loadBitmap(broker.logoUrl); } catch { logo = null; } }
 
-      // The timeline: segments for a single-photo film, or the Stack's plan.
-      const { segs, total, plan, flashes } = timeline;
+      // The timeline: units (photos, stack runs, the end card) and the
+      // transitions that join them.
+      const { units, starts, transitions, total, flashes } = timeline;
+      const stacked = units.some((u) => u.kind === "stack");
 
       // Soft backdrops for "whole photo" mode — blurred once per photo, not per frame.
       const backdrops: (HTMLCanvasElement | null)[] = bitmaps.map((bmp) => {
         // Only the full-bleed "whole photo" mode floats on a blurred plate.
         // The inset and letterbox looks have their own ground — a blur
         // painted over the Gallery page (on a dark brand ground) wiped it out.
-        if (fit !== "whole" || st.light || backdrop !== "scrim" || plan) return null;
+        if (fit !== "whole" || st.light || backdrop !== "scrim" || stacked) return null;
         const c = document.createElement("canvas");
         c.width = Math.round(W / 4); c.height = Math.round(H / 4);
         const bctx = c.getContext("2d")!;
@@ -516,7 +511,11 @@ export default function ListingReelPage() {
 
       const drawPhoto = (i: number, localT: number, hold: number, alpha: number) => {
         const bmp = bitmaps[i];
-        const drift = ease(localT / (hold + fade));
+        // The drift runs to the end of the outgoing transition, so the
+        // photograph never freezes while a dissolve or dip carries it out.
+        // Dealt transitions run up to 0.44s; the quiet looks' crossfade is `fade`.
+        const outDur = st.cut === "punch" ? 0.45 : fade;
+        const drift = ease(localT / (hold + outDur));
         ctx.save();
         ctx.globalAlpha = alpha;
 
@@ -536,7 +535,7 @@ export default function ListingReelPage() {
           // The punch: land tight, snap back most of the way in a third of a
           // second, then drift the rest. Reads as a cut with impact rather
           // than a slide — the grammar of a fast boat.
-          const snap = ease(Math.min(1, localT / 0.32));
+          const snap = ease(Math.min(1, localT / 0.45));
           const settle = 1 + st.zoom * 0.35 * (1 - drift);
           k = (1 + st.zoom) + (settle - (1 + st.zoom)) * snap;
         } else {
@@ -551,7 +550,7 @@ export default function ListingReelPage() {
         // The Stack's hero and burst are always full-bleed — the framing chips
         // are hidden for it, so a "whole photo" choice left over from another
         // look must not leak in.
-        const showWhole = backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox" && !plan);
+        const showWhole = backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox" && !stacked);
         if (!showWhole) {
           // Cover the window.
           const base = Math.max(frame.w / bmp.width, frame.h / bmp.height);
@@ -929,6 +928,9 @@ export default function ListingReelPage() {
       const rowH = (stackBottom - stackTop - stackGap * 2) / 3;
       const rowRect = (r: number) => ({ x: 0, y: stackTop + r * (rowH + stackGap), w: W, h: rowH });
 
+      /** The whole stack's opacity while a transition is carrying it in or out. */
+      let stackAlpha = 1;
+
       /** One photograph covering a band, shifted by `dx`, zoomed, optionally smeared sideways. */
       const drawBand = (index: number, r: { x: number; y: number; w: number; h: number }, dx: number, zoom: number, smear: number) => {
         const bmp = bitmaps[index];
@@ -941,21 +943,26 @@ export default function ListingReelPage() {
         if (smear > 0.5) {
           // A directional smear — the frame is moving too fast to resolve.
           // Three copies spread along the motion axis; cheap and convincing.
-          ctx.globalAlpha = 0.36;
+          ctx.globalAlpha = stackAlpha * 0.36;
           ctx.drawImage(bmp, x - smear, y, dw, dh);
           ctx.drawImage(bmp, x + smear, y, dw, dh);
-          ctx.globalAlpha = 0.5;
+          ctx.globalAlpha = stackAlpha * 0.5;
           ctx.drawImage(bmp, x, y, dw, dh);
         } else {
+          ctx.globalAlpha = stackAlpha;
           ctx.drawImage(bmp, x, y, dw, dh);
         }
         ctx.restore();
       };
 
-      const drawStack = (events: StackEvent[], runEnd: number, t: number) => {
-        if (!plan) return;
+      /** A stack run at `t` seconds into the run; `runEnd` is its hold. */
+      const drawStack = (events: StackEvent[], runEnd: number, t: number, alpha: number) => {
+        stackAlpha = alpha;
+        ctx.save();
+        ctx.globalAlpha = alpha;
         ctx.fillStyle = st.ground;
         ctx.fillRect(0, 0, W, H);
+        ctx.restore();
         for (let r = 0; r < 3; r++) {
           const state = rowState(events, r, t);
           if (!state) continue;
@@ -980,8 +987,12 @@ export default function ListingReelPage() {
         }
         // Hairline seams between the bands — the ground shows through the gap,
         // and a thin light rule keeps the three from reading as one collage.
+        ctx.save();
+        ctx.globalAlpha = alpha;
         ctx.fillStyle = "rgba(255,255,255,0.10)";
         for (let r = 1; r < 3; r++) ctx.fillRect(0, rowRect(r).y - stackGap, W, stackGap);
+        ctx.restore();
+        stackAlpha = 1;
       };
 
       const drawWatermark = () => {
@@ -997,6 +1008,36 @@ export default function ListingReelPage() {
         ctx.restore();
       };
 
+      // The title: up quickly over the opening push, then held — a name
+      // that's only legible for a second reads as a glitch, not a title.
+      // Gone just before the cut. A punch look brings it in faster.
+      const titleAlpha = (local: number, hold: number) => {
+        const quick = st.cut === "punch";
+        const tIn = ease((local - (quick ? 0.15 : 0.3)) / (quick ? 0.35 : 0.6));
+        const tOut = 1 - ease((local - (hold - (quick ? 0.35 : 0.7))) / (quick ? 0.3 : 0.6));
+        return Math.min(tIn, tOut);
+      };
+
+      /**
+       * One unit of the film, whole-frame, at the opacity it's given. Every
+       * transition is built from two of these — the outgoing and the incoming
+       * — so a stack run, a photograph and the end card all cut the same way.
+       */
+      const drawUnit = (k: number, alpha: number, t: number) => {
+        const u = units[k];
+        const local = t - starts[k];
+        if (u.kind === "photo") {
+          drawPhoto(u.index, local, u.hold, alpha);
+          if (k === 0) drawTitle(titleAlpha(local, u.hold) * alpha);
+          // Burst frames are too quick to read a caption on.
+          else if (!u.burst && !stacked) drawRoomLabel(u.index, local, u.hold, alpha);
+        } else if (u.kind === "stack") {
+          drawStack(u.events, u.hold, local, alpha);
+        } else {
+          drawEndCard(alpha);
+        }
+      };
+
       for (let f = 0; f < totalFrames; f++) {
         if (cancelRef.current) { await output.cancel(); setPhase("idle"); return; }
         const t = f / FPS;
@@ -1004,66 +1045,16 @@ export default function ListingReelPage() {
         ctx.fillStyle = st.ground;
         ctx.fillRect(0, 0, W, H);
 
-        // The title: up quickly over the opening push, then held — a name
-        // that's only legible for a second reads as a glitch, not a title.
-        // Gone just before the cut. A punch look brings it in faster.
-        const titleAlpha = (local: number, hold: number) => {
-          const quick = st.cut === "punch";
-          const tIn = ease((local - (quick ? 0.15 : 0.3)) / (quick ? 0.35 : 0.6));
-          const tOut = 1 - ease((local - (hold - (quick ? 0.35 : 0.7))) / (quick ? 0.3 : 0.6));
-          return Math.min(tIn, tOut);
-        };
-
-        if (plan) {
-          // ── The Stack ─────────────────────────────────────────────────
-          if (t < plan.stackStart) {
-            // Index arithmetic, not a search — a frame can't fall through a
-            // floating-point crack between two burst windows.
-            const k = t >= plan.heroHold ? Math.floor((t - plan.heroHold) / BURST_DT) : -1;
-            const b = k >= 0 && k < plan.burst.length ? plan.burst[k] : null;
-            if (b) {
-              drawPhoto(b.index, t - b.start, BURST_DT, 1);
-            } else {
-              drawPhoto(0, t, plan.heroHold, 1);
-              drawTitle(titleAlpha(t, plan.heroHold));
-            }
-          } else if (t < plan.endStart) {
-            // Which movement are we in — a stack run or a full-frame single?
-            const ph = plan.phases.find((x) => t >= x.start && t < x.end) ?? plan.phases[plan.phases.length - 1];
-            if (!ph) {
-              drawEndCard(1);
-            } else if (ph.kind === "stack") {
-              drawStack(ph.events, ph.end, t);
-            } else {
-              drawPhoto(ph.index, t - ph.start, ph.hold, 1);
-            }
-          } else {
-            drawEndCard(1);
-          }
+        // Which unit owns this instant — and are we inside the transition
+        // that brought it in?
+        let k = units.length - 1;
+        while (k > 0 && t < starts[k]) k--;
+        const tr = k > 0 ? transitions[k - 1] : null;
+        if (tr && tr.dur > 0 && t < starts[k] + tr.dur) {
+          const p = (t - starts[k]) / tr.dur;
+          drawTransition(ctx, W, H, tr, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t));
         } else {
-          // Which segments touch this instant? At most two during a crossfade.
-          const active = segs.filter((sg) => t >= sg.start && t < sg.end);
-          for (const sg of active) {
-            const local = t - sg.start;
-            const hold = sg.hold;
-            // Fade in over `fade` (except the very first photo), fade out over the
-            // last `fade` of the segment — the next segment is fading in beneath.
-            // For a punch look `fade` is a few frames: effectively a hard cut.
-            const fadeIn = sg.start === 0 ? 1 : ease(local / fade);
-            const fadeOut = sg.kind === "end" ? 1 : 1 - ease((local - hold) / fade);
-            const alpha = Math.min(fadeIn, fadeOut);
-            if (sg.kind === "photo") {
-              drawPhoto(sg.index, local, hold, alpha);
-              if (sg.index === 0) {
-                drawTitle(titleAlpha(local, hold) * alpha);
-              } else if (hold > BURST_DT) {
-                // Burst frames are too quick to read a caption on.
-                drawRoomLabel(sg.index, local, hold, alpha);
-              }
-            } else {
-              drawEndCard(alpha);
-            }
-          }
+          drawUnit(k, 1, t);
         }
 
         // The flash on a hard cut — white, a tenth of a second, gone.
