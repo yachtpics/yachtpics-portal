@@ -33,10 +33,11 @@ export const BEAT = 0.5;
 
 /**
  * Flash-burst frames: each photo held for this long, white flash on the cut.
- * A fifth of a second read as skipping on a boat (Charlie, Svengali); a third
- * is quick enough to be a burst and slow enough to register each frame.
+ * A fifth of a second read as skipping on a boat, a third still went by
+ * unseen (Charlie, Svengali/Intrepid: "we are delivering photos to be
+ * seen"). Half a second is a quick cut you can actually read.
  */
-export const BURST_DT = 0.34;
+export const BURST_DT = 0.5;
 /** Photos in the burst (after the hero). Fewer if the reel has fewer photos. */
 export const BURST_MAX = 3;
 /** A reel needs at least this many photos before it earns a burst. */

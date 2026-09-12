@@ -118,6 +118,22 @@ type ListingData = {
 
 type BrokerCard = { name: string; brokerage: string | null; phone: string | null; email: string | null; website: string | null; logoUrl: string | null };
 
+/**
+ * YachtPics as the "broker" — for our own advertising. An admin flips the
+ * switch on any listing's Reel page and the end card, colours and call to
+ * action become ours. The logo is the white-on-transparent mark in
+ * /public/brand; the card carries the site, not a person.
+ */
+const YACHTPICS_CARD: BrokerCard = {
+  name: "YachtPics",
+  brokerage: "Yacht photography & delivery",
+  phone: null,
+  email: "hello@yachtpics.com",
+  website: "yachtpics.com",
+  logoUrl: "/brand/yachtpics-logo-white.png",
+};
+const YACHTPICS_COLORS: BrandColors = { accent: "#c39e4e", ground: "#050b14" };
+
 function safeName(s: string | null | undefined) {
   return (s ?? "listing").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "listing";
 }
@@ -151,6 +167,11 @@ export default function ListingReelPage() {
   // choices remembered — an admin or assistant trying colours on someone
   // else's boat must not rewrite that broker's brand.
   const [isOwner, setIsOwner] = useState(false);
+  // Admins only: brand the reel as YachtPics itself — our logo, our contact,
+  // our colours, "Book a shoot" — so any boat we've photographed becomes our
+  // own advertising. Brokers never see the switch.
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [ypBrand, setYpBrand] = useState(false);
   const brandSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // An ORDERED list, not a set: the order the broker taps is the order the
   // reel plays. The number on each thumbnail is its place in the film.
@@ -196,6 +217,10 @@ export default function ListingReelPage() {
       setListing(l as ListingData);
       const { data: { user: me } } = await supabase.auth.getUser();
       setIsOwner(!!me && me.id === l.broker_id);
+      if (me) {
+        const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
+        setIsAdmin(meProf?.role === "admin");
+      }
 
       // During the open house the Reel is unlocked for everyone — subscribed,
       // trialling or lapsed. Every other paid tool keeps its own gate.
@@ -358,7 +383,10 @@ export default function ListingReelPage() {
     setPhase("loading");
     setProgress(0);
 
-    const st = applyBrand(REEL_STYLES[styleKey], brand);
+    // Whose film is this? The broker's, or — admin only — YachtPics' own ad.
+    const yp = ypBrand && isAdmin;
+    const card: BrokerCard = yp ? YACHTPICS_CARD : broker;
+    const st = applyBrand(REEL_STYLES[styleKey], yp ? YACHTPICS_COLORS : brand);
     const fade = fadeFor(format, styleKey);
     // Letterbox is a vertical device — bars on an already-widescreen film just
     // shrink the picture, so the cinematic look keeps its type and its slow
@@ -412,7 +440,7 @@ export default function ListingReelPage() {
       }
 
       let logo: ImageBitmap | null = null;
-      if (broker.logoUrl) { try { logo = await loadBitmap(broker.logoUrl); } catch { logo = null; } }
+      if (card.logoUrl) { try { logo = await loadBitmap(card.logoUrl); } catch { logo = null; } }
 
       // The timeline: units (photos, stack runs, the end card) and the
       // transitions that join them.
@@ -462,10 +490,12 @@ export default function ListingReelPage() {
       // A written headline takes the line above the name; the builder doesn't
       // get dropped for it, it moves down into the spec row. The facts stay on
       // screen either way.
+      // A YachtPics ad with no headline of its own leads with the byline.
       const usingHeadline = useHeadline && headline.trim().length > 0;
-      const maker = usingHeadline ? headline.trim() : builder;
+      const lead = usingHeadline ? headline.trim() : yp ? "Photographed by YachtPics" : null;
+      const maker = lead ?? builder;
       const specBits = [
-        usingHeadline && builder ? builder : null,
+        lead && builder ? builder : null,
         listing.length_ft ? `${listing.length_ft}′` : null,
         listing.vessel_type,
         listing.staterooms ? `${listing.staterooms} Staterooms` : null,
@@ -575,13 +605,20 @@ export default function ListingReelPage() {
           // The inset window already carries its page margin; a second one
           // inside it shrank the photograph for nothing.
           const margin = backdrop === "inset" ? 0 : 0.055 * Math.min(frame.w, frame.h);
-          const base = Math.min((frame.w - margin * 2) / bmp.width, (frame.h - margin * 2) / bmp.height);
+          // The title photo on a reel keeps the top band for the name: the
+          // whole photograph sits below it, and a tall one is scaled to fit
+          // the room that leaves.
+          const titled = i === 0 && topType && backdrop === "scrim";
+          const top = titled ? H * 0.40 : frame.y + margin;
+          const availH = titled ? H - top - margin : frame.h - margin * 2;
+          const base = Math.min((frame.w - margin * 2) / bmp.width, availH / bmp.height);
           const zoom = base * (1 + (k - 1) * 0.45);
           const dw = bmp.width * zoom, dh = bmp.height * zoom;
           ctx.shadowColor = st.light ? "rgba(20,26,33,0.20)" : "rgba(0,0,0,0.45)";
           ctx.shadowBlur = (st.light ? 30 : 40) * sc;
           ctx.shadowOffsetY = (st.light ? 10 : 12) * sc;
-          const px = frame.x + (frame.w - dw) / 2, py = frame.y + (frame.h - dh) / 2;
+          const px = frame.x + (frame.w - dw) / 2;
+          const py = titled ? top + (availH - dh) / 2 : frame.y + (frame.h - dh) / 2;
           ctx.drawImage(bmp, px, py, dw, dh);
           photoRect = { x: px, y: py, w: dw, h: dh };
         }
@@ -698,8 +735,10 @@ export default function ListingReelPage() {
           // Tinted to the ground, so a navy brand gets a navy scrim and the
           // Classic look keeps its warmth without a special case. Runs from
           // whichever edge the type sits against.
+          // On a Stack the whole photograph starts at 40%; the scrim stops
+          // short of it so the print isn't tinted.
           const g = topType
-            ? ctx.createLinearGradient(0, 0, 0, H * 0.52)
+            ? ctx.createLinearGradient(0, 0, 0, H * (stacked ? 0.39 : 0.52))
             : ctx.createLinearGradient(0, H * 0.42, 0, H);
           g.addColorStop(0, rgba(st.ground, topType ? 0.78 : 0));
           g.addColorStop(1, rgba(st.ground, topType ? 0 : 0.84));
@@ -871,29 +910,32 @@ export default function ListingReelPage() {
 
         if (logo) {
           const aspect = logo.width / logo.height;
-          let lw = 360 * sc, lh = lw / aspect;
+          // A wide wordmark (the YachtPics mark is 6.5:1) gets the width it
+          // needs; a squarer brokerage crest keeps the 360px column.
+          let lw = (aspect > 3 ? W * 0.62 : 360 * sc), lh = lw / aspect;
           const maxLh = 150 * sc;
           if (lh > maxLh) { lh = maxLh; lw = lh * aspect; }
           items.push({ h: lh + 44 * sc, draw: (y) => { ctx.globalAlpha = alpha * 0.96; ctx.drawImage(logo!, cx - lw / 2, y, lw, lh); ctx.globalAlpha = alpha; } });
         }
         // The person: clearly secondary to the boat. Regular weight, and in
-        // the serif looks the serif at its book weight rather than bold.
+        // the serif looks the serif at its book weight rather than bold. On a
+        // YachtPics card the wordmark already says the name, so it's skipped.
         const nameSize = 48 * sc;
-        items.push({ h: nameSize + 16 * sc, draw: (y) => {
+        if (!(yp && logo)) items.push({ h: nameSize + 16 * sc, draw: (y) => {
           ctx.fillStyle = st.text;
           ctx.font = `${st.serifHeadline ? 500 : 400} ${nameSize}px ${endFamily}`;
           ctx.textAlign = "center";
-          ctx.fillText(broker.name, cx, y + nameSize * 0.8); ctx.textAlign = "left";
+          ctx.fillText(card.name, cx, y + nameSize * 0.8); ctx.textAlign = "left";
         } });
-        if (broker.brokerage) items.push({ h: capSize + 22 * sc, draw: (y) => {
+        if (card.brokerage) items.push({ h: capSize + 22 * sc, draw: (y) => {
           ctx.fillStyle = st.soft; ctx.font = `600 ${capSize - 3 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, broker.brokerage!.toUpperCase(), cx, y + capSize, 7 * sc);
+          fillTrackedCentered(ctx, card.brokerage!.toUpperCase(), cx, y + capSize, 7 * sc);
         } });
         // Phone and site if we have them; the broker's email if we don't. A
         // "request a private showing" with nothing under it is a door with
         // no handle.
-        const contactBits = [broker.phone, broker.website?.replace(/^https?:\/\//, "").replace(/\/$/, "")].filter(Boolean) as string[];
-        if (contactBits.length === 0 && broker.email) contactBits.push(broker.email);
+        const contactBits = [card.phone, card.website?.replace(/^https?:\/\//, "").replace(/\/$/, "")].filter(Boolean) as string[];
+        if (contactBits.length === 0 && card.email) contactBits.push(card.email);
         const contact = contactBits.join("   ·   ");
         if (contact) items.push({ h: capSize + 48 * sc, draw: (y) => {
           ctx.fillStyle = st.accent; ctx.font = `500 ${capSize}px ${sans}`;
@@ -903,17 +945,19 @@ export default function ListingReelPage() {
         // doesn't crowd the contact line.
         items.push({ h: capSize + 44 * sc, draw: (y) => {
           ctx.fillStyle = st.quiet; ctx.font = `500 ${22 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, "REQUEST A PRIVATE SHOWING", cx, y + capSize + 40 * sc, 7 * sc);
+          fillTrackedCentered(ctx, yp ? "BOOK YOUR SHOOT" : "REQUEST A PRIVATE SHOWING", cx, y + capSize + 40 * sc, 7 * sc);
         } });
 
         const stackH = items.reduce((a, b) => a + b.h, 0);
         let y = (H - stackH) / 2;
         for (const it of items) { it.draw(y); y += it.h; }
 
-        // Quiet credit line — the portal's own mark.
-        ctx.fillStyle = st.light ? "rgba(20,26,33,0.32)" : "rgba(255,255,255,0.30)";
-        ctx.font = `500 ${18 * sc}px ${sans}`;
-        fillTrackedCentered(ctx, "YACHTPICS", cx, H - 60 * sc, 6 * sc);
+        // Quiet credit line — the portal's own mark (redundant on our own card).
+        if (!yp) {
+          ctx.fillStyle = st.light ? "rgba(20,26,33,0.32)" : "rgba(255,255,255,0.30)";
+          ctx.font = `500 ${18 * sc}px ${sans}`;
+          fillTrackedCentered(ctx, "YACHTPICS", cx, H - 60 * sc, 6 * sc);
+        }
         ctx.restore();
       };
 
@@ -1077,7 +1121,7 @@ export default function ListingReelPage() {
           // In a Stack, the full-frame singles show the whole photograph —
           // a horizontal floats whole on a soft plate, a vertical fills the
           // frame. The hero and the burst stay full-bleed.
-          const whole = stacked && k > 0 && !u.burst ? true : undefined;
+          const whole = stacked && !u.burst ? true : undefined;
           drawPhoto(u.index, local, u.hold, alpha, whole);
           if (k === 0) drawTitle(titleAlpha(local, u.hold) * alpha);
           // Burst frames are too quick to read a caption on.
@@ -1420,6 +1464,25 @@ export default function ListingReelPage() {
         {brandError && <p className="mt-1.5 text-xs text-danger-700">{brandError}</p>}
       </div>
 
+      {/* Admin only: brand the film as YachtPics — our own advertising. */}
+      {isAdmin && (
+        <div className="mb-5 rounded-card border border-accent-500/40 bg-accent-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="label-caps text-ink-500">YachtPics ad</p>
+            <button
+              onClick={() => { setYpBrand((v) => !v); setResult(null); setPhase("idle"); }}
+              disabled={busy}
+              className={chip(ypBrand)}
+            >
+              {ypBrand ? "Branded as YachtPics" : "Brand as YachtPics"}
+            </button>
+          </div>
+          <p className="text-xs text-ink-400 mt-1.5">
+            Our logo, colours and &ldquo;Book your shoot&rdquo; on the end card, and &ldquo;Photographed by YachtPics&rdquo; over the opening frame unless you write a headline. The broker&rsquo;s card is left out. For our own Instagram and Facebook only — download it or send it to your phone; don&rsquo;t add it to the listing.
+          </p>
+        </div>
+      )}
+
       {/* Options */}
       <div className="grid sm:grid-cols-2 gap-4 mb-5">
         {/* Length — the reel's call alone; the film has one timing. */}
@@ -1623,7 +1686,7 @@ export default function ListingReelPage() {
                     className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">
                     {sendingPhone ? `Sending… ${phonePct}%` : "📱 Send to my phone"}
                   </button>
-                  {result.format === "film" && (
+                  {result.format === "film" && !ypBrand && (
                     <button onClick={addToListing} disabled={adding || added}
                       className="text-sm font-semibold px-6 py-2.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 disabled:opacity-50 transition-colors">
                       {added ? "✓ Added to this listing" : adding ? "Adding…" : "Add film to this listing"}
