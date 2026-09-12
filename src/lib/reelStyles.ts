@@ -72,7 +72,7 @@ export type ReelStyle = {
    */
   layout?: "single" | "stack";
   /**
-   * "burst": a four-photo flash burst straight after the title — the
+   * "burst": a three-photo flash burst straight after the title — the
    * near-subliminal cuts that stop a thumb in the first three seconds.
    */
   hook?: "none" | "burst";
@@ -198,7 +198,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Energy — for the boats that go fast.
    *
-   * Opens on a four-photo flash burst, then a dealt vocabulary of cuts —
+   * Opens on a three-photo flash burst, then a dealt vocabulary of cuts —
    * whip, push, wipe, zoom-through, flash, a quick dissolve, a dip — never
    * the same move twice running. A soft punch-in settles on every photo.
    * The register of a good CapCut edit, without the glitches and light
@@ -233,7 +233,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Stack — the fast boat's reel, done the way the good ones are done.
    *
-   * Hero frame with the name, a four-photo flash burst, then the frame splits
+   * Hero frame with the name, a three-photo flash burst, then the frame splits
    * into three horizontal bands that whip in and swap one per beat. Every
    * landscape photograph shows whole; there are always three views of the
    * boat on screen; the frame is never empty. Timed to a 120 BPM grid so the

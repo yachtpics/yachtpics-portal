@@ -48,13 +48,15 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   every look (`planSingles` for the five, `planStack` for Stack); quiet looks
   dissolve as before. Energy softened: zoom .07, holdScale .9 (~30s Full),
   weight 700, slower snap. Stack uses the same vocabulary between movements.
+  Burst slowed to 3 × 0.34s after Charlie: "first 4 or 5 photos flashed by too
+  fast, second half looked good."
 - **Safe zone + length.** On 9:16 reels the title, spec and room captions now
   sit in the band from 16% down (Instagram covers the top 14% and bottom 35%);
   picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so
   it never enters the picture. New Length chips: Full (~40s, 18 photos,
   default) / Short (~20s, 10 photos), reel only.
 - **Stack look + flash burst.** Sixth look `stack` (`src/lib/reelStack.ts`
-  plans it): hero + title → 4-photo flash burst (0.2s each, white flash on each
+  plans it): hero + title → 3-photo flash burst (0.34s each, white flash on each
   cut) → **movements**: runs of three full-height bands whip-swapping one per
   beat (3–5 swaps) alternating with one or two full-frame singles, lengths
   from a seeded rng (same boat + photos = same film), photos cycle so the

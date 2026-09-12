@@ -29,10 +29,14 @@ import {
 /** One beat at 120 BPM. */
 export const BEAT = 0.5;
 
-/** Flash-burst frames: each photo held for this long, white flash on the cut. */
-export const BURST_DT = 0.2;
+/**
+ * Flash-burst frames: each photo held for this long, white flash on the cut.
+ * A fifth of a second read as skipping on a boat (Charlie, Svengali); a third
+ * is quick enough to be a burst and slow enough to register each frame.
+ */
+export const BURST_DT = 0.34;
 /** Photos in the burst (after the hero). Fewer if the reel has fewer photos. */
-export const BURST_MAX = 4;
+export const BURST_MAX = 3;
 /** A reel needs at least this many photos before it earns a burst. */
 export const BURST_MIN_PHOTOS = 7;
 
@@ -78,8 +82,8 @@ function finish(units: Unit[], transitions: Transition[]): Timeline {
  * The single-photo film — every look but the Stack.
  *
  * `vocab` null → dissolves throughout (the quiet looks). With a vocabulary,
- * the transitions are dealt; with `burst`, the four photos after the title
- * flash past at a fifth of a second each.
+ * the transitions are dealt; with `burst`, the three photos after the title
+ * flash past at a third of a second each.
  */
 export function planSingles(n: number, opts: {
   titleHold: number; hold: number; endHold: number; dissolve: number;
@@ -126,7 +130,7 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
   for (let k = 0; k < burstN; k++) units.push({ kind: "photo", index: 1 + k, hold: BURST_DT, burst: true });
 
   // The deal: the photos after the burst, then round again with the hero
-  // and burst photos, so a shot glimpsed for a fifth of a second gets its
+  // and burst photos, so a shot glimpsed for a third of a second gets its
   // full-frame moment later.
   const pool: number[] = [];
   for (let i = 1 + burstN; i < n; i++) pool.push(i);
