@@ -17,8 +17,12 @@
 
 /** Opens Sept 9 2026, 00:00 ET. */
 export const REEL_PROMO_START = "2026-09-09T04:00:00Z";
-/** Closes at the end of Sept 23 2026 ET. */
-export const REEL_PROMO_END = "2026-09-24T03:59:59Z";
+/**
+ * Closes at the end of Sept 30 2026 ET. Pushed out a week on Sept 11 so the
+ * announcement could wait for the Stack look — Charlie wanted them to have
+ * the polished tool for a full fortnight, not a rolling one.
+ */
+export const REEL_PROMO_END = "2026-10-01T03:59:59Z";
 
 export function reelPromoActive(now: Date = new Date()): boolean {
   const t = now.getTime();
@@ -40,7 +44,7 @@ export function reelPromoCountdown(now: Date = new Date()): string {
   return `${d} days left`;
 }
 
-/** Human date the window closes, e.g. "September 23". */
+/** Human date the window closes, e.g. "September 30". */
 export function reelPromoEndsOn(): string {
   return new Date(Date.parse(REEL_PROMO_END)).toLocaleDateString("en-US", {
     month: "long",

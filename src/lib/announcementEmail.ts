@@ -20,7 +20,7 @@ export const ANNOUNCEMENT_SUBJECT = "Your photos are now a reel — free for two
 // guarantees a single send. Manual "Send to all" from the admin page works too,
 // which is how this one is meant to go out — the fortnight starts when it lands.
 export const ANNOUNCEMENT_SEND_AFTER = "2026-09-09T12:00:00Z";
-export const ANNOUNCEMENT_SEND_BEFORE = "2026-09-20T13:00:00Z";
+export const ANNOUNCEMENT_SEND_BEFORE = "2026-09-27T13:00:00Z";
 
 export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
   const { firstName, unsubToken } = opts;
@@ -49,7 +49,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open any listing and you&rsquo;ll find a new button: <strong style="color:#111827;">Reel</strong>. Click it and the photographs you already have &mdash; in the order you&rsquo;ve set them, your cover shot first &mdash; come back as a finished video. About twenty seconds, ready to post.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Not a slideshow with a logo on the front. You choose the look &mdash; five of them, from the restrained brochure register to a slow letterboxed cut to a fast hard-cut edit built for centre consoles &mdash; set it in your own brand colours (or press Match my logo and let it find them), and it renders right there in your browser in under a minute. Vertical for Instagram and Facebook, or widescreen to send a buyer and add straight to the listing.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Not a slideshow with a logo on the front. You choose the look &mdash; six of them, from the restrained brochure register to a slow letterboxed cut to a fast hard-cut edit and a three-band, whip-cut reel built for centre consoles &mdash; set it in your own brand colours (or press Match my logo and let it find them), and it renders right there in your browser in under a minute. Vertical for Instagram and Facebook, or widescreen to send a buyer and add straight to the listing.</p>
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">When it&rsquo;s done, press <strong style="color:#111827;">Send to my phone</strong>: a code appears on screen, you point your phone at it, and the reel is in your camera roll &mdash; ready to post with whatever audio you like. Turn on room labels if you want each space named on screen; leave them off if you&rsquo;d rather the photography speak.</p>
 

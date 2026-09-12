@@ -179,7 +179,7 @@ export async function draftReelCopy(
     "Write about what is actually visible in those photographs. Never invent equipment, materials, history, or numbers.",
     "Rules: no exclamation marks. No 'stunning', 'must-see', 'dream', 'turn-key', 'don't miss', 'welcome aboard'. No emoji.",
     "Do not state the price. Do not open with the vessel name — the film already shows it.",
-    "headline: at most SIX words, no full stop, evoking what the photographs show. It sits over the opening frame. May be \"\" if nothing good fits.",
+    "headline: three to six words, under 40 characters, no full stop, evoking what the photographs show. It sits over the opening frame in one line. May be \"\" if nothing good fits.",
     "caption: 2–3 sentences, 35–60 words, for Instagram and Facebook. End with a quiet invitation to enquire — never a hard sell.",
     "hashtags: 6–9, lowercase, no punctuation beyond the #, mixing the builder, the type and the cruising ground where known.",
     "Reply with JSON only: {\"headline\":\"...\",\"caption\":\"...\",\"hashtags\":[\"#...\"]}",
@@ -197,10 +197,18 @@ export async function draftReelCopy(
   const parsed = extractJson<Partial<ReelCopy>>(reply);
   const tidy = (s: unknown) => (typeof s === "string" ? s.trim() : "");
   const tags = Array.isArray(parsed?.hashtags) ? parsed!.hashtags : [];
+  // A long headline is cut back on a WORD, never mid-word: the model was asked
+  // for under 40 characters, the title wraps if it must, and "Twin Diesels,
+  // One Ow" is worse than no headline at all.
+  const headline = (() => {
+    const h = tidy(parsed?.headline).replace(/[."']+$/, "");
+    if (h.length <= 48) return h;
+    const cut = h.slice(0, 48);
+    const sp = cut.lastIndexOf(" ");
+    return (sp > 20 ? cut.slice(0, sp) : cut).replace(/[,;:\-–—]+$/, "");
+  })();
   return {
-    // Trimmed hard: at 44px italic on a 1080-wide frame, 34 characters is the
-    // most that fits on one line. A headline that wraps isn't a headline.
-    headline: tidy(parsed?.headline).replace(/[."']+$/, "").slice(0, 34),
+    headline,
     caption: tidy(parsed?.caption),
     hashtags: tags
       .map((t) => tidy(t))

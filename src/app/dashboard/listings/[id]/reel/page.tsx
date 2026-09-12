@@ -21,6 +21,7 @@ import {
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
+import { planStack, rowState, whipEase, flashAlpha, BURST_DT, BURST_MAX, BURST_MIN_PHOTOS } from "@/lib/reelStack";
 import RetryImg from "@/components/RetryImg";
 
 /**
@@ -99,7 +100,7 @@ function capFor(format: Format, length: Length) {
 const FPS = 30;
 
 // Palette now lives with each look in @/lib/reelStyles — a 2D context can't
-// read Tailwind, and the four styles need genuinely different grounds.
+// read Tailwind, and the six styles need genuinely different grounds.
 
 type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number; thumb: string | null };
 
@@ -111,7 +112,9 @@ type ListingData = {
 
 type BrokerCard = { name: string; brokerage: string | null; phone: string | null; email: string | null; website: string | null; logoUrl: string | null };
 
-type Segment = { kind: "photo"; index: number; start: number; end: number } | { kind: "end"; start: number; end: number };
+type Segment =
+  | { kind: "photo"; index: number; start: number; end: number; hold: number }
+  | { kind: "end"; start: number; end: number; hold: number };
 
 function safeName(s: string | null | undefined) {
   return (s ?? "listing").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "listing";
@@ -316,19 +319,35 @@ export default function ListingReelPage() {
     REEL_STYLES[key].cut === "punch" ? 0.08 : SPEC[fmt].fade;
 
   const timeline = useMemo(() => {
-    const scale = REEL_STYLES[styleKey].holdScale;
+    const look = REEL_STYLES[styleKey];
+    const scale = look.holdScale;
     const fade = fadeFor(format, styleKey);
+    const n = selectedPhotos.length;
+
+    // The Stack look has its own clock — hero, burst, then bands on the beat.
+    // Only on a 9:16 reel; a film has no vertical to stack into.
+    if (look.layout === "stack" && format === "reel") {
+      const plan = planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold: s.endHold });
+      return { segs: [] as Segment[], total: plan.total, plan, flashes: plan.flashes };
+    }
+
+    // A burst hook: the four photos after the title flash past at a fifth of
+    // a second each, then the film settles into its beat.
+    const burstN = look.hook === "burst" && n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
     const segs: Segment[] = [];
+    const flashes: number[] = [];
     let t = 0;
     selectedPhotos.forEach((_, i) => {
       // Every photo after the title holds for exactly the same beat. Varying it
       // per photo is the thing that makes a slideshow feel restless.
-      const hold = (i === 0 ? s.titleHold : s.hold) * scale;
-      segs.push({ kind: "photo", index: i, start: t, end: t + hold + fade });
+      const inBurst = i >= 1 && i <= burstN;
+      const hold = i === 0 ? s.titleHold * scale : inBurst ? BURST_DT : s.hold * scale;
+      if (inBurst || (burstN > 0 && i === burstN + 1)) flashes.push(t);
+      segs.push({ kind: "photo", index: i, start: t, end: t + hold + fade, hold });
       t += hold;
     });
-    segs.push({ kind: "end", start: t, end: t + s.endHold + fade });
-    return { segs, total: t + s.endHold };
+    segs.push({ kind: "end", start: t, end: t + s.endHold + fade, hold: s.endHold });
+    return { segs, total: t + s.endHold, plan: null, flashes };
     // `s` carries the length's hold, so the total redraws when Length changes.
   }, [selectedPhotos, s, format, styleKey]);
 
@@ -402,12 +421,15 @@ export default function ListingReelPage() {
       let logo: ImageBitmap | null = null;
       if (broker.logoUrl) { try { logo = await loadBitmap(broker.logoUrl); } catch { logo = null; } }
 
+      // The timeline: segments for a single-photo film, or the Stack's plan.
+      const { segs, total, plan, flashes } = timeline;
+
       // Soft backdrops for "whole photo" mode — blurred once per photo, not per frame.
       const backdrops: (HTMLCanvasElement | null)[] = bitmaps.map((bmp) => {
         // Only the full-bleed "whole photo" mode floats on a blurred plate.
         // The inset and letterbox looks have their own ground — a blur
         // painted over the Gallery page (on a dark brand ground) wiped it out.
-        if (fit !== "whole" || st.light || backdrop !== "scrim") return null;
+        if (fit !== "whole" || st.light || backdrop !== "scrim" || plan) return null;
         const c = document.createElement("canvas");
         c.width = Math.round(W / 4); c.height = Math.round(H / 4);
         const bctx = c.getContext("2d")!;
@@ -434,7 +456,6 @@ export default function ListingReelPage() {
 
       setPhase("rendering");
       setProgress(0);
-      const { segs, total } = timeline;
       const totalFrames = Math.ceil(total * FPS);
 
       // Text prepared once.
@@ -527,7 +548,10 @@ export default function ListingReelPage() {
         // An inset look always shows the complete photograph — cropping a
         // 121-footer to a square to fill the window loses her bow and stern,
         // which is the opposite of what a gallery is for.
-        const showWhole = backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox");
+        // The Stack's hero and burst are always full-bleed — the framing chips
+        // are hidden for it, so a "whole photo" choice left over from another
+        // look must not leak in.
+        const showWhole = backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox" && !plan);
         if (!showWhole) {
           // Cover the window.
           const base = Math.max(frame.w / bmp.width, frame.h / bmp.height);
@@ -891,6 +915,73 @@ export default function ListingReelPage() {
         ctx.restore();
       };
 
+      /**
+       * The Stack: three horizontal bands, one swapping per beat with a whip.
+       *
+       * The bands fill the whole height. There's no type in this phase, so
+       * Instagram's safe zone doesn't apply — and three 1.7:1 bands show a
+       * 3:2 photograph with only a sliver off the top and bottom, which is as
+       * close to whole as a vertical frame can get three landscapes.
+       */
+      const stackTop = 0;
+      const stackBottom = H;
+      const stackGap = 6 * sc;
+      const rowH = (stackBottom - stackTop - stackGap * 2) / 3;
+      const rowRect = (r: number) => ({ x: 0, y: stackTop + r * (rowH + stackGap), w: W, h: rowH });
+
+      /** One photograph covering a band, shifted by `dx`, zoomed, optionally smeared sideways. */
+      const drawBand = (index: number, r: { x: number; y: number; w: number; h: number }, dx: number, zoom: number, smear: number) => {
+        const bmp = bitmaps[index];
+        if (!bmp) return;
+        const base = Math.max(r.w / bmp.width, r.h / bmp.height) * zoom;
+        const dw = bmp.width * base, dh = bmp.height * base;
+        const x = r.x + (r.w - dw) / 2 + dx, y = r.y + (r.h - dh) / 2;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+        if (smear > 0.5) {
+          // A directional smear — the frame is moving too fast to resolve.
+          // Three copies spread along the motion axis; cheap and convincing.
+          ctx.globalAlpha = 0.36;
+          ctx.drawImage(bmp, x - smear, y, dw, dh);
+          ctx.drawImage(bmp, x + smear, y, dw, dh);
+          ctx.globalAlpha = 0.5;
+          ctx.drawImage(bmp, x, y, dw, dh);
+        } else {
+          ctx.drawImage(bmp, x, y, dw, dh);
+        }
+        ctx.restore();
+      };
+
+      const drawStack = (t: number) => {
+        if (!plan) return;
+        ctx.fillStyle = st.ground;
+        ctx.fillRect(0, 0, W, H);
+        for (let r = 0; r < 3; r++) {
+          const state = rowState(plan.events, r, t);
+          if (!state) continue;
+          const rect = rowRect(r);
+          const p = state.progress;
+          // Each band drifts in slowly over three beats — the same push every
+          // time, so it reads as intent rather than a shuffle.
+          const settle = Math.min(1, (t - state.since) / (plan.beat * 3));
+          const zoom = 1 + 0.07 * settle;
+          if (p < 1) {
+            // The whip: out to the left, in from the right, on one axis, every
+            // time. A frame that changes direction is the amateur tell.
+            const e = whipEase(p);
+            const smear = 90 * sc * Math.sin(Math.PI * p);
+            if (state.prevIndex !== null) drawBand(state.prevIndex, rect, -W * e, 1.07, smear);
+            drawBand(state.index, rect, W * (1 - e), zoom, smear);
+          } else {
+            drawBand(state.index, rect, 0, zoom, 0);
+          }
+        }
+        // Hairline seams between the bands — the ground shows through the gap,
+        // and a thin light rule keeps the three from reading as one collage.
+        ctx.fillStyle = "rgba(255,255,255,0.10)";
+        for (let r = 1; r < 3; r++) ctx.fillRect(0, rowRect(r).y - stackGap, W, stackGap);
+      };
+
       const drawWatermark = () => {
         ctx.save();
         ctx.translate(W / 2, H / 2);
@@ -911,37 +1002,68 @@ export default function ListingReelPage() {
         ctx.fillStyle = st.ground;
         ctx.fillRect(0, 0, W, H);
 
-        // Which segments touch this instant? At most two during a crossfade.
-        const active = segs.filter((sg) => t >= sg.start && t < sg.end);
-        for (const sg of active) {
-          const local = t - sg.start;
-          const hold = sg.kind === "photo"
-            ? (sg.index === 0 ? s.titleHold : s.hold) * st.holdScale
-            : s.endHold;
-          // Fade in over `fade` (except the very first photo), fade out over the
-          // last `fade` of the segment — the next segment is fading in beneath.
-          // For a punch look `fade` is a few frames: effectively a hard cut.
-          const fadeIn = sg.start === 0 ? 1 : ease(local / fade);
-          const fadeOut = sg.kind === "end" ? 1 : 1 - ease((local - hold) / fade);
-          const alpha = Math.min(fadeIn, fadeOut);
-          if (sg.kind === "photo") {
-            drawPhoto(sg.index, local, hold, alpha);
-            if (sg.index === 0) {
-              // Up quickly over the opening push, then held — a name that's only
-              // legible for a second reads as a glitch, not a title. Gone just
-              // before the photo changes.
-              // A punch look has a shorter title hold, so the name arrives
-              // quicker and stays until the cut.
-              const quick = st.cut === "punch";
-              const tIn = ease((local - (quick ? 0.15 : 0.3)) / (quick ? 0.35 : 0.6));
-              const tOut = 1 - ease((local - (hold - (quick ? 0.35 : 0.7))) / (quick ? 0.3 : 0.6));
-              drawTitle(Math.min(tIn, tOut) * alpha);
+        // The title: up quickly over the opening push, then held — a name
+        // that's only legible for a second reads as a glitch, not a title.
+        // Gone just before the cut. A punch look brings it in faster.
+        const titleAlpha = (local: number, hold: number) => {
+          const quick = st.cut === "punch";
+          const tIn = ease((local - (quick ? 0.15 : 0.3)) / (quick ? 0.35 : 0.6));
+          const tOut = 1 - ease((local - (hold - (quick ? 0.35 : 0.7))) / (quick ? 0.3 : 0.6));
+          return Math.min(tIn, tOut);
+        };
+
+        if (plan) {
+          // ── The Stack ─────────────────────────────────────────────────
+          if (t < plan.stackStart) {
+            // Index arithmetic, not a search — a frame can't fall through a
+            // floating-point crack between two burst windows.
+            const k = t >= plan.heroHold ? Math.floor((t - plan.heroHold) / BURST_DT) : -1;
+            const b = k >= 0 && k < plan.burst.length ? plan.burst[k] : null;
+            if (b) {
+              drawPhoto(b.index, t - b.start, BURST_DT, 1);
             } else {
-              drawRoomLabel(sg.index, local, hold, alpha);
+              drawPhoto(0, t, plan.heroHold, 1);
+              drawTitle(titleAlpha(t, plan.heroHold));
             }
+          } else if (t < plan.endStart) {
+            drawStack(t);
           } else {
-            drawEndCard(alpha);
+            drawEndCard(1);
           }
+        } else {
+          // Which segments touch this instant? At most two during a crossfade.
+          const active = segs.filter((sg) => t >= sg.start && t < sg.end);
+          for (const sg of active) {
+            const local = t - sg.start;
+            const hold = sg.hold;
+            // Fade in over `fade` (except the very first photo), fade out over the
+            // last `fade` of the segment — the next segment is fading in beneath.
+            // For a punch look `fade` is a few frames: effectively a hard cut.
+            const fadeIn = sg.start === 0 ? 1 : ease(local / fade);
+            const fadeOut = sg.kind === "end" ? 1 : 1 - ease((local - hold) / fade);
+            const alpha = Math.min(fadeIn, fadeOut);
+            if (sg.kind === "photo") {
+              drawPhoto(sg.index, local, hold, alpha);
+              if (sg.index === 0) {
+                drawTitle(titleAlpha(local, hold) * alpha);
+              } else if (hold > BURST_DT) {
+                // Burst frames are too quick to read a caption on.
+                drawRoomLabel(sg.index, local, hold, alpha);
+              }
+            } else {
+              drawEndCard(alpha);
+            }
+          }
+        }
+
+        // The flash on a hard cut — white, a tenth of a second, gone.
+        const flash = flashAlpha(t, flashes);
+        if (flash > 0) {
+          ctx.save();
+          ctx.globalAlpha = flash;
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, W, H);
+          ctx.restore();
         }
         if (locked) drawWatermark();
 
@@ -1175,10 +1297,10 @@ export default function ListingReelPage() {
         <p className="text-xs text-ink-400 -mt-4 mb-5">Reels reach furthest between 30 and 60 seconds — add a few more photos, or switch to Short.</p>
       )}
 
-      {/* Look — four complete points of view, not colour swaps. */}
+      {/* Look — six complete points of view, not colour swaps. */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
           {STYLE_ORDER.map((k) => {
             const stl = REEL_STYLES[k];
             const on = styleKey === k;
@@ -1264,6 +1386,8 @@ export default function ListingReelPage() {
           {styleKey === "cinematic" && format === "reel" ? (
             // The letterbox IS the framing — the band is always filled.
             <p className="text-xs text-ink-400">Cinematic fills its letterbox band; there&rsquo;s nothing to choose here.</p>
+          ) : styleKey === "stack" && format === "reel" ? (
+            <p className="text-xs text-ink-400">Stack fills three bands, each with a whole photograph — nothing to choose here.</p>
           ) : styleKey === "gallery" ? (
             // The inset always shows the complete photograph.
             <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>
@@ -1286,13 +1410,16 @@ export default function ListingReelPage() {
             <button onClick={() => { setShowLocation((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !listing.location} className={chip(showLocation && !!listing.location)}>
               {listing.location ? `Location ${showLocation ? "on" : "off"}` : "No location set"}
             </button>
-            <button onClick={() => { setShowLabels((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !labelsPossible} className={chip(showLabels && labelsPossible)}>
-              {labelsPossible ? `Room labels ${showLabels ? "on" : "off"}` : "No categories set"}
-            </button>
+            {!(styleKey === "stack" && format === "reel") && (
+              <button onClick={() => { setShowLabels((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !labelsPossible} className={chip(showLabels && labelsPossible)}>
+                {labelsPossible ? `Room labels ${showLabels ? "on" : "off"}` : "No categories set"}
+              </button>
+            )}
           </div>
           <p className="text-xs text-ink-400 mt-1.5">
             Year, builder, length and staterooms always appear when they&rsquo;re filled in.
-            {labelsPossible && " Room labels name each space in the corner of its photo."}
+            {labelsPossible && !(styleKey === "stack" && format === "reel") && " Room labels name each space in the corner of its photo."}
+            {styleKey === "stack" && format === "reel" && " Stack moves too fast for room labels."}
           </p>
         </div>
       </div>

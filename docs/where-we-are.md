@@ -5,7 +5,7 @@ everyone for a fortnight, and wrote the announcement. **Committed by Charlie,
 not by Claude — the sandbox shell was wedged all session, so nothing here has
 been typechecked.** `npx tsc --noEmit` before pushing.
 
-## Sept 11 (small, before the announcement went out)
+## Sept 11 (before the announcement — still unsent)
 
 - **Reply-to mailbox.** Portal mail comes from `hello@yachtpics.com`; that
   address didn't exist (bounced). Charlie created it as an alias in GoDaddy
@@ -43,6 +43,15 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so
   it never enters the picture. New Length chips: Full (~40s, 18 photos,
   default) / Short (~20s, 10 photos), reel only.
+- **Stack look + flash burst.** Sixth look `stack` (`src/lib/reelStack.ts`
+  plans it): hero + title → 4-photo flash burst (0.2s each, white flash on each
+  cut) → three full-height bands whip-swapping one per beat (120 BPM grid,
+  holdScale 0.8 ≈ 1.5s) → flash to end card. Energy gets the same burst opener
+  (`hook: "burst"`). Reel only; on film a stack look behaves as Energy.
+  Framing + room-label chips hidden for Stack. AI headline no longer cut
+  mid-word (word-boundary trim at 48, model asked for <40). Promo end moved to
+  Sept 30; announcement send window to Sept 27 — **announcement is on hold
+  until Charlie has seen Stack.**
 
 ## Today's work (Sept 9)
 
@@ -112,15 +121,15 @@ ride the same rails.
 Ideas already on the table, none started:
 - Music: parked deliberately (no licensing yet). If revisited: 3–5 licensed
   tracks, beat-synced holds, optional — silent stays the Instagram default.
-- A second cut style as a toggle independent of look (crossfade vs cut).
 - Film-look toggle (light grain + vignette).
-- Tune the Energy punch once Charlie has seen it on the Intrepid/Regulator.
+- Watch Stack on a real centre console (Svengali/Intrepid); tune whip
+  speed/smear and burst count from Charlie's reaction.
 - Instagram direct publishing: possible via Meta app + App Review (2–4 wks),
   Business accounts only, no trending audio via API. Not started.
 - Check with Charlie whether the opening frame's spec row should also trim to
   year/builder/model like the end card did.
 
-**The open house.** `src/lib/reelPromo.ts` — Sept 9 to Sept 23, the Reel
+**The open house.** `src/lib/reelPromo.ts` — Sept 9 to Sept 30, the Reel
 unlocked for every account regardless of plan (nothing else changes). Banner on
 the Reel page, "Free" flag on the listing-page button. **Change the dates by
 editing the two constants at the top of that file.**

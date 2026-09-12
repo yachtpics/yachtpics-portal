@@ -1,5 +1,5 @@
 /**
- * Reel looks — the five ways a listing film can present itself.
+ * Reel looks — the six ways a listing film can present itself.
  *
  * Drawn from how the top houses actually publish. Three conventions from that
  * research shaped all of this:
@@ -18,7 +18,7 @@
  * the boat: a 120' tri-deck and a classic sloop should not present alike.
  */
 
-export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic" | "energy";
+export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic" | "energy" | "stack";
 
 export type Backdrop =
   | "scrim"      // full-bleed photo, type grounded on a bottom-up gradient
@@ -64,6 +64,18 @@ export type ReelStyle = {
    * fast boat, not a tri-deck.
    */
   cut: "dissolve" | "punch";
+  /**
+   * "single": one photograph at a time, the classic film. "stack": three
+   * horizontal bands, one swapping per beat — every landscape photo shown
+   * whole, three views of the boat on screen at once. Reels only; on a 16:9
+   * film a stack look behaves as "single".
+   */
+  layout?: "single" | "stack";
+  /**
+   * "burst": a four-photo flash burst straight after the title — the
+   * near-subliminal cuts that stop a thumb in the first three seconds.
+   */
+  hook?: "none" | "burst";
 };
 
 export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
@@ -96,7 +108,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   },
 
   /**
-   * Cinematic — letterboxed, and the quietest of the four.
+   * Cinematic — letterboxed, and the quietest of the six.
    *
    * On a reel the photograph never carries type — not the name, not a room
    * caption. It sits in a widescreen window with everything in the bar
@@ -108,7 +120,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   cinematic: {
     key: "cinematic",
     name: "Cinematic",
-    blurb: "Letterboxed on reels, wide-tracked, slow. The quietest of the five.",
+    blurb: "Letterboxed on reels, wide-tracked, slow. The quietest of the six.",
     ground: "#000000",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.72)",
@@ -186,10 +198,11 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Energy — for the boats that go fast.
    *
-   * Hard cuts, a quick zoom that lands and settles on every photo, holds
-   * barely over a second, heavy sans caps. A 39' centre console with triple
-   * outboards has no business crossfading; this is its reel. Still restrained
-   * where it counts — no glitches, no whips, nothing the boat didn't earn.
+   * Opens on a four-photo flash burst, then hard cuts, a quick zoom that lands
+   * and settles on every photo, holds barely over a second, heavy sans caps. A
+   * 39' centre console with triple outboards has no business crossfading; this
+   * is its reel. Still restrained where it counts — no glitches, no whips,
+   * nothing the boat didn't earn.
    */
   energy: {
     key: "energy",
@@ -211,10 +224,48 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.11,
     holdScale: 0.62,
     cut: "punch",
+    hook: "burst",
+  },
+
+  /**
+   * Stack — the fast boat's reel, done the way the good ones are done.
+   *
+   * Hero frame with the name, a four-photo flash burst, then the frame splits
+   * into three horizontal bands that whip in and swap one per beat. Every
+   * landscape photograph shows whole; there are always three views of the
+   * boat on screen; the frame is never empty. Timed to a 120 BPM grid so the
+   * broker's track lands near the cuts. Flash as confidence, not noise — no
+   * glitches, no light leaks, nothing the boat didn't earn.
+   */
+  stack: {
+    key: "stack",
+    name: "Stack",
+    blurb: "Three bands, whip cuts on the beat, flash-burst opener. For go-fasts.",
+    ground: "#06090f",
+    text: "#ffffff",
+    soft: "rgba(255,255,255,0.86)",
+    quiet: "rgba(255,255,255,0.62)",
+    accent: "#f0b429",
+    light: false,
+    backdrop: "scrim",
+    serifHeadline: false,
+    headline: "caps",
+    align: "center",
+    rule: "single",
+    headTrack: -3,
+    headWeight: 800,
+    zoom: 0.11,
+    // A band swap every ~1.5s on Full: fast, but each photograph gets three
+    // beats on screen before it goes, and eighteen photos land near 36s —
+    // inside the band the feed rewards.
+    holdScale: 0.8,
+    cut: "punch",
+    layout: "stack",
+    hook: "burst",
   },
 };
 
-export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic", "energy"];
+export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic", "energy", "stack"];
 
 // ── Brand colours ────────────────────────────────────────────────────────────
 //
