@@ -424,7 +424,10 @@ export default function ListingReelPage() {
         // Only the full-bleed "whole photo" mode floats on a blurred plate.
         // The inset and letterbox looks have their own ground — a blur
         // painted over the Gallery page (on a dark brand ground) wiped it out.
-        if (fit !== "whole" || st.light || backdrop !== "scrim" || stacked) return null;
+        // The Stack's full-frame singles always show the whole photograph on
+        // a plate, whatever the framing chip says.
+        if (st.light || backdrop !== "scrim") return null;
+        if (fit !== "whole" && !stacked) return null;
         const c = document.createElement("canvas");
         c.width = Math.round(W / 4); c.height = Math.round(H / 4);
         const bctx = c.getContext("2d")!;
@@ -509,7 +512,7 @@ export default function ListingReelPage() {
       // it sits in the corner of the picture rather than the corner of the frame.
       let photoRect = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
 
-      const drawPhoto = (i: number, localT: number, hold: number, alpha: number) => {
+      const drawPhoto = (i: number, localT: number, hold: number, alpha: number, wholeOverride?: boolean) => {
         const bmp = bitmaps[i];
         // The drift runs to the end of the outgoing transition, so the
         // photograph never freezes while a dissolve or dip carries it out.
@@ -550,7 +553,7 @@ export default function ListingReelPage() {
         // The Stack's hero and burst are always full-bleed — the framing chips
         // are hidden for it, so a "whole photo" choice left over from another
         // look must not leak in.
-        const showWhole = backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox" && !stacked);
+        const showWhole = wholeOverride ?? (backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox" && !stacked));
         if (!showWhole) {
           // Cover the window.
           const base = Math.max(frame.w / bmp.width, frame.h / bmp.height);
@@ -931,25 +934,39 @@ export default function ListingReelPage() {
       /** The whole stack's opacity while a transition is carrying it in or out. */
       let stackAlpha = 1;
 
-      /** One photograph covering a band, shifted by `dx`, zoomed, optionally smeared sideways. */
-      const drawBand = (index: number, r: { x: number; y: number; w: number; h: number }, dx: number, zoom: number, smear: number) => {
+      type Rect = { x: number; y: number; w: number; h: number };
+
+      /**
+       * One photograph covering a band, shifted by (dx, dy), zoomed, at
+       * `alpha`, optionally smeared along the axis it's moving on, and
+       * optionally clipped to a sub-rectangle (for the wipe).
+       */
+      const drawBand = (
+        index: number, r: Rect, dx: number, dy: number, zoom: number, alpha: number,
+        smear: number, axis: "x" | "y", clip?: Rect,
+      ) => {
         const bmp = bitmaps[index];
         if (!bmp) return;
         const base = Math.max(r.w / bmp.width, r.h / bmp.height) * zoom;
         const dw = bmp.width * base, dh = bmp.height * base;
-        const x = r.x + (r.w - dw) / 2 + dx, y = r.y + (r.h - dh) / 2;
+        const x = r.x + (r.w - dw) / 2 + dx, y = r.y + (r.h - dh) / 2 + dy;
         ctx.save();
-        ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip();
+        ctx.beginPath();
+        const c = clip ?? r;
+        ctx.rect(Math.max(r.x, c.x), Math.max(r.y, c.y), Math.min(r.w, c.w), Math.min(r.h, c.h));
+        ctx.clip();
+        const a = stackAlpha * alpha;
         if (smear > 0.5) {
           // A directional smear — the frame is moving too fast to resolve.
           // Three copies spread along the motion axis; cheap and convincing.
-          ctx.globalAlpha = stackAlpha * 0.36;
-          ctx.drawImage(bmp, x - smear, y, dw, dh);
-          ctx.drawImage(bmp, x + smear, y, dw, dh);
-          ctx.globalAlpha = stackAlpha * 0.5;
+          const sx = axis === "x" ? smear : 0, sy = axis === "y" ? smear : 0;
+          ctx.globalAlpha = a * 0.36;
+          ctx.drawImage(bmp, x - sx, y - sy, dw, dh);
+          ctx.drawImage(bmp, x + sx, y + sy, dw, dh);
+          ctx.globalAlpha = a * 0.5;
           ctx.drawImage(bmp, x, y, dw, dh);
         } else {
-          ctx.globalAlpha = stackAlpha;
+          ctx.globalAlpha = a;
           ctx.drawImage(bmp, x, y, dw, dh);
         }
         ctx.restore();
@@ -974,15 +991,45 @@ export default function ListingReelPage() {
           const life = Math.max(0.3, (state.until ?? runEnd) - state.since);
           const settle = Math.min(1, (t - state.since) / life);
           const zoom = 1 + 0.06 * settle;
-          if (p < 1) {
-            // The whip: out to the left, in from the right, on one axis, every
-            // time. A frame that changes direction is the amateur tell.
-            const e = whipEase(p);
-            const smear = 90 * sc * Math.sin(Math.PI * p);
-            if (state.prevIndex !== null) drawBand(state.prevIndex, rect, -W * e, 1.06, smear);
-            drawBand(state.index, rect, W * (1 - e), zoom, smear);
-          } else {
-            drawBand(state.index, rect, 0, zoom, 0);
+          if (p >= 1) {
+            drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x");
+            continue;
+          }
+          // The swap, in the move this event was dealt.
+          const prev = state.prevIndex;
+          const e = whipEase(p);
+          switch (state.move) {
+            case "fade": {
+              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x");
+              drawBand(state.index, rect, 0, 0, zoom, ease(p), 0, "x");
+              break;
+            }
+            case "wipe": {
+              // A hard edge sweeping across the band, with a light seam.
+              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x");
+              const wx = rect.w * ease(p);
+              drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", { x: rect.x, y: rect.y, w: wx, h: rect.h });
+              if (p > 0.02 && p < 0.98) {
+                ctx.save(); ctx.globalAlpha = stackAlpha * 0.6; ctx.fillStyle = "#ffffff";
+                ctx.fillRect(rect.x + wx - 1.2 * sc, rect.y, 2.4 * sc, rect.h); ctx.restore();
+              }
+              break;
+            }
+            case "up":
+            case "down": {
+              // A vertical push inside the band — no smear, the band is short.
+              const sign = state.move === "up" ? -1 : 1;
+              if (prev !== null) drawBand(prev, rect, 0, sign * rect.h * e, 1.06, 1, 0, "y");
+              drawBand(state.index, rect, 0, sign * rect.h * (e - 1), zoom, 1, 0, "y");
+              break;
+            }
+            default: {
+              // The whip, left or right, under a motion smear.
+              const sign = state.move === "left" ? -1 : 1;
+              const smear = 90 * sc * Math.sin(Math.PI * p);
+              if (prev !== null) drawBand(prev, rect, sign * W * e, 0, 1.06, 1, smear, "x");
+              drawBand(state.index, rect, sign * W * (e - 1), 0, zoom, 1, smear, "x");
+            }
           }
         }
         // Hairline seams between the bands — the ground shows through the gap,
@@ -1027,7 +1074,11 @@ export default function ListingReelPage() {
         const u = units[k];
         const local = t - starts[k];
         if (u.kind === "photo") {
-          drawPhoto(u.index, local, u.hold, alpha);
+          // In a Stack, the full-frame singles show the whole photograph —
+          // a horizontal floats whole on a soft plate, a vertical fills the
+          // frame. The hero and the burst stay full-bleed.
+          const whole = stacked && k > 0 && !u.burst ? true : undefined;
+          drawPhoto(u.index, local, u.hold, alpha, whole);
           if (k === 0) drawTitle(titleAlpha(local, u.hold) * alpha);
           // Burst frames are too quick to read a caption on.
           else if (!u.burst && !stacked) drawRoomLabel(u.index, local, u.hold, alpha);

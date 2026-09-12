@@ -56,6 +56,11 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   ~55% in (Charlie: the opener "flashed by too fast"), and the last photo
   holds 1.9× (Energy) / 2.6 beats (Stack) as a landing before the card. Both
   resolve into the end card on a flash. Energy Full ≈ 33s, Stack Full ≈ 38–46s.
+- **Stack singles + band moves (Charlie).** Full-frame singles in a Stack now
+  show the whole photograph on a blurred plate (`wholeOverride` on
+  `drawPhoto`); hero + burst stay full-bleed. Band swaps are dealt a move each
+  (`BandMove`: left/right whip, up/down push, fade, wipe with seam) — never
+  the same twice running; the three arrivals alternate sides.
 - **Safe zone + length.** On 9:16 reels the title, spec and room captions now
   sit in the band from 16% down (Instagram covers the top 14% and bottom 35%);
   picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so

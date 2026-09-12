@@ -51,8 +51,31 @@ export const ROW_STAGGER = 0.07;
 export const FLASH_DUR = 0.1;
 export const FLASH_PEAK = 0.85;
 
+/** How a band's photo arrives. Dealt per swap so a run never reads as one repeated move. */
+export type BandMove = "left" | "right" | "up" | "down" | "fade" | "wipe";
+
 /** A band fill inside a stack run; `at` is relative to the run's start. */
-export type StackEvent = { row: number; index: number; at: number };
+export type StackEvent = { row: number; index: number; at: number; move: BandMove };
+
+const BAND_MOVES: { move: BandMove; weight: number }[] = [
+  { move: "left", weight: 24 },
+  { move: "right", weight: 24 },
+  { move: "up", weight: 12 },
+  { move: "down", weight: 12 },
+  { move: "fade", weight: 16 },
+  { move: "wipe", weight: 12 },
+];
+
+function dealMove(rand: () => number, last: BandMove | null): BandMove {
+  const total = BAND_MOVES.reduce((a, m) => a + m.weight, 0);
+  for (let tries = 0; tries < 6; tries++) {
+    let r = rand() * total;
+    let pick = BAND_MOVES[BAND_MOVES.length - 1].move;
+    for (const m of BAND_MOVES) { r -= m.weight; if (r <= 0) { pick = m.move; break; } }
+    if (pick !== last) return pick;
+  }
+  return last === "left" ? "right" : "left";
+}
 
 export type Unit =
   | { kind: "photo"; index: number; hold: number; burst: boolean }
@@ -200,8 +223,19 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
         // photos on screen, so nothing can double up.
         const swaps = 3 + Math.floor(rand() * 3);
         const events: StackEvent[] = [];
-        for (let r = 0; r < rows; r++) events.push({ row: (r + run) % rows, index: take(), at: r * ROW_STAGGER });
-        for (let k = 0; k < swaps; k++) events.push({ row: (k + run) % rows, index: take(), at: beat * (k + 1) });
+        // The bands arrive from alternating sides; every swap after that is
+        // dealt its own move, never the same as the one before.
+        let last: BandMove | null = null;
+        for (let r = 0; r < rows; r++) {
+          const move: BandMove = r % 2 === 0 ? "left" : "right";
+          events.push({ row: (r + run) % rows, index: take(), at: r * ROW_STAGGER, move });
+          last = move;
+        }
+        for (let k = 0; k < swaps; k++) {
+          const move = dealMove(rand, last);
+          events.push({ row: (k + run) % rows, index: take(), at: beat * (k + 1), move });
+          last = move;
+        }
         const hold = beat * (swaps + 1);
         units.push({ kind: "stack", hold, events });
         elapsed += hold;
@@ -258,7 +292,7 @@ export function rowState(events: StackEvent[], row: number, t: number) {
   }
   if (!cur) return null;
   const p = Math.min(1, (t - cur.at) / SWAP_DUR);
-  return { index: cur.index, since: cur.at, until: next?.at ?? null, prevIndex: prev?.index ?? null, progress: p };
+  return { index: cur.index, since: cur.at, until: next?.at ?? null, prevIndex: prev?.index ?? null, progress: p, move: cur.move };
 }
 
 /** Ease-out for the whip — fast off the line, settles hard. */
