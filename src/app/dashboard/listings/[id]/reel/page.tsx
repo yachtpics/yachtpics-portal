@@ -127,13 +127,19 @@ type BrokerCard = { name: string; brokerage: string | null; phone: string | null
 const YACHTPICS_CARD: BrokerCard = {
   name: "YachtPics",
   brokerage: "Yacht photography · The YachtPics Portal",
-  // Charlie, then Samantha.
-  phone: "561-602-9710   ·   561-252-1488",
+  // Filled in at render from the admin's choice — see YACHTPICS_PHONES.
+  phone: null,
   email: "hello@yachtpics.com",
   website: "yachtpics.com",
   logoUrl: "/brand/yachtpics-logo-white.png",
 };
 const YACHTPICS_COLORS: BrandColors = { accent: "#c39e4e", ground: "#050b14" };
+/** Whose number goes on the ad — so each of us gets the calls our own posts earn. */
+const YACHTPICS_PHONES = {
+  charlie: { label: "Charlie", phone: "561-602-9710" },
+  samantha: { label: "Samantha", phone: "561-252-1488" },
+} as const;
+type YpPhone = keyof typeof YACHTPICS_PHONES;
 
 function safeName(s: string | null | undefined) {
   return (s ?? "listing").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "listing";
@@ -173,6 +179,7 @@ export default function ListingReelPage() {
   // own advertising. Brokers never see the switch.
   const [isAdmin, setIsAdmin] = useState(false);
   const [ypBrand, setYpBrand] = useState(false);
+  const [ypPhone, setYpPhone] = useState<YpPhone>("charlie");
   const brandSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // An ORDERED list, not a set: the order the broker taps is the order the
   // reel plays. The number on each thumbnail is its place in the film.
@@ -348,11 +355,14 @@ export default function ListingReelPage() {
     const n = selectedPhotos.length;
     // Same boat, same photos → the same deal of transitions every time.
     const seed = n * 131 + styleKey.length * 17;
+    // Our own ad's card carries more (the broker credit, the portal, us) —
+    // it holds a beat and a half longer so it can be read.
+    const endHold = s.endHold + (ypBrand && isAdmin ? 1.5 : 0);
 
     // The Stack look has its own clock — hero, burst, then movements on the
     // beat. Only on a 9:16 reel; a film has no vertical to stack into.
     if (look.layout === "stack" && format === "reel") {
-      return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold: s.endHold, seed });
+      return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold, seed });
     }
     // Every other look: one photograph at a time. Every photo after the
     // title holds for exactly the same beat — varying it per photo is the
@@ -361,14 +371,14 @@ export default function ListingReelPage() {
     return planSingles(n, {
       titleHold: s.titleHold * scale,
       hold: s.hold * scale,
-      endHold: s.endHold,
+      endHold,
       dissolve: fadeFor(format, styleKey),
       burst: look.hook === "burst",
       vocab: look.cut === "punch" ? "energy" : null,
       seed,
     });
     // `s` carries the length's hold, so the total redraws when Length changes.
-  }, [selectedPhotos, s, format, styleKey]);
+  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   async function render() {
@@ -386,7 +396,7 @@ export default function ListingReelPage() {
 
     // Whose film is this? The broker's, or — admin only — YachtPics' own ad.
     const yp = ypBrand && isAdmin;
-    const card: BrokerCard = yp ? YACHTPICS_CARD : broker;
+    const card: BrokerCard = yp ? { ...YACHTPICS_CARD, phone: YACHTPICS_PHONES[ypPhone].phone } : broker;
     const st = applyBrand(REEL_STYLES[styleKey], yp ? YACHTPICS_COLORS : brand);
     const fade = fadeFor(format, styleKey);
     // Letterbox is a vertical device — bars on an already-widescreen film just
@@ -918,36 +928,67 @@ export default function ListingReelPage() {
           if (lh > maxLh) { lh = maxLh; lw = lh * aspect; }
           items.push({ h: lh + 44 * sc, draw: (y) => { ctx.globalAlpha = alpha * 0.96; ctx.drawImage(logo!, cx - lw / 2, y, lw, lh); ctx.globalAlpha = alpha; } });
         }
-        // The person: clearly secondary to the boat. Regular weight, and in
-        // the serif looks the serif at its book weight rather than bold. On a
-        // YachtPics card the wordmark already says the name, so it's skipped.
         const nameSize = 48 * sc;
-        if (!(yp && logo)) items.push({ h: nameSize + 16 * sc, draw: (y) => {
+        const personLine = (text: string) => ({ h: nameSize + 16 * sc, draw: (y: number) => {
           ctx.fillStyle = st.text;
           ctx.font = `${st.serifHeadline ? 500 : 400} ${nameSize}px ${endFamily}`;
           ctx.textAlign = "center";
-          ctx.fillText(card.name, cx, y + nameSize * 0.8); ctx.textAlign = "left";
+          ctx.fillText(text, cx, y + nameSize * 0.8); ctx.textAlign = "left";
         } });
-        if (card.brokerage) items.push({ h: capSize + 22 * sc, draw: (y) => {
-          ctx.fillStyle = st.soft; ctx.font = `600 ${capSize - 3 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, card.brokerage!.toUpperCase(), cx, y + capSize, 7 * sc);
+        const capsLine = (text: string, colour: string, size = capSize - 3 * sc, gap = 22 * sc) => ({ h: size + gap, draw: (y: number) => {
+          ctx.fillStyle = colour; ctx.font = `600 ${size}px ${sans}`;
+          fillTrackedCentered(ctx, text.toUpperCase(), cx, y + size, 7 * sc);
         } });
-        // Phone and site if we have them; the broker's email if we don't. A
-        // "request a private showing" with nothing under it is a door with
-        // no handle.
-        const contactBits = [card.phone, card.website?.replace(/^https?:\/\//, "").replace(/\/$/, "")].filter(Boolean) as string[];
-        if (contactBits.length === 0 && card.email) contactBits.push(card.email);
-        const contact = contactBits.join("   ·   ");
-        if (contact) items.push({ h: capSize + 48 * sc, draw: (y) => {
+        const contactLine = (text: string) => ({ h: capSize + 48 * sc, draw: (y: number) => {
           ctx.fillStyle = st.accent; ctx.font = `500 ${capSize}px ${sans}`;
-          fillTrackedCentered(ctx, contact, cx, y + capSize + 26 * sc, 3 * sc);
+          fillTrackedCentered(ctx, text, cx, y + capSize + 26 * sc, 3 * sc);
         } });
-        // The invitation, with real air above it — it closes the card, it
-        // doesn't crowd the contact line.
-        items.push({ h: capSize + 44 * sc, draw: (y) => {
-          ctx.fillStyle = st.quiet; ctx.font = `500 ${22 * sc}px ${sans}`;
-          fillTrackedCentered(ctx, yp ? "BOOK YOUR SHOOT" : "REQUEST A PRIVATE SHOWING", cx, y + capSize + 40 * sc, 7 * sc);
-        } });
+        const contactFor = (c: BrokerCard) => {
+          // Phone and site if we have them; the email if we don't. A call to
+          // action with nothing under it is a door with no handle.
+          const bits = [c.phone, c.website?.replace(/^https?:\/\//, "").replace(/\/$/, "")].filter(Boolean) as string[];
+          if (bits.length === 0 && c.email) bits.push(c.email);
+          return bits.join("   ·   ");
+        };
+
+        if (yp) {
+          // Our card credits the broker first — the way Samantha's Facebook
+          // posts do ("another great boat shot for…"), which is where most of
+          // her clients have come from. A broker who sees a peer credited
+          // asks how to get the same. Then the portal, then us.
+          items.push(capsLine("Photographed for", st.quiet, 22 * sc, 14 * sc));
+          items.push(personLine(broker.name));
+          if (broker.brokerage) items.push(capsLine(broker.brokerage, st.soft));
+          const brokerContact = [broker.phone, broker.email].filter(Boolean).join("   ·   ");
+          if (brokerContact) items.push(contactLine(brokerContact));
+          items.push({ h: 72 * sc, draw: (y) => {
+            ctx.fillStyle = "rgba(255,255,255,0.40)";
+            ctx.fillRect(cx - 48 * sc, y + 36 * sc, 96 * sc, Math.max(1.5, 2.2 * sc));
+          } });
+          items.push(capsLine("Powered by the YachtPics Portal", st.accent, 25 * sc, 18 * sc));
+          items.push(contactLine(contactFor(card)));
+          // The hook. Not what the portal is — what it did, and could do for
+          // the broker watching. That's the line that gets the question asked.
+          items.push({ h: capSize + 44 * sc, draw: (y) => {
+            ctx.fillStyle = st.text; ctx.font = `italic 400 ${34 * sc}px ${serifFamily}, Georgia, serif`;
+            ctx.textAlign = "center";
+            ctx.fillText("Your listings, delivered like this.", cx, y + capSize + 40 * sc);
+            ctx.textAlign = "left";
+          } });
+        } else {
+          // The person: clearly secondary to the boat. Regular weight, and in
+          // the serif looks the serif at its book weight rather than bold.
+          items.push(personLine(card.name));
+          if (card.brokerage) items.push(capsLine(card.brokerage, st.soft));
+          const contact = contactFor(card);
+          if (contact) items.push(contactLine(contact));
+          // The invitation, with real air above it — it closes the card, it
+          // doesn't crowd the contact line.
+          items.push({ h: capSize + 44 * sc, draw: (y) => {
+            ctx.fillStyle = st.quiet; ctx.font = `500 ${22 * sc}px ${sans}`;
+            fillTrackedCentered(ctx, "REQUEST A PRIVATE SHOWING", cx, y + capSize + 40 * sc, 7 * sc);
+          } });
+        }
 
         const stackH = items.reduce((a, b) => a + b.h, 0);
         let y = (H - stackH) / 2;
@@ -1488,9 +1529,24 @@ export default function ListingReelPage() {
             >
               {ypBrand ? "Branded as YachtPics" : "Brand as YachtPics"}
             </button>
+            {ypBrand && (
+              <>
+                <span className="text-xs text-ink-400">Number on the card:</span>
+                {(Object.keys(YACHTPICS_PHONES) as YpPhone[]).map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => { setYpPhone(k); setResult(null); setPhase("idle"); }}
+                    disabled={busy}
+                    className={chip(ypPhone === k)}
+                  >
+                    {YACHTPICS_PHONES[k].label} · {YACHTPICS_PHONES[k].phone}
+                  </button>
+                ))}
+              </>
+            )}
           </div>
           <p className="text-xs text-ink-400 mt-1.5">
-            Our logo, colours and &ldquo;Book your shoot&rdquo; on the end card, and &ldquo;Photographed by YachtPics&rdquo; over the opening frame unless you write a headline. The broker&rsquo;s card is left out. For our own Instagram and Facebook only — download it or send it to your phone; don&rsquo;t add it to the listing.
+            Our logo and colours; &ldquo;Photographed by YachtPics&rdquo; over the opening frame unless you write a headline. The end card credits the broker first — name, brokerage, phone, email — then &ldquo;Powered by the YachtPics Portal&rdquo;, the number you pick, and &ldquo;Your listings, delivered like this.&rdquo; For our own Instagram and Facebook — download it or send it to your phone; it can&rsquo;t be added to the listing.
           </p>
         </div>
       )}
