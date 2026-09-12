@@ -589,11 +589,12 @@ export default function ListingReelPage() {
           // for the caption too: it sits in the ground beneath the picture,
           // centred under it like a plate under a print, in the look's own
           // quiet colour. No shadow — there's nothing to lift it off.
-          // On a reel it takes the band the title had — under the picture on
-          // a 9:16 frame is Instagram's caption, not ours.
+          // On a reel it sits just ABOVE the picture, in the band the title
+          // had — under the picture on a 9:16 frame is Instagram's caption,
+          // not ours.
           ctx.fillStyle = st.soft;
           ctx.font = `500 ${size}px ${sans}`;
-          fillTrackedCentered(ctx, label, r.x + r.w / 2, topType ? H * 0.16 + size : r.y + r.h + 58 * sc, 8 * sc);
+          fillTrackedCentered(ctx, label, r.x + r.w / 2, topType ? r.y - 44 * sc : r.y + r.h + 58 * sc, 8 * sc);
         } else {
           // Bottom-left corner of the PICTURE, wherever it landed — a portrait
           // floated in the frame gets its caption at its own foot, not the
