@@ -50,15 +50,15 @@ const serif = Cormorant_Garamond({
 
 type Format = "reel" | "film";
 type Fit = "fill" | "whole";
+type Length = "short" | "full";
 
 const SPEC: Record<Format, {
   w: number; h: number; label: string; hint: string;
   maxPhotos: number; hold: number; fade: number; titleHold: number; endHold: number; defaultFit: Fit;
 }> = {
-  // A reel lands at ~21s with ten photos. That's deliberate: average watch time
-  // on a Reel is about nineteen seconds, and completion rate is what the feed
-  // actually ranks on. A thirty-second reel that nobody finishes is beaten by a
-  // twenty-second one that they do.
+  // The reel's hold and photo cap are set by the Length choice below — what's
+  // here is the short version's numbers, and everything else the reel shares
+  // between lengths.
   reel: {
     w: 1080, h: 1920, label: "Reel (9:16)", hint: "Instagram Reels, Stories, Facebook",
     maxPhotos: 10, hold: 1.7, fade: 0.55, titleHold: 4.2, endHold: 3.0, defaultFit: "fill",
@@ -70,6 +70,31 @@ const SPEC: Record<Format, {
     maxPhotos: 14, hold: 2.6, fade: 0.6, titleHold: 5.0, endHold: 3.0, defaultFit: "whole",
   },
 };
+
+/**
+ * How long a reel runs.
+ *
+ * Instagram's own 2026 numbers (Socialinsider, 140,000 reels) put the highest
+ * reach squarely in the 30–60 second band — long enough for the feed to read
+ * the post as worth distributing, short enough to be finished. So Full is the
+ * default: eighteen photos at a 1.9s hold lands at about forty seconds.
+ *
+ * Short keeps the old timing — ten photos, ~20s — for a teaser, a second post
+ * on the same boat, or a listing that simply hasn't got eighteen good frames.
+ *
+ * Only the reel offers the choice; the film's single timing is unchanged.
+ */
+const LENGTH: Record<Length, { hold: number; maxPhotos: number }> = {
+  short: { hold: 1.7, maxPhotos: 10 },
+  full: { hold: 1.9, maxPhotos: 18 },
+};
+
+const DEFAULT_LENGTH: Length = "full";
+
+/** The photo cap actually in force: the length's on a reel, the film's own. */
+function capFor(format: Format, length: Length) {
+  return format === "reel" ? LENGTH[length].maxPhotos : SPEC.film.maxPhotos;
+}
 
 const FPS = 30;
 
@@ -109,6 +134,8 @@ export default function ListingReelPage() {
   const [videoCount, setVideoCount] = useState(0);
 
   const [format, setFormat] = useState<Format>("reel");
+  // Reels only — the film keeps its single timing.
+  const [length, setLength] = useState<Length>(DEFAULT_LENGTH);
   const [fit, setFit] = useState<Fit>("fill");
   const [styleKey, setStyleKey] = useState<StyleKey>("editorial");
   // The broker's own colours, remembered on their profile. Null = the look's.
@@ -207,7 +234,7 @@ export default function ListingReelPage() {
       }));
       const withThumbs: Photo[] = ordered.map((p, i) => ({ ...p, thumb: thumbs[i] }));
       setPhotos(withThumbs);
-      setChosen(withThumbs.slice(0, SPEC.reel.maxPhotos).map((p) => p.id));
+      setChosen(withThumbs.slice(0, capFor("reel", DEFAULT_LENGTH)).map((p) => p.id));
       setLoading(false);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -234,24 +261,45 @@ export default function ListingReelPage() {
     })();
   }, []);
 
+  /**
+   * The numbers actually in force. On a reel the Length choice supplies the
+   * hold and the photo cap; everything else — the frame size, the fade, the
+   * title and end holds — comes from the format. The film is untouched.
+   */
+  const s = useMemo(
+    () => (format === "reel" ? { ...SPEC.reel, ...LENGTH[length] } : SPEC.film),
+    [format, length],
+  );
+
   // When the format changes, reset the fit and trim the selection to the cap.
   function chooseFormat(f: Format) {
     setFormat(f);
     setFit(SPEC[f].defaultFit);
     setResult(null);
     setPhase("idle");
+    const cap = capFor(f, length);
     setChosen((prev) => {
       // Keep the broker's order, just trimmed to the new format's cap.
-      const kept = prev.slice(0, SPEC[f].maxPhotos);
-      return kept.length ? kept : photos.slice(0, SPEC[f].maxPhotos).map((p) => p.id);
+      const kept = prev.slice(0, cap);
+      return kept.length ? kept : photos.slice(0, cap).map((p) => p.id);
     });
+  }
+
+  // Switching length changes the cap, so a selection made for the long version
+  // is trimmed — in the broker's own order — rather than silently over-filling.
+  function chooseLength(next: Length) {
+    setLength(next);
+    setResult(null);
+    setPhase("idle");
+    const cap = capFor(format, next);
+    setChosen((prev) => (prev.length > cap ? prev.slice(0, cap) : prev));
   }
 
   function togglePhoto(pid: string) {
     setChosen((prev) => {
       // Tap to add at the end; tap again to remove and let the rest close up.
       if (prev.includes(pid)) return prev.filter((x) => x !== pid);
-      if (prev.length >= SPEC[format].maxPhotos) return prev;
+      if (prev.length >= s.maxPhotos) return prev;
       return [...prev, pid];
     });
     setResult(null);
@@ -268,7 +316,6 @@ export default function ListingReelPage() {
     REEL_STYLES[key].cut === "punch" ? 0.08 : SPEC[fmt].fade;
 
   const timeline = useMemo(() => {
-    const s = SPEC[format];
     const scale = REEL_STYLES[styleKey].holdScale;
     const fade = fadeFor(format, styleKey);
     const segs: Segment[] = [];
@@ -282,7 +329,8 @@ export default function ListingReelPage() {
     });
     segs.push({ kind: "end", start: t, end: t + s.endHold + fade });
     return { segs, total: t + s.endHold };
-  }, [selectedPhotos, format, styleKey]);
+    // `s` carries the length's hold, so the total redraws when Length changes.
+  }, [selectedPhotos, s, format, styleKey]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   async function render() {
@@ -298,7 +346,6 @@ export default function ListingReelPage() {
     setPhase("loading");
     setProgress(0);
 
-    const s = SPEC[format];
     const st = applyBrand(REEL_STYLES[styleKey], brand);
     const fade = fadeFor(format, styleKey);
     // Letterbox is a vertical device — bars on an already-widescreen film just
@@ -413,6 +460,12 @@ export default function ListingReelPage() {
       // The window the photograph lives in. Everything else — title, captions,
       // end card — positions itself against this box, so a style change moves
       // the whole composition together instead of piece by piece.
+      // On a 9:16 reel, Instagram lays its own furniture over the top 14% and
+      // the bottom 35% of the frame — profile row, caption, audio tag, the
+      // action buttons. Type that lands there may as well not have been drawn.
+      // So on reels the TYPE lives in the band just under the top edge and the
+      // PICTURE sits below it; on a 16:9 film the type stays at the foot.
+      const topType = format === "reel";
       const frame = (() => {
         if (backdrop === "letterbox") {
           // 1.66:1 — European widescreen. True 2.39 anamorphic leaves a 9:16
@@ -420,16 +473,16 @@ export default function ListingReelPage() {
           // hard; this shows nearly the whole frame the photographer composed
           // while still reading unmistakably as a letterbox.
           const bh = Math.min(H * 0.60, W / 1.66);
-          // Sits a little above centre: the type below it needs more room than
-          // the bar above, and an image parked dead-centre reads as an accident.
-          return { x: 0, y: (H - bh) / 2 - H * 0.06, w: W, h: bh };
+          // The top bar holds the name; the window sits beneath it.
+          return { x: 0, y: topType ? H * 0.40 : (H - bh) / 2 - H * 0.06, w: W, h: bh };
         }
         if (backdrop === "inset") {
           const m = 0.055 * W;
-          // Sized so the type below clears Instagram's caption furniture — a
-          // name that lands under the app's own UI may as well not be there.
-          const ih = format === "reel" ? H * 0.50 : H * 0.45;
-          return { x: m, y: format === "reel" ? H * 0.09 : m, w: W - m * 2, h: ih };
+          if (topType) {
+            // Name at the head of the page, the print below it.
+            return { x: m, y: H * 0.38, w: W - m * 2, h: H * 0.44 };
+          }
+          return { x: m, y: m, w: W - m * 2, h: H * 0.45 };
         }
         return { x: 0, y: 0, w: W, h: H };
       })();
@@ -536,18 +589,21 @@ export default function ListingReelPage() {
           // for the caption too: it sits in the ground beneath the picture,
           // centred under it like a plate under a print, in the look's own
           // quiet colour. No shadow — there's nothing to lift it off.
+          // On a reel it takes the band the title had — under the picture on
+          // a 9:16 frame is Instagram's caption, not ours.
           ctx.fillStyle = st.soft;
           ctx.font = `500 ${size}px ${sans}`;
-          fillTrackedCentered(ctx, label, r.x + r.w / 2, r.y + r.h + 58 * sc, 8 * sc);
+          fillTrackedCentered(ctx, label, r.x + r.w / 2, topType ? H * 0.16 + size : r.y + r.h + 58 * sc, 8 * sc);
         } else {
           // Bottom-left corner of the PICTURE, wherever it landed — a portrait
           // floated in the frame gets its caption at its own foot, not the
-          // frame's. A full-bleed crop keeps the caption above Instagram's UI.
+          // frame's. A full-bleed reel puts it top-left instead, in the same
+          // band the title uses: the foot of a reel is Instagram's, not ours.
           const fullBleed = fit === "fill";
           const x = r.x + 44 * sc;
-          const y = fullBleed
-            ? H - (format === "reel" ? 330 : 78) * sc
-            : r.y + r.h - 40 * sc;
+          const y = topType
+            ? H * 0.16 + size
+            : fullBleed ? H - 78 * sc : r.y + r.h - 40 * sc;
           // Just the words, on a soft shadow — no panel, no gradient. A tint
           // fading in and out under every photo pulled the eye off the boat.
           ctx.shadowColor = "rgba(0,0,0,0.8)";
@@ -613,10 +669,13 @@ export default function ListingReelPage() {
         // Ground the type — only where it's actually sitting on a photograph.
         if (backdrop === "scrim") {
           // Tinted to the ground, so a navy brand gets a navy scrim and the
-          // Classic look keeps its warmth without a special case.
-          const g = ctx.createLinearGradient(0, H * 0.42, 0, H);
-          g.addColorStop(0, rgba(st.ground, 0));
-          g.addColorStop(1, rgba(st.ground, 0.84));
+          // Classic look keeps its warmth without a special case. Runs from
+          // whichever edge the type sits against.
+          const g = topType
+            ? ctx.createLinearGradient(0, 0, 0, H * 0.52)
+            : ctx.createLinearGradient(0, H * 0.42, 0, H);
+          g.addColorStop(0, rgba(st.ground, topType ? 0.78 : 0));
+          g.addColorStop(1, rgba(st.ground, topType ? 0 : 0.84));
           ctx.fillStyle = g;
           ctx.fillRect(0, 0, W, H);
         }
@@ -659,20 +718,30 @@ export default function ListingReelPage() {
         const whereH = where ? 49 * sc : 0;
         const blockH = leadH + nameH + ruleH + specH + whereH;
         const offFrame = backdrop === "letterbox" || backdrop === "inset";
-        // First baseline of the block.
-        // The reel's floor sits high: Instagram lays its caption, handle and
-        // action buttons over the bottom of the frame, and a location line
-        // hidden behind them may as well not have been drawn.
-        // Both branches give the FIRST baseline: the lead-in's if there is one,
-        // otherwise the name's (hence the ascent added only in that case). The
-        // step from lead-in to name happens once, below — not here as well.
-        // Off the picture, the block hangs from the PHOTOGRAPH's lower edge —
-        // for an inset that's the whole-photo rectangle, which for a
-        // landscape sits well above the window's floor.
+        // Every branch gives the FIRST baseline: the lead-in's if there is one,
+        // otherwise the name's. The step from lead-in to name happens once,
+        // below — not here as well. Two placements:
+        //   reel — the block sits in the band under the top edge, from 16%
+        //          down (Instagram's own overlay ends at 14%). Same for every
+        //          look: over the sky on a full-bleed photo, in the top bar of
+        //          a letterbox, at the head of the Gallery page.
+        //   film — the foot, as before: against the photograph's bottom for a
+        //          scrim, or hanging from the picture's lower edge when the
+        //          type lives off the picture.
+        const firstAscent = maker ? leadSize * 0.78 : nameSize * 0.82;
         const under = backdrop === "inset" ? photoRect.y + photoRect.h : frame.y + frame.h;
-        let y = offFrame
-          ? under + (backdrop === "letterbox" ? 108 : 96) * sc + (maker ? 0 : nameSize * 0.82)
-          : H - (format === "reel" ? 360 : 140) * sc - blockH + (maker ? 0 : nameSize * 0.82);
+        // On a reel the block may never run into the picture: a three-line
+        // name or a long builder line slides the whole block up as far as
+        // Instagram's top overlay allows, and no further.
+        const topCeiling = H * 0.14 + firstAscent;
+        const topWanted = H * 0.16 + firstAscent;
+        const topFloor = offFrame ? frame.y - 56 * sc : H; // window top, or no limit
+        const topStart = Math.max(topCeiling, Math.min(topWanted, topFloor - blockH + firstAscent));
+        let y = topType
+          ? topStart
+          : offFrame
+            ? under + 96 * sc + (maker ? 0 : nameSize * 0.82)
+            : H - 140 * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
         if (maker) {
           // The lead-in above the name — italic for Editorial, tracked caps
@@ -1044,7 +1113,6 @@ export default function ListingReelPage() {
   if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading…</div>;
   if (!listing) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Listing not found.</div>;
 
-  const s = SPEC[format];
   const busy = phase === "loading" || phase === "rendering";
   const seconds = Math.round(timeline.total);
   const promoOn = reelPromoActive();
@@ -1102,8 +1170,8 @@ export default function ListingReelPage() {
         ))}
       </div>
       <p className="text-xs text-ink-400 mb-5">{s.hint} · up to {s.maxPhotos} photos · about {seconds} seconds</p>
-      {format === "reel" && seconds > 26 && (
-        <p className="text-xs text-ink-400 -mt-4 mb-5">Reels hold attention best under about 25 seconds — drop a photo or two if you want it tighter.</p>
+      {format === "reel" && length === "full" && seconds < 30 && chosen.length < s.maxPhotos && (
+        <p className="text-xs text-ink-400 -mt-4 mb-5">Reels reach furthest between 30 and 60 seconds — add a few more photos, or switch to Short.</p>
       )}
 
       {/* Look — four complete points of view, not colour swaps. */}
@@ -1179,6 +1247,17 @@ export default function ListingReelPage() {
 
       {/* Options */}
       <div className="grid sm:grid-cols-2 gap-4 mb-5">
+        {/* Length — the reel's call alone; the film has one timing. */}
+        {format === "reel" && (
+          <div>
+            <p className="label-caps text-ink-500 mb-2">Length</p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => chooseLength("full")} disabled={busy} className={chip(length === "full")}>Full — about 40s, up to 18 photos</button>
+              <button onClick={() => chooseLength("short")} disabled={busy} className={chip(length === "short")}>Short — about 20s, up to 10 photos</button>
+            </div>
+            <p className="text-xs text-ink-400 mt-1.5">Reels between 30 and 60 seconds reach the furthest. Short suits a quick teaser.</p>
+          </div>
+        )}
         <div>
           <p className="label-caps text-ink-500 mb-2">Framing</p>
           {styleKey === "cinematic" && format === "reel" ? (

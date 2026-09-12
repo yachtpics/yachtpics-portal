@@ -38,6 +38,11 @@ been typechecked.** `npx tsc --noEmit` before pushing.
     "Request a private showing". Blurred plate only for full-bleed whole-photo
     mode (was bleeding over Gallery's page on dark brand grounds).
   - Picker text: "quietest of the five", Gallery blurb updated.
+- **Safe zone + length.** On 9:16 reels the title, spec and room captions now
+  sit in the band from 16% down (Instagram covers the top 14% and bottom 35%);
+  picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so
+  it never enters the picture. New Length chips: Full (~40s, 18 photos,
+  default) / Short (~20s, 10 photos), reel only.
 
 ## Today's work (Sept 9)
 
