@@ -50,6 +50,12 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   weight 700, slower snap. Stack uses the same vocabulary between movements.
   Burst slowed to 3 × 0.34s after Charlie: "first 4 or 5 photos flashed by too
   fast, second half looked good."
+- **Arc + hold pattern (from the GoPro Quik research).** Energy/Stack holds
+  follow `HOLD_PATTERN` [0.65, 1, 1.3, 0.65, 1, 1.6] × base hold (short-short-
+  long — the "musical" lever), the flash burst moved from after the title to
+  ~55% in (Charlie: the opener "flashed by too fast"), and the last photo
+  holds 1.9× (Energy) / 2.6 beats (Stack) as a landing before the card. Both
+  resolve into the end card on a flash. Energy Full ≈ 33s, Stack Full ≈ 38–46s.
 - **Safe zone + length.** On 9:16 reels the title, spec and room captions now
   sit in the band from 16% down (Instagram covers the top 14% and bottom 35%);
   picture below. Letterbox window at 40%, Gallery page at 38%. Block clamps so

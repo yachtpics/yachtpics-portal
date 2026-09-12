@@ -259,7 +259,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     headWeight: 700,
     zoom: 0.07,
     // A band swap every ~1.5s on Full: fast, but each photograph gets three
-    // beats on screen before it goes, and eighteen photos land near 36s —
+    // beats on screen before it goes, and eighteen photos land around 40s —
     // inside the band the feed rewards.
     holdScale: 0.8,
     cut: "punch",

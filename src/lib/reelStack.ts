@@ -7,10 +7,12 @@
  * Energy and Stack deal from a vocabulary — whip, push, wipe, zoom-through,
  * flash, quick dissolve, dip — so no two consecutive cuts are the same move.
  *
- * Both also open the same way: a hero frame with the name, then a burst of
- * near-subliminal flash cuts to stop the thumb. The Stack then alternates
- * runs of three horizontal bands (one swapping per beat) with full-frame
- * singles, in lengths that vary from boat to boat.
+ * Both have an ARC, the thing that makes GoPro's Quik and Apple's Memories
+ * feel cut to music: a long open on the hero frame, holds that follow a
+ * short-short-long pattern, a three-photo flash burst at the climax just
+ * past the middle, and a long landing on the last photograph. The Stack
+ * additionally alternates runs of three horizontal bands (one swapping per
+ * beat) with full-frame singles, in lengths that vary from boat to boat.
  *
  * Everything is timed to a 120 BPM grid (0.5s per beat). No audio is baked
  * in — the broker adds a track when they post — but most trending tracks
@@ -79,22 +81,49 @@ function finish(units: Unit[], transitions: Transition[]): Timeline {
 }
 
 /**
+ * The musical hold pattern, as multiples of the look's base hold.
+ *
+ * What makes an auto-edit feel cut to music isn't the transitions, it's
+ * that the holds aren't all the same: short, short, long; short, short,
+ * longer. GoPro's Quik and Apple's Memories both do this. Cycled in order —
+ * a pattern, not noise.
+ */
+const HOLD_PATTERN = [0.65, 1.0, 1.3, 0.65, 1.0, 1.6];
+
+/** The last photograph lands and holds — a long, slow pull-back before the card. */
+const LANDING_MULT = 1.9;
+
+/**
  * The single-photo film — every look but the Stack.
  *
- * `vocab` null → dissolves throughout (the quiet looks). With a vocabulary,
- * the transitions are dealt; with `burst`, the three photos after the title
- * flash past at a third of a second each.
+ * `vocab` null → dissolves throughout, even holds (the quiet looks). With a
+ * vocabulary the film has an ARC: the title photo holds long, the holds
+ * then follow the musical pattern, a three-photo flash burst hits at the
+ * climax a little past the middle, and the last photograph lands and holds
+ * before the end card.
  */
 export function planSingles(n: number, opts: {
   titleHold: number; hold: number; endHold: number; dissolve: number;
   burst: boolean; vocab: "energy" | null; seed: number;
 }): Timeline {
   const { titleHold, hold, endHold, dissolve, burst, vocab, seed } = opts;
-  const burstN = burst && n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
+  // A burst only makes sense with cuts to flash on — never under dissolves.
+  const burstN = burst && vocab && n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
+  // The burst sits at the climax — just past the middle of the run, never
+  // straight after the title (that read as skipping) and never eating the
+  // landing shot.
+  const burstStart = burstN > 0 ? Math.min(Math.max(2, Math.floor(n * 0.55)), n - 1 - burstN) : n;
   const units: Unit[] = [];
+  let pi = 0;
   for (let i = 0; i < n; i++) {
-    const inBurst = i >= 1 && i <= burstN;
-    units.push({ kind: "photo", index: i, hold: i === 0 ? titleHold : inBurst ? BURST_DT : hold, burst: inBurst });
+    const inBurst = i >= burstStart && i < burstStart + burstN;
+    let h: number;
+    if (i === 0) h = titleHold;
+    else if (inBurst) h = BURST_DT;
+    else if (!vocab) h = hold;
+    else if (i === n - 1) h = hold * LANDING_MULT;
+    else h = hold * HOLD_PATTERN[pi++ % HOLD_PATTERN.length];
+    units.push({ kind: "photo", index: i, hold: h, burst: inBurst });
   }
   units.push({ kind: "end", hold: endHold });
 
@@ -103,9 +132,11 @@ export function planSingles(n: number, opts: {
   if (!vocab) {
     transitions = Array.from({ length: count }, () => ({ type: "dissolve", dur: dissolve, dir: "left" } as Transition));
   } else {
-    // Into and out of every burst frame: a flash cut. The rest are dealt.
+    // Into and out of every burst frame: a flash cut. Into the end card too
+    // — the landing resolves on a flash, same as the Stack. The rest are dealt.
     const fixed: Record<number, Transition> = {};
-    for (let k = 0; k <= burstN && burstN > 0; k++) fixed[k] = FLASH_CUT;
+    if (burstN > 0) for (let k = burstStart - 1; k < burstStart + burstN; k++) fixed[k] = FLASH_CUT;
+    fixed[count - 1] = FLASH_CUT;
     transitions = dealTransitions(count, ENERGY_VOCAB, seed, fixed);
   }
   return finish(units, transitions);
@@ -115,26 +146,26 @@ export function planSingles(n: number, opts: {
  * The Stack film.
  *
  * - photo 0: hero with title
- * - photos 1..BURST_MAX: the flash burst (skipped on a short list)
- * - then movements, alternating: a stack run (three bands whip in, then
- *   three to five swaps on the beat) and one or two full-frame singles. The
- *   deal cycles through the photos so the film runs to `beat × max(8, n)`
- *   — a shot seen as a band and later full-frame is how these are cut.
+ * - movements, alternating: a stack run (three bands whip in, then three
+ *   to five swaps on the beat) and one or two full-frame singles
+ * - at the halfway mark: the three-photo flash burst (skipped on a short list)
+ * - the last photograph lands and holds; then the end card
+ * The deal cycles through the photos so the film runs to `beat × max(8, n)`
+ * — a shot seen as a band and later full-frame is how these are cut.
  */
 export function planStack(n: number, opts: { heroHold: number; beat: number; endHold: number; seed: number }): Timeline {
   const { heroHold, beat, endHold, seed } = opts;
   const rand = seededRandom(seed * 7 + 3);
+  if (n === 0) return finish([{ kind: "end", hold: endHold }], []);
 
   const burstN = n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
   const units: Unit[] = [{ kind: "photo", index: 0, hold: heroHold, burst: false }];
-  for (let k = 0; k < burstN; k++) units.push({ kind: "photo", index: 1 + k, hold: BURST_DT, burst: true });
 
-  // The deal: the photos after the burst, then round again with the hero
-  // and burst photos, so a shot glimpsed for a third of a second gets its
-  // full-frame moment later.
+  // The deal: the photos after the hero in tap order, round and round, so a
+  // shot seen as a band gets its full-frame moment later.
   const pool: number[] = [];
-  for (let i = 1 + burstN; i < n; i++) pool.push(i);
-  for (let i = 0; i <= burstN && i < n; i++) pool.push(i);
+  for (let i = 1; i < n; i++) pool.push(i);
+  pool.push(0);
   let p = 0;
   const take = () => pool[p++ % pool.length];
   const rows = 3;
@@ -145,13 +176,23 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
   const target = beat * Math.max(8, n);
   let elapsed = 0;
   const fixed: Record<number, Transition> = {};
-  // Into and out of every burst frame: flash cuts. Into the first movement too.
-  for (let k = 0; k <= burstN && burstN > 0; k++) fixed[k] = FLASH_CUT;
 
   if (n >= 2) {
     let wantStack = canStack;
     let run = 0;
+    let burstDone = burstN === 0;
     while (elapsed < target) {
+      if (!burstDone && elapsed >= target * 0.5) {
+        // The climax: three photos flash past, a third of a second each,
+        // just past the middle — never straight after the title.
+        const first = units.length;
+        for (let k = 0; k < burstN; k++) units.push({ kind: "photo", index: take(), hold: BURST_DT, burst: true });
+        for (let k = first - 1; k < first + burstN; k++) fixed[k] = FLASH_CUT;
+        elapsed += burstN * BURST_DT;
+        burstDone = true;
+        wantStack = canStack;
+        continue;
+      }
       if (wantStack) {
         // A run: bands whip in, then three to five swaps. The bands fill in
         // a rotating order run to run (so no band is always the stale one),
@@ -178,6 +219,9 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
         wantStack = canStack;
       }
     }
+    // The landing: the last photograph full-frame, held long, a slow
+    // pull-back — the film comes to rest before the card.
+    units.push({ kind: "photo", index: take(), hold: beat * 2.6, burst: false });
   }
   units.push({ kind: "end", hold: endHold });
   // Into the end card: always a flash.
