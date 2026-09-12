@@ -45,8 +45,12 @@ been typechecked.** `npx tsc --noEmit` before pushing.
   default) / Short (~20s, 10 photos), reel only.
 - **Stack look + flash burst.** Sixth look `stack` (`src/lib/reelStack.ts`
   plans it): hero + title → 4-photo flash burst (0.2s each, white flash on each
-  cut) → three full-height bands whip-swapping one per beat (120 BPM grid,
-  holdScale 0.8 ≈ 1.5s) → flash to end card. Energy gets the same burst opener
+  cut) → **movements**: runs of three full-height bands whip-swapping one per
+  beat (3–5 swaps) alternating with one or two full-frame singles, lengths
+  from a seeded rng (same boat + photos = same film), photos cycle so the
+  film runs to `beat × max(8, n)` (~37s Full, ~23s Short) → flash to end
+  card. Charlie's note that drove this: "not all photos should be in a
+  stack — some full screen, then the stack, then another photo." Energy gets the same burst opener
   (`hook: "burst"`). Reel only; on film a stack look behaves as Energy.
   Framing + room-label chips hidden for Stack. AI headline no longer cut
   mid-word (word-boundary trim at 48, model asked for <40). Promo end moved to

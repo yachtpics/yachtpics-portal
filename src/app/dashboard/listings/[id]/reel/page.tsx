@@ -21,7 +21,7 @@ import {
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { planStack, rowState, whipEase, flashAlpha, BURST_DT, BURST_MAX, BURST_MIN_PHOTOS } from "@/lib/reelStack";
+import { planStack, rowState, whipEase, flashAlpha, BURST_DT, BURST_MAX, BURST_MIN_PHOTOS, type StackEvent } from "@/lib/reelStack";
 import RetryImg from "@/components/RetryImg";
 
 /**
@@ -952,25 +952,27 @@ export default function ListingReelPage() {
         ctx.restore();
       };
 
-      const drawStack = (t: number) => {
+      const drawStack = (events: StackEvent[], runEnd: number, t: number) => {
         if (!plan) return;
         ctx.fillStyle = st.ground;
         ctx.fillRect(0, 0, W, H);
         for (let r = 0; r < 3; r++) {
-          const state = rowState(plan.events, r, t);
+          const state = rowState(events, r, t);
           if (!state) continue;
           const rect = rowRect(r);
           const p = state.progress;
-          // Each band drifts in slowly over three beats — the same push every
-          // time, so it reads as intent rather than a shuffle.
-          const settle = Math.min(1, (t - state.since) / (plan.beat * 3));
-          const zoom = 1 + 0.07 * settle;
+          // Each band drifts in over its whole life — the same push every
+          // time, finishing just as it leaves — so it reads as intent rather
+          // than a shuffle.
+          const life = Math.max(0.3, (state.until ?? runEnd) - state.since);
+          const settle = Math.min(1, (t - state.since) / life);
+          const zoom = 1 + 0.06 * settle;
           if (p < 1) {
             // The whip: out to the left, in from the right, on one axis, every
             // time. A frame that changes direction is the amateur tell.
             const e = whipEase(p);
             const smear = 90 * sc * Math.sin(Math.PI * p);
-            if (state.prevIndex !== null) drawBand(state.prevIndex, rect, -W * e, 1.07, smear);
+            if (state.prevIndex !== null) drawBand(state.prevIndex, rect, -W * e, 1.06, smear);
             drawBand(state.index, rect, W * (1 - e), zoom, smear);
           } else {
             drawBand(state.index, rect, 0, zoom, 0);
@@ -1026,7 +1028,15 @@ export default function ListingReelPage() {
               drawTitle(titleAlpha(t, plan.heroHold));
             }
           } else if (t < plan.endStart) {
-            drawStack(t);
+            // Which movement are we in — a stack run or a full-frame single?
+            const ph = plan.phases.find((x) => t >= x.start && t < x.end) ?? plan.phases[plan.phases.length - 1];
+            if (!ph) {
+              drawEndCard(1);
+            } else if (ph.kind === "stack") {
+              drawStack(ph.events, ph.end, t);
+            } else {
+              drawPhoto(ph.index, t - ph.start, ph.hold, 1);
+            }
           } else {
             drawEndCard(1);
           }
