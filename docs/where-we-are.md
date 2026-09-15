@@ -5,6 +5,110 @@ everyone for a fortnight, and wrote the announcement. **Committed by Charlie,
 not by Claude — the sandbox shell was wedged all session, so nothing here has
 been typechecked.** `npx tsc --noEmit` before pushing.
 
+## Sept 15 afternoon — news sources audited and rebuilt
+
+Charlie read the summary drafts: **the voice is approved.** That item is closed.
+The remaining news work was the sources, and every one of the sixteen was tested
+this afternoon — fetched over HTTP and run through the portal's own `parseFeed`,
+not just pinged.
+
+**`src/lib/newsSources.ts` rewritten (committed to the working tree, not pushed;
+typechecks clean under `--strict`).**
+
+- **The three `unverified` entries are gone.** BOAT International, SuperYacht
+  Times and IYBA have no feed at any address, and none of the three has a dated
+  sitemap to fall back on — SuperYacht Times now refuses machine readers
+  outright at the Cloudflare edge. They were failing every morning and would have
+  gone on failing. The evidence for each is written into
+  `PUBLICATIONS_WITHOUT_FEEDS` at the foot of that file so nobody re-guesses
+  those addresses in six months. Getting them would mean scraping, which is a
+  different job with different manners — worth a conversation, not a quiet start.
+- **Three added, all watched returning XML:**
+  - **Marine Industry News** (`marineindustrynews.co.uk`) — real trade press,
+    ten items inside the three-day window on its own. The closest working
+    replacement for what IYBA and SuperYacht Times were meant to supply.
+  - **The Triton** (`triton.news`) — the Fort Lauderdale marine-business paper.
+    Quiet (newest item July 8), kept for its patch rather than its pace.
+  - **Motor Boat & Yachting** (`mby.com`) — thirty items deep, moving most days.
+    Covers the motor-yacht new-build ground Yachts International has vacated.
+- **YATCO moved to the site-wide `/feed/`** — fuller than the news channel, and
+  it publishes in bursts either way (newest item May 27).
+- **Two sources are alive but effectively silent:** Yachts International (newest
+  item **19 Dec 2025**) and The Triton. Both kept — the addresses are sound and
+  cost nothing — but neither should be counted towards the daily intake. If
+  Yachts International is still quiet at the end of 2026, retire it.
+- **Boats Group 403s from data-centre networks** (a Cloudflare rule on the
+  caller's address — even `/robots.txt` is refused; the URL itself is right).
+  Left in deliberately: **check `failedSources` after the next run.** If Vercel's
+  egress is blocked too it will be named every morning and can be retired then.
+
+**End-to-end result through the real parser:** 177 items parsed, **40 inside the
+three-day window**, one failed source (Boats Group). Compare the first run's six.
+Forty is exactly `MAX_NEW`, but that is the backfill effect of a cold start — on
+a steady daily run the windows overlap and dedup keeps it to a handful. No reason
+to raise the cap yet.
+
+**Still open on news:** the website upload (below); first Monday digest draft
+Sept 21.
+
+## Sept 15 — the website side, prepared for upload
+
+**The portal is pushed and live.** `portal.yachtpics.com/api/news/public` answers
+with real items in the approved voice, so `marine-news.php` works the moment it
+lands. (The note above saying the overnight build was not pushed is out of date.)
+
+**Everything is staged in `C:\Users\charl\yachtpics-site\_upload-2026-09-15\` —
+94 files, all flat, all bound for the web root.** Open that folder in FileZilla's
+local pane, select all, drag across. Show hidden files, or `.htaccess` will be
+skipped.
+
+Three things the last handoff got wrong, found by checking the live server rather
+than the local copies:
+
+1. **The live site was still serving the July 2025 hand-written page** at
+   `marine-news.php` — Bezos's *Koru* in St. Tropez. The upload was never done.
+2. **There was no nav link anywhere.** The claim that the Marine Blog link
+   already pointed at it was false: the live nav is Home / Gallery / Video /
+   Clients / Team / Contact, and the only links to the blog sat in the blog
+   pages' own footers.
+3. **The new `marine-news.php` shipped with three broken assets** — a nav link to
+   `videos.html` (404; the page is `video.html`), a logo at
+   `images/yachtpicslogo.png` (404) and an `og:image` at
+   `images/marine-blog-preview.jpg` (404). All three would have gone live.
+
+What is in the upload folder:
+
+- **90 pages with a "Marine Blog" nav item**, inserted before Contact. Each one
+  was fetched from the live server, edited, and byte-compared afterwards: the
+  only difference from what the server currently holds is that single `<li>`.
+  **This matters — the local copies in `yachtpics-site\` are from April and have
+  drifted** (live `index.html` says "Clients" where the local copy still says
+  "Boats"), so uploading the local copies would have quietly reverted live edits.
+  The 78 per-boat gallery pages under subfolders have no nav and were left alone.
+- **`marine-news.php`, restyled.** The PHP logic is untouched — the presentation
+  layer was rewritten to use `styles.css`, the site's real header, nav and
+  footer, and Cormorant Garamond / Inter on the cream ground with the gold
+  accent. It arrived styled like the 2019 site (Verdana, navy, grey nav bar) and
+  would have read as a different company's page. Lints clean under `php -l`;
+  rendered against the live API it returns 15 items across three days with every
+  local link resolving.
+- **`marine-news.html` → a redirect** to `marine-news.php` (canonical + meta
+  refresh + JS), and **`.htaccess`** gains one line: `Redirect 301
+  /marine-news.html /marine-news.php`. Belt and braces — if the host honours the
+  301 the HTML is never served; if it ignores it, the page redirects on its own.
+- **`sitemap.xml`** gains a `marine-news.php` entry. It did not list the blog at
+  all. Note the sitemap carries `lastmod` dates from Sept 13, so if something
+  regenerates it, this edit will be overwritten.
+
+**After the upload, check:** yachtpics.com — Marine Blog in the nav; the page
+itself; and yachtpics.com/marine-news.html redirects rather than showing July
+2025. The page writes `news-cache.json` beside itself (one-hour TTL); if the host
+forbids the write it costs the cache, not the page.
+
+**Worth considering next:** the page has no "photographed by YachtPics" call to
+action on it. A daily-refreshing industry feed is a reason for brokers to return
+to the site — there is nothing on it asking them to book a shoot.
+
 ## Sept 15 overnight — Industry News (built while Charlie slept; NOT pushed)
 
 Spec: `docs/news-spec.md`. Two Opus build passes + one Opus review; migration
@@ -39,6 +143,8 @@ Spec: `docs/news-spec.md`. Two Opus build passes + one Opus review; migration
   trigger the run from Vercel → Settings → Cron Jobs → Run (secret is
   Sensitive, can't be revealed). Still to do: Charlie judges the voice of the
   summaries; upload `marine-news.php`; first Monday draft (Sept 21).
+  **Superseded by the Sept 15 afternoon audit above — voice approved, the three
+  feedless publications removed, three working ones added.**
 - **Session hygiene:** this session is very long — start new sessions per
   topic and open with "read docs/where-we-are.md first."
 

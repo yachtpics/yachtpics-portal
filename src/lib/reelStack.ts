@@ -29,6 +29,7 @@ import {
   type Transition,
 } from "./reelTransitions";
 
+
 /** One beat at 120 BPM. */
 export const BEAT = 0.5;
 
@@ -79,8 +80,14 @@ function dealMove(rand: () => number, last: BandMove | null): BandMove {
   return last === "left" ? "right" : "left";
 }
 
+/**
+ * Which third of the frame a photograph occupies: 0 top, 1 middle, 2 bottom.
+ * `null` (or absent) is the ordinary full-frame photograph.
+ */
+export type Slot = 0 | 1 | 2 | null;
+
 export type Unit =
-  | { kind: "photo"; index: number; hold: number; burst: boolean }
+  | { kind: "photo"; index: number; hold: number; burst: boolean; slot?: Slot }
   | { kind: "stack"; hold: number; events: StackEvent[] }
   | { kind: "end"; hold: number };
 
@@ -118,6 +125,59 @@ const HOLD_PATTERN = [0.65, 1.0, 1.3, 0.65, 1.0, 1.6];
 /** The last photograph lands and holds — a long, slow pull-back before the card. */
 const LANDING_MULT = 1.9;
 
+// ── Thirds ───────────────────────────────────────────────────────────────────
+//
+// A movement where the frame holds ONE photograph at a time, but never in the
+// same place twice: it lands in the top third, leaves, the next arrives in the
+// middle or the bottom, leaves, and so on. The empty ground between them is
+// the point — it's what makes each photograph read as placed rather than
+// played. Cheap to watch and quietly expensive-looking, which is the register
+// these brokers are paying for.
+//
+// It runs in phases, alternating with ordinary full-frame photographs, so a
+// film has somewhere to build to and somewhere to rest. Reels only: three
+// horizontal bands need the vertical a 9:16 frame has and a 16:9 one doesn't.
+
+/** Photos in one thirds movement. */
+const THIRDS_RUN_MIN = 3;
+const THIRDS_RUN_MAX = 6;
+/** Full-frame photographs between two movements. */
+const THIRDS_GAP_MIN = 2;
+const THIRDS_GAP_MAX = 3;
+/**
+ * A thirds photograph is smaller than a full-bleed one, so it needs a moment
+ * longer to be read. Just over one — enough to feel placed, not slow.
+ */
+const THIRDS_HOLD_MULT = 1.15;
+/** Below this there aren't enough photographs to spare for a movement. */
+const THIRDS_MIN_PHOTOS = 8;
+/**
+ * The most of a film that may be placed rather than full-bleed.
+ *
+ * This is the line between a look that HAS a movement and a look that IS one.
+ * Editorial is the default — the first thing most brokers will ever render —
+ * and at three-fifths placed it stopped reading as Editorial and started
+ * reading as a different product. A little over a third leaves the movement
+ * as punctuation: enough to notice, not enough to take the look over.
+ */
+const THIRDS_MAX_FRACTION = 0.4;
+
+/**
+ * Deal the slots for one movement: never the same third twice running, and
+ * never the same one the previous movement finished on.
+ */
+function dealSlots(n: number, rand: () => number, last: Slot): Slot[] {
+  const out: Slot[] = [];
+  let prev = last;
+  for (let i = 0; i < n; i++) {
+    const choices: Slot[] = ([0, 1, 2] as Slot[]).filter((s) => s !== prev);
+    const pick = choices[Math.floor(rand() * choices.length)] ?? 0;
+    out.push(pick);
+    prev = pick;
+  }
+  return out;
+}
+
 /**
  * The single-photo film — every look but the Stack.
  *
@@ -129,7 +189,20 @@ const LANDING_MULT = 1.9;
  */
 export function planSingles(n: number, opts: {
   titleHold: number; hold: number; endHold: number; dissolve: number;
-  burst: boolean; vocab: "energy" | null; seed: number;
+  burst: boolean;
+  /**
+   * "energy" deals the full vocabulary, flash included. "stack" deals the same
+   * moves without the strobe — what a Stack look falls back to on a 16:9 film,
+   * where there is no vertical to stack into but the look's manners still hold.
+   */
+  vocab: "energy" | "stack" | null;
+  /**
+   * Run the thirds movement — one photograph at a time, landing in a
+   * different third of the frame each time, with empty ground between.
+   * Reels only; the caller decides, the planner just lays it out.
+   */
+  thirds?: boolean;
+  seed: number;
 }): Timeline {
   const { titleHold, hold, endHold, dissolve, burst, vocab, seed } = opts;
   // A burst only makes sense with cuts to flash on — never under dissolves.
@@ -138,6 +211,41 @@ export function planSingles(n: number, opts: {
   // straight after the title (that read as skipping) and never eating the
   // landing shot.
   const burstStart = burstN > 0 ? Math.min(Math.max(2, Math.floor(n * 0.55)), n - 1 - burstN) : n;
+
+  // Lay out the thirds movements first, so the hold loop below knows which
+  // photographs are placed and which fill the frame. The title photo, the
+  // burst and the landing shot are always full-frame: the opening frame has
+  // to sell the boat, the burst is too quick to place, and the film should
+  // come to rest on a whole photograph before the card.
+  const slots: Slot[] = new Array(n).fill(null);
+  if (opts.thirds && n >= THIRDS_MIN_PHOTOS) {
+    const rand = seededRandom(seed * 13 + 5);
+    const budget = Math.floor(n * THIRDS_MAX_FRACTION);
+    let spent = 0;
+    let last: Slot = null;
+    let i = 1 + THIRDS_GAP_MIN; // let the film open on full frames first
+    while (i < n - 1) {
+      const room = n - 1 - i;
+      if (room < THIRDS_RUN_MIN) break;
+      if (budget - spent < THIRDS_RUN_MIN) break;
+      const runN = Math.min(
+        THIRDS_RUN_MIN + Math.floor(rand() * (THIRDS_RUN_MAX - THIRDS_RUN_MIN + 1)),
+        room,
+        budget - spent
+      );
+      spent += runN;
+      const dealt = dealSlots(runN, rand, last);
+      for (let k = 0; k < runN; k++) {
+        const at = i + k;
+        // The burst keeps the whole frame — it is a punch, not a placement.
+        if (at >= burstStart && at < burstStart + burstN) continue;
+        slots[at] = dealt[k];
+        last = dealt[k];
+      }
+      i += runN + THIRDS_GAP_MIN + Math.floor(rand() * (THIRDS_GAP_MAX - THIRDS_GAP_MIN + 1));
+    }
+  }
+
   const units: Unit[] = [];
   let pi = 0;
   for (let i = 0; i < n; i++) {
@@ -148,7 +256,9 @@ export function planSingles(n: number, opts: {
     else if (!vocab) h = hold;
     else if (i === n - 1) h = hold * LANDING_MULT;
     else h = hold * HOLD_PATTERN[pi++ % HOLD_PATTERN.length];
-    units.push({ kind: "photo", index: i, hold: h, burst: inBurst });
+    // A placed photograph is smaller, so it gets a little longer to be read.
+    if (slots[i] !== null && !inBurst && i !== 0) h *= THIRDS_HOLD_MULT;
+    units.push({ kind: "photo", index: i, hold: h, burst: inBurst, slot: slots[i] });
   }
   units.push({ kind: "end", hold: endHold });
 
@@ -158,11 +268,15 @@ export function planSingles(n: number, opts: {
     transitions = Array.from({ length: count }, () => ({ type: "dissolve", dur: dissolve, dir: "left" } as Transition));
   } else {
     // Into and out of every burst frame: a flash cut. Into the end card too
-    // — the landing resolves on a flash. The rest are dealt.
+    // — the landing resolves on a flash. The rest are dealt. A Stack film
+    // gets neither: no burst to flash on, and no strobe on the landing.
+    const strobes = vocab === "energy";
     const fixed: Record<number, Transition> = {};
-    if (burstN > 0) for (let k = burstStart - 1; k < burstStart + burstN; k++) fixed[k] = FLASH_CUT;
-    fixed[count - 1] = FLASH_CUT;
-    transitions = dealTransitions(count, ENERGY_VOCAB, seed, fixed);
+    if (strobes) {
+      if (burstN > 0) for (let k = burstStart - 1; k < burstStart + burstN; k++) fixed[k] = FLASH_CUT;
+      fixed[count - 1] = FLASH_CUT;
+    }
+    transitions = dealTransitions(count, strobes ? ENERGY_VOCAB : STACK_VOCAB, seed, fixed);
   }
   return finish(units, transitions);
 }

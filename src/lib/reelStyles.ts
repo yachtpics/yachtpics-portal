@@ -76,6 +76,17 @@ export type ReelStyle = {
    * near-subliminal cuts that stop a thumb in the first three seconds.
    */
   hook?: "none" | "burst";
+  /**
+   * Run the thirds movement: stretches where the frame holds ONE photograph
+   * at a time, landing in the top, middle or bottom third and never the same
+   * place twice, with empty ground between. Each look runs it at its own
+   * pace — brisk under Energy's dealt cuts, unhurried under a dissolve.
+   *
+   * Not for Cinematic or Gallery: their window IS the composition, and moving
+   * the picture around inside it would argue with the look. Not for Stack
+   * either, which already owns the divided frame.
+   */
+  thirds?: boolean;
 };
 
 export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
@@ -105,6 +116,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.08,
     holdScale: 1,
     cut: "dissolve",
+    thirds: true,
   },
 
   /**
@@ -193,6 +205,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.07,
     holdScale: 1.05,
     cut: "dissolve",
+    thirds: true,
   },
 
   /**
@@ -228,6 +241,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     holdScale: 0.9,
     cut: "punch",
     hook: "burst",
+    thirds: true,
   },
 
   /**
@@ -243,7 +257,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   stack: {
     key: "stack",
     name: "Stack",
-    blurb: "Three bands trading on the beat, full-frame breaks, a different cut every time. For go-fasts.",
+    blurb: "Three bands trading on the beat, with full-frame breaks. For go-fasts.",
     ground: "#06090f",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.86)",
@@ -308,14 +322,46 @@ export function rgba(hex: string, a: number): string {
   return `rgba(${r},${g},${b},${a})`;
 }
 
+/** Contrast ratio between two hex colours, 1..21 (WCAG). */
+function contrast(a: string, b: string): number {
+  const la = luminance(a), lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/**
+ * The accent, moved just far enough to be legible on its ground.
+ *
+ * The accent isn't decoration — it carries the title lead-in and, on the end
+ * card, the broker's phone number. "Match my logo" reads the dominant
+ * saturated hue straight off the bitmap, and plenty of brokerage marks are
+ * navy or maroon: on Editorial's near-black ground a navy lands around 1.3:1,
+ * which is a phone number nobody can read. So the hue is kept and only the
+ * lightness moves, in small steps, until it clears 4.5:1. The broker still
+ * gets their colour; they also get their number.
+ */
+function legibleAccent(accent: string, ground: string): string {
+  if (contrast(accent, ground) >= 4.5) return accent;
+  const toward = luminance(ground) > 0.3 ? 0 : 255; // darken on light, lighten on dark
+  let [r, g, b] = hexToRgb(accent);
+  for (let step = 0; step < 24; step++) {
+    r = Math.round(r + (toward - r) * 0.12);
+    g = Math.round(g + (toward - g) * 0.12);
+    b = Math.round(b + (toward - b) * 0.12);
+    const hex = `#${[r, g, b].map((c) => c.toString(16).padStart(2, "0")).join("")}`;
+    if (contrast(hex, ground) >= 4.5) return hex;
+  }
+  return luminance(ground) > 0.3 ? "#1a1a1a" : "#f2f2f2";
+}
+
 /**
  * A look with the broker's colours applied. Text colours follow the ground:
  * a light ground gets ink type and a dark one gets bone, whatever the look
- * started as. The accent is used as given — it's the broker's call.
+ * started as. The accent keeps the broker's hue but is nudged until it can
+ * actually be read on the ground it sits on.
  */
 export function applyBrand(base: ReelStyle, brand: BrandColors | null | undefined): ReelStyle {
   const ground = normalizeHex(brand?.ground) ?? base.ground;
-  const accent = normalizeHex(brand?.accent) ?? base.accent;
+  const accent = legibleAccent(normalizeHex(brand?.accent) ?? base.accent, ground);
   if (ground === base.ground && accent === base.accent) return base;
   // Type colours only move when the ground does — a new accent alone must not
   // flatten Classic's warm bone or Cinematic's quieter greys into the generic set.

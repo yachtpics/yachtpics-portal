@@ -13,14 +13,29 @@ const PORTAL = "https://portal.yachtpics.com";
  * type would silently skip everyone who received it.
  */
 export const ANNOUNCEMENT_TYPE = "announcement_reel_2026_09";
-export const ANNOUNCEMENT_SUBJECT = "Your photos are now a reel — free for two weeks";
+
+/**
+ * The subject names the CLOSING DATE, not a duration.
+ *
+ * "Free for two weeks" is only true on the day it's written. This email has
+ * already waited a week for the Stack look, and a duration in the subject line
+ * quietly becomes a lie every day it sits unsent. The date is read from
+ * reelPromo, so the subject, the body and the banner on the Reel page can
+ * never disagree — move REEL_PROMO_END and all three follow.
+ */
+export const ANNOUNCEMENT_SUBJECT = `Your photos are now a reel — free until ${reelPromoEndsOn()}`;
 
 // Scheduled-send window (the Vercel cron fires Monday 9am ET = 13:00 UTC). The
 // cron only sends inside this window; combined with the email_log dedup, that
 // guarantees a single send. Manual "Send to all" from the admin page works too,
-// which is how this one is meant to go out — the fortnight starts when it lands.
+// which is how this one is meant to go out.
+//
+// SEND_BEFORE deliberately closes well before the promo does. An announcement
+// that lands with three days left on the offer is worse than one that waits:
+// if this window has passed, the right move is to push REEL_PROMO_END out and
+// move this with it, not to send into the tail end of the fortnight.
 export const ANNOUNCEMENT_SEND_AFTER = "2026-09-09T12:00:00Z";
-export const ANNOUNCEMENT_SEND_BEFORE = "2026-09-27T13:00:00Z";
+export const ANNOUNCEMENT_SEND_BEFORE = "2026-09-23T13:00:00Z";
 
 export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
   const { firstName, unsubToken } = opts;
@@ -47,7 +62,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi ${firstName},</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open any listing and you&rsquo;ll find a new button: <strong style="color:#111827;">Reel</strong>. Click it and the photographs you already have &mdash; in the order you&rsquo;ve set them, your cover shot first &mdash; come back as a finished video. About twenty seconds, ready to post.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open any listing and you&rsquo;ll find a new button: <strong style="color:#111827;">Reel</strong>. Click it and the photographs you already have &mdash; in the order you&rsquo;ve set them, your cover shot first &mdash; come back as a finished video. Around forty seconds &mdash; the length the feed actually rewards &mdash; ready to post.</p>
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Not a slideshow with a logo on the front. You choose the look &mdash; six of them, from the restrained brochure register to a slow letterboxed cut to a fast hard-cut edit and a three-band, whip-cut reel built for centre consoles &mdash; set it in your own brand colours (or press Match my logo and let it find them), and it renders right there in your browser in under a minute. Vertical for Instagram and Facebook, or widescreen to send a buyer and add straight to the listing.</p>
 
@@ -55,7 +70,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <div style="margin:0 0 26px;padding:18px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
         <p style="margin:0 0 6px;font-size:15px;color:#6b5a2a;line-height:1.6;"><strong style="color:#4a3d17;">It&rsquo;s open to everyone until ${closes}.</strong></p>
-        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">Subscribed, on trial, or lapsed &mdash; for the next two weeks every account can make as many reels as they like, on any listing, and download them clean. Make one for your best boat and see what it does.</p>
+        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">Subscribed, on trial, or lapsed &mdash; until then every account can make as many reels as they like, on any listing, and download them clean. Make one for your best boat and see what it does.</p>
       </div>
 
       <p style="margin:0 0 14px;font-size:15px;color:#374151;line-height:1.6;">And a few other things worth knowing about:</p>

@@ -254,7 +254,9 @@ export default function ListingReelPage() {
       ]);
       setVideoCount(count ?? 0);
       setBroker({
-        name: [prof?.first_name, prof?.last_name].filter(Boolean).join(" ") || "Broker",
+        // No placeholder here: an end card reading "Broker" over a phone number
+        // is worse than no line at all. drawEndCard skips an empty name.
+        name: [prof?.first_name, prof?.last_name].filter(Boolean).join(" "),
         brokerage: det?.brokerage_name ?? null,
         phone: prof?.phone ?? null,
         email: prof?.display_email ?? null,
@@ -369,13 +371,21 @@ export default function ListingReelPage() {
     // title holds for exactly the same beat — varying it per photo is the
     // thing that makes a slideshow feel restless. The quiet looks dissolve;
     // a look with a vocabulary deals its cuts.
+    // A Stack look on a film has no vertical to stack into, so it runs as a
+    // single-photo film — but it keeps Stack's manners. Charlie took the
+    // strobe out of the Stack deliberately ("we are delivering photos to be
+    // seen"), so the film version gets neither the flash burst nor the flash
+    // cuts that Energy deals: same punch, no strobe.
+    const isStack = look.layout === "stack";
     return planSingles(n, {
       titleHold: s.titleHold * scale,
       hold: s.hold * scale,
       endHold,
       dissolve: fadeFor(format, styleKey),
-      burst: look.hook === "burst",
-      vocab: look.cut === "punch" ? "energy" : null,
+      burst: look.hook === "burst" && !isStack,
+      vocab: look.cut === "punch" ? (isStack ? "stack" : "energy") : null,
+      // Reels only: three horizontal bands need the vertical a 9:16 frame has.
+      thirds: look.thirds === true && format === "reel",
       seed,
     });
     // `s` carries the length's hold, so the total redraws when Length changes.
@@ -543,7 +553,12 @@ export default function ListingReelPage() {
             // Name at the head of the page, the print below it.
             return { x: m, y: H * 0.42, w: W - m * 2, h: H * 0.44 };
           }
-          return { x: m, y: m, w: W - m * 2, h: H * 0.45 };
+          // Film: the type sits UNDER the picture, so the window is everything
+          // above the type block. 0.45 was the reel's proportion carried over
+          // unchanged, and on a 16:9 frame it left a 3:2 photograph drawn at a
+          // third of the width, marooned in cream. A whole photo on a wide
+          // frame is always height-limited, so the height is what has to give.
+          return { x: m, y: m * 0.7, w: W - m * 2, h: H * 0.62 };
         }
         return { x: 0, y: 0, w: W, h: H };
       })();
@@ -554,7 +569,21 @@ export default function ListingReelPage() {
       // it sits in the corner of the picture rather than the corner of the frame.
       let photoRect = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
 
-      const drawPhoto = (i: number, localT: number, hold: number, alpha: number, wholeOverride?: boolean) => {
+      /**
+       * The band a placed photograph occupies: the top, middle or bottom
+       * third of the frame, inset by a margin so the ground reads as a page
+       * rather than a gap. Instagram's own furniture is not dodged here on
+       * purpose — that rule governs TYPE, and a photograph behind the caption
+       * row is no worse off than a full-bleed one.
+       */
+      const slotRect = (slot: number) => {
+        const bandH = H / 3;
+        const mx = 0.055 * W;
+        const my = 0.085 * bandH;
+        return { x: mx, y: slot * bandH + my, w: W - mx * 2, h: bandH - my * 2 };
+      };
+
+      const drawPhoto = (i: number, localT: number, hold: number, alpha: number, wholeOverride?: boolean, slot?: number | null) => {
         const bmp = bitmaps[i];
         // The drift runs to the end of the outgoing transition, so the
         // photograph never freezes while a dissolve or dip carries it out.
@@ -595,6 +624,27 @@ export default function ListingReelPage() {
         // The Stack's hero and burst are always full-bleed — the framing chips
         // are hidden for it, so a "whole photo" choice left over from another
         // look must not leak in.
+        // A placed photograph: whole, complete, in its third of the frame,
+        // with the look's own ground around it. One at a time — the empty
+        // ground either side of it is the effect, not a shortfall.
+        if (slot !== null && slot !== undefined) {
+          const b = slotRect(slot);
+          const base = Math.min(b.w / bmp.width, b.h / bmp.height);
+          // A touch of the look's own motion, kept small: the photograph has
+          // a border of ground to grow into and must never crop against it.
+          const zoom = base * (1 + (k - 1) * 0.3);
+          const dw = bmp.width * zoom, dh = bmp.height * zoom;
+          ctx.shadowColor = st.light ? "rgba(20,26,33,0.20)" : "rgba(0,0,0,0.50)";
+          ctx.shadowBlur = (st.light ? 30 : 44) * sc;
+          ctx.shadowOffsetY = (st.light ? 10 : 14) * sc;
+          const px = b.x + (b.w - dw) / 2;
+          const py = b.y + (b.h - dh) / 2;
+          ctx.drawImage(bmp, px, py, dw, dh);
+          photoRect = { x: px, y: py, w: dw, h: dh };
+          ctx.restore();
+          return;
+        }
+
         const showWhole = wholeOverride ?? (backdrop === "inset" || (fit === "whole" && backdrop !== "letterbox" && !stacked));
         if (!showWhole) {
           // Cover the window.
@@ -645,7 +695,7 @@ export default function ListingReelPage() {
        * riding the same crossfade. Skipped on the title photo, which already
        * has a name on it.
        */
-      const drawRoomLabel = (i: number, localT: number, _hold: number, alpha: number) => {
+      const drawRoomLabel = (i: number, localT: number, _hold: number, alpha: number, placed = false) => {
         if (!showLabels || i === 0) return;
         const label = roomLabel(selectedPhotos[i]?.category);
         if (!label) return;
@@ -677,9 +727,14 @@ export default function ListingReelPage() {
           // band the title uses: the foot of a reel is Instagram's, not ours.
           const fullBleed = fit === "fill";
           const x = r.x + 44 * sc;
-          const y = topType
-            ? H * 0.16 + size
-            : fullBleed ? H - 78 * sc : r.y + r.h - 40 * sc;
+          const y = placed
+            // A placed photograph carries its caption at its own foot,
+            // wherever in the frame it landed — a fixed band at the top would
+            // leave the words stranded above a bottom-third picture.
+            ? r.y + r.h - 34 * sc
+            : topType
+              ? H * 0.16 + size
+              : fullBleed ? H - 78 * sc : r.y + r.h - 40 * sc;
           // Just the words, on a soft shadow — no panel, no gradient. A tint
           // fading in and out under every photo pulled the eye off the boat.
           ctx.shadowColor = "rgba(0,0,0,0.8)";
@@ -817,10 +872,15 @@ export default function ListingReelPage() {
         const topWanted = H * 0.16 + firstAscent;
         const topFloor = offFrame ? frame.y - 56 * sc : H; // window top, or no limit
         const topStart = Math.max(topCeiling, Math.min(topWanted, topFloor - blockH + firstAscent));
+        // On a film the off-frame block hangs from the picture's lower edge —
+        // but it must still land inside the frame. A two-line vessel name over
+        // a three-line spec row used to push the location clean off the bottom,
+        // silently. Clamp it the way the scrim branch already clamps itself.
+        const filmFloor = H - 56 * sc - blockH + firstAscent;
         let y = topType
           ? topStart
           : offFrame
-            ? under + 96 * sc + (maker ? 0 : nameSize * 0.82)
+            ? Math.min(under + 72 * sc + (maker ? 0 : nameSize * 0.82), filmFloor)
             : H - 140 * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
         if (maker) {
@@ -981,7 +1041,7 @@ export default function ListingReelPage() {
         } else {
           // The person: clearly secondary to the boat. Regular weight, and in
           // the serif looks the serif at its book weight rather than bold.
-          items.push(personLine(card.name));
+          if (card.name) items.push(personLine(card.name));
           if (card.brokerage) items.push(capsLine(card.brokerage, st.soft));
           const contact = contactFor(card);
           if (contact) items.push(contactLine(contact));
@@ -1168,7 +1228,7 @@ export default function ListingReelPage() {
           // shown whole: a horizontal floats complete on a soft plate, a
           // vertical fills the frame.
           const whole = stacked && !u.burst ? true : undefined;
-          drawPhoto(u.index, local, u.hold, alpha, whole);
+          drawPhoto(u.index, local, u.hold, alpha, whole, u.slot);
           // Where the type lives off the picture — Gallery's page, Cinematic's
           // bar — it stays up for the whole reel: every frame a captioned
           // print, rather than a name that leaves and a page left empty.
@@ -1181,7 +1241,7 @@ export default function ListingReelPage() {
             drawTitle(alpha);
           }
           // Burst frames are too quick to read a caption on.
-          else if (!u.burst && !stacked) drawRoomLabel(u.index, local, u.hold, alpha);
+          else if (!u.burst && !stacked) drawRoomLabel(u.index, local, u.hold, alpha, u.slot !== null && u.slot !== undefined);
         } else if (u.kind === "stack") {
           drawStack(u.events, u.hold, local, alpha);
         } else {
@@ -1396,6 +1456,26 @@ export default function ListingReelPage() {
   // Nothing to caption if the photos were never categorised.
   const labelsPossible = selectedPhotos.some((p, i) => i > 0 && !!roomLabel(p.category));
 
+  /**
+   * Which looks can carry a room caption on a 9:16 reel.
+   *
+   * Cinematic and Gallery keep type off the photograph, so their caption
+   * belongs in the ground — and on a reel that band is already holding the
+   * title for the whole film (the picture's foot is Instagram's caption, not
+   * ours). Two pieces of type, one band. Until that's resolved the honest
+   * thing is to say so rather than show a switch that does nothing.
+   *
+   * Stack moves too fast to read one at all.
+   */
+  const labelsUnavailable: string | null =
+    format !== "reel"
+      ? null
+      : styleKey === "stack"
+        ? "Stack moves too fast for room labels."
+        : styleKey === "cinematic" || styleKey === "gallery"
+          ? `${REEL_STYLES[styleKey].name} keeps all type off the photograph, and on a reel that band is holding the title — so no room labels here.`
+          : null;
+
   function pick<T>(setter: (v: T) => void) {
     return (v: T) => { setter(v); setResult(null); setPhase("idle"); };
   }
@@ -1596,7 +1676,7 @@ export default function ListingReelPage() {
             <button onClick={() => { setShowLocation((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !listing.location} className={chip(showLocation && !!listing.location)}>
               {listing.location ? `Location ${showLocation ? "on" : "off"}` : "No location set"}
             </button>
-            {!(styleKey === "stack" && format === "reel") && (
+            {!labelsUnavailable && (
               <button onClick={() => { setShowLabels((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !labelsPossible} className={chip(showLabels && labelsPossible)}>
                 {labelsPossible ? `Room labels ${showLabels ? "on" : "off"}` : "No categories set"}
               </button>
@@ -1604,8 +1684,8 @@ export default function ListingReelPage() {
           </div>
           <p className="text-xs text-ink-400 mt-1.5">
             Year, builder, length and staterooms always appear when they&rsquo;re filled in.
-            {labelsPossible && !(styleKey === "stack" && format === "reel") && " Room labels name each space in the corner of its photo."}
-            {styleKey === "stack" && format === "reel" && " Stack moves too fast for room labels."}
+            {labelsPossible && !labelsUnavailable && " Room labels name each space in the corner of its photo."}
+            {labelsUnavailable && ` ${labelsUnavailable}`}
           </p>
         </div>
       </div>

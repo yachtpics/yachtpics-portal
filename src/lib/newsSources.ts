@@ -13,6 +13,9 @@
  *
  * Forums are deliberately absent. The Hull Truth and its like are conversation,
  * not press, and we summarise press.
+ *
+ * Three publications are absent for a harder reason — see PUBLICATIONS_WITHOUT_FEEDS
+ * at the foot of this file before adding them back.
  */
 
 /** The six shelves. One per item, chosen by the model. */
@@ -57,26 +60,6 @@ export type NewsSource = {
 
 export const NEWS_SOURCES: NewsSource[] = [
   {
-    // No feed exists. Tried /rss, /rss.xml, /feed, /feed/, /atom.xml, /index.xml,
-    // /feed.xml, /rss/news, /yachts/news/feed — all 404, and the homepage declares
-    // no <link rel="alternate">. It is a Next.js site with nothing to subscribe to.
-    name: "BOAT International",
-    url: "https://www.boatinternational.com/rss",
-    homepage: "https://www.boatinternational.com",
-    hint: "superyacht",
-    unverified: true,
-  },
-  {
-    // No feed exists. Tried /rss, /rss.xml, /feed, /feed/, /yacht-news/feed,
-    // /news/rss, /atom.xml, /index.xml — all 404, and no <link rel="alternate">
-    // on the homepage. Also a Next.js site with no feed endpoint.
-    name: "SuperYacht Times",
-    url: "https://www.superyachttimes.com/rss",
-    homepage: "https://www.superyachttimes.com",
-    hint: "superyacht",
-    unverified: true,
-  },
-  {
     // Seen returning XML: /rss redirects here.
     name: "Trade Only Today",
     url: "https://tradeonlytoday.com/feed/",
@@ -99,8 +82,10 @@ export const NEWS_SOURCES: NewsSource[] = [
     hint: "new-builds",
   },
   {
-    // Seen returning XML, but the feed is slow-moving — it was last rebuilt in
-    // December 2025, so expect long quiet stretches rather than daily items.
+    // Seen returning XML, but the publication has effectively stopped: the newest
+    // item in the feed is 19 December 2025 (checked 15 Sep 2026). Kept because the
+    // address is sound and costs nothing, but do not count it towards the daily
+    // intake — if it is still silent at the end of 2026, retire it.
     name: "Yachts International",
     url: "https://yachtsinternational.com/feed/",
     homepage: "https://www.yachtsinternational.com",
@@ -121,32 +106,46 @@ export const NEWS_SOURCES: NewsSource[] = [
     hint: "superyacht",
   },
   {
-    // Seen returning XML. The site-wide /feed/ works too, but this one is the
-    // industry-news channel and nothing else.
+    // Seen returning XML, but it publishes in bursts — newest item 11 May 2026 on
+    // the news channel, 27 May 2026 on the site-wide /feed/ (checked 15 Sep 2026).
+    // The site-wide feed is the fuller of the two and is what we read now; it
+    // carries the same news posts plus the occasional market piece.
     name: "YATCO",
-    url: "https://www.yatco.com/news/feed/",
+    url: "https://www.yatco.com/feed/",
     homepage: "https://www.yatco.com",
     hint: "brokerage",
   },
   {
-    // No feed found, and the address in the original guess was wrong too:
-    // iyba.yachts does not resolve at all — the association is at iyba.org.
-    // On iyba.org tried /feed/, /rss, /rss.xml, /news/feed/, /news-list/feed,
-    // /index.xml, /atom.xml — all 404, no <link rel="alternate">. Their news
-    // sits at /news-list with nothing to subscribe to.
-    name: "IYBA",
-    url: "https://iyba.org/feed/",
-    homepage: "https://iyba.org",
-    hint: "brokerage",
-    unverified: true,
-  },
-  {
-    // Seen returning XML. The site-wide /feed/ is switched off and redirects to
-    // the homepage; the per-category feed is the one that works.
+    // Seen returning XML from a browser, but 403s from at least one data-centre
+    // network (Cloudflare edge rule — even /robots.txt is refused, so it is the
+    // caller's address being judged, not the path). Left in: if Vercel's egress
+    // is blocked too it will simply appear in `failedSources` every morning and
+    // can be retired then. The address itself is correct — the site-wide /feed/
+    // is switched off and redirects to the homepage.
     name: "Boats Group",
     url: "https://www.boatsgroup.com/category/news/feed/",
     homepage: "https://www.boatsgroup.com",
     hint: "brokerage",
+  },
+  {
+    // Seen returning XML, daily. Trade press proper — dealers, builders, marinas,
+    // finance and the brokerage business. British-based but it covers the American
+    // market, and it is the closest working replacement for what IYBA and
+    // SuperYacht Times were meant to supply.
+    name: "Marine Industry News",
+    url: "https://marineindustrynews.co.uk/feed/",
+    homepage: "https://marineindustrynews.co.uk",
+    hint: "industry",
+  },
+  {
+    // Seen returning XML, but quiet — newest item 8 July 2026 (checked 15 Sep
+    // 2026). Kept for its patch rather than its pace: it is the Fort Lauderdale
+    // marine-business paper, so when it does publish it is about the yards,
+    // brokerages and crews our brokers already know.
+    name: "The Triton",
+    url: "https://triton.news/feed/",
+    homepage: "https://triton.news",
+    hint: "industry",
   },
   {
     // Seen returning XML.
@@ -184,7 +183,45 @@ export const NEWS_SOURCES: NewsSource[] = [
     homepage: "https://www.southernboating.com",
     hint: "industry",
   },
+  {
+    // Seen returning XML, thirty items deep and moving most days. British, and
+    // consumer rather than trade, but it is motor-yacht coverage — new models,
+    // sea trials, builder news — which is the ground Yachts International used to
+    // hold for us.
+    name: "Motor Boat & Yachting",
+    url: "https://www.mby.com/feed",
+    homepage: "https://www.mby.com",
+    hint: "new-builds",
+  },
 ];
+
+/**
+ * The ones that got away, and why — so nobody spends another morning guessing
+ * feed addresses that were never there. Re-checked 15 September 2026.
+ *
+ * BOAT International — no feed at any address (/rss, /rss.xml, /feed, /feed/,
+ *   /atom.xml, /index.xml, /feed.xml, /rss/news, /yachts/news/feed all 404) and
+ *   no <link rel="alternate"> on the homepage. Its sitemap carries no dates
+ *   either, and the daily job drops undated items by design, so the sitemap is
+ *   not a way round it.
+ *
+ * SuperYacht Times — no feed, and now unreadable by machine at all: Cloudflare
+ *   refuses the homepage, the sitemap index and every feed guess outright.
+ *
+ * IYBA — no feed. iyba.yachts does not resolve; the association is at iyba.org,
+ *   where /feed/, /rss, /rss.xml, /news/feed/, /news-list/feed, /index.xml and
+ *   /atom.xml all 404 and the sitemap is menu-and-data only, undated. Their news
+ *   sits at /news-list with nothing to subscribe to.
+ *
+ * All three would have to be scraped, which is a different undertaking with a
+ * different set of manners. Megayacht News and Robb Report Marine carry the
+ * superyacht ground; Marine Industry News and The Triton carry the trade.
+ */
+export const PUBLICATIONS_WITHOUT_FEEDS = [
+  "BOAT International",
+  "SuperYacht Times",
+  "IYBA",
+] as const;
 
 /** The name we put on items Charlie enters himself. */
 export const NATIVE_SOURCE_NAME = "YachtPics";
