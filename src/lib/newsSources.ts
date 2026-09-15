@@ -57,6 +57,9 @@ export type NewsSource = {
 
 export const NEWS_SOURCES: NewsSource[] = [
   {
+    // No feed exists. Tried /rss, /rss.xml, /feed, /feed/, /atom.xml, /index.xml,
+    // /feed.xml, /rss/news, /yachts/news/feed — all 404, and the homepage declares
+    // no <link rel="alternate">. It is a Next.js site with nothing to subscribe to.
     name: "BOAT International",
     url: "https://www.boatinternational.com/rss",
     homepage: "https://www.boatinternational.com",
@@ -64,6 +67,9 @@ export const NEWS_SOURCES: NewsSource[] = [
     unverified: true,
   },
   {
+    // No feed exists. Tried /rss, /rss.xml, /feed, /feed/, /yacht-news/feed,
+    // /news/rss, /atom.xml, /index.xml — all 404, and no <link rel="alternate">
+    // on the homepage. Also a Next.js site with no feed endpoint.
     name: "SuperYacht Times",
     url: "https://www.superyachttimes.com/rss",
     homepage: "https://www.superyachttimes.com",
@@ -78,25 +84,27 @@ export const NEWS_SOURCES: NewsSource[] = [
     hint: "industry",
   },
   {
+    // Seen returning XML. The www address redirects here; this is the address
+    // the feed names as its own.
     name: "Soundings Online",
-    url: "https://www.soundingsonline.com/feed/",
+    url: "https://soundingsonline.com/feed/",
     homepage: "https://www.soundingsonline.com",
     hint: "industry",
-    unverified: true,
   },
   {
+    // Seen returning XML. The www address redirects here.
     name: "Power & Motoryacht",
-    url: "https://www.powerandmotoryacht.com/feed/",
+    url: "https://powerandmotoryacht.com/feed/",
     homepage: "https://www.powerandmotoryacht.com",
     hint: "new-builds",
-    unverified: true,
   },
   {
+    // Seen returning XML, but the feed is slow-moving — it was last rebuilt in
+    // December 2025, so expect long quiet stretches rather than daily items.
     name: "Yachts International",
-    url: "https://www.yachtsinternational.com/feed/",
+    url: "https://yachtsinternational.com/feed/",
     homepage: "https://www.yachtsinternational.com",
     hint: "superyacht",
-    unverified: true,
   },
   {
     // Seen returning XML.
@@ -106,46 +114,75 @@ export const NEWS_SOURCES: NewsSource[] = [
     hint: "new-builds",
   },
   {
+    // Seen returning XML. The section feed, not the whole magazine.
     name: "Robb Report Marine",
     url: "https://robbreport.com/motors/marine/feed/",
     homepage: "https://robbreport.com/motors/marine/",
     hint: "superyacht",
-    unverified: true,
   },
   {
+    // Seen returning XML. The site-wide /feed/ works too, but this one is the
+    // industry-news channel and nothing else.
     name: "YATCO",
-    url: "https://www.yatco.com/feed/",
+    url: "https://www.yatco.com/news/feed/",
     homepage: "https://www.yatco.com",
     hint: "brokerage",
-    unverified: true,
   },
   {
+    // No feed found, and the address in the original guess was wrong too:
+    // iyba.yachts does not resolve at all — the association is at iyba.org.
+    // On iyba.org tried /feed/, /rss, /rss.xml, /news/feed/, /news-list/feed,
+    // /index.xml, /atom.xml — all 404, no <link rel="alternate">. Their news
+    // sits at /news-list with nothing to subscribe to.
     name: "IYBA",
-    url: "https://iyba.yachts/feed/",
-    homepage: "https://iyba.yachts",
+    url: "https://iyba.org/feed/",
+    homepage: "https://iyba.org",
     hint: "brokerage",
     unverified: true,
   },
   {
+    // Seen returning XML. The site-wide /feed/ is switched off and redirects to
+    // the homepage; the per-category feed is the one that works.
     name: "Boats Group",
-    url: "https://www.boatsgroup.com/feed/",
+    url: "https://www.boatsgroup.com/category/news/feed/",
     homepage: "https://www.boatsgroup.com",
     hint: "brokerage",
-    unverified: true,
   },
   {
+    // Seen returning XML.
     name: "Sport Fishing Magazine",
     url: "https://www.sportfishingmag.com/feed/",
     homepage: "https://www.sportfishingmag.com",
     hint: "sportfish",
-    unverified: true,
   },
   {
+    // Seen returning XML.
     name: "Marlin Magazine",
     url: "https://www.marlinmag.com/feed/",
     homepage: "https://www.marlinmag.com",
     hint: "sportfish",
-    unverified: true,
+  },
+  {
+    // Seen returning XML. Carries the American superyacht coverage that BOAT
+    // International and SuperYacht Times would have given us if either had a feed.
+    name: "Megayacht News",
+    url: "https://megayachtnews.com/feed/",
+    homepage: "https://megayachtnews.com",
+    hint: "superyacht",
+  },
+  {
+    // Seen returning XML. Dealer, manufacturer and trade-association news.
+    name: "Boating Industry",
+    url: "https://boatingindustry.com/feed/",
+    homepage: "https://boatingindustry.com",
+    hint: "industry",
+  },
+  {
+    // Seen returning XML. The www address redirects here.
+    name: "Southern Boating",
+    url: "https://southernboating.com/feed/",
+    homepage: "https://www.southernboating.com",
+    hint: "industry",
   },
 ];
 
