@@ -33,6 +33,14 @@ Spec: `docs/news-spec.md`. Two Opus build passes + one Opus review; migration
   "Marine Blog" nav link already points at it. The old July-2025 hand-written
   sections are gone by design.
 - Not typechecked (shell still dead). Review found no compile errors.
+- **Sept 15 morning:** first run filed 6 items (only 2 feeds resolved). Sources
+  re-verified: 13 live feeds of 16 (`newsSources.ts`); BOAT International,
+  SuperYacht Times and IYBA publish no RSS — left `unverified`. Charlie can
+  trigger the run from Vercel → Settings → Cron Jobs → Run (secret is
+  Sensitive, can't be revealed). Still to do: Charlie judges the voice of the
+  summaries; upload `marine-news.php`; first Monday draft (Sept 21).
+- **Session hygiene:** this session is very long — start new sessions per
+  topic and open with "read docs/where-we-are.md first."
 
 **Charlie, in the morning:**
 1. Push (three commands). Vercel green.
