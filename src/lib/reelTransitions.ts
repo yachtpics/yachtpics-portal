@@ -118,6 +118,10 @@ type Draw = (alpha: number) => void;
  * Draw one transition frame. `p` runs 0→1 across the transition; `a` is the
  * outgoing frame, `b` the incoming. Both callbacks draw the WHOLE frame at
  * the alpha they're given, so this only has to arrange them.
+ *
+ * `disjoint` says the two frames do NOT cover the same pixels — one or both
+ * is a photograph placed in a third of the frame rather than filling it. It
+ * only matters to the dissolve, and it matters a lot: see the case below.
  */
 export function drawTransition(
   ctx: CanvasRenderingContext2D,
@@ -128,6 +132,7 @@ export function drawTransition(
   ground: string,
   a: Draw,
   b: Draw,
+  disjoint = false,
 ) {
   const sc = Math.min(W, H) / 1080;
   switch (tr.type) {
@@ -137,8 +142,25 @@ export function drawTransition(
       return;
 
     case "dissolve": {
+      const e = easeInOut(p);
+      if (disjoint) {
+        // The two photographs are in different parts of the frame, so the
+        // incoming one cannot cover the outgoing one as it arrives. Drawn the
+        // usual way the outgoing would sit at full strength for the whole
+        // transition and then vanish on one frame — which reads as the new
+        // photo appearing and only THEN the old one leaving. Both have to
+        // move at once: one fades down while the other fades up, each against
+        // the ground. They don't overlap, so there is no double-exposure to
+        // worry about.
+        a(1 - e);
+        b(e);
+        return;
+      }
+      // Full-frame to full-frame: the incoming photograph is painted over the
+      // outgoing one at rising alpha, which composites to a true cross-fade
+      // with no ground showing through the middle.
       a(1);
-      b(easeInOut(p));
+      b(e);
       return;
     }
 

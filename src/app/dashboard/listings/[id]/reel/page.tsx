@@ -1263,7 +1263,14 @@ export default function ListingReelPage() {
         const tr = k > 0 ? transitions[k - 1] : null;
         if (tr && tr.dur > 0 && t < starts[k] + tr.dur) {
           const p = (t - starts[k]) / tr.dur;
-          drawTransition(ctx, W, H, tr, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t));
+          // Do the two frames cover the same pixels? A photograph placed in a
+          // third does not, and the dissolve has to fade both at once when so.
+          const placedAt = (j: number) => {
+            const u = units[j];
+            return u.kind === "photo" && u.slot !== null && u.slot !== undefined;
+          };
+          const disjoint = placedAt(k) || placedAt(k - 1);
+          drawTransition(ctx, W, H, tr, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t), disjoint);
         } else {
           drawUnit(k, 1, t);
         }
