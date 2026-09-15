@@ -5,6 +5,48 @@ everyone for a fortnight, and wrote the announcement. **Committed by Charlie,
 not by Claude — the sandbox shell was wedged all session, so nothing here has
 been typechecked.** `npx tsc --noEmit` before pushing.
 
+## Sept 15 overnight — Industry News (built while Charlie slept; NOT pushed)
+
+Spec: `docs/news-spec.md`. Two Opus build passes + one Opus review; migration
+`20260915_industry_news.sql` **already applied to the live DB** via MCP.
+
+- **Daily feed.** `/api/cron/news-fetch` (in the daily dispatcher, 9am ET)
+  reads 13 trade-press RSS feeds (`src/lib/newsSources.ts`; 11 marked
+  `unverified` — the job's `failedSources` says which to fix), parses with
+  `src/lib/rss.ts`, rewrites each item with `summarizeNews` (ai.ts, Haiku) in
+  the portal's voice, files to `industry_news`. Items without a date are
+  dropped; URLs normalised; 21-day dedup. Hidden ≠ deleted (so it can't be
+  re-imported).
+- **Portal.** `/dashboard/news` (category chips, load more), "Latest in
+  yachting" card on the dashboard (renders nothing until there are items),
+  "News" in the broker + assistant sidebars. Admin `/admin/news`: hide /
+  feature / add a YachtPics item; AdminNav "News".
+- **Weekly piece.** `/api/cron/news-digest` Mondays (ET-gated twice): drafts
+  "Yachting this week" from the last 7 days via `draftNewsDigest` (ai.ts) into
+  `news_digests` as a draft. Admin `/admin/news/digest` (button on the News
+  admin page): edit, Save, Approve & publish, Approve & send (marketing-class,
+  opt-out honoured, unsubscribe footer, `email_log` type
+  `news_digest_<week>`, dedup), Send test to me. `src/lib/newsDigest.ts`.
+- **Website.** `/api/news/public` (no auth, 30-min CDN cache, CORS) feeds a
+  NEW `C:\Users\charl\yachtpics-site\marine-news.php` (cURL + 60-min file
+  cache) — Charlie uploads that one file to the host; the site's existing
+  "Marine Blog" nav link already points at it. The old July-2025 hand-written
+  sections are gone by design.
+- Not typechecked (shell still dead). Review found no compile errors.
+
+**Charlie, in the morning:**
+1. Push (three commands). Vercel green.
+2. The feed fills at the next 9am ET run. To fill it now: open Vercel →
+   project → Settings → Environment Variables → copy `CRON_SECRET`, then visit
+   `https://portal.yachtpics.com/api/cron/news-fetch?secret=<paste>` in the
+   browser — it returns a small JSON with counts and `failedSources`.
+3. Admin → News: sanity-read the headlines. Hide anything off. Feature one.
+4. Broker view: sidebar News, the page, the dashboard card.
+5. Upload `marine-news.php` from `C:\Users\charl\yachtpics-site` to the web
+   host (same place as the old one) and open yachtpics.com/marine-news.php.
+6. Monday: Admin → News → "Yachting this week": read the draft, edit, Send
+   test to me, then Approve & send.
+
 ## Sept 11 (before the announcement — still unsent)
 
 - **Reply-to mailbox.** Portal mail comes from `hello@yachtpics.com`; that

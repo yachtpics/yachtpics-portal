@@ -18,6 +18,7 @@ import {
   Film,
   Megaphone,
   Lightbulb,
+  Newspaper,
   Lock,
   Trash2,
   type LucideIcon,
@@ -45,6 +46,7 @@ const navItems: NavItem[] = [
   { label: "Video Migration", href: "/admin/media", icon: Film },
   { label: "Announce", href: "/admin/announce", icon: Megaphone },
   { label: "Tips", href: "/admin/tips", icon: Lightbulb },
+  { label: "News", href: "/admin/news", icon: Newspaper },
   { label: "Admin Users", href: "/admin/users", icon: Lock },
 ];
 

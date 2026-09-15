@@ -15,6 +15,46 @@ function statusTone(status: string): BadgeTone {
   return "neutral";
 }
 
+type NewsCardRow = {
+  id: string;
+  url: string;
+  title: string | null;
+  source: string | null;
+};
+
+/**
+ * Three headlines from the trade press, featured first. Renders nothing at all
+ * when there's nothing to show — an empty card is worse than no card.
+ */
+function LatestInYachting({ items }: { items: NewsCardRow[] }) {
+  if (items.length === 0) return null;
+  return (
+    <Card className="mb-8">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
+        <p className="label-caps">Latest in yachting</p>
+        <Link href="/dashboard/news" className="text-accent-700 hover:text-accent-600 text-sm font-medium transition-colors duration-fast">
+          View all &rarr;
+        </Link>
+      </div>
+      <ul className="divide-y divide-hairline">
+        {items.map((n) => (
+          <li key={n.id}>
+            <a
+              href={n.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="group block px-6 py-3.5 hover:bg-ink-50 transition-colors duration-fast"
+            >
+              <p className="text-sm text-ink-900 group-hover:text-accent-700 transition-colors duration-fast">{n.title}</p>
+              {n.source && <p className="text-xs text-ink-400 mt-0.5">{n.source}</p>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -22,7 +62,7 @@ export default async function DashboardPage() {
 
   // Who you are and the Recently Photographed strip don't depend on each
   // other, so they're fetched together rather than one waiting on the other.
-  const [{ data: profile }, { data: scData }] = await Promise.all([
+  const [{ data: profile }, { data: scData }, { data: newsData }] = await Promise.all([
     supabase
       .from("profiles")
       .select("first_name, last_name, role")
@@ -30,10 +70,20 @@ export default async function DashboardPage() {
       .single(),
     // Recently Photographed rotating strip (shared by broker + assistant views).
     supabase.rpc("showcase_listings"),
+    // Latest in yachting — three headlines, asked for on the same trip as the rest.
+    supabase
+      .from("industry_news")
+      .select("id, url, title, source, featured, published_at")
+      .eq("hidden", false)
+      .order("featured", { ascending: false })
+      .order("published_at", { ascending: false, nullsFirst: false })
+      .limit(3),
   ]);
 
   const isAssistant = profile?.role === "assistant";
   const firstName = profile?.first_name ?? "there";
+  // Null when the news table isn't there yet; the card simply doesn't render.
+  const latestNews = ((newsData ?? []) as NewsCardRow[]).filter((n) => !!n.title);
 
   type ScRow = { listing_id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; location: string | null; broker_name: string | null; hero_storage_path: string | null };
   const scRows = ((scData ?? []) as ScRow[]).slice(0, 12);
@@ -128,6 +178,8 @@ export default async function DashboardPage() {
             View listings <span aria-hidden>&rarr;</span>
           </span>
         </Link>
+
+        <LatestInYachting items={latestNews} />
 
         <Card>
           <div className="px-6 py-4 border-b border-hairline">
@@ -308,6 +360,8 @@ export default async function DashboardPage() {
           </span>
         </Link>
       </div>
+
+      <LatestInYachting items={latestNews} />
 
       <Card>
         <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">

@@ -13,8 +13,10 @@ export const maxDuration = 60;
 // the individual cron routes based on the Eastern day of week — reproducing the
 // original per-task schedules:
 //   • trial-reminders  — every day
+//   • news-fetch       — every day
 //   • storage-report   — Monday & Thursday
 //   • announce         — Monday   (self-gated by approval + send window)
+//   • news-digest      — Monday   (drafts the weekly piece; sends nothing)
 //   • tips             — Tuesday  (self-gated by approval + weekly pacing)
 const PROD = "https://portal.yachtpics.com";
 
@@ -33,7 +35,9 @@ export async function GET(req: NextRequest) {
   const dow = nowET.getDay();
 
   const jobs = ["/api/cron/trial-reminders"];
-  if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/announce");
+  // news-digest only drafts "Yachting this week" — it never sends. It checks
+  // the Eastern weekday itself too, so a stray call can't write a Thursday piece.
+  if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/announce", "/api/cron/news-digest");
   if (dow === 2) jobs.push("/api/cron/tips");
   if (dow === 4) jobs.push("/api/cron/storage-report");
   // Deletes the Supabase copies of migrated videos. Self-gated: sleeps until
@@ -41,6 +45,9 @@ export async function GET(req: NextRequest) {
   jobs.push("/api/cron/video-cleanup");
   // Clears expired "Send to my phone" reel copies (48h) from the private bucket.
   jobs.push("/api/cron/reel-share-sweep");
+  // Reads the trade press, rewrites it in the portal's voice, files it for
+  // /dashboard/news. Self-gating: no AI key, no run.
+  jobs.push("/api/cron/news-fetch");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never

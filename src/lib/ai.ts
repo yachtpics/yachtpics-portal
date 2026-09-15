@@ -13,6 +13,8 @@
  *      the portal's understated register.
  */
 
+import { NEWS_CATEGORIES, isNewsCategory, type NewsCategory } from "@/lib/newsSources";
+
 const API = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-haiku-4-5";
 
@@ -216,4 +218,207 @@ export async function draftReelCopy(
       .map((t) => (t.startsWith("#") ? t : `#${t}`))
       .slice(0, 9),
   };
+}
+
+/** One piece of trade press, as it came off the wire. */
+export type NewsInput = {
+  title: string;
+  excerpt: string;
+  /** The publication's name, so the model knows who is talking. */
+  source: string;
+};
+
+export type NewsSummary = {
+  /** Rewritten headline, sentence case, at most 90 characters. */
+  title: string;
+  /** Two sentences, at most 260 characters. */
+  summary: string;
+  category: NewsCategory;
+  /** True for advertisements, listings for sale, anything not about yachting — and for anything the model didn't answer on. */
+  skip: boolean;
+};
+
+/** Cut a string back on a word boundary, never mid-word. */
+function capAtWord(text: string, max: number): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  const kept = space > max * 0.6 ? cut.slice(0, space) : cut;
+  return kept.replace(/[\s,;:\-–—]+$/, "");
+}
+
+/**
+ * Rewrite a batch of trade-press items in the portal's register.
+ *
+ * Returns one entry per input, aligned by index. Anything the model declines
+ * to answer on comes back `skip: true` rather than empty — a blank headline in
+ * front of a broker is worse than one story fewer, and the daily job is happy
+ * to leave an item out and pick it up tomorrow.
+ *
+ * Nothing here is published automatically beyond the feed itself: the weekly
+ * piece that draws on these still waits for Charlie.
+ */
+export async function summarizeNews(items: NewsInput[]): Promise<NewsSummary[]> {
+  // Skipping by default means a failed call costs nothing but a quiet morning.
+  const out: NewsSummary[] = items.map<NewsSummary>(() => ({
+    title: "",
+    summary: "",
+    category: "industry",
+    skip: true,
+  }));
+  if (items.length === 0) return out;
+
+  const system = [
+    "You write for a portal used by yacht brokers.",
+    "For each item return a headline (90 characters or fewer, sentence case, no source name, no clickbait)",
+    "and a two-sentence summary (260 characters or fewer) stating what happened and why a broker would care.",
+    "Plain, specific, calm — Burgess, not a dealership. Never invent figures.",
+    "No exclamation marks, no emoji, no 'stunning', 'must-see' or 'don't miss'.",
+    "Choose one category from: " + NEWS_CATEGORIES.join(", ") + ".",
+    "Skip anything that is an advertisement, a listing for sale, or not about yachting; return skip:true for those.",
+    "Reply with a JSON array only, one entry per item in order:",
+    "[{\"i\":0,\"title\":\"...\",\"summary\":\"...\",\"category\":\"brokerage\",\"skip\":false}]",
+  ].join(" ");
+
+  const listed = items
+    .map((it, i) => {
+      const excerpt = it.excerpt ? it.excerpt.slice(0, 600) : "(no summary given)";
+      return `Item ${i}\nSource: ${it.source}\nHeadline: ${it.title}\nText: ${excerpt}`;
+    })
+    .join("\n\n");
+
+  const blocks: Block[] = [
+    { type: "text", text: listed },
+    { type: "text", text: `Rewrite all ${items.length} items. JSON array only.` },
+  ];
+
+  let reply: string;
+  try {
+    reply = await ask(blocks, { system, maxTokens: 200 + items.length * 140 });
+  } catch {
+    return out;
+  }
+
+  type NewsRow = { i?: number; title?: string; summary?: string; category?: string; skip?: boolean };
+  const parsed = extractJson<(NewsRow | null)[]>(reply);
+  if (!Array.isArray(parsed)) return out;
+
+  for (let n = 0; n < parsed.length; n++) {
+    const row = parsed[n];
+    if (!row) continue;
+    // Trust the model's index when it gives one, its ordering when it doesn't.
+    const i = typeof row.i === "number" ? row.i : n;
+    if (i < 0 || i >= items.length) continue;
+
+    if (row.skip === true) continue;
+
+    const title = capAtWord(typeof row.title === "string" ? row.title : "", 90);
+    const rawSummary = typeof row.summary === "string" ? row.summary.trim() : "";
+    // A summary cut short still has to read like a sentence.
+    const summary =
+      rawSummary.length <= 260
+        ? rawSummary
+        : (() => {
+            const cut = capAtWord(rawSummary, 259);
+            return /[.!?]$/.test(cut) ? cut : `${cut}.`;
+          })();
+
+    if (!title || !summary) continue;
+
+    out[i] = {
+      title,
+      summary,
+      // An invented category is discarded rather than trusted; "industry" is
+      // the honest shelf for anything that didn't land on one of the others.
+      category: isNewsCategory(row.category) ? row.category : "industry",
+      skip: false,
+    };
+  }
+
+  return out;
+}
+
+/** One item from the week's feed, as the weekly piece sees it. */
+export type DigestItemInput = {
+  title: string;
+  summary: string;
+  source: string;
+  category: string;
+};
+
+/** The weekly piece, before anyone has read it. */
+export type NewsDigestDraft = {
+  /** One line, 60 characters or fewer, no date. */
+  title: string;
+  /** Two sentences. */
+  intro: string;
+  /** The piece itself: markdown paragraphs separated by a blank line. */
+  body_md: string;
+};
+
+/**
+ * Draft "Yachting this week" from the week's feed.
+ *
+ * This is the one thing in the news feature that a person still signs off:
+ * the daily list is mechanical, but a piece written in our name and sent to
+ * every broker is not. So this returns a draft and nothing else — no row is
+ * approved, nothing is sent, and a null here just means Monday's draft isn't
+ * ready and Charlie will hear about it when he opens the page.
+ */
+export async function draftNewsDigest(items: DigestItemInput[]): Promise<NewsDigestDraft | null> {
+  if (items.length === 0) return null;
+
+  const system = [
+    // The voice, as written in docs/news-spec.md.
+    'Write "Yachting this week" for yacht brokers, about 350 words, in the portal\'s voice:',
+    "a one-line title (≤ 60 chars, no date), a two-sentence intro, then four to six short paragraphs",
+    "each opening with the news and closing with what it means for someone selling boats.",
+    "Cite sources inline as plain text in parentheses.",
+    "No lists, no headings, no exclamation marks, no emoji.",
+    "End with one calm sentence that points to the portal's Reel tool — never a hard sell.",
+    // House rules for the shape of the answer, so it renders without surprises.
+    "The body is markdown paragraphs separated by a blank line. *emphasis* and **strong** are the only marks:",
+    "no headings, no links, no bullets, no numbered lists. Never invent figures, names or dates.",
+    'Reply with JSON only: {"title":"...","intro":"...","body_md":"..."}',
+  ].join(" ");
+
+  const listed = items
+    .map((it, i) => `Item ${i + 1} (${it.category}) — ${it.source}\n${it.title}\n${it.summary}`)
+    .join("\n\n");
+
+  const blocks: Block[] = [
+    { type: "text", text: `This week's items:\n\n${listed}` },
+    { type: "text", text: "Write the piece. JSON only." },
+  ];
+
+  let reply: string;
+  try {
+    reply = await ask(blocks, { system, maxTokens: 1400 });
+  } catch {
+    return null;
+  }
+
+  const parsed = extractJson<Partial<NewsDigestDraft>>(reply);
+  if (!parsed) return null;
+
+  const title = capAtWord(typeof parsed.title === "string" ? parsed.title : "", 60);
+
+  const rawIntro = typeof parsed.intro === "string" ? parsed.intro.trim() : "";
+  // A two-sentence intro that ran long still has to read like a sentence.
+  const intro =
+    rawIntro.length <= 320
+      ? rawIntro
+      : (() => {
+          const cut = capAtWord(rawIntro, 319);
+          return /[.?]$/.test(cut) ? cut : `${cut}.`;
+        })();
+
+  const body_md = (typeof parsed.body_md === "string" ? parsed.body_md : "").replace(/\r\n/g, "\n").trim();
+
+  // Too short to be the piece we asked for: better no draft than a stub with
+  // our name on it.
+  if (!title || !intro || body_md.length < 200) return null;
+
+  return { title, intro, body_md: body_md.slice(0, 8000) };
 }

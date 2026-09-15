@@ -14,6 +14,7 @@ import {
   CreditCard,
   UserRound,
   Lightbulb,
+  Newspaper,
   HelpCircle,
   Building2,
   type LucideIcon,
@@ -35,6 +36,7 @@ const brokerNavItems: NavItem[] = [
   { label: "Team", href: "/dashboard/team", icon: Users },
   { label: "Billing", href: "/dashboard/billing", icon: CreditCard },
   { label: "My Profile", href: "/dashboard/profile", icon: UserRound },
+  { label: "News", href: "/dashboard/news", icon: Newspaper },
   { label: "Tips", href: "/dashboard/tips", icon: Lightbulb },
   { label: "Help", href: "/dashboard/help", icon: HelpCircle },
 ];
@@ -44,6 +46,7 @@ const assistantNavItems: NavItem[] = [
   { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
   { label: "My Brokers", href: "/dashboard/brokers", icon: Users },
   { label: "My Profile", href: "/dashboard/profile", icon: UserRound },
+  { label: "News", href: "/dashboard/news", icon: Newspaper },
   { label: "Tips", href: "/dashboard/tips", icon: Lightbulb },
   { label: "Help", href: "/dashboard/help", icon: HelpCircle },
 ];
