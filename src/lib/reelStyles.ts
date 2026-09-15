@@ -77,16 +77,24 @@ export type ReelStyle = {
    */
   hook?: "none" | "burst";
   /**
-   * Run the thirds movement: stretches where the frame holds ONE photograph
-   * at a time, landing in the top, middle or bottom third and never the same
-   * place twice, with empty ground between. Each look runs it at its own
-   * pace — brisk under Energy's dealt cuts, unhurried under a dissolve.
+   * Run the thirds movement — stretches where photographs are PLACED in the
+   * top, middle or bottom third of the frame rather than filling it, with the
+   * look's own ground around them.
+   *
+   *  "single" — one photograph on screen at a time, each landing somewhere
+   *    the last one wasn't, empty ground between. The pause is the effect.
+   *    Right under a dissolve, where there is time to register it.
+   *
+   *  "wall" — they arrive one by one and STAY: top, then middle, then bottom,
+   *    three on screen together, then the wall clears. At Energy's pace
+   *    "single" reads as flicker — a photograph is gone before the eye has
+   *    settled on it. Building the wall gives it something to hold.
    *
    * Not for Cinematic or Gallery: their window IS the composition, and moving
    * the picture around inside it would argue with the look. Not for Stack
    * either, which already owns the divided frame.
    */
-  thirds?: boolean;
+  thirds?: "single" | "wall";
 };
 
 export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
@@ -116,7 +124,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.08,
     holdScale: 1,
     cut: "dissolve",
-    thirds: true,
+    thirds: "single",
   },
 
   /**
@@ -205,7 +213,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.07,
     holdScale: 1.05,
     cut: "dissolve",
-    thirds: true,
+    thirds: "single",
   },
 
   /**
@@ -241,7 +249,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     holdScale: 0.9,
     cut: "punch",
     hook: "burst",
-    thirds: true,
+    thirds: "wall",
   },
 
   /**

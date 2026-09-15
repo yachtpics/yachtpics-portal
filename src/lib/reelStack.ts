@@ -86,8 +86,25 @@ function dealMove(rand: () => number, last: BandMove | null): BandMove {
  */
 export type Slot = 0 | 1 | 2 | null;
 
+/**
+ * One photograph in a WALL — a thirds movement where they arrive one at a
+ * time and stay. `arrived` is how many units into the wall this one appeared,
+ * so the newest can animate in while the others sit still.
+ */
+export type PlacedPhoto = { slot: 0 | 1 | 2; index: number; move: BandMove };
+
 export type Unit =
-  | { kind: "photo"; index: number; hold: number; burst: boolean; slot?: Slot }
+  | {
+      kind: "photo"; index: number; hold: number; burst: boolean;
+      /** One-at-a-time placement: which third this photograph occupies. */
+      slot?: Slot;
+      /**
+       * Wall placement: every photograph on screen at this point, oldest
+       * first. The LAST is the one arriving; the rest are already settled.
+       * When set, `index` is the arriving photograph and `slot` is unused.
+       */
+      placed?: PlacedPhoto[];
+    }
   | { kind: "stack"; hold: number; events: StackEvent[] }
   | { kind: "end"; hold: number };
 
@@ -103,6 +120,7 @@ export type Timeline = {
 };
 
 const FLASH_CUT: Transition = { type: "flash", dur: 0, dir: "left" };
+const HARD_CUT: Transition = { type: "cut", dur: 0, dir: "left" };
 
 function finish(units: Unit[], transitions: Transition[]): Timeline {
   const starts: number[] = [];
@@ -161,6 +179,12 @@ const THIRDS_MIN_PHOTOS = 8;
  * as punctuation: enough to notice, not enough to take the look over.
  */
 const THIRDS_MAX_FRACTION = 0.4;
+/** Photographs in a wall: top, middle, bottom. */
+const WALL_ROWS = 3;
+/** The completed wall holds longer — three photographs to look at, not one. */
+const WALL_COMPLETE_MULT = 1.6;
+/** How long a photograph takes to slide into its third of a wall. */
+export const WALL_ARRIVE = 0.26;
 
 /**
  * Deal the slots for one movement: never the same third twice running, and
@@ -197,11 +221,11 @@ export function planSingles(n: number, opts: {
    */
   vocab: "energy" | "stack" | null;
   /**
-   * Run the thirds movement — one photograph at a time, landing in a
-   * different third of the frame each time, with empty ground between.
-   * Reels only; the caller decides, the planner just lays it out.
+   * Run the thirds movement. "single" places one photograph at a time;
+   * "wall" has them arrive and stay, three to a wall. Reels only — the
+   * caller decides, the planner just lays it out.
    */
-  thirds?: boolean;
+  thirds?: "single" | "wall" | null;
   seed: number;
 }): Timeline {
   const { titleHold, hold, endHold, dissolve, burst, vocab, seed } = opts;
@@ -218,29 +242,65 @@ export function planSingles(n: number, opts: {
   // to sell the boat, the burst is too quick to place, and the film should
   // come to rest on a whole photograph before the card.
   const slots: Slot[] = new Array(n).fill(null);
-  if (opts.thirds && n >= THIRDS_MIN_PHOTOS) {
+  // For a wall: every photograph on screen at photo i, oldest first.
+  const walls: (PlacedPhoto[] | null)[] = new Array(n).fill(null);
+  // Photos joined mid-wall cut straight in; the arrival is animated inside
+  // the unit, so a transition here would fade the settled photographs too.
+  const hardCuts = new Set<number>();
+  const mode = opts.thirds ?? null;
+
+  if (mode && n >= THIRDS_MIN_PHOTOS) {
     const rand = seededRandom(seed * 13 + 5);
     const budget = Math.floor(n * THIRDS_MAX_FRACTION);
     let spent = 0;
     let last: Slot = null;
+    let lastMove: BandMove | null = null;
     let i = 1 + THIRDS_GAP_MIN; // let the film open on full frames first
     while (i < n - 1) {
       const room = n - 1 - i;
-      if (room < THIRDS_RUN_MIN) break;
-      if (budget - spent < THIRDS_RUN_MIN) break;
-      const runN = Math.min(
-        THIRDS_RUN_MIN + Math.floor(rand() * (THIRDS_RUN_MAX - THIRDS_RUN_MIN + 1)),
-        room,
-        budget - spent
-      );
+      const minRun = mode === "wall" ? WALL_ROWS : THIRDS_RUN_MIN;
+      if (room < minRun) break;
+      if (budget - spent < minRun) break;
+      const runN =
+        mode === "wall"
+          ? WALL_ROWS // a wall is always three: top, middle, bottom
+          : Math.min(
+              THIRDS_RUN_MIN + Math.floor(rand() * (THIRDS_RUN_MAX - THIRDS_RUN_MIN + 1)),
+              room,
+              budget - spent
+            );
+      // A wall must not be split by the burst — it would leave two
+      // photographs hanging on screen with a strobe through the middle.
+      const clashes = mode === "wall" && burstN > 0 && i < burstStart + burstN && i + runN > burstStart;
+      if (clashes) { i = burstStart + burstN; continue; }
       spent += runN;
-      const dealt = dealSlots(runN, rand, last);
-      for (let k = 0; k < runN; k++) {
-        const at = i + k;
-        // The burst keeps the whole frame — it is a punch, not a placement.
-        if (at >= burstStart && at < burstStart + burstN) continue;
-        slots[at] = dealt[k];
-        last = dealt[k];
+
+      if (mode === "wall") {
+        // Three thirds in a dealt order, each arriving with its own move.
+        const order = ([0, 1, 2] as (0 | 1 | 2)[]).slice();
+        for (let s = order.length - 1; s > 0; s--) {
+          const j = Math.floor(rand() * (s + 1));
+          [order[s], order[j]] = [order[j], order[s]];
+        }
+        const built: PlacedPhoto[] = [];
+        for (let k = 0; k < runN; k++) {
+          const move = dealMove(rand, lastMove);
+          lastMove = move;
+          built.push({ slot: order[k], index: i + k, move });
+          // Each unit sees the wall as it stands when that photograph lands.
+          walls[i + k] = built.slice();
+          if (k > 0) hardCuts.add(i + k);
+        }
+        last = order[runN - 1];
+      } else {
+        const dealt = dealSlots(runN, rand, last);
+        for (let k = 0; k < runN; k++) {
+          const at = i + k;
+          // The burst keeps the whole frame — it is a punch, not a placement.
+          if (at >= burstStart && at < burstStart + burstN) continue;
+          slots[at] = dealt[k];
+          last = dealt[k];
+        }
       }
       i += runN + THIRDS_GAP_MIN + Math.floor(rand() * (THIRDS_GAP_MAX - THIRDS_GAP_MIN + 1));
     }
@@ -250,6 +310,7 @@ export function planSingles(n: number, opts: {
   let pi = 0;
   for (let i = 0; i < n; i++) {
     const inBurst = i >= burstStart && i < burstStart + burstN;
+    const wall = walls[i];
     let h: number;
     if (i === 0) h = titleHold;
     else if (inBurst) h = BURST_DT;
@@ -257,8 +318,11 @@ export function planSingles(n: number, opts: {
     else if (i === n - 1) h = hold * LANDING_MULT;
     else h = hold * HOLD_PATTERN[pi++ % HOLD_PATTERN.length];
     // A placed photograph is smaller, so it gets a little longer to be read.
-    if (slots[i] !== null && !inBurst && i !== 0) h *= THIRDS_HOLD_MULT;
-    units.push({ kind: "photo", index: i, hold: h, burst: inBurst, slot: slots[i] });
+    if ((slots[i] !== null || wall) && !inBurst && i !== 0) h *= THIRDS_HOLD_MULT;
+    // The finished wall earns an extra beat — the point of building it is
+    // that all three can be looked at together.
+    if (wall && wall.length === WALL_ROWS) h *= WALL_COMPLETE_MULT;
+    units.push({ kind: "photo", index: i, hold: h, burst: inBurst, slot: slots[i], placed: wall ?? undefined });
   }
   units.push({ kind: "end", hold: endHold });
 
@@ -266,6 +330,7 @@ export function planSingles(n: number, opts: {
   let transitions: Transition[];
   if (!vocab) {
     transitions = Array.from({ length: count }, () => ({ type: "dissolve", dur: dissolve, dir: "left" } as Transition));
+    // (A dissolve look never builds walls, so no hard cuts to pin here.)
   } else {
     // Into and out of every burst frame: a flash cut. Into the end card too
     // — the landing resolves on a flash. The rest are dealt. A Stack film
@@ -276,6 +341,9 @@ export function planSingles(n: number, opts: {
       if (burstN > 0) for (let k = burstStart - 1; k < burstStart + burstN; k++) fixed[k] = FLASH_CUT;
       fixed[count - 1] = FLASH_CUT;
     }
+    // Inside a wall: a plain cut. The photographs already on screen must not
+    // move, and every transition here draws the whole frame.
+    hardCuts.forEach((i) => { if (i - 1 >= 0 && i - 1 < count) fixed[i - 1] = HARD_CUT; });
     transitions = dealTransitions(count, strobes ? ENERGY_VOCAB : STACK_VOCAB, seed, fixed);
   }
   return finish(units, transitions);

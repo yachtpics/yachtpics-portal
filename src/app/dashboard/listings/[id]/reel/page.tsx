@@ -22,7 +22,7 @@ import {
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { planStack, planSingles, rowState, whipEase, flashAlpha, type StackEvent } from "@/lib/reelStack";
+import { planStack, planSingles, rowState, whipEase, flashAlpha, WALL_ARRIVE, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 
@@ -385,7 +385,7 @@ export default function ListingReelPage() {
       burst: look.hook === "burst" && !isStack,
       vocab: look.cut === "punch" ? (isStack ? "stack" : "energy") : null,
       // Reels only: three horizontal bands need the vertical a 9:16 frame has.
-      thirds: look.thirds === true && format === "reel",
+      thirds: format === "reel" ? look.thirds ?? null : null,
       seed,
     });
     // `s` carries the length's hold, so the total redraws when Length changes.
@@ -581,6 +581,47 @@ export default function ListingReelPage() {
         const mx = 0.055 * W;
         const my = 0.085 * bandH;
         return { x: mx, y: slot * bandH + my, w: W - mx * 2, h: bandH - my * 2 };
+      };
+
+      /**
+       * One photograph of a WALL, drawn in its third.
+       *
+       * `t` is how long it has been on screen — `Infinity` for one that has
+       * already settled, so the arrival maths collapses to "in place". The
+       * newest slides in along `move` and fades up over WALL_ARRIVE; the
+       * others sit perfectly still, which is the whole point of a wall.
+       */
+      const drawPlaced = (pp: { slot: number; index: number; move: string }, t: number, alpha: number, move: string) => {
+        const bmp = bitmaps[pp.index];
+        if (!bmp) return;
+        const b = slotRect(pp.slot);
+        const p = Math.min(1, Math.max(0, t / WALL_ARRIVE));
+        const e = whipEase(p);
+        const base = Math.min(b.w / bmp.width, b.h / bmp.height);
+        const dw = bmp.width * base, dh = bmp.height * base;
+        const px = b.x + (b.w - dw) / 2;
+        const py = b.y + (b.h - dh) / 2;
+        // How far it still has to travel, along its own move.
+        const back = 1 - e;
+        let ox = 0, oy = 0;
+        if (move === "left") ox = W * back;
+        else if (move === "right") ox = -W * back;
+        else if (move === "up") oy = b.h * 1.6 * back;
+        else if (move === "down") oy = -b.h * 1.6 * back;
+        ctx.save();
+        ctx.globalAlpha = alpha * (move === "fade" || move === "wipe" ? e : 1);
+        if (move === "wipe") {
+          // Revealed from the left rather than moved.
+          ctx.beginPath();
+          ctx.rect(b.x, b.y, b.w * e, b.h);
+          ctx.clip();
+        }
+        ctx.shadowColor = st.light ? "rgba(20,26,33,0.20)" : "rgba(0,0,0,0.50)";
+        ctx.shadowBlur = (st.light ? 30 : 44) * sc;
+        ctx.shadowOffsetY = (st.light ? 10 : 14) * sc;
+        ctx.drawImage(bmp, px + ox, py + oy, dw, dh);
+        ctx.restore();
+        photoRect = { x: px, y: py, w: dw, h: dh };
       };
 
       const drawPhoto = (i: number, localT: number, hold: number, alpha: number, wholeOverride?: boolean, slot?: number | null) => {
@@ -1228,7 +1269,17 @@ export default function ListingReelPage() {
           // shown whole: a horizontal floats complete on a soft plate, a
           // vertical fills the frame.
           const whole = stacked && !u.burst ? true : undefined;
-          drawPhoto(u.index, local, u.hold, alpha, whole, u.slot);
+          if (u.placed && u.placed.length > 0) {
+            // A wall: every photograph that has landed so far stays put, and
+            // only the newest one moves. Drawn oldest first so the arriving
+            // one passes over the settled ones, never under.
+            u.placed.forEach((pp: PlacedPhoto, idx: number) => {
+              const arriving = idx === u.placed!.length - 1;
+              drawPlaced(pp, arriving ? local : Infinity, alpha, arriving ? pp.move : "fade");
+            });
+          } else {
+            drawPhoto(u.index, local, u.hold, alpha, whole, u.slot);
+          }
           // Where the type lives off the picture — Gallery's page, Cinematic's
           // bar — it stays up for the whole reel: every frame a captioned
           // print, rather than a name that leaves and a page left empty.
@@ -1241,7 +1292,9 @@ export default function ListingReelPage() {
             drawTitle(alpha);
           }
           // Burst frames are too quick to read a caption on.
-          else if (!u.burst && !stacked) drawRoomLabel(u.index, local, u.hold, alpha, u.slot !== null && u.slot !== undefined);
+          // A wall has three photographs on screen; one caption could only be
+          // ambiguous, so the wall goes uncaptioned.
+          else if (!u.burst && !stacked && !u.placed) drawRoomLabel(u.index, local, u.hold, alpha, u.slot !== null && u.slot !== undefined);
         } else if (u.kind === "stack") {
           drawStack(u.events, u.hold, local, alpha);
         } else {
@@ -1267,7 +1320,9 @@ export default function ListingReelPage() {
           // third does not, and the dissolve has to fade both at once when so.
           const placedAt = (j: number) => {
             const u = units[j];
-            return u.kind === "photo" && u.slot !== null && u.slot !== undefined;
+            if (u.kind !== "photo") return false;
+            if (u.placed && u.placed.length > 0) return true;
+            return u.slot !== null && u.slot !== undefined;
           };
           const disjoint = placedAt(k) || placedAt(k - 1);
           drawTransition(ctx, W, H, tr, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t), disjoint);

@@ -109,6 +109,46 @@ forbids the write it costs the cache, not the page.
 action on it. A daily-refreshing industry feed is a reason for brokers to return
 to the site — there is nothing on it asking them to book a shoot.
 
+## Sept 15 — uploaded, and a watchdog on it
+
+Charlie uploaded and checked the page: **it is live and looks right.**
+
+**The daily refresh is real, verified end to end**, not just assumed from the
+config. `vercel.json` has one cron, `0 13 * * *` → `/api/cron/daily`, and the
+dispatcher fans out to `news-fetch` every day (one cron rather than several
+because Hobby caps a project at two). The live page was showing 5 items from
+Sept 15, 9 from the 14th and 1 from the 13th.
+
+Three honest caveats, none of them faults:
+- **13:00 UTC is 9am ET only until Nov 1.** After the clocks go back it lands at
+  8am ET. Nothing breaks; the feed simply arrives an hour earlier all winter.
+- **Up to ~90 minutes of lag** from a story being filed to the site showing it:
+  `s-maxage=1800` at Vercel's edge plus the PHP page's own 1-hour
+  `news-cache.json`. Invisible on a daily feed.
+- **Sept 15's newest item was published 16:15 UTC — after that day's 13:00
+  cron** — so that batch came from a hand-triggered run, presumably Charlie's.
+  The first fully automatic run to confirm is Sept 16.
+
+**Scheduled task: "Marine Blog freshness check", daily 15:00 UTC (11am ET).**
+Read-only. It fetches both `/api/news/public` and `marine-news.php`, compares
+them, and stays silent unless something is wrong — one line when healthy. It
+raises a flag on: either URL non-200; zero items or the empty state; newest item
+over 72h old; newest item over 36h old on a Tue–Sat (the trade press is quiet at
+weekends, so Monday sparseness is normal and not flagged); the page running more
+than ~3h behind the API, which would mean `news-cache.json` has gone stale or
+unwritable on the host; or the nav link disappearing. It carries the likely
+causes in rough order — cron not firing, `ANTHROPIC_API_KEY` expired (news-fetch
+self-gates to nothing without it, so it **fails silently** — this is the one that
+would rot the page unnoticed), bulk RSS failures, or the host blocking the cache
+write.
+
+**Why this exists:** nothing in the chain errors when it breaks. The page just
+keeps showing the last three days, then quietly empties. Without the check
+there is no signal at all.
+
+Its runs will pause for approval if anything needs it — Charlie can set the task
+to approve automatically in its settings if a run ever stalls.
+
 ## Sept 15 overnight — Industry News (built while Charlie slept; NOT pushed)
 
 Spec: `docs/news-spec.md`. Two Opus build passes + one Opus review; migration
