@@ -62,9 +62,15 @@ const SPEC: Record<Format, {
   // The reel's hold and photo cap are set by the Length choice below — what's
   // here is the short version's numbers, and everything else the reel shares
   // between lengths.
+  //
+  // The reel shows the WHOLE photograph by default. Most of what we shoot is
+  // horizontal, and a horizontal frame cropped to 9:16 loses roughly two-thirds
+  // of itself — the sheer line, the beam, the water either side of the boat.
+  // We are in the business of delivering the media, so the default delivers all
+  // of it; the crop is there for anyone who wants it.
   reel: {
     w: 1080, h: 1920, label: "Reel (9:16)", hint: "Instagram Reels, Stories, Facebook",
-    maxPhotos: 10, hold: 1.7, fade: 0.55, titleHold: 4.2, endHold: 3.0, defaultFit: "fill",
+    maxPhotos: 10, hold: 1.7, fade: 0.55, titleHold: 4.2, endHold: 3.0, defaultFit: "whole",
   },
   // The film is a different job — it goes to one buyer who already asked, not to
   // a feed, so it can breathe.
@@ -165,7 +171,7 @@ export default function ListingReelPage() {
   const [format, setFormat] = useState<Format>("reel");
   // Reels only — the film keeps its single timing.
   const [length, setLength] = useState<Length>(DEFAULT_LENGTH);
-  const [fit, setFit] = useState<Fit>("fill");
+  const [fit, setFit] = useState<Fit>(SPEC.reel.defaultFit);
   const [styleKey, setStyleKey] = useState<StyleKey>("editorial");
   // The broker's own colours, remembered on their profile. Null = the look's.
   const [brand, setBrand] = useState<BrandColors>({});
@@ -1749,10 +1755,16 @@ export default function ListingReelPage() {
           ) : (
             <>
               <div className="flex flex-wrap gap-2">
-                <button onClick={() => { setFit("fill"); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(fit === "fill")}>Fill the frame</button>
                 <button onClick={() => { setFit("whole"); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(fit === "whole")}>Show the whole photo</button>
+                <button onClick={() => { setFit("fill"); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(fit === "fill")}>Fill the frame</button>
               </div>
-              <p className="text-xs text-ink-400 mt-1.5">{fit === "fill" ? "Cinematic crop with a slow push-in." : "Every photo shown complete, on a soft backdrop."}</p>
+              <p className="text-xs text-ink-400 mt-1.5">
+                {fit === "whole"
+                  ? "Every photograph shown complete, on a soft backdrop \u2014 nothing cropped away."
+                  : format === "reel"
+                    ? "Cinematic crop with a slow push-in. On a vertical reel this cuts most of a horizontal frame."
+                    : "Cinematic crop with a slow push-in."}
+              </p>
             </>
           )}
         </div>
