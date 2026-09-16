@@ -121,7 +121,21 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                       {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null].filter(Boolean).join(" · ")}
                     </p>
                   </td>
-                  <td className="px-6 py-4 text-ink-500 hidden sm:table-cell">{listing.broker_name ?? "—"}</td>
+                  {/* Straight to the broker, same as on the listing itself.
+                      `from=listings` sends their back link here rather than to
+                      the broker list they never came from. */}
+                  <td className="px-6 py-4 text-ink-500 hidden sm:table-cell">
+                    {listing.broker_id && listing.broker_name ? (
+                      <Link
+                        href={`/admin/brokers/${listing.broker_id}?from=listings`}
+                        className="hover:text-accent-700 underline decoration-hairline-strong underline-offset-2 transition-colors duration-fast ease-quiet"
+                      >
+                        {listing.broker_name}
+                      </Link>
+                    ) : (
+                      listing.broker_name ?? "—"
+                    )}
+                  </td>
                   <td className="px-6 py-4 text-ink-500 hidden md:table-cell">{listing.location ?? "—"}</td>
                   <td className="px-6 py-4">
                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${

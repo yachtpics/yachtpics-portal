@@ -96,10 +96,16 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       {/* Header */}
       <div className="mb-6">
         <Link
-          href={cameFromListing ? `/admin/listings/${cameFromListing.id}` : "/admin/brokers"}
+          href={
+            cameFromListing ? `/admin/listings/${cameFromListing.id}`
+            : searchParams.from === "listings" ? "/admin/listings"
+            : "/admin/brokers"
+          }
           className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet"
         >
-          {cameFromListing ? `← Back to ${cameFromListing.vessel_name ?? "the listing"}` : "← All brokers"}
+          {cameFromListing ? `← Back to ${cameFromListing.vessel_name ?? "the listing"}`
+            : searchParams.from === "listings" ? "← All listings"
+            : "← All brokers"}
         </Link>
         <div className="flex items-start justify-between mt-1">
           <div>
