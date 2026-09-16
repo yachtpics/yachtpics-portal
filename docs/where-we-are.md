@@ -1,5 +1,76 @@
 # Where we are — September 16, 2026
 
+## Sept 16 — the announcement went out
+
+**Sent 9:27am ET to 145 recipients (109 brokers, 36 assistants), zero failures.**
+Subject: *The first reel generator in yachting — free until September 30*. The
+open house runs to **Sept 30**; watch uptake on **/admin/reels**.
+
+What shipped before it, in order:
+
+- **Stack is a reel-only look.** It never stacked on film (`planStack` only runs
+  when `format === "reel"`), so on film it was Energy under another name. Hidden
+  from the picker on film; selecting Film falls back to Energy.
+- **Reels show the WHOLE photograph by default** (`SPEC.reel.defaultFit`
+  `"fill"` → `"whole"`). Most of what we shoot is horizontal, and a horizontal
+  frame cropped to 9:16 loses about two-thirds of itself. Cinematic still
+  crops — the letterbox IS its idea and it has no framing choice.
+- **Gallery on film:** window 0.54 → 0.63 of frame height, type block set
+  smaller and tighter. A 3:2 photo now draws 1021×680 instead of 875×583.
+  NOTE: the block is measured in one pass and drawn in another, and the gaps
+  were hard-coded in both. Six shared constants now drive both passes
+  (`gapNameToSpec`, `gapSpecTrail`, `gapLeadToName`, `padLead`, `padSpec`,
+  `footMargin`); for a loose block each equals the old literal, so the other
+  five looks are untouched. Change one and change both passes, or the block
+  anchors short and draws long and the location line walks off the frame.
+- **Reel metrics.** New `reel_events` table + `/api/reel-events` + a `track()`
+  beacon on the Reel page. One row per finished render (look, format, length,
+  fit, photo count, seconds, brand, render ms) and one per download / send to
+  phone / copy caption / add to listing. Admin rows are KEPT and tagged, shown
+  greyed and excluded from every total — dropping them would make "no test
+  data" and "tracking is broken" look identical. Read at **/admin/reels**.
+- **Two follow-ups, built and waiting** on /admin/reels: *One week in*
+  (window Sept 21–26) and *Last call* (Sept 27 – Oct 1). The week-one email
+  pulls live numbers from `reel_events`, and falls back to a no-numbers variant
+  below `THIN_WEEK` (5 brokers / 10 reels) — broadcasting a thin week tells 145
+  people nobody bothered. Neither sends on a schedule; read then send by hand.
+- **Announce cron now runs DAILY**, not Mondays only. It is gated three times
+  (send window, approval flag, email_log dedup), so a daily call is idempotent.
+  The approve button used to say "Approve for Monday" over a date already a week
+  past; it now names the next real run, computed per page load.
+
+**Vercel Hobby crons fire anywhere inside the scheduled HOUR**, not on the
+minute — `0 13 * * *` can land any time from 13:00 to 13:59 UTC, and delivery
+is best-effort. The 9am send was still pending at 9:20, so it went by hand.
+Do not plan a to-the-minute send around this cron.
+
+## Sept 16 — admin can mark a pocket listing
+
+Charlie: *"everything a broker can do the admin should be able to do as well."*
+Pocket listing is `showcase_opt_out`, and the API behind it
+(`/api/listings/[id]/showcase-optout`) has always accepted admins — the
+CONTROL was missing, not the capability. Samantha (an admin) hit exactly this:
+a broker told her a boat was a pocket listing and she could not record it.
+
+- Toggle added to **AdminListingDetail**, beside the website controls.
+- **Fixed a real bug found on the way:** the "publish to website" button read
+  `listing.showcase_opt_out` from the server prop, so marking a boat private
+  left that button live until a reload — on the one control where being wrong
+  puts a private boat on the public web. It reads live state now.
+- **New: `showcase_opt_out_by` / `showcase_opt_out_at`.** Once admins can set
+  the flag, "a pocket listing" stops implying "the broker asked for this" — and
+  that is the whole basis for deciding whether clearing it is housekeeping or
+  overriding a client's privacy instruction. A NULL setter on an opted-out row
+  means the broker: every such row predates the switch. The old copy ("Broker
+  kept this a pocket listing", "Broker: pocket listing") was a guess the moment
+  this shipped and is now neutral, with the real answer underneath.
+
+**Open:** Samantha to check with Tyler Beckford whether **34 Sea Vee 2009** is
+meant to be a pocket listing. Two other Beckford boats from the same upload
+session are already marked; that is suggestive, not proof. No exposure either
+way — it is not in the showcase, not on the site, slideshow unpublished.
+
+
 ## Sept 16 — Energy's wall, the cross-fade bug, and the admin navigation
 
 ### The thirds movement, second pass

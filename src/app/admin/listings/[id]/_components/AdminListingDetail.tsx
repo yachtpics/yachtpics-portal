@@ -814,7 +814,21 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             </button>
           )}
           {labelNote && <span className="ml-2 text-xs text-ink-500">{labelNote}</span>}
-          <p className="text-ink-500 text-xs mt-1">Broker: {brokerName}</p>
+          {/* Straight through to the broker. Reading a listing and wanting the
+              person behind it is constant — their other boats, their contact
+              details, whether they are subscribed — and the old route was
+              Brokers, find them in the list, click. `from=listing` gives their
+              page a way back here. */}
+          <p className="text-ink-500 text-xs mt-1">
+            Broker:{" "}
+            <Link
+              href={`/admin/brokers/${listing.broker_id}?from=listing&listing=${listing.id}`}
+              className="text-ink-700 hover:text-accent-700 underline decoration-hairline-strong underline-offset-2 transition-colors duration-fast ease-quiet"
+              title={`Open ${brokerName}’s page`}
+            >
+              {brokerName}
+            </Link>
+          </p>
           {canShare && (
             <button
               onClick={toggleShare}

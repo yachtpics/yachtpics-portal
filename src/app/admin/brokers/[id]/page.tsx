@@ -10,7 +10,7 @@ import AddedByEditor from "./_components/AddedByEditor";
 import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
 import { planLabel } from "@/lib/subscriptionAccess";
 
-export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string } }) {
+export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string; from?: string; listing?: string } }) {
   const supabase = await createClient();
 
   const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }] =
@@ -28,6 +28,16 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   if (!profile) notFound();
 
   const name = profile.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : profile.display_email ?? "Broker";
+
+  // Arrived from a listing? Offer the way back to THAT boat rather than the
+  // broker list, mirroring what the listing page already does coming the other
+  // way. The boat is already in `listings` (it belongs to this broker), so
+  // naming it costs no extra query — and a back link that names where it goes
+  // is worth more than an arrow.
+  const cameFromListing =
+    searchParams.from === "listing" && typeof searchParams.listing === "string"
+      ? (listings ?? []).find((l) => l.id === searchParams.listing) ?? null
+      : null;
   const trialDays = subscription?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(subscription.trial_ends_at).getTime() - Date.now()) / 86400000))
     : null;
@@ -85,8 +95,11 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     <div className="px-6 py-8 max-w-5xl mx-auto">
       {/* Header */}
       <div className="mb-6">
-        <Link href="/admin/brokers" className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet">
-          ← All brokers
+        <Link
+          href={cameFromListing ? `/admin/listings/${cameFromListing.id}` : "/admin/brokers"}
+          className="text-ink-400 hover:text-ink-600 text-sm transition-colors duration-fast ease-quiet"
+        >
+          {cameFromListing ? `← Back to ${cameFromListing.vessel_name ?? "the listing"}` : "← All brokers"}
         </Link>
         <div className="flex items-start justify-between mt-1">
           <div>
