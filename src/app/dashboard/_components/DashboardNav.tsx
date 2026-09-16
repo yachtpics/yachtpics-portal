@@ -17,7 +17,6 @@ import {
   Newspaper,
   HelpCircle,
   Building2,
-  ShieldCheck,
   type LucideIcon,
 } from "lucide-react";
 
@@ -41,17 +40,6 @@ const brokerNavItems: NavItem[] = [
   { label: "Tips", href: "/dashboard/tips", icon: Lightbulb },
   { label: "Help", href: "/dashboard/help", icon: HelpCircle },
 ];
-
-/**
- * The way back to the admin side.
- *
- * /admin and /dashboard are separate sections with separate navigation.
- * Following a listing from the admin area into the Reel (which lives under
- * /dashboard) swapped the admin nav for the broker one and left no link
- * back — the only ways out were the back button or typing the URL. Admins
- * only; a broker or assistant never sees it.
- */
-const adminNavItem: NavItem = { label: "Admin", href: "/admin", icon: ShieldCheck };
 
 const assistantNavItems: NavItem[] = [
   { label: "Listings", href: "/dashboard/listings", icon: Ship },
@@ -88,11 +76,9 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
     : null;
 
   const baseNavItems = role === "assistant" ? assistantNavItems : brokerNavItems;
-  const withBrokerage = isBrokerageAdmin
+  const navItems = isBrokerageAdmin
     ? [baseNavItems[0], { label: "Brokerage", href: "/dashboard/brokerage", icon: Building2 }, ...baseNavItems.slice(1)]
     : baseNavItems;
-  // Admins get the route home to /admin, first in the list.
-  const navItems = role === "admin" ? [adminNavItem, ...withBrokerage] : withBrokerage;
 
   return (
     <>

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import DashboardNav from "./_components/DashboardNav";
+import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
 
@@ -99,14 +100,24 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   return (
     <div className="flex min-h-screen bg-ink-50">
-      <DashboardNav
-        brokerName={userName}
-        role={role}
-        plan={subscription?.status ?? "trialing"}
-        trialEndsAt={trialEndsAt}
-        accessStatus={accessStatus}
-        isBrokerageAdmin={profile?.is_brokerage_admin ?? false}
-      />
+      {/* The navigation follows WHO you are, not which folder the page lives in.
+          Broker tools like the Reel sit under /dashboard, so an admin opening one
+          used to have their admin navigation swapped for the broker's — and since
+          signing in is the only thing that routes an admin to /admin, the only way
+          back was to sign out and in again. An admin now keeps the admin nav
+          everywhere in the portal. */}
+      {role === "admin" ? (
+        <AdminNav />
+      ) : (
+        <DashboardNav
+          brokerName={userName}
+          role={role}
+          plan={subscription?.status ?? "trialing"}
+          trialEndsAt={trialEndsAt}
+          accessStatus={accessStatus}
+          isBrokerageAdmin={profile?.is_brokerage_admin ?? false}
+        />
+      )}
       <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">
         {role === "broker" && (
           <TrialBanner accessStatus={accessStatus} trialEndsAt={trialEndsAt} />

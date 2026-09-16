@@ -747,13 +747,20 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             </svg>
             Edit vessel details
           </Link>
-          <Link
+          {/* Opens in a new tab, like the Seller Report beside it. The Reel lives
+              under /dashboard, so navigating to it IN PLACE replaced this admin
+              page with the broker dashboard and dropped the admin navigation —
+              the only way back was to sign out and in again, because signing in
+              is the one thing that routes an admin to /admin. */}
+          <a
             href={`/dashboard/listings/${listing.id}/reel`}
+            target="_blank"
+            rel="noopener noreferrer"
             className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet"
             title="Turn the photos into a reel or film"
           >
-            Reel
-          </Link>
+            Reel ↗
+          </a>
           <a
             href={`/report/listing/${listing.id}`}
             target="_blank"
