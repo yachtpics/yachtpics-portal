@@ -1,5 +1,5 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT, ANNOUNCEMENT_SEND_AFTER } from "@/lib/announcementEmail";
+import { announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT } from "@/lib/announcementEmail";
 import AnnounceControls from "./AnnounceControls";
 
 export const dynamic = "force-dynamic";
@@ -22,7 +22,24 @@ export default async function AdminAnnouncePage() {
   const alreadySent = sentCount ?? 0;
   const approved = setting?.value === true;
 
-  const scheduleLabel = new Date(ANNOUNCEMENT_SEND_AFTER).toLocaleString("en-US", {
+  // The Vercel dispatcher fires at 13:00 UTC every day — 9am Eastern — and now
+  // calls the announce job daily rather than only on Mondays. So the label
+  // names the NEXT run, computed fresh on each page load.
+  //
+  // It used to print this campaign's ANNOUNCEMENT_SEND_AFTER date, which went
+  // stale the moment that day passed: the button read "Approve for Monday"
+  // above a date a week gone, while approving would actually have armed a send
+  // for whenever the job next happened to run. A stale date on a control that
+  // mails 148 people is worth fixing before it is worth explaining.
+  const nextRun = (() => {
+    const now = new Date();
+    const todayRun = new Date(now);
+    todayRun.setUTCHours(13, 0, 0, 0);
+    return now.getTime() < todayRun.getTime()
+      ? todayRun
+      : new Date(todayRun.getTime() + 86_400_000);
+  })();
+  const scheduleLabel = nextRun.toLocaleString("en-US", {
     weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
   }) + " ET";
 

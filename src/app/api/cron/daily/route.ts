@@ -15,7 +15,7 @@ export const maxDuration = 60;
 //   • trial-reminders  — every day
 //   • news-fetch       — every day
 //   • storage-report   — Monday & Thursday
-//   • announce         — Monday   (self-gated by approval + send window)
+//   • announce         — EVERY DAY (self-gated by approval + send window)
 //   • news-digest      — Monday   (drafts the weekly piece; sends nothing)
 //   • tips             — Tuesday  (self-gated by approval + weekly pacing)
 const PROD = "https://portal.yachtpics.com";
@@ -35,9 +35,20 @@ export async function GET(req: NextRequest) {
   const dow = nowET.getDay();
 
   const jobs = ["/api/cron/trial-reminders"];
+  // Announce runs EVERY day, not just Monday. It used to be Monday-only, which
+  // meant approving a campaign on a Wednesday silently waited five days — and
+  // the approve button said "Monday" while the page showed a date already in
+  // the past. Running it daily makes the button mean what it looks like it
+  // means: approve, and it goes out at the next 9am ET.
+  //
+  // Safe to call every day because it is gated three times over, and ALL three
+  // must pass: the campaign's own send window, the admin approval flag in
+  // app_settings, and the email_log dedup that skips anyone already sent to.
+  // With no approval it is a no-op; with approval it can still only send once.
+  jobs.push("/api/cron/announce");
   // news-digest only drafts "Yachting this week" — it never sends. It checks
   // the Eastern weekday itself too, so a stray call can't write a Thursday piece.
-  if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/announce", "/api/cron/news-digest");
+  if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/news-digest");
   if (dow === 2) jobs.push("/api/cron/tips");
   if (dow === 4) jobs.push("/api/cron/storage-report");
   // Deletes the Supabase copies of migrated videos. Self-gated: sleeps until
