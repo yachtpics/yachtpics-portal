@@ -16,6 +16,7 @@ import {
   BarChart3,
   Mail,
   Film,
+  Clapperboard,
   Megaphone,
   Lightbulb,
   Newspaper,
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
+  { label: "Reels", href: "/admin/reels", icon: Clapperboard },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
   { label: "Video Migration", href: "/admin/media", icon: Film },
@@ -66,6 +68,7 @@ const SIDEBAR_PRIORITY = [
   "/admin/assistants",
   "/admin/listings",
   "/admin/metrics",
+  "/admin/reels",
   "/admin/emails",
 ];
 
@@ -74,6 +77,7 @@ const MOBILE_PRIORITY = [
   "/admin/assistants",
   "/admin/listings",
   "/admin/metrics",
+  "/admin/reels",
   "/admin/emails",
 ];
 

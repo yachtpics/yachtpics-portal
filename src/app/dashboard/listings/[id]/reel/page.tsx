@@ -413,11 +413,35 @@ export default function ListingReelPage() {
   }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin]);
 
   // ── Render ──────────────────────────────────────────────────────────────
+  /**
+   * Metrics. The Reel went out to the whole portal as a two-week open house,
+   * and the only honest measure of whether that landed is what got made — so
+   * a row is filed when a film finishes, and another for each thing the broker
+   * does with it afterwards. A render nobody downloads is a different signal
+   * from one that got posted, and the gap between those two numbers is the
+   * one worth watching.
+   *
+   * Deliberately fire-and-forget: no await, no error surfaced, no state. If
+   * the beacon fails the broker must never know, because nothing they are
+   * doing depends on it.
+   */
+  function track(kind: string, shape?: Record<string, unknown>) {
+    try {
+      void fetch("/api/reel-events", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ kind, listingId: id, shape }),
+        keepalive: true,
+      }).catch(() => {});
+    } catch { /* tracking never breaks the page */ }
+  }
+
   async function render() {
     if (!listing || !broker || selectedPhotos.length === 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     cancelRef.current = false;
+    const startedAt = Date.now();
     setResult(null);
     setAdded(false);
     setPhone(null);
@@ -579,7 +603,14 @@ export default function ListingReelPage() {
           // room — it is not borrowing space back between photographs.
           // (0.45 was the reel's proportion carried over unchanged, which drew a
           // 3:2 photograph at a third of the frame width, marooned in cream.)
-          return { x: m, y: m * 0.55, w: W - m * 2, h: H * 0.54 };
+          //
+          // A landscape photograph in a 16:9 window is limited by HEIGHT, never
+          // width: at 0.54 a 3:2 frame drew 583px tall inside a window 1708
+          // wide, so most of the page was cream either side of it. The block
+          // below is now set tighter (see tightBlock) and the window takes what
+          // that frees — a fifth larger on the long edge, better than a third
+          // more picture, with the block's clearance unchanged.
+          return { x: m, y: m * 0.45, w: W - m * 2, h: H * 0.63 };
         }
         return { x: 0, y: 0, w: W, h: H };
       })();
@@ -849,11 +880,38 @@ export default function ListingReelPage() {
         const anchor = leftAligned ? frame.x + pad : W / 2;
         const maxW = W - pad * 2;
         const capSize = 27 * sc;
+
+        // Gallery on film is the one composition where the type and the
+        // photograph compete for the same page. Everywhere else the block
+        // either sits ON the picture (scrim), or inside a bar the letterbox
+        // was always going to leave empty, or — on a reel — in the top band
+        // Instagram covers anyway. Here it is on screen for the whole film,
+        // below the picture, so every pixel it takes is a pixel the
+        // photograph never gets back. On that one layout alone the type is set
+        // smaller and the gaps close up.
+        const tightBlock = backdrop === "inset" && !topType;
+
+        // The block is measured once and drawn once, in two separate passes,
+        // and the two have to agree: shrink a gap in the measure pass only and
+        // the block is anchored as if it were short while it still draws long
+        // — which walks the location line off the foot of the frame. So every
+        // gap that differs between tight and loose lives here, read by both.
+        // For a loose block each value is exactly what was hard-coded before,
+        // so nothing moves on the other five looks.
+        const gapNameToSpec = (tightBlock ? 56 : 84) * sc;  // name baseline to spec baseline
+        const gapSpecTrail  = (tightBlock ? 18 : 26) * sc;  // spec baseline to location baseline
+        const gapLeadToName = (tightBlock ? 12 : 20) * sc;  // lead-in to name
+        const padLead       = (tightBlock ? 8 : 14) * sc;   // measure-pass allowances
+        const padSpec       = (tightBlock ? 10 : 18) * sc;
+        const padWhere      = (tightBlock ? 40 : 49) * sc;
+        const footMargin    = (tightBlock ? 44 : 64) * sc;  // frame foot to block bottom
+
         const headFamily = st.serifHeadline ? `${serifFamily}, Georgia, serif` : sans;
         const headWeight = st.serifHeadline ? (st.headline === "caps" ? 400 : 600) : (st.headWeight ?? 600);
 
         // Long names step down rather than wrap into a wall of type.
-        const nameSize = (name.length > 26 ? 76 : name.length > 16 ? 94 : 116) * sc;
+        const nameSize = (name.length > 26 ? 76 : name.length > 16 ? 94 : 116) * sc
+          * (tightBlock ? 0.82 : 1);
         const headText =
           st.headline === "caps" || st.headline === "editorial" ? name.toUpperCase()
           : st.headline === "title" ? name.replace(/\w\S*/g, (w) => w[0].toUpperCase() + w.slice(1).toLowerCase())
@@ -900,19 +958,19 @@ export default function ListingReelPage() {
         ctx.font = leadIsItalic ? `italic 400 ${leadSize}px ${serifFamily}, Georgia, serif` : `600 ${leadSize}px ${sans}`;
         const leadLines = maker ? wrapTracked(ctx, leadIsItalic ? maker : maker.toUpperCase(), maxW, leadTrack) : [];
         const leadLineH = (leadIsItalic ? 46 * sc : capSize) + (leadIsItalic ? 6 : 10) * sc;
-        const leadH = maker ? leadLineH * leadLines.length + 14 * sc : 0;
+        const leadH = maker ? leadLineH * leadLines.length + padLead : 0;
         const nameH = lines.length * nameSize * 0.94;
         // The same breath between the name and the spec row whether a look
         // draws a rule in it or not — Cinematic's spec was landing on the
         // name's baseline.
-        const ruleH = 84 * sc;
+        const ruleH = gapNameToSpec;
         ctx.font = `600 ${capSize}px ${sans}`;
         // Breaks only between facts, never inside one — "Flybridge Motor
         // Yacht" stays on a line together.
         const specLines = spec ? wrapSegments(ctx, specBits.map((b) => b.toUpperCase()), "   ·   ", maxW, 6 * sc) : [];
         const specLineH = capSize + 12 * sc;
-        const specH = spec ? specLineH * specLines.length + 18 * sc : 0;
-        const whereH = where ? 49 * sc : 0;
+        const specH = spec ? specLineH * specLines.length + padSpec : 0;
+        const whereH = where ? padWhere : 0;
         const blockH = leadH + nameH + ruleH + specH + whereH;
         const offFrame = backdrop === "letterbox" || backdrop === "inset";
         // Every branch gives the FIRST baseline: the lead-in's if there is one,
@@ -946,7 +1004,7 @@ export default function ListingReelPage() {
         // is sized so an ordinary block clears it with room; only an unusually
         // tall one (a three-line vessel name over a four-line spec row) reaches
         // up as far as the print.
-        const filmFloor = H - 64 * sc - blockH + firstAscent;
+        const filmFloor = H - footMargin - blockH + firstAscent;
         let y = topType
           ? topStart
           : offFrame
@@ -959,7 +1017,7 @@ export default function ListingReelPage() {
           ctx.fillStyle = st.accent;
           ctx.font = leadIsItalic ? `italic 400 ${leadSize}px ${serifFamily}, Georgia, serif` : `600 ${leadSize}px ${sans}`;
           leadLines.forEach((ln, li) => put(ln, anchor, y + li * leadLineH, leadTrack));
-          y += leadLineH * (leadLines.length - 1) + (leadIsItalic ? 46 * sc : capSize) + 20 * sc + nameSize * 0.82;
+          y += leadLineH * (leadLines.length - 1) + (leadIsItalic ? 46 * sc : capSize) + gapLeadToName + nameSize * 0.82;
         }
 
         ctx.fillStyle = st.text;
@@ -973,20 +1031,21 @@ export default function ListingReelPage() {
           if (!isLast) y += nameSize * 0.94;
         }
 
-        // 84px from the name's baseline to the spec's, rule or no rule.
+        // The same distance from the name's baseline to the spec's, rule or no
+        // rule — the rule sits halfway along it.
         if (st.rule !== "none") {
-          y += 42 * sc;
+          y += gapNameToSpec / 2;
           drawRule(anchor, y, leftAligned ? 108 * sc : 96 * sc, alpha, leftAligned);
-          y += 42 * sc;
+          y += gapNameToSpec / 2;
         } else {
-          y += 84 * sc;
+          y += gapNameToSpec;
         }
 
         if (spec) {
           ctx.fillStyle = st.quiet;
           ctx.font = `600 ${capSize}px ${sans}`;
           specLines.forEach((ln, li) => put(ln, anchor, y + li * specLineH, 6 * sc));
-          y += specLineH * (specLines.length - 1) + capSize + 26 * sc;
+          y += specLineH * (specLines.length - 1) + capSize + gapSpecTrail;
         }
 
         if (where) {
@@ -1386,6 +1445,18 @@ export default function ListingReelPage() {
       setResult({ url, blob, format, seconds: Math.round(total) });
       setProgress(100);
       setPhase("done");
+      // What was made, not what was selected: the look, the shape and the
+      // running time of the film that actually exists.
+      track("render", {
+        format,
+        look: styleKey,
+        reelLength: format === "reel" ? length : null,
+        fit,
+        photoCount: selectedPhotos.length,
+        seconds: Math.round(total),
+        ypBrand,
+        renderMs: Date.now() - startedAt,
+      });
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong while rendering.");
       setPhase("error");
@@ -1464,6 +1535,7 @@ export default function ListingReelPage() {
     const text = [caption, hashtags.join(" ")].filter(Boolean).join("\n\n");
     try {
       await navigator.clipboard.writeText(text);
+      track("copy_caption");
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch { /* clipboard blocked — the text is on screen to select */ }
@@ -1505,6 +1577,7 @@ export default function ListingReelPage() {
         color: { dark: "#050b14", light: "#ffffff" },
       });
       setPhone({ qr, url: data.url, emailedTo: data.emailedTo ?? null });
+      track("send_to_phone");
     } catch (err) {
       setPhoneError(err instanceof Error ? err.message : "Couldn't send it to your phone.");
     } finally {
@@ -1518,6 +1591,7 @@ export default function ListingReelPage() {
     a.href = result.url;
     a.download = `${safeName(listing?.vessel_name)}-${result.format}.mp4`;
     a.click();
+    track("download");
   }
 
   async function addToListing() {
@@ -1532,6 +1606,7 @@ export default function ListingReelPage() {
       await supabase.from("videos").update({ title: `${listing.vessel_name ?? "Listing"} — The Film` }).eq("id", res.video.id);
       setVideoCount((n) => n + 1);
       setAdded(true);
+      track("added_to_listing");
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Couldn't add the film to the listing.");
     } finally {
