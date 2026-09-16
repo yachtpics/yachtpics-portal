@@ -1,4 +1,104 @@
-# Where we are — September 9, 2026
+# Where we are — September 15, 2026
+
+## Sept 15 evening — the reel audit, six fixes, and the thirds movement
+
+**Goal: get the looks presentable and send the announcement.** Charlie's words:
+"we can always tweak them later but need to be presentable first."
+
+**The shell is still dead** (the Sept 8 Windows update — `device_bash` reports
+"Workspace unavailable"). Claude writes files; Charlie runs `npx tsc --noEmit`,
+commits and pushes. Everything below was typechecked in isolation and verified
+against the original's error profile — identical, so no new type errors — but
+only Charlie's `tsc` sees the real tsconfig.
+
+### Timing, measured rather than assumed
+
+All six looks run through the real `planSingles`/`planStack` at the default
+(Full, 18 photos): Editorial 41.2s, Cinematic 45.0s, Gallery 37.7s, Classic
+43.4s, Energy 35.3s, Stack 33.1s. **Every one inside the 30–60s band the portal
+itself recommends.** Film 31–48s, Short 18–25s. Nothing needed retuning.
+
+### Six defects fixed
+
+1. **Room labels were unreachable on Cinematic and Gallery reels.** Their
+   caption belongs in the band above the picture, but on a reel that band holds
+   the title for the whole film, and below the picture is Instagram's caption
+   zone. The code silently skipped it while still showing the switch — and the
+   announcement promises the feature. The toggle now hides with a reason, as it
+   already did for Stack. **The design fix is still open:** the band could carry
+   the room name from photo two onward instead of the title.
+2. **Gallery on film drew a 3:2 photo at 729×486 inside 1920×1080** — the reel's
+   0.45-height inset proportion carried over to a 16:9 frame, leaving a postage
+   stamp in ~600px of cream each side. Window is now 0.62 height.
+3. **Gallery on film had no bottom clamp**, so the location line fell off frame
+   on any vessel name wrapping to two lines ("Sunseeker Predator 108" is enough).
+4. **Stack on film was strobing** — the fallback routed through Energy's planner
+   and re-added the burst and flash cuts Charlie had removed. Now falls back with
+   `STACK_VOCAB` and no strobe.
+5. **End card printed "Broker"** when a profile had no name. Line omitted instead.
+6. **`applyBrand` passed the accent through unchecked.** It carries the end-card
+   phone number; a navy logo via "Match my logo" landed near 1.3:1 on Editorial's
+   ground — invisible. `legibleAccent` keeps the hue and moves lightness until it
+   clears 4.5:1.
+
+### The thirds movement (new, Charlie's idea)
+
+One photograph at a time, landing in the top, middle or bottom third, **never
+the same third twice running**, empty ground between. Runs in movements
+alternating with full-frame photographs — the title photo, the flash burst and
+the landing shot always keep the whole frame. Reels only.
+
+- **On Editorial, Classic and Energy** (`thirds: true` in `reelStyles.ts`), each
+  at its own pace. Not on Cinematic or Gallery — their window IS the
+  composition. Not on Stack, which already owns the divided frame.
+- **Capped at 40% of the film** (`THIRDS_MAX_FRACTION`). The first pass put 11
+  of 18 photos in thirds on Editorial and it stopped reading as Editorial —
+  which matters because Editorial is the default. Raise the constant for more.
+- Placed photos hold 1.15× longer; they're smaller and need the extra beat.
+- Room captions follow the photo to whichever third it lands in.
+- Verified across photo counts 7–18: zero same-third repeats.
+
+**Then a bug this introduced, found by Charlie on Natural 9 and fixed:** the
+dissolve drew the outgoing frame at full alpha and faded the incoming one over
+it — a true cross-fade when both fill the frame, but two photos in *different*
+thirds never overlap, so the outgoing sat at full strength and vanished in one
+frame. `drawTransition` now takes a `disjoint` flag and fades both at once when
+the frames don't share pixels. **Charlie confirmed this looks right.**
+
+### Announcement copy
+
+- **"About twenty seconds" was wrong** — that's the Short setting; the Full
+  default is 33–45s, and the Reel page itself tells brokers 30–60s reaches
+  furthest. Now "around forty seconds — the length the feed actually rewards."
+- **Subject names the closing date, not a duration** ("free until October 5",
+  read from `reelPromoEndsOn()`), so it can't decay while the email waits.
+- **Send window pulled in to Sept 23.** An announcement landing three days
+  before the offer closes is worse than one that waits — if that date passes,
+  push `REEL_PROMO_END` out and move the send window with it.
+
+### Still to check before sending
+
+Classic · Energy · **Gallery on Film** · **Stack on Film** — all on Natural 9,
+which has the specs. A listing without them falls back to the vessel name
+"Now Available" with no lead-in and no spec row, and every look collapses into
+every other; that is what made Charlie think Classic, Gallery and Cinematic
+looked alike.
+
+### Cosmetic, deliberately left
+
+Hairline pulsing slightly on Gallery cuts; a ~10px corner of the outgoing photo
+surviving one frame of a diagonal wipe; the Stack band whip-in partly masked by
+the transition bringing the run in; the opening spec row still carrying five
+facts where the end card was trimmed to three.
+
+### Worth doing after the send
+
+The Reel page could warn when a listing is too thin to render well — the
+readiness strip already knows which fields are missing.
+
+---
+
+# Previous — September 9, 2026
 
 Charlie is home from Grenada. Today's session sharpened the Reel, opened it to
 everyone for a fortnight, and wrote the announcement. **Committed by Charlie,
