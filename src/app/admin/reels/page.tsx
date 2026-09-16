@@ -1,6 +1,11 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { ANNOUNCEMENT_TYPE } from "@/lib/announcementEmail";
 import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown } from "@/lib/reelPromo";
+import {
+  readReelStats, statsAreWorthSharing, followUpSubject,
+  followUpWindowOpen, FOLLOWUP_TYPE, FOLLOWUP_WINDOW, type FollowUpKey,
+} from "@/lib/reelFollowUpEmail";
+import FollowUpControls from "./FollowUpControls";
 
 export const dynamic = "force-dynamic";
 
@@ -174,6 +179,50 @@ export default async function ReelsPage() {
   const promoOver = Date.now() > Date.parse(REEL_PROMO_END);
   const log = events.slice(0, 120);
 
+  // The follow-ups. They live on THIS page rather than on /admin/announce on
+  // purpose: the week-one email's copy is these numbers, so the button that
+  // sends it belongs under the table that shows them.
+  const stats = await readReelStats(service);
+  const proof = statsAreWorthSharing(stats);
+
+  const audience = (profilesRaw ?? []).filter(
+    (p) => (p.role === "broker" || p.role === "assistant") && p.display_email
+  ).length;
+
+  const followUpMeta: { key: FollowUpKey; title: string; blurb: string }[] = [
+    {
+      key: "week1",
+      title: "One week in",
+      blurb: "What brokers made, and a nudge to the ones who haven't. Leads with the numbers when they're strong enough to lead with.",
+    },
+    {
+      key: "lastcall",
+      title: "Last call",
+      blurb: "Two days before the window shuts. Short \u2014 the date and the button.",
+    },
+  ];
+
+  const followUps = await Promise.all(
+    followUpMeta.map(async (m) => {
+      const { count } = await service
+        .from("email_log")
+        .select("id", { count: "exact", head: true })
+        .eq("email_type", FOLLOWUP_TYPE[m.key])
+        .eq("status", "sent");
+      const already = count ?? 0;
+      const w = FOLLOWUP_WINDOW[m.key];
+      return {
+        ...m,
+        subject: followUpSubject(m.key, stats),
+        windowOpen: followUpWindowOpen(m.key),
+        windowLabel: `Can be sent ${fmtDay(w.after)} to ${fmtDay(w.before)}`,
+        alreadySent: already,
+        remaining: Math.max(0, audience - already),
+        proof,
+      };
+    })
+  );
+
   return (
     <div className="px-6 py-8 max-w-6xl mx-auto">
       <div className="mb-8">
@@ -211,6 +260,15 @@ export default async function ReelsPage() {
           ? "No admin activity in this window."
           : `Your own ${mine.filter((e) => e.kind === "render").length} test render${mine.filter((e) => e.kind === "render").length === 1 ? "" : "s"} are excluded from every number above, and shown greyed in the log.`}
       </p>
+
+      {/* The follow-ups */}
+      <div className="mb-8">
+        <h2 className="text-h2 text-ink-900 mb-0.5">Follow-ups</h2>
+        <p className="text-xs text-ink-500 mb-3">
+          Neither one sends on a schedule. Read the numbers above, send yourself a test, then send it by hand.
+        </p>
+        <FollowUpControls cards={followUps} />
+      </div>
 
       {/* Which looks they reach for */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-8">

@@ -230,19 +230,23 @@ Forty is exactly `MAX_NEW`, but that is the backfill effect of a cold start — 
 a steady daily run the windows overlap and dedup keeps it to a handful. No reason
 to raise the cap yet.
 
-**Still open on news:** the website upload (below); first Monday digest draft
-Sept 21.
+**Still open on news:** first Monday digest draft Sept 21. The website upload is
+DONE — see below.
 
-## Sept 15 — the website side, prepared for upload
+## Sept 15 — the website side — UPLOADED AND LIVE (Sept 16)
 
 **The portal is pushed and live.** `portal.yachtpics.com/api/news/public` answers
 with real items in the approved voice, so `marine-news.php` works the moment it
 lands. (The note above saying the overnight build was not pushed is out of date.)
 
-**Everything is staged in `C:\Users\charl\yachtpics-site\_upload-2026-09-15\` —
-94 files, all flat, all bound for the web root.** Open that folder in FileZilla's
-local pane, select all, drag across. Show hidden files, or `.htaccess` will be
-skipped.
+**DONE. Charlie uploaded all 94 files on Sept 16 and confirmed the Marine Blog
+is up and running on yachtpics.com.** Nothing below is outstanding; it is kept as
+the record of what went up and why, and as the map if any of it needs redoing.
+
+They were staged in `C:\Users\charl\yachtpics-site\_upload-2026-09-15\` — 94
+files, all flat, all bound for the web root. If a future batch goes the same way:
+open that folder in FileZilla's local pane, select all, drag across, and show
+hidden files or `.htaccess` gets skipped.
 
 Three things the last handoff got wrong, found by checking the live server rather
 than the local copies:
@@ -282,10 +286,11 @@ What is in the upload folder:
   all. Note the sitemap carries `lastmod` dates from Sept 13, so if something
   regenerates it, this edit will be overwritten.
 
-**After the upload, check:** yachtpics.com — Marine Blog in the nav; the page
-itself; and yachtpics.com/marine-news.html redirects rather than showing July
-2025. The page writes `news-cache.json` beside itself (one-hour TTL); if the host
-forbids the write it costs the cache, not the page.
+**Checked after upload:** Charlie confirmed the Marine Blog is live and working
+on yachtpics.com. Still worth a glance if anything looks off later —
+yachtpics.com/marine-news.html should redirect rather than show the July 2025
+page, and the page writes `news-cache.json` beside itself (one-hour TTL); if the
+host forbids the write it costs the cache, not the page.
 
 **Worth considering next:** the page has no "photographed by YachtPics" call to
 action on it. A daily-refreshing industry feed is a reason for brokers to return
@@ -378,8 +383,8 @@ Spec: `docs/news-spec.md`. Two Opus build passes + one Opus review; migration
    browser — it returns a small JSON with counts and `failedSources`.
 3. Admin → News: sanity-read the headlines. Hide anything off. Feature one.
 4. Broker view: sidebar News, the page, the dashboard card.
-5. Upload `marine-news.php` from `C:\Users\charl\yachtpics-site` to the web
-   host (same place as the old one) and open yachtpics.com/marine-news.php.
+5. ~~Upload `marine-news.php` to the web host.~~ DONE Sept 16 — the whole
+   94-file batch went up and the Marine Blog is live.
 6. Monday: Admin → News → "Yachting this week": read the draft, edit, Send
    test to me, then Approve & send.
 

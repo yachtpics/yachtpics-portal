@@ -7,6 +7,11 @@ import { reelPromoEndsOn } from "@/lib/reelPromo";
 
 const PORTAL = "https://portal.yachtpics.com";
 
+// No price and no competitor comparison in this email, on purpose. It is an
+// open house: the offer is the message, and a fee schedule sitting next to a
+// free gift only invites the reader to price the gift. Most of this list is
+// mid-trial anyway and will meet the price on its own soon enough.
+
 /**
  * Stable type used for email_log dedup. Bump the suffix for the next campaign —
  * the previous one was `announcement_portal_story` (Aug 2026), and reusing a
@@ -15,15 +20,35 @@ const PORTAL = "https://portal.yachtpics.com";
 export const ANNOUNCEMENT_TYPE = "announcement_reel_2026_09";
 
 /**
- * The subject names the CLOSING DATE, not a duration.
+ * WHAT THE "FIRST" CLAIM RESTS ON (researched Sept 2026, before this went out):
+ *   - YachtWorld / Boats Group ship an AI Listing Builder that writes listing
+ *     TEXT from vessel data. No video.
+ *   - YATCO's BOSS has a digital asset manager: it stores photos and video and
+ *     publishes them to social. It does not generate anything.
+ *   - YachtCloser is contracts. YachtPushr writes articles and posts from
+ *     inventory; no evidence of video.
+ *   Caveat: BOSS and BoatWizard sit behind logins, so that reading comes from
+ *   their own marketing, which consistently describes storing and publishing
+ *   media and never generating it. Strongly evidenced, not proven from inside.
  *
- * "Free for two weeks" is only true on the day it's written. This email has
- * already waited a week for the Stack look, and a duration in the subject line
- * quietly becomes a lie every day it sits unsent. The date is read from
- * reelPromo, so the subject, the body and the banner on the Reel page can
- * never disagree — move REEL_PROMO_END and all three follow.
+ *   Photo-to-reel DOES exist in real estate (HDPhotoHub is the closest
+ *   structural parallel — a media-delivery platform that auto-generates
+ *   branded vertical reels because it already holds the photos and the brand).
+ *   So the claim is scoped to yacht MLS and brokerage platforms, never
+ *   "nobody anywhere" — a broker who has seen the real-estate tools would
+ *   catch that, and one caught overclaim costs more than the line earns.
+ *
+ * The subject leads on being first, and names the CLOSING DATE rather than a
+ * duration. "The first" rather than "the only": we can stand behind having got
+ * there first without claiming to have audited every platform on earth.
+ *
+ * "Free for two weeks" is only true on the day it's written. This email waited
+ * a week for the Stack look, and a duration in the subject quietly becomes a
+ * lie every day it sits unsent. The date is read from reelPromo, so the
+ * subject, the body and the banner on the Reel page can never disagree — move
+ * REEL_PROMO_END and all three follow.
  */
-export const ANNOUNCEMENT_SUBJECT = `Your photos are now a reel — free until ${reelPromoEndsOn()}`;
+export const ANNOUNCEMENT_SUBJECT = `The first reel generator in yachting — free until ${reelPromoEndsOn()}`;
 
 // Scheduled-send window (the Vercel cron fires Monday 9am ET = 13:00 UTC). The
 // cron only sends inside this window; combined with the email_log dedup, that
@@ -58,39 +83,39 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
     </div>
     <div style="padding:40px;">
       <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New in the Portal</p>
-      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Your photographs, as a reel</h1>
+      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">The first reel generator in yachting</h1>
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Hi ${firstName},</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open any listing and you&rsquo;ll find a new button: <strong style="color:#111827;">Reel</strong>. Click it and the photographs you already have &mdash; in the order you&rsquo;ve set them, your cover shot first &mdash; come back as a finished video. Around forty seconds &mdash; the length the feed actually rewards &mdash; ready to post.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Open any listing and you&rsquo;ll find a new button: <strong style="color:#111827;">Reel</strong>. Press it and the photographs you already have &mdash; your order, your cover shot first &mdash; come back as a finished video in under a minute. Around forty seconds, the length the feed actually rewards.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Not a slideshow with a logo on the front. You choose the look &mdash; six of them, from the restrained brochure register to a slow letterboxed cut to a fast hard-cut edit and a three-band, whip-cut reel built for centre consoles &mdash; set it in your own brand colours (or press Match my logo and let it find them), and it renders right there in your browser in under a minute. Vertical for Instagram and Facebook, or widescreen to send a buyer and add straight to the listing.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">No yacht MLS or brokerage platform does this. They will store your photographs, and one or two will now write your listing copy &mdash; none of them will turn the photographs into video. We built it because putting a boat on Instagram shouldn&rsquo;t mean hiring an editor.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">When it&rsquo;s done, press <strong style="color:#111827;">Send to my phone</strong>: a code appears on screen, you point your phone at it, and the reel is in your camera roll &mdash; ready to post with whatever audio you like. Turn on room labels if you want each space named on screen; leave them off if you&rsquo;d rather the photography speak.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Six looks, from a restrained brochure register to a fast hard-cut edit built for centre consoles. Your own brand colours &mdash; and if you&rsquo;ve uploaded your logo to the Portal, press <strong style="color:#111827;">Match my logo</strong> and it reads the colour straight off the mark. Vertical for Instagram and Facebook, or widescreen to send a buyer and add to the listing.</p>
+
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">When it&rsquo;s done, press <strong style="color:#111827;">Send to my phone</strong>. A code appears on screen, you point your phone at it, and the reel is in your camera roll &mdash; ready to post with whatever audio you like.</p>
 
       <div style="margin:0 0 26px;padding:18px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
-        <p style="margin:0 0 6px;font-size:15px;color:#6b5a2a;line-height:1.6;"><strong style="color:#4a3d17;">It&rsquo;s open to everyone until ${closes}.</strong></p>
-        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">Subscribed, on trial, or lapsed &mdash; until then every account can make as many reels as they like, on any listing, and download them clean. Make one for your best boat and see what it does.</p>
+        <p style="margin:0 0 6px;font-size:15px;color:#6b5a2a;line-height:1.6;"><strong style="color:#4a3d17;">Open to every account until ${closes}.</strong></p>
+        <p style="margin:0 0 6px;font-size:14px;color:#6b5a2a;line-height:1.6;">Subscribed, on trial, or long lapsed &mdash; until then make as many as you like, on any listing, and download them clean.</p>
+        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;"><strong style="color:#4a3d17;">Anything you make is yours to keep.</strong> Whatever you decide after ${closes}, the reels stay yours &mdash; to post, to re-post, to keep using.</p>
       </div>
 
-      <p style="margin:0 0 14px;font-size:15px;color:#374151;line-height:1.6;">And a few other things worth knowing about:</p>
+      <p style="margin:0 0 14px;font-size:15px;color:#374151;line-height:1.6;">While you&rsquo;re in there, three others worth a look:</p>
 
       <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 26px;">
-        ${bullet("The caption, written for you.", "On the Reel page, Write with AI reads the photographs you picked &mdash; the actual frames, in order &mdash; and writes a headline and a caption with hashtags. Yours to edit before anything goes out.")}
-        ${bullet("What buyers actually look at.", "Every listing now has an Engagement panel: who opened it, how long they stayed, and which photographs they lingered on and saved.")}
+        ${bullet("The caption, written for you.", "Write with AI reads the frames you picked &mdash; the actual photographs, in order &mdash; and writes a headline and caption with hashtags. Yours to edit before anything goes out.")}
+        ${bullet("What buyers actually look at.", "Every listing has an Engagement panel: who opened it, how long they stayed, and which photographs they lingered on and saved.")}
         ${bullet("A report for the owner.", "One branded page you can print or send &mdash; the answer to &ldquo;what are you doing for my boat?&rdquo; before they ask.")}
-        ${bullet("Names on your sends.", "Add the client&rsquo;s name in Send to Client and the alert tells you who opened it, and how many times.")}
-        ${bullet("Photos labelled on arrival.", "Uploads the file name can&rsquo;t place get sorted into the walk-through order for you.")}
-        ${bullet("360&deg; tours and deck plans.", "Paste a tour link and upload the general arrangement &mdash; both show up on your client slideshow.")}
       </table>
+
+      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">One thing that hasn&rsquo;t changed, and won&rsquo;t: <strong style="color:#374151;">your photographs are always free to download.</strong> That was the whole point on day one, and it still is.</p>
 
       <div style="margin:26px 0;">
         <a href="${PORTAL}/dashboard/listings" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">Make a reel</a>
       </div>
 
-      <p style="margin:0 0 20px;font-size:14px;color:#6b7280;line-height:1.6;">One thing that hasn&rsquo;t changed, and won&rsquo;t: <strong style="color:#374151;">your photos are always free to download.</strong> That was the whole point on day one, and it still is.</p>
-
-      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">If you make something good with it, send it to us &mdash; we&rsquo;d like to see it. And if there&rsquo;s something you still do by hand that the Portal ought to be doing for you, tell us. We&rsquo;d rather build it than have you work around it.</p>
+      <p style="margin:0 0 24px;font-size:14px;color:#6b7280;line-height:1.6;">Make one for your best boat and see what it does. If it&rsquo;s good, send it to us &mdash; we&rsquo;d like to see it.</p>
 
       <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">— Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>
