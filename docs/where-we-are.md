@@ -1,4 +1,86 @@
-# Where we are — September 15, 2026
+# Where we are — September 16, 2026
+
+## Sept 16 — Energy's wall, the cross-fade bug, and the admin navigation
+
+### The thirds movement, second pass
+
+Charlie on Energy: *"too fast, and slowing it down won't fix it — the photos need
+to stay on screen as they appear."* Right call. At Energy's pace one-at-a-time
+reads as flicker; a photograph is gone before the eye settles.
+
+`thirds` is now `"single" | "wall"` per look:
+
+- **Editorial and Classic keep `"single"`** — one at a time, empty ground
+  between. Charlie approved this on Natural 9. Under a dissolve there is time
+  for the pause to register.
+- **Energy runs `"wall"`** — photographs arrive one by one and STAY: top, then
+  middle, then bottom, three on screen together, extra beat on the completed
+  wall, then it clears. Two walls in an 18-photo reel. 37.7s, still in band.
+
+Two things that mattered in the build, both worth keeping in mind for any
+future movement:
+
+1. **The settled photographs must not move.** Cuts inside a wall are pinned to
+   hard cuts (`dur: 0`) with the arrival animated inside the unit. Run a
+   transition across them and the already-placed photos dip in brightness —
+   reads as a glitch.
+2. **Each arrival is dealt its own move** from the Stack vocabulary (slide from
+   either side, push up or down, fade, wipe), never the same twice running.
+
+Walls are uncaptioned — one room label over three photographs is ambiguous.
+
+### The cross-fade bug the thirds movement introduced
+
+Charlie, on Editorial: *"the next photo shows up then the other fades out. They
+should fade in and out at the same time."*
+
+He read it as timing; it was compositing. `drawTransition`'s dissolve drew the
+outgoing frame at full alpha and faded the incoming one over it — a true
+cross-fade when both fill the frame, because the incoming covers the outgoing as
+it arrives. **Two photographs in different thirds never overlap**, so the
+outgoing sat at full strength for the whole transition and vanished in a single
+frame. `drawTransition` now takes a `disjoint` flag and fades both at once when
+the frames don't share pixels. Confirmed good.
+
+### The admin navigation — three attempts, one real cause
+
+This took three goes and the first two were treating symptoms. Worth recording
+so nobody repeats them.
+
+**The real cause, in `auth/login/page.tsx`:**
+
+```
+let destination = "/dashboard/listings";
+if (profile?.role === "admin") destination = "/admin";
+```
+
+**Signing in is the only thing in the entire portal that routes to `/admin`.**
+The Reel lives at `/dashboard/listings/[id]/reel`, so opening it swapped the
+admin nav for the broker one — and with no link back anywhere, signing out and
+in again was genuinely the only way home. Charlie had been typing `/admin` on
+the end of the URL since the portal was built.
+
+**The fix, in `dashboard/layout.tsx`:** when `role === "admin"`, render
+`AdminNav` instead of `DashboardNav`. **The navigation follows who you are, not
+which folder the page lives in.** An admin keeps the admin nav everywhere.
+
+Two earlier attempts, both reverted:
+- An Admin item added to `DashboardNav` — dead code once an admin never sees
+  that nav at all.
+- `target="_blank"` on the admin page's Reel link — a workaround for losing the
+  nav, left in by mistake after the real fix landed, which is why Charlie
+  suddenly got new windows.
+
+**The Seller Report keeps `target="_blank"` deliberately.** `/report/listing/[id]`
+has no layout and no navigation — it is a one-page print/PDF document. Opened in
+place it strands you. Charlie confirmed: leave it.
+
+### Still to check before the announcement
+
+Classic · Energy's wall · **Gallery on Film** · **Stack on Film** — all on
+Natural 9. Editorial is confirmed good.
+
+---
 
 ## Sept 15 evening — the reel audit, six fixes, and the thirds movement
 

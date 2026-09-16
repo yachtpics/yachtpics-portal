@@ -553,12 +553,12 @@ export default function ListingReelPage() {
             // Name at the head of the page, the print below it.
             return { x: m, y: H * 0.42, w: W - m * 2, h: H * 0.44 };
           }
-          // Film: the type sits UNDER the picture, so the window is everything
-          // above the type block. 0.45 was the reel's proportion carried over
-          // unchanged, and on a 16:9 frame it left a 3:2 photograph drawn at a
-          // third of the width, marooned in cream. A whole photo on a wide
-          // frame is always height-limited, so the height is what has to give.
-          return { x: m, y: m * 0.7, w: W - m * 2, h: H * 0.62 };
+          // Film: the picture takes the top of the page and the type sits under
+          // it for the WHOLE film, so the window has to leave the block real
+          // room — it is not borrowing space back between photographs.
+          // (0.45 was the reel's proportion carried over unchanged, which drew a
+          // 3:2 photograph at a third of the frame width, marooned in cream.)
+          return { x: m, y: m * 0.55, w: W - m * 2, h: H * 0.54 };
         }
         return { x: 0, y: 0, w: W, h: H };
       })();
@@ -913,15 +913,23 @@ export default function ListingReelPage() {
         const topWanted = H * 0.16 + firstAscent;
         const topFloor = offFrame ? frame.y - 56 * sc : H; // window top, or no limit
         const topStart = Math.max(topCeiling, Math.min(topWanted, topFloor - blockH + firstAscent));
-        // On a film the off-frame block hangs from the picture's lower edge —
-        // but it must still land inside the frame. A two-line vessel name over
-        // a three-line spec row used to push the location clean off the bottom,
-        // silently. Clamp it the way the scrim branch already clamps itself.
-        const filmFloor = H - 56 * sc - blockH + firstAscent;
+        // On a film the off-frame block is anchored to the FOOT of the frame and
+        // grows upward, rather than hanging from the picture's lower edge. Two
+        // reasons: hanging from the picture let a two-line name over a three-line
+        // spec row push the location clean off the bottom of the screen, and with
+        // the block now persistent it would jump between photographs of different
+        // heights. Anchored, it sits still and can never leave the frame.
+        // The anchor is unconditional: staying inside the frame beats clearing
+        // the picture, because a location line that falls off the screen is gone
+        // while one that sits close to the photograph is merely close. The window
+        // is sized so an ordinary block clears it with room; only an unusually
+        // tall one (a three-line vessel name over a four-line spec row) reaches
+        // up as far as the print.
+        const filmFloor = H - 64 * sc - blockH + firstAscent;
         let y = topType
           ? topStart
           : offFrame
-            ? Math.min(under + 72 * sc + (maker ? 0 : nameSize * 0.82), filmFloor)
+            ? filmFloor
             : H - 140 * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
         if (maker) {
@@ -1284,7 +1292,11 @@ export default function ListingReelPage() {
           // bar — it stays up for the whole reel: every frame a captioned
           // print, rather than a name that leaves and a page left empty.
           // On a full-bleed look it belongs to the opening frame only.
-          const persistent = topType && (backdrop === "inset" || backdrop === "letterbox");
+          // Wherever the type lives OFF the picture — Gallery's page, Cinematic's
+          // bar — it stays up for the whole film, on a reel and on a film alike.
+          // It used to be reels only, which left a Gallery film showing its name
+          // on frame one and then a third of the page empty for the rest.
+          const persistent = backdrop === "inset" || backdrop === "letterbox";
           if (k === 0) {
             const a = persistent ? ease((local - 0.3) / 0.6) : titleAlpha(local, u.hold);
             drawTitle(a * alpha);
