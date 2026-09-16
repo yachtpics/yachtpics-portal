@@ -22,7 +22,7 @@ import {
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { planStack, planSingles, rowState, whipEase, flashAlpha, WALL_ARRIVE, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
+import { planStack, planSingles, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 
@@ -591,11 +591,11 @@ export default function ListingReelPage() {
        * newest slides in along `move` and fades up over WALL_ARRIVE; the
        * others sit perfectly still, which is the whole point of a wall.
        */
-      const drawPlaced = (pp: { slot: number; index: number; move: string }, t: number, alpha: number, move: string) => {
+      const drawPlaced = (pp: { slot: number; index: number; move: string; arrive: number }, t: number, alpha: number, move: string, arrive: number) => {
         const bmp = bitmaps[pp.index];
         if (!bmp) return;
         const b = slotRect(pp.slot);
-        const p = Math.min(1, Math.max(0, t / WALL_ARRIVE));
+        const p = Math.min(1, Math.max(0, t / arrive));
         const e = whipEase(p);
         const base = Math.min(b.w / bmp.width, b.h / bmp.height);
         const dw = bmp.width * base, dh = bmp.height * base;
@@ -1275,7 +1275,7 @@ export default function ListingReelPage() {
             // one passes over the settled ones, never under.
             u.placed.forEach((pp: PlacedPhoto, idx: number) => {
               const arriving = idx === u.placed!.length - 1;
-              drawPlaced(pp, arriving ? local : Infinity, alpha, arriving ? pp.move : "fade");
+              drawPlaced(pp, arriving ? local : Infinity, alpha, arriving ? pp.move : "fade", pp.arrive);
             });
           } else {
             drawPhoto(u.index, local, u.hold, alpha, whole, u.slot);

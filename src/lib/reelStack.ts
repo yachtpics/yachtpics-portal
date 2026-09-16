@@ -35,11 +35,15 @@ export const BEAT = 0.5;
 
 /**
  * Flash-burst frames: each photo held for this long, white flash on the cut.
- * A fifth of a second read as skipping on a boat, a third still went by
- * unseen (Charlie, Svengali/Intrepid: "we are delivering photos to be
- * seen"). Half a second is a quick cut you can actually read.
+ *
+ * Tuned three times against real boats, always in the same direction. A fifth
+ * of a second read as skipping; a third still went by unseen; half a second
+ * was readable but the photographs still felt hurried past. Charlie's rule
+ * throughout: "we are delivering photos to be seen." Two thirds of a second
+ * is the current answer — quick enough to still read as a burst, slow enough
+ * that each frame registers as a photograph rather than a flicker.
  */
-export const BURST_DT = 0.5;
+export const BURST_DT = 0.65;
 /** Photos in the burst (after the hero). Fewer if the reel has fewer photos. */
 export const BURST_MAX = 3;
 /** A reel needs at least this many photos before it earns a burst. */
@@ -91,7 +95,13 @@ export type Slot = 0 | 1 | 2 | null;
  * time and stay. `arrived` is how many units into the wall this one appeared,
  * so the newest can animate in while the others sit still.
  */
-export type PlacedPhoto = { slot: 0 | 1 | 2; index: number; move: BandMove };
+export type PlacedPhoto = {
+  slot: 0 | 1 | 2;
+  index: number;
+  move: BandMove;
+  /** Seconds this photograph takes to arrive. Quiet looks fade, slowly. */
+  arrive: number;
+};
 
 export type Unit =
   | {
@@ -183,8 +193,15 @@ const THIRDS_MAX_FRACTION = 0.4;
 const WALL_ROWS = 3;
 /** The completed wall holds longer — three photographs to look at, not one. */
 const WALL_COMPLETE_MULT = 1.6;
-/** How long a photograph takes to slide into its third of a wall. */
+/**
+ * How long a photograph takes to arrive in its third of a wall.
+ *
+ * Energy whips them in — the move is part of the pace. The quiet looks fade
+ * them up instead, and take nearly twice as long about it: a photograph
+ * sliding in from the side under a dissolve would argue with the look.
+ */
 export const WALL_ARRIVE = 0.26;
+export const WALL_ARRIVE_QUIET = 0.48;
 
 /**
  * Deal the slots for one movement: never the same third twice running, and
@@ -284,9 +301,16 @@ export function planSingles(n: number, opts: {
         }
         const built: PlacedPhoto[] = [];
         for (let k = 0; k < runN; k++) {
-          const move = dealMove(rand, lastMove);
+          // A look with no vocabulary dissolves everything else, so its
+          // photographs fade into place rather than being thrown there.
+          const move: BandMove = vocab ? dealMove(rand, lastMove) : "fade";
           lastMove = move;
-          built.push({ slot: order[k], index: i + k, move });
+          built.push({
+            slot: order[k],
+            index: i + k,
+            move,
+            arrive: vocab ? WALL_ARRIVE : WALL_ARRIVE_QUIET,
+          });
           // Each unit sees the wall as it stands when that photograph lands.
           walls[i + k] = built.slice();
           if (k > 0) hardCuts.add(i + k);

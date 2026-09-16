@@ -82,8 +82,10 @@ export type ReelStyle = {
    * look's own ground around them.
    *
    *  "single" — one photograph on screen at a time, each landing somewhere
-   *    the last one wasn't, empty ground between. The pause is the effect.
-   *    Right under a dissolve, where there is time to register it.
+   *    the last one wasn't, empty ground between. Kept as an option, but no
+   *    look uses it now: on a phone, two thirds of the frame sitting empty
+   *    wastes the few seconds a reel gets. Charlie's call — "we need to keep
+   *    it full for the short amount of time we have".
    *
    *  "wall" — they arrive one by one and STAY: top, then middle, then bottom,
    *    three on screen together, then the wall clears. At Energy's pace
@@ -124,7 +126,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.08,
     holdScale: 1,
     cut: "dissolve",
-    thirds: "single",
+    thirds: "wall",
   },
 
   /**
@@ -213,7 +215,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.07,
     holdScale: 1.05,
     cut: "dissolve",
-    thirds: "single",
+    thirds: "wall",
   },
 
   /**
