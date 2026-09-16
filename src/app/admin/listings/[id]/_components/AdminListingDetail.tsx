@@ -46,6 +46,7 @@ interface Listing {
   site_media?: string | null;
   site_page?: string | null;
   showcase_opt_out?: boolean | null;
+  showcase_opt_out_at?: string | null;
   slideshow_slug?: string | null;
   slideshow_published?: boolean | null;
   hero_photo_id?: string | null;
@@ -96,7 +97,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
 
 type Lead = { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; created_at: string };
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean }) {
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false, pocketSetBy = null }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean; pocketSetBy?: string | null }) {
   const supabase = createClient();
   const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
   // Resized thumbnails keyed by photo id, signed once in the background. The
@@ -151,6 +152,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [sharingBusy, setSharingBusy] = useState(false);
   const [inShowcase, setInShowcase] = useState(listing.in_showcase === true);
   const [showcaseBusy, setShowcaseBusy] = useState(false);
+  const [optOut, setOptOut] = useState(listing.showcase_opt_out === true);
+  const [optOutBusy, setOptOutBusy] = useState(false);
   const [onSite, setOnSite] = useState(listing.publish_to_site === true);
   const [siteBusy, setSiteBusy] = useState(false);
   // What this boat shows on yachtpics.com. Separate from whether it's on the
@@ -488,6 +491,42 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
+  /**
+   * Pocket listing, from the admin side.
+   *
+   * Same endpoint the broker's own switch uses — it already accepted admins,
+   * so this was a missing control rather than a missing capability. Marking one
+   * also pulls the boat off yachtpics.com if it was already live; that happens
+   * inside the route, which is why the message reports it.
+   */
+  async function toggleOptOut() {
+    if (optOutBusy) return;
+    const next = !optOut;
+    setOptOutBusy(true);
+    setOptOut(next); // optimistic
+    try {
+      const res = await fetch(`/api/listings/${listing.id}/showcase-optout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ optOut: next }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error();
+      setMessage(next
+        ? (data.removedFromSite
+            ? "Marked a pocket listing — and taken off yachtpics.com."
+            : "Marked a pocket listing — kept out of Recently Photographed.")
+        : "No longer a pocket listing.");
+      setTimeout(() => setMessage(""), 4000);
+    } catch {
+      setOptOut(!next); // revert
+      setMessage("Couldn't update the pocket-listing setting. Please try again.");
+      setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setOptOutBusy(false);
+    }
+  }
+
   async function toggleShowcase() {
     if (showcaseBusy) return;
     const next = !inShowcase;
@@ -814,12 +853,12 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             // one DOWN. Disabling both directions locked the switch on boats
             // that were published before the broker marked them private —
             // exactly when it needs to work.
-            disabled={siteBusy || (listing.showcase_opt_out === true && !onSite) || !sitePage}
+            disabled={siteBusy || (optOut && !onSite) || !sitePage}
             title={
-              listing.showcase_opt_out && onSite
+              optOut && onSite
                 ? "Pocket listing — take it off the website"
-                : listing.showcase_opt_out
-                  ? "Pocket listing — the broker vetoed this"
+                : optOut
+                  ? "Pocket listing — it can’t go up"
                   : !sitePage
                     ? "Pick a website page first"
                     : onSite
@@ -910,11 +949,36 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           {sitePage && siteMedia !== "photos" && videos.length > 0 && (
             <PrepareVideoForSite videos={videos.map((v) => ({ id: v.id, filename: v.filename }))} />
           )}
-          {listing.showcase_opt_out && (
-            <p className="mt-1.5 text-xs text-warn-700">
-              Broker kept this a pocket listing — it won&rsquo;t appear in Recently Photographed even when added.
-            </p>
-          )}
+          {/* Pocket listing. The same switch the broker has — anything a broker
+              can do from their side, the admin side can do too. The note names
+              WHO set it, because switching it off is housekeeping when it was
+              ours and an override when it was theirs, and the switch alone
+              cannot tell those apart. */}
+          <div className="mt-2">
+            <button
+              onClick={toggleOptOut}
+              disabled={optOutBusy}
+              title={optOut
+                ? "Let this boat appear in Recently Photographed again"
+                : "Keep this boat out of Recently Photographed, and off yachtpics.com"}
+              className={`inline-flex items-center gap-2 text-xs font-medium pl-1.5 pr-3 py-1.5 rounded-full border transition-colors duration-fast ease-quiet disabled:opacity-50 ${
+                optOut
+                  ? "border-warn-200 bg-warn-50 text-warn-700"
+                  : "border-hairline-strong bg-white text-ink-500 hover:border-warn-200"
+              }`}
+            >
+              <span className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors duration-fast ease-quiet ${optOut ? "bg-warn-700" : "bg-ink-300"}`}>
+                <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform ${optOut ? "translate-x-3.5" : "translate-x-0.5"}`} />
+              </span>
+              {optOut ? "Pocket listing" : "Make it a pocket listing"}
+            </button>
+            {optOut && (
+              <p className="mt-1.5 text-xs text-warn-700">
+                {pocketSetBy ? `Set by ${pocketSetBy}.` : "Set from this page."}{" "}
+                Kept out of Recently Photographed even when added, and it can&rsquo;t go up on yachtpics.com.
+              </p>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-3">

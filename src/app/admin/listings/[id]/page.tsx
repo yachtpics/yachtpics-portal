@@ -34,7 +34,7 @@ export default async function AdminListingPage({ params, searchParams }: { param
     .from("listings")
     .select(`
       id, vessel_name, vessel_type, year, length_ft, make, model,
-      asking_price, location, description, status, listing_pdf_url, is_shared, in_showcase, showcase_opt_out, publish_to_site, site_page, site_media,
+      asking_price, location, description, status, listing_pdf_url, is_shared, in_showcase, showcase_opt_out, showcase_opt_out_by, showcase_opt_out_at, publish_to_site, site_page, site_media,
       broker_id, slideshow_slug, slideshow_published, hero_photo_id, photo_order_manual,
       profiles:broker_id(first_name, last_name, display_email, brokerage_id)
     `)
@@ -42,6 +42,31 @@ export default async function AdminListingPage({ params, searchParams }: { param
     .single();
 
   if (!listing) notFound();
+
+  // Who made it a pocket listing. The admin page can now set that flag itself,
+  // so "the broker asked for this" stopped being safe to assume — and it is
+  // the only thing that tells you whether turning it off is housekeeping or
+  // overriding a client's privacy instruction.
+  //
+  // A null setter on a listing that IS opted out means the broker: every such
+  // row predates the admin switch, when only their side could set it.
+  let pocketSetBy: string | null = null;
+  if ((listing as { showcase_opt_out?: boolean | null }).showcase_opt_out) {
+    const setterId = (listing as { showcase_opt_out_by?: string | null }).showcase_opt_out_by ?? null;
+    if (!setterId) {
+      pocketSetBy = "the broker";
+    } else {
+      const { data: setter } = await serviceSupabase
+        .from("profiles")
+        .select("first_name, last_name, display_email, role")
+        .eq("id", setterId)
+        .maybeSingle();
+      const name = setter?.first_name
+        ? `${setter.first_name} ${setter.last_name ?? ""}`.trim()
+        : setter?.display_email ?? "someone";
+      pocketSetBy = setter?.role === "admin" ? `${name} (YachtPics)` : name;
+    }
+  }
 
   // The website's brokerage pages — 25 years of them. Drives the "publish to
   // which page?" picker. Deliberately not derived from brokerages: most brokers
@@ -192,6 +217,7 @@ export default async function AdminListingPage({ params, searchParams }: { param
       coBrokers={coBrokers}
       leads={leads}
       fromBroker={searchParams?.from === "broker"}
+      pocketSetBy={pocketSetBy}
     />
   );
 }

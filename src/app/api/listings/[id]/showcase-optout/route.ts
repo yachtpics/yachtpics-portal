@@ -57,7 +57,19 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
   if (!allowed) return NextResponse.json({ error: "Not authorized" }, { status: 403 });
 
-  const { error } = await service.from("listings").update({ showcase_opt_out: optOut }).eq("id", listingId);
+  // Record WHO set it, not just that it is set. The admin listing page now
+  // carries the same switch, so "a pocket listing" no longer implies "the
+  // broker asked for this" — and that distinction is the whole basis for
+  // deciding whether it is safe to turn off again. Cleared on un-setting so a
+  // stale name can never be read as a live instruction.
+  const { error } = await service
+    .from("listings")
+    .update({
+      showcase_opt_out: optOut,
+      showcase_opt_out_by: optOut ? user.id : null,
+      showcase_opt_out_at: optOut ? new Date().toISOString() : null,
+    })
+    .eq("id", listingId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   // A boat marked private AFTER it went live has to actually come down.

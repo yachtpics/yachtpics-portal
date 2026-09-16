@@ -150,7 +150,7 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                       {showcase[listing.id] ? "Featured" : "Feature"}
                     </button>
                     {listing.showcase_opt_out && (
-                      <span className="block text-[11px] text-warn-700 mt-1">Broker: pocket listing</span>
+                      <span className="block text-[11px] text-warn-700 mt-1">Pocket listing</span>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right sticky right-0 bg-white whitespace-nowrap shadow-[-8px_0_8px_-8px_rgba(0,0,0,0.08)]">
