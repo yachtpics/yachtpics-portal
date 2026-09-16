@@ -312,9 +312,24 @@ export default function ListingReelPage() {
     [format, length],
   );
 
+  /**
+   * Stack rearranges the frame itself — two and three photographs held at
+   * once — and that composition only reads on a vertical reel. On the wide
+   * film there is nothing to stack against: the name crowds the frame and the
+   * photographs fall back to singles, which is Energy under another name. So
+   * Stack isn't offered on film until it has a layout of its own.
+   */
+  const looks = useMemo(
+    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack")),
+    [format],
+  );
+
   // When the format changes, reset the fit and trim the selection to the cap.
   function chooseFormat(f: Format) {
     setFormat(f);
+    // Stack is a reel look. Switching to film falls back to Energy — the
+    // nearest thing in pace — rather than leaving a look that can't run.
+    if (f === "film" && styleKey === "stack") setStyleKey("energy");
     setFit(SPEC[f].defaultFit);
     setResult(null);
     setPhase("idle");
@@ -1606,8 +1621,8 @@ export default function ListingReelPage() {
       {/* Look — six complete points of view, not colour swaps. */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
-          {STYLE_ORDER.map((k) => {
+        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${looks.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
+          {looks.map((k) => {
             const stl = REEL_STYLES[k];
             const on = styleKey === k;
             return (
