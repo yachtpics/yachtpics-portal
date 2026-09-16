@@ -91,7 +91,7 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">No yacht MLS or brokerage platform does this. They will store your photographs, and one or two will now write your listing copy &mdash; none of them will turn the photographs into video. We built it because putting a boat on Instagram shouldn&rsquo;t mean hiring an editor.</p>
 
-      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Six looks, from a restrained brochure register to a fast hard-cut edit built for centre consoles. Your own brand colours &mdash; and if you&rsquo;ve uploaded your logo to the Portal, press <strong style="color:#111827;">Match my logo</strong> and it reads the colour straight off the mark. Vertical for Instagram and Facebook, or widescreen to send a buyer and add to the listing.</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">Six looks, from a restrained brochure register to a fast hard-cut edit built for center consoles. Your own brand colours &mdash; and if you&rsquo;ve uploaded your logo to the Portal, press <strong style="color:#111827;">Match my logo</strong> and it reads the colour straight off the mark. Vertical for Instagram and Facebook, or widescreen to send a buyer and add to the listing.</p>
 
       <p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">When it&rsquo;s done, press <strong style="color:#111827;">Send to my phone</strong>. A code appears on screen, you point your phone at it, and the reel is in your camera roll &mdash; ready to post with whatever audio you like.</p>
 

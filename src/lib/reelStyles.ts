@@ -230,7 +230,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   energy: {
     key: "energy",
     name: "Energy",
-    blurb: "Whips, wipes, zoom-throughs — a different cut every time. For centre consoles and sportfish.",
+    blurb: "Whips, wipes, zoom-throughs — a different cut every time. For center consoles and sportfish.",
     ground: "#06090f",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.86)",
