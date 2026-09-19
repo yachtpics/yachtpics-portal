@@ -42,6 +42,9 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
 
   // Machinery — early, per Charlie's order
   "Engine Room",
+  // Twin-engine-room boats (big sportfish and up) shoot each side separately.
+  "Port Engine Room",
+  "Starboard Engine Room",
   "Engines",
   "Engine",
   "Generator Room",
