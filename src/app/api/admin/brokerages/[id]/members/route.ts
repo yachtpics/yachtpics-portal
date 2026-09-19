@@ -25,6 +25,30 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   const { error } = await admin.from("profiles").update({ brokerage_id: params.id }).eq("id", body.userId);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // A broker's brokerage lives in TWO places, and neither can be dropped:
+  //   • profiles.brokerage_id        — the FK used for grouping, shared inventory and
+  //                                    brokerage-admin permissions. Set right above.
+  //   • broker_details.brokerage_name — free text, and the name everything customer-
+  //                                    facing actually renders: the Reel end card,
+  //                                    published site pages, branded emails.
+  // Moving a broker by brokerage_id alone used to leave the text name pointing at the
+  // old firm, so their Reel kept showing the brokerage they had left. The sync lives
+  // here because this is the one place an admin changes which brokerage a broker
+  // belongs to — writing both at the moment of the change is what keeps them in step.
+  // Only brokers: assistants have no broker_details row and no branding of their own.
+  if (prof.role === "broker") {
+    const { data: brokerage } = await admin.from("brokerages").select("name").eq("id", params.id).single();
+    if (brokerage?.name) {
+      // Upsert, not update — a broker who has never saved their own profile has no
+      // broker_details row yet, and an update would quietly match zero rows.
+      const { error: detErr } = await admin
+        .from("broker_details")
+        .upsert({ id: body.userId, brokerage_name: brokerage.name }, { onConflict: "id" });
+      if (detErr) return NextResponse.json({ error: detErr.message }, { status: 500 });
+    }
+  }
+
   return NextResponse.json({ success: true });
 }
 
@@ -42,6 +66,10 @@ export async function DELETE(req: NextRequest, { params }: { params: { id: strin
   }
   if (!body.userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
 
+  // Deliberately NOT touching broker_details.brokerage_name here. Leaving a brokerage
+  // makes a broker independent, not nameless — they still trade under a firm name and
+  // their Reel end card still has to say something. Clearing it would blank their
+  // branding. The admin can edit the text name on the broker page if it should change.
   const { error } = await admin
     .from("profiles")
     .update({ brokerage_id: null, is_shared_inventory: false })

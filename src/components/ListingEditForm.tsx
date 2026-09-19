@@ -22,7 +22,7 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
   const router = useRouter();
   const id = params.id as string;
 
-  const VESSEL_TYPES = ["Billfish", "Bowrider", "Catamaran", "Center Console", "Convertible", "Cruiser", "Cuddy Cabin", "Dinghy", "Downeast", "Dual Console", "Enclosed Flybridge", "Express", "Express Cruiser", "Flybridge", "Flybridge Motor Yacht", "Motor Yacht", "Runabout", "Sailing Yacht", "Sportfish", "Sports Cruiser", "Tender", "Trawler", "Walkaround", "Other"];
+  const VESSEL_TYPES = ["Billfish", "Bowrider", "Catamaran", "Power Catamaran", "Sailing Catamaran", "Center Console", "Convertible", "Cruiser", "Cuddy Cabin", "Dinghy", "Downeast", "Dual Console", "Enclosed Flybridge", "Express", "Express Cruiser", "Flybridge", "Flybridge Motor Yacht", "Motor Yacht", "Runabout", "Sailing Yacht", "Sportfish", "Sports Cruiser", "Tender", "Trawler", "Walkaround", "Other"];
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");

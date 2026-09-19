@@ -9,15 +9,25 @@ interface Props {
   lastName: string | null;
   email: string | null;
   phone: string | null;
+  /**
+   * broker_details.brokerage_name — free text, and the name the Reel end card and the
+   * rest of the branding actually render. It is NOT the same thing as the brokerage a
+   * broker is linked to through profiles.brokerage_id on the Brokerages pages, which is
+   * why it is editable here: a broker who changes firms needs both put right.
+   */
+  brokerageName: string | null;
+  brokerageWebsite: string | null;
 }
 
-export default function BrokerContactEditor({ brokerId, firstName, lastName, email, phone }: Props) {
+export default function BrokerContactEditor({ brokerId, firstName, lastName, email, phone, brokerageName, brokerageWebsite }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [first, setFirst] = useState(firstName ?? "");
   const [last, setLast] = useState(lastName ?? "");
   const [mail, setMail] = useState(email ?? "");
   const [tel, setTel] = useState(phone ?? "");
+  const [firm, setFirm] = useState(brokerageName ?? "");
+  const [site, setSite] = useState(brokerageWebsite ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,6 +36,8 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
     setLast(lastName ?? "");
     setMail(email ?? "");
     setTel(phone ?? "");
+    setFirm(brokerageName ?? "");
+    setSite(brokerageWebsite ?? "");
     setError("");
     setEditing(true);
   }
@@ -37,7 +49,15 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
       const res = await fetch("/api/admin/update-broker", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: brokerId, email: mail, firstName: first, lastName: last, phone: tel }),
+        body: JSON.stringify({
+          userId: brokerId,
+          email: mail,
+          firstName: first,
+          lastName: last,
+          phone: tel,
+          brokerageName: firm,
+          brokerageWebsite: site,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to save");
@@ -57,6 +77,8 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
           <p className="label-caps mb-1">Contact</p>
           <p className="text-sm text-ink-900">{email ?? "—"}</p>
           <p className="text-sm text-ink-500 mt-1">{phone ?? "—"}</p>
+          <p className="text-sm text-ink-500 mt-1">{brokerageName ?? "No brokerage name"}</p>
+          {brokerageWebsite && <p className="text-xs text-ink-500 mt-1 break-all">{brokerageWebsite}</p>}
         </div>
         <button
           onClick={openEditor}
@@ -72,7 +94,7 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
 
   return (
     <div>
-      <p className="label-caps mb-3">Edit contact</p>
+      <p className="label-caps mb-3">Edit broker</p>
       <div className="grid grid-cols-2 gap-2 mb-2">
         <div>
           <label className="block text-[11px] text-ink-500 mb-1">First name</label>
@@ -89,6 +111,16 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
       <input type="tel" value={tel} onChange={(e) => setTel(e.target.value)} className={`${inputClass} mb-1`} />
       <p className="text-[11px] text-ink-500 mb-3">
         The email is what the broker logs in with. Changing it updates their login right away — no re-invite needed.
+      </p>
+      <label className="block text-[11px] text-ink-500 mb-1">Brokerage name</label>
+      <input value={firm} onChange={(e) => setFirm(e.target.value)} className={`${inputClass} mb-2`} />
+      <label className="block text-[11px] text-ink-500 mb-1">Brokerage website</label>
+      <input type="url" value={site} onChange={(e) => setSite(e.target.value)} className={`${inputClass} mb-1`} />
+      <p className="text-[11px] text-ink-500 mb-3">
+        This name is what shows on the broker&rsquo;s Reel end card and their branded pages. It is
+        stored separately from the brokerage they&rsquo;re linked to on the Brokerages page — moving
+        them there sets this too, but if a broker has changed firms you can correct it here.
+        Logo and brand colours stay with the broker, on their own profile and reel page.
       </p>
       {error && <p className="text-xs text-danger-600 mb-2">{error}</p>}
       <div className="flex gap-2">

@@ -154,6 +154,8 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             lastName={profile.last_name}
             email={profile.display_email}
             phone={profile.phone}
+            brokerageName={details?.brokerage_name ?? null}
+            brokerageWebsite={details?.brokerage_website ?? null}
           />
           {details?.brokerage_address && (
             <p className="text-sm text-ink-500 mt-1">
