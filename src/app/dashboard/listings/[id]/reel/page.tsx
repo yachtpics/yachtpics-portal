@@ -21,6 +21,10 @@ import {
   REEL_STYLES, STYLE_ORDER, isExterior, roomLabel, applyBrand, dominantColor, normalizeHex, rgba,
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
+import {
+  YACHTPICS_CARD, YACHTPICS_COLORS, YACHTPICS_PHONES,
+  type BrokerCard, type YpPhone,
+} from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
 import { planStack, planSingles, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition } from "@/lib/reelTransitions";
@@ -123,30 +127,8 @@ type ListingData = {
   staterooms: number | null; broker_id: string; hero_photo_id: string | null; photo_order_manual: boolean | null;
 };
 
-type BrokerCard = { name: string; brokerage: string | null; phone: string | null; email: string | null; website: string | null; logoUrl: string | null };
-
-/**
- * YachtPics as the "broker" — for our own advertising. An admin flips the
- * switch on any listing's Reel page and the end card, colours and call to
- * action become ours. The logo is the white-on-transparent mark in
- * /public/brand; the card carries the site, not a person.
- */
-const YACHTPICS_CARD: BrokerCard = {
-  name: "YachtPics",
-  brokerage: "Yacht photography · The YachtPics Portal",
-  // Filled in at render from the admin's choice — see YACHTPICS_PHONES.
-  phone: null,
-  email: "hello@yachtpics.com",
-  website: "yachtpics.com",
-  logoUrl: "/brand/yachtpics-logo-white.png",
-};
-const YACHTPICS_COLORS: BrandColors = { accent: "#c39e4e", ground: "#050b14" };
-/** Whose number goes on the ad — so each of us gets the calls our own posts earn. */
-const YACHTPICS_PHONES = {
-  charlie: { label: "Charlie", phone: "561-602-9710" },
-  samantha: { label: "Samantha", phone: "561-252-1488" },
-} as const;
-type YpPhone = keyof typeof YACHTPICS_PHONES;
+// The YachtPics card, palette and numbers now live in @/lib/yachtpicsBrand, so
+// the Social Post page signs a graphic from exactly the same source.
 
 function safeName(s: string | null | undefined) {
   return (s ?? "listing").replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLowerCase() || "listing";

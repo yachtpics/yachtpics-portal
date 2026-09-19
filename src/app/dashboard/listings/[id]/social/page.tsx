@@ -6,6 +6,9 @@ import Link from "next/link";
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import {
+  YACHTPICS_CARD, YACHTPICS_COLORS, YACHTPICS_PHONES, type YpPhone,
+} from "@/lib/yachtpicsBrand";
 
 /**
  * Editorial serif for the vessel name. High-contrast garamond — the register
@@ -89,7 +92,15 @@ function drawContain(
   ctx.drawImage(img, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh);
 }
 
-const BADGES = ["For Sale", "Just Listed", "Price Reduced", "Open House", "Sold"];
+/**
+ * The status tag. "None" is first and is the default: most posts want the
+ * photograph and the name and nothing else, and a tag the broker didn't choose
+ * is a claim the card makes on their behalf. Picking None draws nothing at all
+ * — no chip, no ground, no reserved space — because the tag sits over the
+ * photograph rather than in the type stack, so its absence costs no layout.
+ */
+const NO_BADGE = "None";
+const BADGES = [NO_BADGE, "For Sale", "Just Listed", "Price Reduced", "Open House", "Sold"];
 
 type ListingData = {
   vessel_name: string | null; year: number | null; make: string | null; model: string | null;
@@ -128,9 +139,15 @@ export default function SocialGraphicPage() {
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
   const [rendering, setRendering] = useState(false);
-  const [badge, setBadge] = useState("For Sale");
+  const [badge, setBadge] = useState(NO_BADGE);
   const [caption, setCaption] = useState("");
   const [copied, setCopied] = useState(false);
+  // Admins only: sign the card as YachtPics itself — our mark, our colours, our
+  // number — so any boat we've photographed becomes our own advertising. The
+  // same switch the Reel page carries, and brokers never see it.
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [ypBrand, setYpBrand] = useState(false);
+  const [ypPhone, setYpPhone] = useState<YpPhone>("charlie");
 
   useEffect(() => {
     (async () => {
@@ -138,6 +155,13 @@ export default function SocialGraphicPage() {
         .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, broker_id, hero_photo_id")
         .eq("id", id).single();
       if (!l) { setLoading(false); return; }
+      // Same admin test the Reel page makes — the role on the viewer's own
+      // profile row, read fresh rather than trusted from anywhere else.
+      const { data: { user: me } } = await supabase.auth.getUser();
+      if (me) {
+        const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
+        setIsAdmin(meProf?.role === "admin");
+      }
       // Paid tool: if the owner's plan lapsed, still show the generator + live
       // preview (watermarked) so they see what they're missing — only the
       // download is blocked.
@@ -171,7 +195,15 @@ export default function SocialGraphicPage() {
     const { w, h } = DIMS[format];
     canvas.width = w; canvas.height = h;
     const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = INK;
+
+    // Whose card is this? The broker's, or — admin only — YachtPics' own ad.
+    // The `&& isAdmin` is the gate, exactly as the Reel page does it: the state
+    // alone never brands anything.
+    const yp = ypBrand && isAdmin;
+    const ground = (yp ? YACHTPICS_COLORS.ground : null) ?? INK;
+    const accent = YACHTPICS_COLORS.accent ?? "#c39e4e";
+
+    ctx.fillStyle = ground;
     ctx.fillRect(0, 0, w, h);
 
     // Layout: photograph in its entirety up top, a solid band beneath it for the
@@ -190,7 +222,8 @@ export default function SocialGraphicPage() {
     ctx.fillStyle = BAND;
     ctx.fillRect(0, photoH, w, bandH);
     // A hairline where the photograph meets it — the rule from the wordmark.
-    ctx.fillStyle = "rgba(255,255,255,0.16)";
+    // On our own ad it carries the YachtPics accent instead of plain bone.
+    ctx.fillStyle = yp ? accent : "rgba(255,255,255,0.16)";
     ctx.fillRect(0, photoH, w, Math.max(1, 1.5 * (Math.min(w, h) / 1080)));
 
     // ── Cinematic monochrome composition ────────────────────────────────
@@ -213,7 +246,7 @@ export default function SocialGraphicPage() {
     // NOTE ON SIZES: Instagram renders a 1080px card at roughly 400px wide, so
     // anything under ~30px here is unreadable in-feed. Sizes are set for that,
     // not for how they look zoomed-in on a desktop.
-    if (badge) {
+    if (badge && badge !== NO_BADGE) {
       const bs = 30 * s;
       ctx.font = `600 ${bs}px ${sans}`;
       const tw = trackedWidth(ctx, badge.toUpperCase(), 7 * s);
@@ -255,12 +288,14 @@ export default function SocialGraphicPage() {
       lines.push(name);
     }
 
+    // The mark: the broker's logo, or — on a YachtPics ad — our own.
     // Logo height, so it can be centred into the stack rather than floated.
+    const markUrl = yp ? YACHTPICS_CARD.logoUrl : logoUrl;
     let logo: HTMLImageElement | null = null;
     let logoW = 0, logoH = 0;
-    if (logoUrl) {
+    if (markUrl) {
       try {
-        logo = await loadImage(logoUrl);
+        logo = await loadImage(markUrl);
         // Wide wordmark logos and squarish badge logos need different treatment:
         // sizing purely on width makes a tall logo enormous. Cap the height too.
         const aspect = logo.width / logo.height;
@@ -270,17 +305,32 @@ export default function SocialGraphicPage() {
         if (logoH > maxLogoH) { logoH = maxLogoH; logoW = logoH * aspect; }
       } catch { logo = null; }
     }
+    // If our own mark can't be fetched, set the name rather than leave the ad
+    // unsigned. A broker's card stays as it was — theirs is theirs to supply.
+    const wordmark = yp && !logo ? "YACHTPICS" : null;
+    const wordSize = 46 * s;
+
+    // Our contact line, on our ads only: the number the admin picked, then the
+    // site — the same phone-and-site pair the reel's end card carries.
+    const ypCard = { ...YACHTPICS_CARD, phone: YACHTPICS_PHONES[ypPhone].phone };
+    const contactBits = [ypCard.phone, ypCard.website].filter(Boolean) as string[];
+    if (contactBits.length === 0 && ypCard.email) contactBits.push(ypCard.email);
+    const contact = yp ? contactBits.join("   ·   ") : "";
+    const contactSize = 30 * s;
 
     // Measure the whole stack, then centre it vertically in the band.
     const gapCapName = 26 * s;
     const gapNameSpec = 30 * s;
     const gapSpecLogo = 30 * s;
+    const gapMarkContact = 24 * s;
     const nameBlock = lines.length * nameSize * 0.96;
     const stackH =
       (maker ? capSize + gapCapName : 0) +
       nameBlock +
       (spec ? gapNameSpec + capSize : 0) +
-      (logo ? gapSpecLogo + logoH : 0);
+      (logo ? gapSpecLogo + logoH : 0) +
+      (wordmark ? gapSpecLogo + wordSize : 0) +
+      (contact ? gapMarkContact + contactSize : 0);
 
     let y = photoH + (bandH - stackH) / 2;
 
@@ -314,6 +364,20 @@ export default function SocialGraphicPage() {
       ctx.globalAlpha = 0.95;
       ctx.drawImage(logo, cx - logoW / 2, y, logoW, logoH);
       ctx.globalAlpha = 1;
+      y += logoH;
+    } else if (wordmark) {
+      y += gapSpecLogo + wordSize * 0.8;
+      ctx.fillStyle = BONE;
+      ctx.font = `600 ${wordSize}px ${sans}`;
+      fillTracked(ctx, wordmark, cx, y, 10 * s);
+      y += wordSize * 0.2;
+    }
+
+    if (contact) {
+      y += gapMarkContact + contactSize * 0.8;
+      ctx.fillStyle = accent;
+      ctx.font = `500 ${contactSize}px ${sans}`;
+      fillTracked(ctx, contact, cx, y, 4 * s);
     }
 
 
@@ -334,7 +398,7 @@ export default function SocialGraphicPage() {
     }
 
     setRendering(false);
-  }, [selected, listing, format, logoUrl, badge, locked]);
+  }, [selected, listing, format, logoUrl, badge, locked, ypBrand, isAdmin, ypPhone]);
 
   useEffect(() => { render(); }, [render]);
 
@@ -362,6 +426,9 @@ export default function SocialGraphicPage() {
 
   if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading…</div>;
   if (!listing) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Listing not found.</div>;
+
+  const chip = (active: boolean) =>
+    `text-xs font-medium px-3 py-1.5 rounded-ctl border transition-colors ${active ? "bg-accent-500 text-ink-950 border-accent-500" : "bg-white text-ink-600 border-hairline-strong hover:border-ink-300"}`;
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">
@@ -401,6 +468,31 @@ export default function SocialGraphicPage() {
           ))}
         </div>
       </div>
+
+      {/* Admin only: sign the card as YachtPics — our own advertising. */}
+      {isAdmin && (
+        <div className="mb-5 rounded-card border border-accent-500/40 bg-accent-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="label-caps text-ink-500">YachtPics ad</p>
+            <button onClick={() => setYpBrand((v) => !v)} className={chip(ypBrand)}>
+              {ypBrand ? "Branded as YachtPics" : "Brand as YachtPics"}
+            </button>
+            {ypBrand && (
+              <>
+                <span className="text-xs text-ink-400">Number on the card:</span>
+                {(Object.keys(YACHTPICS_PHONES) as YpPhone[]).map((k) => (
+                  <button key={k} onClick={() => setYpPhone(k)} className={chip(ypPhone === k)}>
+                    {YACHTPICS_PHONES[k].label} · {YACHTPICS_PHONES[k].phone}
+                  </button>
+                ))}
+              </>
+            )}
+          </div>
+          <p className="text-xs text-ink-400 mt-1.5">
+            Our mark and our accent instead of the broker&rsquo;s logo, with the number you pick and yachtpics.com under it. For our own Instagram and Facebook — download it here; the broker&rsquo;s own post is untouched.
+          </p>
+        </div>
+      )}
 
       {/* Preview */}
       <div className="flex justify-center mb-5">
