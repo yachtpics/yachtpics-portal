@@ -18,7 +18,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const access = await assertListingAccess(service, params.id, user.id, { includeCoBroker: true });
+  const access = await assertListingAccess(service, params.id, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
   if (access instanceof NextResponse) return access;
 
   return NextResponse.json(await buildEngagement(service, params.id));

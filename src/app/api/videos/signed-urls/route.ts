@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle();
     if (!video?.listing_id) return NextResponse.json({ error: "Video not found" }, { status: 404 });
 
-    const access = await assertListingAccess(svc, video.listing_id, user.id, { includeCoBroker: true });
+    const access = await assertListingAccess(svc, video.listing_id, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
     if (access instanceof NextResponse) return access;
 
     // A filename-less row still needs a name in the disposition — without one
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
   // All of a listing's videos.
   if (body?.listingId) {
-    const access = await assertListingAccess(svc, body.listingId, user.id, { includeCoBroker: true });
+    const access = await assertListingAccess(svc, body.listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
     if (access instanceof NextResponse) return access;
 
     const { data: videos } = await svc

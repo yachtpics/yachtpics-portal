@@ -4,7 +4,7 @@ export interface EmailLogEntry {
   /** Stable machine type, e.g. "broker_invite", "photos_ready", "client_send". */
   emailType: string;
   recipientEmail: string;
-  recipientRole?: "broker" | "assistant" | "client" | null;
+  recipientRole?: "broker" | "assistant" | "brokerage_admin" | "client" | null;
   recipientId?: string | null;
   /** The broker who owns the related listing (for grouping), if known. */
   brokerId?: string | null;

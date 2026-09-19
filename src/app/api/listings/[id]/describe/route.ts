@@ -25,7 +25,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
-  const access = await assertListingAccess(service, params.id, user.id);
+  const access = await assertListingAccess(service, params.id, user.id, { includeBrokerageAdmin: true });
   if (access instanceof NextResponse) return access;
 
   const { data: listing } = await service.from("listings")

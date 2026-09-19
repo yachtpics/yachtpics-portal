@@ -397,11 +397,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           body: JSON.stringify({ listingId: listing.id, mediaType: notifyMediaType, ...extra }),
         });
 
-      const [brokerRes, assistantRes] = await Promise.all([
+      const [brokerRes, assistantRes, brokerageRes] = await Promise.all([
         // Broker only → the broker route must not push the assistants either.
         wantBroker ? post("/api/email/notify-broker", { pushAssistants: wantAssistant }) : Promise.resolve(null),
         // Assistant only → the assistant route does the push, since the broker route isn't running.
         wantAssistant ? post("/api/email/notify-assistant", { push: !wantBroker }) : Promise.resolve(null),
+        // Automatic, no toggle: brokerage admins expect to know when their brokers'
+        // media lands, so any send to the broker copies them by email. Skipped on an
+        // assistant-only send — that isn't "telling the broker". excludeAssistants
+        // stops anyone who is both admin and assistant getting two copies.
+        wantBroker
+          ? post("/api/email/notify-brokerage-admin", { excludeAssistants: wantAssistant })
+          : Promise.resolve(null),
       ]);
 
       const sentTo: string[] = [];
@@ -421,6 +428,23 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         if (n > 0) sentTo.push(`${n} assistant${n !== 1 ? "s" : ""}`);
         if (failed > 0) notes.push(`${failed} assistant email${failed !== 1 ? "s" : ""} failed`);
         else if (n === 0) notes.push(assistantData.message ?? "no assistant linked to this broker");
+      }
+
+      if (brokerageRes) {
+        const brokerageData = await brokerageRes.json().catch(() => ({}));
+        if (!brokerageRes.ok) throw new Error(brokerageData.error ?? "Failed to notify brokerage admin");
+        const n = Number(brokerageData.sent ?? 0);
+        const failed = Number(brokerageData.failed ?? 0);
+        const names: string[] = Array.isArray(brokerageData.names) ? brokerageData.names : [];
+        if (n > 0) {
+          sentTo.push(names.length ? `brokerage admin (${names.join(", ")})` : `${n} brokerage admin${n !== 1 ? "s" : ""}`);
+        }
+        if (failed > 0) notes.push(`${failed} brokerage admin email${failed !== 1 ? "s" : ""} failed`);
+        // "Broker isn't part of a brokerage" is the normal case for most brokers —
+        // reporting it every time would just be noise. Anything else is worth saying.
+        else if (n === 0 && brokerageData.message && brokerageData.message !== "Broker isn't part of a brokerage.") {
+          notes.push(brokerageData.message);
+        }
       }
 
       if (sentTo.length === 0) {

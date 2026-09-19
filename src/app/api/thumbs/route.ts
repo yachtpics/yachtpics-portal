@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
   );
 
   // Access is verified once, for the listing — not once per photo.
-  const access = await assertListingAccess(service, body.listingId, user.id, { includeCoBroker: true });
+  const access = await assertListingAccess(service, body.listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
   if (access instanceof NextResponse) return access;
 
   const { data: photos } = await service
