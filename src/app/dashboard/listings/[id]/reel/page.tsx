@@ -214,14 +214,19 @@ export default function ListingReelPage() {
       setListing(l as ListingData);
       const { data: { user: me } } = await supabase.auth.getUser();
       setIsOwner(!!me && me.id === l.broker_id);
+      let admin = false;
       if (me) {
         const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
-        setIsAdmin(meProf?.role === "admin");
+        admin = meProf?.role === "admin";
+        setIsAdmin(admin);
       }
 
       // During the open house the Reel is unlocked for everyone — subscribed,
       // trialling or lapsed. Every other paid tool keeps its own gate.
-      if (reelPromoActive()) {
+      // An admin is never locked either way: the gate is the listing broker's
+      // plan, and YachtPics cutting a reel on a lapsed broker's boat is not
+      // what it's for (same fix as the Social page, 2026-09-19).
+      if (reelPromoActive() || admin) {
         setLocked(false);
       } else {
         try {

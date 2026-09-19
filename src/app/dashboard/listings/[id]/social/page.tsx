@@ -158,18 +158,32 @@ export default function SocialGraphicPage() {
       // Same admin test the Reel page makes — the role on the viewer's own
       // profile row, read fresh rather than trusted from anywhere else.
       const { data: { user: me } } = await supabase.auth.getUser();
+      let admin = false;
       if (me) {
         const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
-        setIsAdmin(meProf?.role === "admin");
+        admin = meProf?.role === "admin";
+        setIsAdmin(admin);
       }
       // Paid tool: if the owner's plan lapsed, still show the generator + live
       // preview (watermarked) so they see what they're missing — only the
       // download is blocked.
-      try {
-        const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}`);
-        const subData = subRes.ok ? await subRes.json() : null;
-        setLocked(!hasAccess(subData?.status));
-      } catch { /* leave unlocked on a status hiccup */ }
+      //
+      // The gate is the LISTING BROKER's plan, not the viewer's. An admin is
+      // never locked: YachtPics building a post for its own channels on a
+      // lapsed broker's boat is exactly the case the gate must not catch
+      // (2026-09-19 — Charlie hit the paywall on his own admin page).
+      if (admin) {
+        setLocked(false);
+      } else {
+        try {
+          const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}`);
+          // A server hiccup is not a lapsed plan. Only a real answer can lock.
+          if (subRes.ok) {
+            const subData = await subRes.json();
+            setLocked(!hasAccess(subData?.status));
+          }
+        } catch { /* stay unlocked on a status hiccup */ }
+      }
       setListing(l);
       setCaption(buildCaption(l));
       const { data: det } = await supabase.from("broker_details").select("logo_url").eq("id", l.broker_id).maybeSingle();
