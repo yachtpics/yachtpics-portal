@@ -1,4 +1,48 @@
-# Where we are — September 16, 2026
+# Where we are — September 19, 2026
+
+## Sept 18–19 — reel findability, brokerage admins, and the delivery-email nudge
+
+**The reel numbers, read Sept 18.** Nine reels, four brokers, six downloads —
+and every one of them on launch day. Nothing since. **Zero Send-to-phone
+events** across the whole window, which is the number that says *findability*
+rather than *interest*: people who went looking found the tool and used it, and
+nobody has stumbled into it since the announcement scrolled off. Charlie is
+talking to **Mason Waters** about it.
+
+- **Brokerage admins now get the delivery email.** When an admin notifies a
+  broker that media is ready, the broker's brokerage admins are emailed too —
+  `/api/email/notify-brokerage-admin`, logged with
+  `recipientRole: "brokerage_admin"`. The read routes take an
+  `includeBrokerageAdmin` opt-in through `assertListingAccess`, so nothing
+  widens by accident. Needed a profiles RLS migration for members of one
+  brokerage to see each other —
+  `supabase/migrations/20260919_brokerage_members_read_each_other.sql`
+  (`same_brokerage()`), applied live.
+- **Admin can edit every broker field.** `BrokerContactEditor` +
+  `/api/admin/update-broker` — not a subset any more. Assigning a brokerage
+  syncs `broker_details.brokerage_name` so the two never drift. The **Valhalla
+  label mismatch is deliberate — leave it.**
+- **One vessel-type list.** `src/lib/vesselTypes.ts` — 31 types (Power
+  Catamaran and Sailing Catamaran included), now the single source for all four
+  forms that used to carry their own copy.
+- **Social post.** Tag defaults to **None**; "Brand as YachtPics" is
+  admin-only; constants live in `src/lib/yachtpicsBrand.ts`. Added
+  `public/brand/yachtpics-logo-white.png` — it was simply missing, so the end
+  card had been rendering logo-less.
+- **Delivery emails now carry a reel nudge.** `src/lib/reelNudgeEmail.ts`, used
+  by notify-broker and notify-assistant: a boxed aside under the main CTA,
+  promo-aware (it names the free-until date only while the open house is on),
+  and skipped on a video-only delivery since reels are built from photographs.
+  The delivery email is the highest-intent moment there is — the broker is
+  about to post the boat — so the reel is in front of them every time now,
+  not just in the one announcement.
+
+**Decided, not built.** After the promo closes, the durable allowance is **two
+reels included with every shoot** — that replaces the promo line in the nudge
+when it ships. **Custom reel packages stay a separate paid service.** Revisit
+around **Sept 30**.
+
+# Previous — September 16, 2026
 
 ## Sept 16 — the announcement went out
 

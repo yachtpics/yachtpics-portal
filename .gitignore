@@ -41,3 +41,6 @@ portal-storage-usage-history.csv
 portal-storage-check/usage-history.csv
 storage-usage-history.csv
 _to_delete/
+
+# Adobe Bridge sort-order sidecars
+.BridgeSort
