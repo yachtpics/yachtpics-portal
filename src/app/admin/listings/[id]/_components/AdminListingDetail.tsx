@@ -817,6 +817,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           >
             Reel
           </Link>
+          <Link
+            href={`/dashboard/listings/${listing.id}/social`}
+            className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet"
+            title="Build a social post from the photos"
+          >
+            Social Post
+          </Link>
           <a
             href={`/report/listing/${listing.id}`}
             target="_blank"
