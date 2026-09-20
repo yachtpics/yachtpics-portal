@@ -104,13 +104,25 @@ export default function ReelStudioPage() {
    *
    * Twenty-six 2200px bitmaps plus a frame-sized backdrop for each is half a
    * gigabyte in the tab — a laptop shrugs, an iPhone reloads the page halfway
-   * through. So on a phone the cap comes down to twelve and every photograph
-   * is decoded three-quarters of the size. Measured after mount, never during
-   * render, so the server and the browser agree on the first paint.
+   * through. So on a phone the cap comes down and every photograph is decoded
+   * smaller. Measured after mount, never during render, so the server and the
+   * browser agree on the first paint.
+   *
+   * "Phone" is read from the user agent, not the viewport: Charlie and
+   * Samantha both carry a Galaxy Z Fold, whose inner screen is wider than a
+   * small laptop's, so a width test would hand it the desktop budget and the
+   * tab would die mid-render. Big-memory Android (Chrome reports deviceMemory
+   * up to 8) gets a middle budget; anything reporting 4GB or less, or any
+   * iPhone, gets the small one.
    */
   useEffect(() => {
-    const small = window.innerWidth < 768 || ((navigator as Navigator & { deviceMemory?: number }).deviceMemory ?? 8) <= 4;
-    setBudget(small ? { maxPhotos: 12, longEdgeScale: 0.75 } : undefined);
+    const nav = navigator as Navigator & { deviceMemory?: number; userAgentData?: { mobile?: boolean } };
+    const ua = nav.userAgent || "";
+    const mobile = nav.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(ua)
+      || (window.matchMedia?.("(pointer: coarse)").matches && window.innerWidth < 1100);
+    const mem = nav.deviceMemory ?? (mobile ? 4 : 8);
+    if (!mobile) { setBudget(undefined); return; }
+    setBudget(mem >= 8 ? { maxPhotos: 18, longEdgeScale: 0.85 } : { maxPhotos: 12, longEdgeScale: 0.75 });
   }, []);
 
   // ── The brokers, for the card on the end ─────────────────────────────────
