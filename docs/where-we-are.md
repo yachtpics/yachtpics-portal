@@ -9,6 +9,13 @@ rather than *interest*: people who went looking found the tool and used it, and
 nobody has stumbled into it since the announcement scrolled off. Charlie is
 talking to **Mason Waters** about it.
 
+- **Sept 20 — more photos per reel and per film.** The reel gains a third
+  length, **Long** — 26 photos at the Full hold, about 55s, still inside the
+  30–60s reach band — and the film's cap goes **14 → 24** (~72s at its 2.6s
+  hold; it goes to one buyer, not a feed). Samantha needs more photos per
+  reel. `reel_length` now carries `"long"` through to `reel_events`
+  unchanged.
+
 - **Brokerage admins now get the delivery email.** When an admin notifies a
   broker that media is ready, the broker's brokerage admins are emailed too —
   `/api/email/notify-brokerage-admin`, logged with

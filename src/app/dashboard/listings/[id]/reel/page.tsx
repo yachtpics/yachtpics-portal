@@ -57,7 +57,7 @@ const serif = Cormorant_Garamond({
 
 type Format = "reel" | "film";
 type Fit = "fill" | "whole";
-type Length = "short" | "full";
+type Length = "short" | "full" | "long";
 
 const SPEC: Record<Format, {
   w: number; h: number; label: string; hint: string;
@@ -77,10 +77,11 @@ const SPEC: Record<Format, {
     maxPhotos: 10, hold: 1.7, fade: 0.55, titleHold: 4.2, endHold: 3.0, defaultFit: "whole",
   },
   // The film is a different job — it goes to one buyer who already asked, not to
-  // a feed, so it can breathe.
+  // a feed, so it can breathe. Nothing distributes it, so it is free to run over
+  // a minute: 24 photographs at a 2.6s hold is roughly seventy-two seconds.
   film: {
     w: 1920, h: 1080, label: "Film (16:9)", hint: "Send to Client, slideshow, YouTube",
-    maxPhotos: 14, hold: 2.6, fade: 0.6, titleHold: 5.0, endHold: 3.0, defaultFit: "whole",
+    maxPhotos: 24, hold: 2.6, fade: 0.6, titleHold: 5.0, endHold: 3.0, defaultFit: "whole",
   },
 };
 
@@ -95,11 +96,18 @@ const SPEC: Record<Format, {
  * Short keeps the old timing — ten photos, ~20s — for a teaser, a second post
  * on the same boat, or a listing that simply hasn't got eighteen good frames.
  *
+ * Long exists for the boats with more than eighteen good frames — a big
+ * sportfish, a 100'+ yacht — and is sized to stay under sixty seconds, where
+ * reach falls off: twenty-six photos at the same 1.9s hold lands at about
+ * fifty-five. Anyone who needs more than twenty-six should make a second reel
+ * rather than a longer one.
+ *
  * Only the reel offers the choice; the film's single timing is unchanged.
  */
 const LENGTH: Record<Length, { hold: number; maxPhotos: number }> = {
   short: { hold: 1.7, maxPhotos: 10 },
   full: { hold: 1.9, maxPhotos: 18 },
+  long: { hold: 1.9, maxPhotos: 26 },
 };
 
 const DEFAULT_LENGTH: Length = "full";
@@ -471,6 +479,11 @@ export default function ListingReelPage() {
 
       // Photographs at a sensible size for the frame. Transform first (fast,
       // cheap on the wire); fall back to the original if transforms fail.
+      // The photo caps above are also a memory budget: every chosen photo is
+      // held as a ~2200px bitmap, plus a frame-sized backdrop canvas built for
+      // the whole render, so 26 photos is on the order of half a gigabyte in
+      // the tab. If the caps ever go higher, the backdrops should be built
+      // lazily per unit rather than all up front.
       const longEdge = Math.max(W, H) * 1.15; // headroom for the drift
       const bitmaps: ImageBitmap[] = [];
       for (let i = 0; i < selectedPhotos.length; i++) {
@@ -1799,6 +1812,7 @@ export default function ListingReelPage() {
             <p className="label-caps text-ink-500 mb-2">Length</p>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => chooseLength("full")} disabled={busy} className={chip(length === "full")}>Full — about 40s, up to 18 photos</button>
+              <button onClick={() => chooseLength("long")} disabled={busy} className={chip(length === "long")}>Long — about 55s, up to 26 photos</button>
               <button onClick={() => chooseLength("short")} disabled={busy} className={chip(length === "short")}>Short — about 20s, up to 10 photos</button>
             </div>
             <p className="text-xs text-ink-400 mt-1.5">Reels between 30 and 60 seconds reach the furthest. Short suits a quick teaser.</p>
