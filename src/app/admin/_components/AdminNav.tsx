@@ -22,6 +22,7 @@ import {
   Newspaper,
   Lock,
   Trash2,
+  Wand2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -29,6 +30,12 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
+  /**
+   * What the mobile bar calls it. The bar only has room for one word and takes
+   * the first by default — which would label Reel Studio "Reel", right beside
+   * "Reels".
+   */
+  short?: string;
 }
 
 const navItems: NavItem[] = [
@@ -43,6 +50,7 @@ const navItems: NavItem[] = [
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
+  { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
   { label: "Video Migration", href: "/admin/media", icon: Film },
@@ -69,6 +77,7 @@ const SIDEBAR_PRIORITY = [
   "/admin/listings",
   "/admin/metrics",
   "/admin/reels",
+  "/admin/reel-studio",
   "/admin/emails",
 ];
 
@@ -78,6 +87,7 @@ const MOBILE_PRIORITY = [
   "/admin/listings",
   "/admin/metrics",
   "/admin/reels",
+  "/admin/reel-studio",
   "/admin/emails",
 ];
 
@@ -144,7 +154,7 @@ export default function AdminNav() {
             >
               {active && <span aria-hidden className="absolute top-0 inset-x-2 h-0.5 bg-accent-500" />}
               <item.icon size={28} strokeWidth={active ? 2 : 1.75} aria-hidden />
-              <span className="text-[11.5px] font-medium leading-none">{item.label.split(" ")[0]}</span>
+              <span className="text-[11.5px] font-medium leading-none">{item.short ?? item.label.split(" ")[0]}</span>
             </Link>
           );
         })}

@@ -1,4 +1,4 @@
-# Where we are — September 19, 2026
+# Where we are — September 20, 2026
 
 ## Sept 18–19 — reel findability, brokerage admins, and the delivery-email nudge
 
@@ -8,6 +8,56 @@ events** across the whole window, which is the number that says *findability*
 rather than *interest*: people who went looking found the tool and used it, and
 nobody has stumbled into it since the announcement scrolled off. Charlie is
 talking to **Mason Waters** about it.
+
+- **Sept 20 — reel lengths are time budgets now, not holds.** Each length
+  aims for a running time and shares it between the photos chosen: **Short
+  ~20s / up to 12**, **Full ~40s / up to 27**, **Long ~55s / up to 40**. The
+  hold is `clamp((target − title − end) / n, 1.25, holdMax)` — 1.9s ceiling
+  (Short keeps its 1.7s), 1.25s floor — so it stays put until the budget is
+  full, then tightens as photos are added. **Full with 18 or fewer holds
+  exactly 1.9s, as before**; at 27 it's ~1.27s and still ~40s. More than the
+  cap means a second reel. (`target` in `LENGTH` reads 24.6 / 41.5 / 57 — a
+  touch over the chip's round number because the title photo holds for the
+  title, not a beat.) The hold re-derives on every tap, so the seconds readout
+  is live. **Film unchanged** (2.6s, 24 photos).
+  - **Lazy backdrops.** The blurred "whole photo" plates used to be built for
+    every photo before the first frame — a frame-sized canvas each, ~320MB at
+    forty. Now `getBackdrop(i)` builds on first use and keeps the six most
+    recent (a unit plus its crossfade neighbour is the most ever on screen).
+    Drawing is identical. Bitmaps are still held for the whole render: a
+    wall keeps earlier photos on screen, a Stack band outlives its swap, and
+    every transition redraws the outgoing unit, so "close after its unit" is
+    not safe as stated. What *is* safe is done: a `finally` on `render()`
+    closes every photo bitmap and the logo and empties the backdrop cache once
+    the render is over — finished, cancelled or failed.
+- **Sept 20 — Reel Studio, admin only (`/admin/reel-studio`).** Samantha can
+  now make a reel from photographs on the phone in her hand, with no listing
+  behind it: pick off the camera roll, type the boat's name and a couple of
+  facts, render. Same looks, same lengths, same fit options, same brand card
+  and end card as the listing reel — because it is literally the same renderer.
+  **Nothing is uploaded**; the photos are decoded in the browser and the film
+  is encoded there, so it is safe to point at a boat that isn't in the portal
+  at all.
+  - **The extraction.** The listing reel page's whole body moved to
+    `src/components/ReelMaker.tsx`, which takes a `ReelSource` —
+    `{ listing, photos, broker, listingId, isAdmin, isOwner, locked }` where
+    each photo carries its own `loadBitmap(longEdge)`. A mechanical move: not a
+    look, a constant or a line of copy changed. `/dashboard/listings/[id]/reel`
+    is now a loader that does all the Supabase work and renders `<ReelMaker>`;
+    everything listing-shaped (`track()` rows, Add to listing, the AI caption,
+    Send to my phone) is gated on `listingId`.
+  - **A phone budget.** On a narrow screen or a low-memory device the Studio
+    passes `{ maxPhotos: 12, longEdgeScale: 0.75 }` — twenty-six 2200px bitmaps
+    is half a gigabyte in the tab, which a laptop shrugs off and an iPhone does
+    not. It can only ever lower the cap the format and length already set.
+  - **Save on the phone that made it.** When the browser can share a file,
+    the finished reel gets a **Save to camera roll** button — `navigator.share`
+    with the mp4, which on iOS offers Save Video. Feature-detected and in
+    `ReelMaker`, so the listing reel gets it too.
+  - **Deliberately not for brokers.** The reel generator is the reason a broker
+    keeps listings in the Portal; a studio that makes reels out of loose photos
+    is the one thing that would undo that. This is an internal tool for our own
+    advertising, behind the admin layout.
 
 - **Sept 20 — more photos per reel and per film.** The reel gains a third
   length, **Long** — 26 photos at the Full hold, about 55s, still inside the
