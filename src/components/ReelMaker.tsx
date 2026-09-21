@@ -161,6 +161,15 @@ export type ListingData = {
   vessel_name: string | null; year: number | null; make: string | null; model: string | null;
   vessel_type: string | null; length_ft: number | null; location: string | null; asking_price: number | null;
   staterooms: number | null; broker_id: string; hero_photo_id: string | null; photo_order_manual: boolean | null;
+  /**
+   * Studio only. "free" = not a boat: draw `vessel_name` as the headline and
+   * the optional `subtitle` / `detail` lines beneath it; skip every vessel
+   * field. Absent (the listing) or "vessel" is the path this renderer has
+   * always taken, unchanged.
+   */
+  subject?: "vessel" | "free";
+  subtitle?: string | null;
+  detail?: string | null;
 };
 
 // The YachtPics card, palette and numbers now live in @/lib/yachtpicsBrand, so
@@ -237,6 +246,8 @@ const BLANK_CARD: BrokerCard = { name: "", brokerage: null, phone: null, email: 
 export default function ReelMaker({ source }: { source: ReelSource }) {
   const supabase = createClient();
   const { listing, photos, broker, listingId, isAdmin, isOwner, locked, budget } = source;
+  /** Studio only: this reel is of something that isn't a boat. */
+  const freeSubject = listing.subject === "free";
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const [videoCount, setVideoCount] = useState(source.videoCount ?? 0);
@@ -636,8 +647,15 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       const totalFrames = Math.ceil(total * FPS);
 
       // Text prepared once.
+      // A free subject is the Studio pointed at something that isn't a boat —
+      // a product, a panel, an event. The headline is still `vessel_name`
+      // (the Studio maps its Title field into it); everything under it comes
+      // from `subtitle` and `detail`, and no vessel field is read at all.
+      const free = listing.subject === "free";
       const name = listing.vessel_name ?? "Now Available";
-      const builder = [listing.year, listing.make, listing.model].filter(Boolean).join(" ");
+      const builder = free
+        ? (listing.subtitle ?? "").trim()
+        : [listing.year, listing.make, listing.model].filter(Boolean).join(" ");
       // A written headline takes the line above the name; the builder doesn't
       // get dropped for it, it moves down into the spec row. The facts stay on
       // screen either way.
@@ -645,15 +663,21 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       const usingHeadline = useHeadline && headline.trim().length > 0;
       const lead = usingHeadline ? headline.trim() : yp ? "Photographed by YachtPics" : null;
       const maker = lead ?? builder;
-      const specBits = [
+      const specBits = (free ? [
+        // The second line sits where the builder would, the detail where the
+        // length/type/price row would. Either blank simply isn't there.
+        lead && builder ? builder : null,
+        (listing.detail ?? "").trim() || null,
+      ] : [
         lead && builder ? builder : null,
         listing.length_ft ? `${listing.length_ft}′` : null,
         listing.vessel_type,
         listing.staterooms ? `${listing.staterooms} Staterooms` : null,
         showPrice ? fmtPrice(listing.asking_price) : null,
-      ].filter(Boolean) as string[];
+      ]).filter(Boolean) as string[];
       const spec = specBits.join("   ·   ");
-      const where = showLocation ? listing.location : null;
+      // No boat, no port of lying: the "where" line is a vessel field.
+      const where = free ? null : showLocation ? listing.location : null;
 
       const sc = Math.min(W, H) / 1080; // scale off the short edge
 
@@ -975,6 +999,13 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         // smaller and the gaps close up.
         const tightBlock = backdrop === "inset" && !topType;
 
+        // A free subject with neither second line nor detail is a headline and
+        // nothing else. The gap that would have carried the spec row — and the
+        // rule that sits halfway along it — collapses in BOTH passes, so the
+        // block measures as short as it draws instead of leaving a hole where
+        // the boat's facts used to be.
+        const collapseTrail = free && !spec && !where;
+
         // The block is measured once and drawn once, in two separate passes,
         // and the two have to agree: shrink a gap in the measure pass only and
         // the block is anchored as if it were short while it still draws long
@@ -1047,7 +1078,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         // The same breath between the name and the spec row whether a look
         // draws a rule in it or not — Cinematic's spec was landing on the
         // name's baseline.
-        const ruleH = gapNameToSpec;
+        const ruleH = collapseTrail ? 0 : gapNameToSpec;
         ctx.font = `600 ${capSize}px ${sans}`;
         // Breaks only between facts, never inside one — "Flybridge Motor
         // Yacht" stays on a line together.
@@ -1116,13 +1147,16 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         }
 
         // The same distance from the name's baseline to the spec's, rule or no
-        // rule — the rule sits halfway along it.
-        if (st.rule !== "none") {
-          y += gapNameToSpec / 2;
-          drawRule(anchor, y, leftAligned ? 108 * sc : 96 * sc, alpha, leftAligned);
-          y += gapNameToSpec / 2;
-        } else {
-          y += gapNameToSpec;
+        // rule — the rule sits halfway along it. Nothing follows a collapsed
+        // free card, so it draws neither (and measured neither, above).
+        if (!collapseTrail) {
+          if (st.rule !== "none") {
+            y += gapNameToSpec / 2;
+            drawRule(anchor, y, leftAligned ? 108 * sc : 96 * sc, alpha, leftAligned);
+            y += gapNameToSpec / 2;
+          } else {
+            y += gapNameToSpec;
+          }
         }
 
         if (spec) {
@@ -1976,12 +2010,17 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         <div>
           <p className="label-caps text-ink-500 mb-2">On the title card</p>
           <div className="flex flex-wrap gap-2">
-            <button onClick={() => { setShowPrice((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !listing.asking_price} className={chip(showPrice && !!listing.asking_price)}>
-              {listing.asking_price ? `Price ${showPrice ? "on" : "off"}` : "No price set"}
-            </button>
-            <button onClick={() => { setShowLocation((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !listing.location} className={chip(showLocation && !!listing.location)}>
-              {listing.location ? `Location ${showLocation ? "on" : "off"}` : "No location set"}
-            </button>
+            {/* Price and location are vessel fields — a free subject has neither. */}
+            {!freeSubject && (
+              <>
+                <button onClick={() => { setShowPrice((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !listing.asking_price} className={chip(showPrice && !!listing.asking_price)}>
+                  {listing.asking_price ? `Price ${showPrice ? "on" : "off"}` : "No price set"}
+                </button>
+                <button onClick={() => { setShowLocation((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !listing.location} className={chip(showLocation && !!listing.location)}>
+                  {listing.location ? `Location ${showLocation ? "on" : "off"}` : "No location set"}
+                </button>
+              </>
+            )}
             {!labelsUnavailable && (
               <button onClick={() => { setShowLabels((v) => !v); setResult(null); setPhase("idle"); }} disabled={busy || !labelsPossible} className={chip(showLabels && labelsPossible)}>
                 {labelsPossible ? `Room labels ${showLabels ? "on" : "off"}` : "No categories set"}
@@ -1989,7 +2028,9 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             )}
           </div>
           <p className="text-xs text-ink-400 mt-1.5">
-            Year, builder, length and staterooms always appear when they&rsquo;re filled in.
+            {freeSubject
+              ? "The title and the two lines under it come from the form above."
+              : "Year, builder, length and staterooms always appear when they\u2019re filled in."}
             {labelsPossible && !labelsUnavailable && " Room labels name each space in the corner of its photo."}
             {labelsUnavailable && ` ${labelsUnavailable}`}
           </p>

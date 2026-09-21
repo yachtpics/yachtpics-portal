@@ -1,6 +1,32 @@
-# Where we are — September 20, 2026
+# Where we are — September 21, 2026
 
-## Sept 18–19 — reel findability, brokerage admins, and the delivery-email nudge
+## Sept 18–21 — reel findability, brokerage admins, and the delivery-email nudge
+
+- **Sept 21 — the Reel Studio subject switch (Yacht / Something else).** The
+  Studio no longer assumes the subject is a boat. Above the form there is now a
+  two-chip switch, **What's this reel of?** — **Yacht** keeps the existing
+  vessel form exactly as it was; **Something else** replaces it with three
+  fields, **Title** (required), **Second line** and **Detail**, so a reel can be
+  of a product, a panel, an event, anything. The choice and the three fields
+  live in the same localStorage draft as the boat fields; a draft written
+  before today opens on **Yacht**.
+  - **`ListingData.subject`.** The renderer gained an optional
+    `subject?: "vessel" | "free"` with `subtitle` and `detail` beside it.
+    On `"free"` the title card draws `vessel_name` as the headline, `subtitle`
+    where the year/builder/model line would go and `detail` where the
+    length/type/staterooms/price row would go — and **skips every vessel
+    field**, the location and the asking price included. With both free lines
+    blank the headline stands alone: the gap that carried the spec row, and the
+    rule inside it, collapses in the **measure pass and the draw pass together**
+    (`collapseTrail`), so the block sits where a one-line title should rather
+    than hanging above a hole. The price and location chips disappear from the
+    maker's own controls for the same reason.
+  - **The listing reel is untouched.** `/dashboard/listings/[id]/reel` passes
+    no `subject` at all, so every vessel code path runs exactly as before —
+    `subject` undefined and `"vessel"` are the same path. The download filename
+    still derives from `vessel_name` alone, which the Studio fills with the
+    Title, so a free reel saves as its own name with nothing boat-shaped
+    attached.
 
 **The reel numbers, read Sept 18.** Nine reels, four brokers, six downloads —
 and every one of them on launch day. Nothing since. **Zero Send-to-phone

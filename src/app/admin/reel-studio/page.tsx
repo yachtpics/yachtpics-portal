@@ -38,11 +38,16 @@ type StudioPhoto = {
 type Draft = {
   vessel_name: string; year: string; make: string; model: string;
   vessel_type: string; length_ft: string; location: string; asking_price: string; staterooms: string;
+  /** Which form is showing — and which shape of ListingData it builds. */
+  subject: "vessel" | "free";
+  /** The free-subject form: a headline and up to two lines under it. */
+  title: string; subtitle: string; detail: string;
 };
 
 const EMPTY_DRAFT: Draft = {
   vessel_name: "", year: "", make: "", model: "",
   vessel_type: "", length_ft: "", location: "", asking_price: "", staterooms: "",
+  subject: "vessel", title: "", subtitle: "", detail: "",
 };
 
 const DRAFT_KEY = "yp.reelStudio.draft";
@@ -91,7 +96,12 @@ export default function ReelStudioPage() {
   useEffect(() => {
     try {
       const raw = window.localStorage.getItem(DRAFT_KEY);
-      if (raw) setDraft({ ...EMPTY_DRAFT, ...(JSON.parse(raw) as Partial<Draft>) });
+      if (raw) {
+        const saved = JSON.parse(raw) as Partial<Draft>;
+        // A draft written before the switch existed — or with anything else in
+        // that slot — opens on the yacht form, exactly as it always did.
+        setDraft({ ...EMPTY_DRAFT, ...saved, subject: saved.subject === "free" ? "free" : "vessel" });
+      }
     } catch { /* private window, or a draft written by an older version */ }
   }, []);
 
@@ -205,7 +215,27 @@ export default function ReelStudioPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pickedBroker]);
 
-  const listing: ListingData = useMemo(() => ({
+  const listing: ListingData = useMemo(() => (draft.subject === "free" ? {
+    // Not a boat. The Title becomes the headline the renderer already draws
+    // from `vessel_name`; the two free lines sit under it. Every vessel field
+    // is explicitly null, so there is nothing for the title card or the end
+    // card to put on screen.
+    vessel_name: draft.title.trim() || null,
+    subtitle: draft.subtitle.trim() || null,
+    detail: draft.detail.trim() || null,
+    subject: "free",
+    year: null,
+    make: null,
+    model: null,
+    vessel_type: null,
+    length_ft: null,
+    location: null,
+    asking_price: null,
+    staterooms: null,
+    broker_id: pickedBroker?.id ?? "",
+    hero_photo_id: null,
+    photo_order_manual: null,
+  } : {
     vessel_name: draft.vessel_name.trim() || null,
     year: num(draft.year),
     make: draft.make.trim() || null,
@@ -237,6 +267,11 @@ export default function ReelStudioPage() {
   }), [listing, reelPhotos, card, brand, budget, brokerId]);
 
   const field = "w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 bg-white focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500";
+  const chip = (active: boolean) =>
+    `text-xs font-medium px-3 py-1.5 rounded-ctl border transition-colors ${active ? "bg-accent-500 text-ink-950 border-accent-500" : "bg-white text-ink-600 border-hairline-strong hover:border-ink-300"}`;
+
+  /** A free subject leads with its title — there is no fallback worth using. */
+  const needsTitle = draft.subject === "free" && !draft.title.trim();
 
   return (
     <>
@@ -297,7 +332,42 @@ export default function ReelStudioPage() {
           </p>
         </div>
 
-        {/* The boat */}
+        {/* What the reel is of */}
+        <div className="mt-6">
+          <p className="label-caps text-ink-500 mb-2">What&rsquo;s this reel of?</p>
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => setDraft({ ...draft, subject: "vessel" })} className={chip(draft.subject === "vessel")}>Yacht</button>
+            <button onClick={() => setDraft({ ...draft, subject: "free" })} className={chip(draft.subject === "free")}>Something else</button>
+          </div>
+          <p className="text-xs text-ink-400 mt-2">
+            A yacht gets the boat fields on the opening frame. Anything else &mdash; a product, a panel, an event &mdash; gets a title and two free lines, and no boat fields at all.
+          </p>
+        </div>
+
+        {draft.subject === "free" ? (
+        /* Something else */
+        <div className="mt-6">
+          <p className="label-caps text-ink-500 mb-2">The subject</p>
+          <div className="grid grid-cols-1 gap-3">
+            <div>
+              <label className="block text-xs text-ink-500 mb-1">Title</label>
+              <input className={field} value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} placeholder="The Compass Rose" />
+            </div>
+            <div>
+              <label className="block text-xs text-ink-500 mb-1">Second line <span className="text-ink-400">(optional)</span></label>
+              <input className={field} value={draft.subtitle} onChange={(e) => setDraft({ ...draft, subtitle: e.target.value })} placeholder="A commission for a private owner" />
+            </div>
+            <div>
+              <label className="block text-xs text-ink-500 mb-1">Detail <span className="text-ink-400">(optional)</span></label>
+              <input className={field} value={draft.detail} onChange={(e) => setDraft({ ...draft, detail: e.target.value })} placeholder="e.g. Hand-engraved · Delivered to HMY Yachts" />
+            </div>
+          </div>
+          <p className="text-xs text-ink-400 mt-2">
+            The title leads the opening frame and signs the end card; the two lines sit under it, and either left blank is simply left off. Kept on this device until you change it.
+          </p>
+        </div>
+        ) : (
+        /* The boat */
         <div className="mt-6">
           <p className="label-caps text-ink-500 mb-2">The boat</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -345,6 +415,7 @@ export default function ReelStudioPage() {
             Whatever you fill in appears on the opening frame and the end card; anything left blank is simply left off. Kept on this device until you change it.
           </p>
         </div>
+        )}
 
         {/* Whose reel it is */}
         <div className="mt-6">
@@ -363,11 +434,17 @@ export default function ReelStudioPage() {
         </div>
       </div>
 
-      {photos.length === 0 ? (
+      {photos.length === 0 || needsTitle ? (
         <div className="px-6 py-8 max-w-3xl mx-auto">
           <div className="rounded-card border border-dashed border-hairline-strong bg-white px-5 py-8 text-center">
-            <p className="text-sm font-semibold text-ink-900">Choose some photos to begin</p>
-            <p className="text-xs text-ink-400 mt-1">Every look, length and framing the brokers get — rendered here, on this device.</p>
+            <p className="text-sm font-semibold text-ink-900">
+              {photos.length === 0 ? "Choose some photos to begin" : "Give it a title to begin"}
+            </p>
+            <p className="text-xs text-ink-400 mt-1">
+              {photos.length === 0
+                ? "Every look, length and framing the brokers get — rendered here, on this device."
+                : "The title is the headline on the opening frame and the last thing on the end card."}
+            </p>
           </div>
         </div>
       ) : (
