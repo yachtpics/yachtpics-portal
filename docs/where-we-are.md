@@ -1,5 +1,33 @@
 # Where we are — September 23, 2026
 
+## Sept 23 — Video clips in reels (listing reel + Reel Studio) — NOT PUSHED, NOT BROWSER-TESTED
+
+- **What it does.** A reel can now carry short video clips alongside its photos: **muted, 2s / 3s (default) / 4s each, at most 3 per reel (2 on a phone)**. Each clip counts toward the photo cap and takes its place in the order like a photo (numbered tile, badge **"Clip 3s"**, tap to remove). Built into `ReelMaker`, so both pages have it:
+  - **Listing reel (admins only for now — Samantha first; brokers see nothing new until the `admin ?` gate in the listing reel page is removed):** a **Video clips** row shows the listing's videos (by `display_order`, poster = the video's `thumbnail_path` still). Tap one → the trimmer.
+  - **Reel Studio:** an **Add clip** button (`<input type="file" accept="video/*">`) → the trimmer. The file never leaves the device.
+  - **Trimmer** (`src/components/ReelClipTrimmer.tsx`): muted `<video playsinline>` preview, a slider for where the clip starts, 2s/3s/4s chips, **Play clip** (loops just those seconds) and **Add to reel**. "Add to reel" first *probes* the clip (opens it with mediabunny, checks the browser can decode it, reads one frame at the in-point). If that fails the clip is refused right there with one of two messages: storage/CORS → *"This video can't be read by the browser yet — the video storage needs one setting (admin: run the R2 self-test)."*; format → *"This clip's format can't be decoded in this browser. Re-export it as H.264 or record in 'Most compatible'."* (e.g. HEVC on a browser without HEVC decode).
+- **Looks.** Every single-photo look (Editorial, Cinematic, Gallery, Classic, Energy, and the film versions): a clip is one unit held for exactly its length, joined by the look's usual transitions; no drift/zoom on it; whole/fill follows the Framing chips like a photo. Clips are never placed in a thirds slot, a wall or the Energy burst (they play full frame). **Marquee / Marquee Still:** a clip always plays in the **bottom band** (never top; its badge reads a fixed "Bottom"), whole or cropped per Framing; the bottom band's turns are no longer equal shares when clips are in — a clip's turn is its length, photos share the rest. **Stack:** no clips — the clip picker greys out with a one-line reason, and clips already chosen are left out of the Stack reel (with a note) and come back on any other look.
+- **Timing.** The title always sits on a photo: if the order starts with a clip, the first photo is moved ahead of it. On a reel, clip seconds come out of the Length's time budget first and the photos share the rest (so Full still lands near 40s); the "about N seconds" readout includes the clips (and says "clips Ns"). A reel needs at least one photo to render.
+- **How frames are read (memory).** `src/lib/reelClips.ts`. At render start each clip gets one mediabunny `Input` (`UrlSource` over the signed R2 link — HTTP range requests, only the bytes around the chosen seconds, cache capped at 16 MB; or `BlobSource` for a Studio file) and a `CanvasSink` sized to what the frame needs (cover or contain, never above the video's own size, a pool of 4 canvases). Before each output frame the render loop moves every on-screen clip forward to `inSec + t` on a sequential `sink.canvases(start, end)` iterator — decoded as the render reaches it, never the whole clip up front. A clip being carried out by a transition holds its last frame; 1.5s after its turn the Input is disposed. Everything is also released in the render's `finally`. A clip that can't be opened at render time (or fails mid-render) plays as a still (its first frame / poster) with a note under the preview — it never kills the render.
+- **CORS change — ONE-TIME STEP after pushing.** `r2EnsureVideoCors()` in `src/lib/r2.ts` now allows the `range` request header and exposes `Content-Range`, `Content-Length`, `Accept-Ranges`, `ETag` (range requests from JavaScript need these; ETag was already needed by multipart uploads). Nothing applies it automatically. **To apply:** sign in to the portal as an admin, then open `https://portal.yachtpics.com/api/admin/r2/selftest` in the same browser (there is no button for it in the admin pages). It answers with a page of text; look under `privateBucket`. If it says `"ok": true` with **no** `corsNote`, the new rule was written. If there's a `corsNote` ("The API token can't manage bucket settings…"), set it by hand instead: Cloudflare dashboard → **R2** → the private video bucket (whatever `R2_VIDEO_BUCKET` is set to in Vercel; `yachtpics-video` by default) → **Settings** → **CORS Policy** → **Edit**, replace the contents with this, **Save**:
+
+  ```json
+  [
+    {
+      "AllowedOrigins": ["https://portal.yachtpics.com", "http://localhost:3000"],
+      "AllowedMethods": ["GET", "PUT", "HEAD"],
+      "AllowedHeaders": ["content-type", "range"],
+      "ExposeHeaders": ["Content-Range", "Content-Length", "Accept-Ranges", "ETag"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+  ```
+
+  Note the self-test only reaches the private-bucket step (where CORS is applied) if the public website bucket checks pass first.
+- **How to check it.** On a listing with a video: Reel → Video clips → tap a video → drag the slider, Play clip, Add to reel → the tile shows "Clip 3s" with its number → Make the reel; the clip should play, silent, for 3s in its place. If "Add to reel" shows the storage message, the CORS step above hasn't taken. In the Studio: Add clip → pick a phone video → same. Try an iPhone HEVC video in Firefox or older Chrome for the format message.
+- **Metrics.** `reel_events` has fixed columns and no free-form field, so **clip count is not recorded** (it would need a new `clip_count integer` column + a line in `reelEvents.ts`). `photoCount` on a render row now counts photos only.
+- **Files:** `src/lib/reelClips.ts` (new), `src/components/ReelClipTrimmer.tsx` (new), `src/components/ReelMaker.tsx`, `src/lib/reelStack.ts` (`planSingles` `fixedHolds`; `splitMarquee` `clipIndices`; `planMarquee` `clipLens`; marquee unit `bottomStarts`/`bottomLens`), `src/app/dashboard/listings/[id]/reel/page.tsx`, `src/app/admin/reel-studio/page.tsx` (phone detection moved to `detectPhone()` in reelClips; `maxClips` in its budget), `src/lib/r2.ts`. Typecheck clean; nothing could be run in a browser yet.
+
 ## Sept 23 — Portal speed (clicks felt slow in the broker demo)
 
 - **Why it felt slow:** only one route (`/dashboard/listings/[id]`) had a `loading.tsx`, so on every other page the App Router kept the old page on screen until the new one had finished all its queries. Worst case `/admin/listings/[id]`: ~14 Supabase round trips awaited one after another.

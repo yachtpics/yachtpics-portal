@@ -8,7 +8,7 @@ import { orderPhotos } from "@/lib/photoOrder";
 import { loadBitmap } from "@/lib/canvasText";
 import { normalizeHex } from "@/lib/reelStyles";
 import { reelPromoActive } from "@/lib/reelPromo";
-import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource } from "@/components/ReelMaker";
+import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource, type ReelVideo } from "@/components/ReelMaker";
 
 /**
  * Listing Reel
@@ -21,6 +21,7 @@ import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource } from "@/
  */
 
 type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number };
+type VideoRow = { id: string; title: string | null; filename: string | null; thumbnail_path: string | null; display_order: number | null };
 
 export default function ListingReelPage() {
   const supabase = createClient();
@@ -64,11 +65,13 @@ export default function ListingReelPage() {
         } catch { /* stay unlocked on a status hiccup */ }
       }
 
-      const [{ data: prof }, { data: det }, { data: ph }, { count }] = await Promise.all([
+      const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }] = await Promise.all([
         supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
         supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
         supabase.from("photos").select("id, storage_path, category, filename, display_order").eq("listing_id", id).eq("is_visible", true).order("display_order"),
         supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
+        // The listing's videos, offered as clips in the listing's own order.
+        supabase.from("videos").select("id, title, filename, thumbnail_path, display_order").eq("listing_id", id).order("display_order"),
       ]);
       const broker = {
         // No placeholder here: an end card reading "Broker" over a phone number
@@ -112,9 +115,40 @@ export default function ListingReelPage() {
         },
       }));
 
+      // Video clips. The poster is the video's own thumbnail (a still in the
+      // photo bucket); the file itself is on R2 and gets a fresh signed link
+      // each time it is opened — for the trimmer and again for the render —
+      // from the same route the rest of the portal uses.
+      // Admins only for now (Samantha first): brokers get it once the R2 CORS
+      // step is confirmed in production. To open it to everyone, drop the
+      // `admin ?` below.
+      const videoRows = admin ? ((vids ?? []) as VideoRow[]) : [];
+      const posters = await Promise.all(videoRows.map(async (v) => {
+        if (!v.thumbnail_path) return null;
+        const { data } = await supabase.storage.from("listing-photos")
+          .createSignedUrl(v.thumbnail_path, 3600, { transform: { width: 320, height: 320, resize: "contain", quality: 70 } });
+        return data?.signedUrl ?? null;
+      }));
+      const videos: ReelVideo[] = videoRows.map((v, i) => ({
+        id: v.id,
+        title: v.title?.trim() || v.filename || "Video",
+        posterUrl: posters[i],
+        open: async () => {
+          const res = await fetch("/api/videos/signed-urls", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ videoId: v.id }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || typeof data?.url !== "string") throw new Error(data?.error ?? "Couldn\u2019t get a link to this video.");
+          return { url: data.url as string };
+        },
+      }));
+
       setSource({
         listing,
         photos,
+        videos,
         broker,
         listingId: id,
         isAdmin: admin,

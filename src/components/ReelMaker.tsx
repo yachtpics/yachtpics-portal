@@ -26,6 +26,13 @@ import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reel
 import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
+import ReelClipTrimmer from "@/components/ReelClipTrimmer";
+import {
+  CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader,
+  type ClipSource, type ClipLength, type ClipReader,
+} from "@/lib/reelClips";
+
+export type { ClipSource, ClipLength } from "@/lib/reelClips";
 
 /**
  * The Reel Maker
@@ -134,9 +141,11 @@ const HOLD_MIN = 1.25;
  * budget left after the title and end card, shared between the photos, held
  * between the floor and the length's ceiling.
  */
-function reelHold(length: Length, n: number) {
+function reelHold(length: Length, n: number, clipSeconds = 0) {
   const L = LENGTH[length];
-  const budget = L.target - SPEC.reel.titleHold - SPEC.reel.endHold;
+  // Video clips play for their own length, so they come out of the budget
+  // first and the photographs share what is left.
+  const budget = L.target - SPEC.reel.titleHold - SPEC.reel.endHold - clipSeconds;
   return Math.min(Math.min(L.holdMax, HOLD_MAX), Math.max(HOLD_MIN, budget / Math.max(1, n)));
 }
 
@@ -200,6 +209,33 @@ export type ReelPhoto = {
   loadBitmap: (longEdge: number) => Promise<ImageBitmap>;
   category?: string | null;
   filename?: string | null;
+  /**
+   * Set only on a VIDEO CLIP the broker added to the reel — never on a
+   * listing photograph, whose path is unchanged. The renderer opens the clip
+   * with `open` and plays `lengthSec` seconds from `inSec`, muted; the
+   * `loadBitmap` above is then only the fallback still if the clip can't be
+   * read at render time. `videoId` (a listing video) or `fileKey` (a file off
+   * the device in the Studio) says which video it was cut from.
+   */
+  clip?: {
+    open: () => Promise<ClipSource>;
+    durationSec?: number | null;
+    videoId?: string;
+    fileKey?: string;
+    inSec: number;
+    lengthSec: ClipLength;
+  };
+};
+
+/**
+ * A video the source offers as a clip. The listing hands over its own videos
+ * (display order, with posters); `open` signs a fresh link to the file.
+ */
+export type ReelVideo = {
+  id: string;
+  title: string;
+  posterUrl: string | null;
+  open: () => Promise<ClipSource>;
 };
 
 /**
@@ -234,7 +270,11 @@ export type ReelSource = {
    * forty 2200px bitmaps, so the Studio lowers both the photo cap and the
    * size each photograph is decoded at. It can only ever lower them.
    */
-  budget?: { maxPhotos: number; longEdgeScale: number };
+  budget?: { maxPhotos: number; longEdgeScale: number; maxClips?: number };
+  /** The listing's videos, offered as clips. Absent or empty: no listing clips. */
+  videos?: ReelVideo[];
+  /** The Studio: offer "Add clip" from a video file on this device. */
+  localClips?: boolean;
 };
 
 /**
@@ -270,6 +310,20 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   // An ORDERED list, not a set: the order the broker taps is the order the
   // reel plays. The number on each thumbnail is its place in the film.
   const [chosen, setChosen] = useState<string[]>([]);
+  /**
+   * Video clips the broker has cut and added, as picker items (a ReelPhoto
+   * with `clip` set). Their ids start "clip:" and sit in `chosen` alongside
+   * the photo ids, so a clip takes its place in the order like a photograph.
+   */
+  const [clipItems, setClipItems] = useState<ReelPhoto[]>([]);
+  /** The trimmer, when open: which video, how to read it, what to preview. */
+  const [trim, setTrim] = useState<{ video: ReelVideo; source: ClipSource; previewSrc: string; objectUrl: boolean } | null>(null);
+  const [trimOpening, setTrimOpening] = useState<string | null>(null);
+  const [clipError, setClipError] = useState("");
+  /** Set after a render in which a clip couldn't be read and played as a still. */
+  const [clipNote, setClipNote] = useState("");
+  const [phoneLike, setPhoneLike] = useState(false);
+  const localClipRef = useRef<HTMLInputElement>(null);
   /**
    * Marquee looks: the photos the broker has pinned to the top band, in the
    * order they were pinned (the oldest is the one a fifth pin replaces). Empty
@@ -337,7 +391,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   useEffect(() => {
     setChosen((prev) => {
       const ids = photos.map((p) => p.id);
-      const kept = prev.filter((x) => ids.includes(x));
+      // Clips aren't in `photos`; they stay where the broker put them.
+      const kept = prev.filter((x) => ids.includes(x) || isClipId(x));
       const room = Math.min(capFor(format, length), budget?.maxPhotos ?? Infinity);
       if (kept.length >= room) return kept.slice(0, room);
       const add = photos.filter((p) => !kept.includes(p.id)).slice(0, room - kept.length).map((p) => p.id);
@@ -374,11 +429,52 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
    * frame size, the fade, the title and end holds — comes from the format.
    * The film is untouched.
    */
+  // A phone gets fewer clips (each one holds a video decoder open during the
+  // render). Measured after mount, like the Studio's photo budget.
+  useEffect(() => { setPhoneLike(detectPhone().mobile); }, []);
+  const maxClips = Math.min(budget?.maxClips ?? CLIP_MAX, phoneLike ? CLIP_MAX_PHONE : CLIP_MAX);
+
+  /**
+   * Stack builds its bands out of still photographs, whipping them in and
+   * swapping them on the beat; a clip in a band would be a postage stamp of
+   * motion. So on Stack the clips are left out of the reel (kept in the
+   * selection, and back the moment another look is picked).
+   */
+  const clipsBlocked = styleKey === "stack" && format === "reel";
+
+  /**
+   * What actually plays, in order: the chosen photographs and clips. The title
+   * sits on the first item, and a title needs a photograph under it — so if
+   * the order starts with a clip, the first photograph is moved ahead of it.
+   */
+  const selectedPhotos = useMemo(() => {
+    const byId = new Map<string, ReelPhoto>();
+    photos.forEach((p) => byId.set(p.id, p));
+    clipItems.forEach((c) => byId.set(c.id, c));
+    const out = chosen
+      .map((pid) => byId.get(pid))
+      .filter((p): p is ReelPhoto => !!p && !(clipsBlocked && !!p.clip));
+    if (out.length > 0 && out[0].clip) {
+      let k = -1;
+      for (let i = 0; i < out.length; i++) if (!out[i].clip) { k = i; break; }
+      if (k > 0) { const first = out.splice(k, 1)[0]; out.unshift(first); }
+    }
+    return out;
+  }, [photos, clipItems, chosen, clipsBlocked]);
+
+  const photoCount = useMemo(() => selectedPhotos.filter((p) => !p.clip).length, [selectedPhotos]);
+  const clipSeconds = useMemo(
+    () => selectedPhotos.reduce((a, p) => a + (p.clip ? p.clip.lengthSec : 0), 0),
+    [selectedPhotos],
+  );
+  /** Clips in the selection, whether or not the current look plays them. */
+  const chosenClipCount = chosen.filter(isClipId).length;
+
   const s = useMemo(
     () => (format === "reel"
-      ? { ...SPEC.reel, maxPhotos: LENGTH[length].maxPhotos, hold: reelHold(length, chosen.length) }
+      ? { ...SPEC.reel, maxPhotos: LENGTH[length].maxPhotos, hold: reelHold(length, photoCount, clipSeconds) }
       : SPEC.film),
-    [format, length, chosen.length],
+    [format, length, photoCount, clipSeconds],
   );
 
   /**
@@ -436,6 +532,80 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     setChosen((prev) => (prev.length > nextCap ? prev.slice(0, nextCap) : prev));
   }
 
+  // ── Video clips ─────────────────────────────────────────────────────────
+  const clipsOffered = (source.videos?.length ?? 0) > 0 || !!source.localClips;
+  const clipsFull = chosenClipCount >= maxClips;
+  const selectionFull = chosen.length >= cap;
+
+  /** Open the trimmer on one video: sign a fresh link (or wrap the file) first. */
+  async function openTrimmer(v: ReelVideo) {
+    if (trimOpening) return;
+    setClipError("");
+    closeTrimmer();
+    setTrimOpening(v.id);
+    try {
+      const src = await v.open();
+      const objectUrl = !("url" in src);
+      const previewSrc = "url" in src ? src.url : URL.createObjectURL(src.blob);
+      setTrim({ video: v, source: src, previewSrc, objectUrl });
+    } catch (err) {
+      setClipError(err instanceof Error ? err.message : "Couldn\u2019t open that video.");
+    } finally {
+      setTrimOpening(null);
+    }
+  }
+
+  function closeTrimmer() {
+    setTrim((prev) => {
+      if (prev?.objectUrl) URL.revokeObjectURL(prev.previewSrc);
+      return null;
+    });
+  }
+
+  // An object URL left open when the page goes away is a leaked file handle.
+  const trimRef = useRef(trim);
+  trimRef.current = trim;
+  useEffect(() => () => {
+    const t = trimRef.current;
+    if (t?.objectUrl) URL.revokeObjectURL(t.previewSrc);
+  }, []);
+
+  /** The trimmer said yes (and the probe passed): the clip joins the end of the order. */
+  function addClip(v: ReelVideo, c: { inSec: number; lengthSec: ClipLength; durationSec: number | null; posterUrl: string | null }) {
+    if (chosenClipCount >= maxClips || chosen.length >= cap) return;
+    const id = `${CLIP_ID_PREFIX}${v.id}:${Date.now().toString(36)}`;
+    const previewUrl = c.posterUrl ?? v.posterUrl ?? "";
+    const item: ReelPhoto = {
+      id,
+      previewUrl,
+      filename: v.title,
+      category: null,
+      // Only ever the fallback still, if the clip can't be read at render time.
+      loadBitmap: () => loadBitmap(previewUrl),
+      clip: {
+        open: v.open,
+        durationSec: c.durationSec,
+        ...(source.localClips ? { fileKey: v.id } : { videoId: v.id }),
+        inSec: c.inSec,
+        lengthSec: c.lengthSec,
+      },
+    };
+    setClipItems((prev) => [...prev, item]);
+    setChosen((prev) => (prev.length >= cap ? prev : [...prev, id]));
+    closeTrimmer();
+    setResult(null);
+    setPhase("idle");
+  }
+
+  /** The Studio: a video file off this device. */
+  function onLocalClipFile(list: FileList | null) {
+    const file = list && list.length > 0 ? list[0] : null;
+    if (localClipRef.current) localClipRef.current.value = "";
+    if (!file) return;
+    const key = `${file.name}-${file.size}-${file.lastModified}`;
+    void openTrimmer({ id: key, title: file.name, posterUrl: null, open: async () => ({ blob: file }) });
+  }
+
   function togglePhoto(pid: string) {
     setChosen((prev) => {
       // Tap to add at the end; tap again to remove and let the rest close up.
@@ -447,10 +617,14 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     setPhase("idle");
   }
 
-  const selectedPhotos = useMemo(() => {
-    const byId = new Map(photos.map((p) => [p.id, p]));
-    return chosen.map((pid) => byId.get(pid)).filter((p): p is ReelPhoto => !!p);
-  }, [photos, chosen]);
+  // A clip trimmed out of the selection (a format or length trim, Clear) is
+  // gone — cut it again to bring it back.
+  useEffect(() => {
+    setClipItems((prev) => {
+      const next = prev.filter((c) => chosen.indexOf(c.id) >= 0);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [chosen]);
 
   // A photo that leaves the selection (tap, Clear, a format/length trim)
   // leaves the top band with it.
@@ -469,14 +643,21 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   const marqueeOn = isMarquee(styleKey) && format === "reel";
   const marqueeStill = !!REEL_STYLES[styleKey].heroStill;
   const marqueeCategories = useMemo(() => selectedPhotos.map((p) => p.category ?? null), [selectedPhotos]);
+  /** Clip lengths by selection index (null for a photograph) — for the planners. */
+  const clipLens = useMemo(() => selectedPhotos.map((p) => (p.clip ? p.clip.lengthSec : null)), [selectedPhotos]);
+  const clipIndices = useMemo(() => {
+    const out: number[] = [];
+    selectedPhotos.forEach((p, i) => { if (p.clip) out.push(i); });
+    return out;
+  }, [selectedPhotos]);
   const marqueeTopIndices = useMemo(() => {
     const out: number[] = [];
     selectedPhotos.forEach((p, i) => { if (topIds.indexOf(p.id) >= 0) out.push(i); });
     return out;
   }, [selectedPhotos, topIds]);
   const marqueeSplit = useMemo(
-    () => (marqueeOn ? splitMarquee(marqueeCategories, { still: marqueeStill, topIndices: marqueeTopIndices }) : null),
-    [marqueeOn, marqueeCategories, marqueeStill, marqueeTopIndices],
+    () => (marqueeOn ? splitMarquee(marqueeCategories, { still: marqueeStill, topIndices: marqueeTopIndices, clipIndices }) : null),
+    [marqueeOn, marqueeCategories, marqueeStill, marqueeTopIndices, clipIndices],
   );
   const marqueeManual = marqueeTopIndices.length > 0;
 
@@ -487,6 +668,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
    */
   function toggleTop(pid: string) {
     if (!marqueeSplit) return;
+    // A clip always plays in the bottom band.
+    if (isClipId(pid)) return;
     const heroIds = marqueeSplit.hero.map((i) => selectedPhotos[i].id);
     const base = marqueeManual ? topIds.filter((x) => chosen.indexOf(x) >= 0) : heroIds;
     let next: string[];
@@ -533,6 +716,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         seed,
         still: marqueeStill,
         topIndices: marqueeTopIndices,
+        clipLens,
       });
     }
     // Every other look: one photograph at a time. Every photo after the
@@ -555,10 +739,11 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       // Reels only: three horizontal bands need the vertical a 9:16 frame has.
       thirds: format === "reel" ? look.thirds ?? null : null,
       seed,
+      fixedHolds: clipLens,
     });
     // `s` carries the reel's hold — derived from the length's time budget and
     // the photo count — so the total redraws when Length or the selection changes.
-  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices]);
+  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   /**
@@ -590,7 +775,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   async function render() {
     // The broker card is optional: a Studio reel branded as YachtPics has no
     // broker behind it at all.
-    if (!listing || selectedPhotos.length === 0) return;
+    // A reel needs at least one photograph — the title sits on it.
+    if (!listing || selectedPhotos.length === 0 || photoCount === 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     cancelRef.current = false;
@@ -600,6 +786,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     setPhone(null);
     setPhoneError("");
     setErrorMsg("");
+    setClipNote("");
     setPhase("loading");
     setProgress(0);
 
@@ -621,6 +808,11 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     // cancelled or failed. Nothing is released mid-render: walls, Stack bands
     // and every transition read bitmaps after their own unit.
     const bitmaps: ImageBitmap[] = [];
+    // One reader per video clip, by selection index (null for a photograph,
+    // or a clip that couldn't be opened and plays as a still). Each holds an
+    // mediabunny Input — released as soon as its clip has played, and in the
+    // finally below whatever happens.
+    const clipReaders: (ClipReader | null)[] = [];
     let logo: ImageBitmap | null = null;
     const backdropCache = new Map<number, HTMLCanvasElement>();
     const backdropOrder: number[] = []; // oldest first
@@ -651,18 +843,77 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       // are NOT — they're built lazily, a handful at a time (see getBackdrop),
       // which is what lets Long run to forty photos.
       const longEdge = Math.max(W, H) * 1.15 * (budget?.longEdgeScale ?? 1); // headroom for the drift
+      // Video clips: the rectangle a clip is drawn into, and whether it fills
+      // it (crop) or sits whole inside it — the same rule drawPhoto and the
+      // Marquee's bottom band apply to a photograph. The decoder hands frames
+      // back at exactly that size (never above the video's own).
+      const clipsInMarquee = timeline.units.some((u) => u.kind === "marquee");
+      const clipCover = clipsInMarquee
+        ? fit === "fill"
+        : backdrop === "letterbox" || (fit === "fill" && backdrop !== "inset");
+      const clipScale = budget?.longEdgeScale ?? 1;
+      const clipBox = {
+        w: Math.round(W * clipScale),
+        h: Math.round((clipsInMarquee ? W / 1.5 : H) * clipScale),
+        cover: clipCover,
+      };
+      let clipTrouble = 0;
       for (let i = 0; i < selectedPhotos.length; i++) {
         // Bail cleanly: leaving the phase as "loading" would keep the page in
         // its busy state with no way back but a reload.
         if (cancelRef.current) { setPhase("idle"); return; }
         const p = selectedPhotos[i];
-        // The source decodes its own photograph at the size asked for — a
-        // signed transform URL out of storage on a listing, a file off the
-        // device in the Studio — and hands back a bitmap either way.
-        const bmp = await p.loadBitmap(longEdge);
-        bitmaps.push(bmp);
+        if (p.clip) {
+          // A clip opens its video and decodes one frame now (the fallback
+          // still, and the source of its blurred backdrop); the rest is
+          // decoded frame by frame as the render reaches it. A clip that
+          // can't be opened plays as a still rather than stopping the film.
+          try {
+            const reader = await openClipReader(p.clip, clipBox);
+            clipReaders[i] = reader;
+            bitmaps.push(reader.poster);
+          } catch {
+            clipReaders[i] = null;
+            clipTrouble++;
+            let still: ImageBitmap | null = null;
+            try { if (p.previewUrl) still = await loadBitmap(p.previewUrl); } catch { still = null; }
+            if (!still) {
+              const c = document.createElement("canvas");
+              c.width = 16; c.height = 9;
+              const cx = c.getContext("2d")!;
+              cx.fillStyle = st.ground;
+              cx.fillRect(0, 0, 16, 9);
+              still = await createImageBitmap(c);
+            }
+            bitmaps.push(still);
+          }
+        } else {
+          clipReaders[i] = null;
+          // The source decodes its own photograph at the size asked for — a
+          // signed transform URL out of storage on a listing, a file off the
+          // device in the Studio — and hands back a bitmap either way.
+          const bmp = await p.loadBitmap(longEdge);
+          bitmaps.push(bmp);
+        }
         setProgress(Math.round(((i + 1) / selectedPhotos.length) * 100));
       }
+      if (clipTrouble > 0) {
+        setClipNote(clipTrouble === 1
+          ? "One clip couldn\u2019t be read this time, so it plays as a still photograph. Remove it and add it again to check it."
+          : `${clipTrouble} clips couldn\u2019t be read this time, so they play as still photographs. Remove them and add them again to check them.`);
+      }
+
+      /**
+       * What to draw for item i right now: a clip's current frame, or the
+       * photograph's bitmap (also a clip's still, before its first frame or
+       * after it has been released).
+       */
+      const imgAt = (i: number): ImageBitmap | HTMLCanvasElement | OffscreenCanvas | undefined => {
+        const r = clipReaders[i];
+        const f = r ? r.frame() : null;
+        return f ?? bitmaps[i];
+      };
+      const isClipAt = (i: number) => !!selectedPhotos[i]?.clip;
 
       if (card.logoUrl) { try { logo = await loadBitmap(card.logoUrl); } catch { logo = null; } }
 
@@ -902,7 +1153,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       };
 
       const drawPhoto = (i: number, localT: number, hold: number, alpha: number, wholeOverride?: boolean, slot?: number | null) => {
-        const bmp = bitmaps[i];
+        const bmp = imgAt(i);
+        if (!bmp) return;
         // The drift runs to the end of the outgoing transition, so the
         // photograph never freezes while a dissolve or dip carries it out.
         // Dealt transitions run up to 0.44s; the quiet looks' crossfade is `fade`.
@@ -935,6 +1187,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           const to = out ? 1 : 1 + st.zoom;
           k = from + (to - from) * drift;
         }
+        // A video clip carries its own motion — no drift or zoom on top.
+        if (isClipAt(i)) k = 1;
 
         // An inset look always shows the complete photograph — cropping a
         // 121-footer to a square to fill the window loses her bow and stern,
@@ -1628,7 +1882,10 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       const MQ_ZOOM_FROM = 1.08;
       const mqBottomH = mq.bottomH;
 
-      const drawMarquee = (hero: number[], bottom: number[], moves: MarqueeMove[], hold: number, local: number, alpha: number, still: boolean) => {
+      const drawMarquee = (
+        hero: number[], bottom: number[], moves: MarqueeMove[], hold: number, local: number, alpha: number, still: boolean,
+        bStarts: number[], bLens: number[],
+      ) => {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.fillStyle = st.ground;
@@ -1675,8 +1932,13 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         // Bottom band.
         const bN = bottom.length;
         if (bN > 0 && mqBottomH > 0) {
-          const seg = hold / bN;
-          const xf = Math.min(MARQUEE_BOTTOM_XF, seg * 0.4);
+          // Each turn's start and length come from the planner: equal shares,
+          // except a video clip's turn, which is exactly its own length.
+          const startOf = (slot: number) => bStarts[slot] ?? (hold / bN) * slot;
+          const lenOf = (slot: number) => bLens[slot] ?? hold / bN;
+          let j = 0;
+          for (let q = 1; q < bN; q++) if (local >= startOf(q)) j = q;
+          const xf = Math.min(MARQUEE_BOTTOM_XF, lenOf(j) * 0.4);
           const bz = st.zoom * MQ_BOTTOM_DRIFT;
           const whole = fit === "whole";
           /**
@@ -1688,13 +1950,14 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
            */
           const drawBottom = (slot: number, a: number, dx: number, dy: number, extra: number) => {
             const i = bottom[slot];
-            const bmp = bitmaps[i];
+            const bmp = imgAt(i);
             if (!bmp || a <= 0) return;
-            const drift = ease((local - slot * seg) / (seg + xf));
+            const drift = ease((local - startOf(slot)) / (lenOf(slot) + xf));
             const out = isExterior(selectedPhotos[i]?.category);
             const from = out ? 1 + bz : 1;
             const to = out ? 1 : 1 + bz;
-            const k = from + (to - from) * drift;
+            // A video clip carries its own motion — no drift on top.
+            const k = isClipAt(i) ? 1 : from + (to - from) * drift;
             const y0 = mq.bottomTop + dy;
             ctx.globalAlpha = alpha * a;
             if (!whole) {
@@ -1719,8 +1982,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           ctx.beginPath();
           ctx.rect(0, mq.bottomTop, W, mqBottomH);
           ctx.clip();
-          const j = Math.min(bN - 1, Math.max(0, Math.floor(local / seg)));
-          const into = local - j * seg;
+          const into = local - startOf(j);
           if (j > 0 && into < xf) {
             const p = ease(into / xf);
             const move = moves[j - 1] ?? "crossfade";
@@ -1839,15 +2101,41 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         } else if (u.kind === "stack") {
           drawStack(u.events, u.hold, local, alpha);
         } else if (u.kind === "marquee") {
-          drawMarquee(u.hero, u.bottom, u.moves, u.hold, local, alpha, !!u.still);
+          drawMarquee(u.hero, u.bottom, u.moves, u.hold, local, alpha, !!u.still, u.bottomStarts, u.bottomLens);
         } else {
           drawEndCard(alpha);
         }
       };
 
+      /**
+       * When each clip plays: its unit's start on a single-photo look, its
+       * bottom-band turn on a Marquee. Before each frame is drawn, every clip
+       * on screen is moved to the frame for this instant (awaited here, since
+       * drawing is synchronous); a clip still on screen after its turn — being
+       * carried out by a transition — holds its last frame. A second and a
+       * half after its turn it's released: decoder, cache and canvases.
+       */
+      const clipSpans: { i: number; start: number; len: number }[] = [];
+      units.forEach((u, k) => {
+        if (u.kind === "photo" && clipReaders[u.index]) clipSpans.push({ i: u.index, start: starts[k], len: u.hold });
+        if (u.kind === "marquee") {
+          u.bottom.forEach((i, slot) => {
+            if (clipReaders[i]) clipSpans.push({ i, start: starts[k] + u.bottomStarts[slot], len: u.bottomLens[slot] });
+          });
+        }
+      });
+      const CLIP_RELEASE_AFTER = 1.5;
+
       for (let f = 0; f < totalFrames; f++) {
         if (cancelRef.current) { await output.cancel(); setPhase("idle"); return; }
         const t = f / FPS;
+        for (let c = 0; c < clipSpans.length; c++) {
+          const sp = clipSpans[c];
+          const r = clipReaders[sp.i];
+          if (!r) continue;
+          if (t >= sp.start - 1e-6 && t <= sp.start + sp.len + 1e-6) await r.advance(t - sp.start);
+          else if (t > sp.start + sp.len + CLIP_RELEASE_AFTER) r.release();
+        }
         ctx.globalAlpha = 1;
         ctx.fillStyle = st.ground;
         ctx.fillRect(0, 0, W, H);
@@ -1903,7 +2191,9 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         look: styleKey,
         reelLength: format === "reel" ? length : null,
         fit,
-        photoCount: selectedPhotos.length,
+        // Photographs only — clips aren't photos. (A clip count would need
+        // a new reel_events column; see where-we-are.)
+        photoCount: selectedPhotos.filter((p) => !p.clip).length,
         seconds: Math.round(total),
         ypBrand,
         renderMs: Date.now() - startedAt,
@@ -1915,6 +2205,13 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       // The render is over — the blob exists, or it was cancelled or failed.
       // Release the decoded photographs, the logo and the backdrop plates now
       // rather than whenever the collector gets round to half a gigabyte.
+      // Clip readers first (their decoders and range-request caches), then
+      // every bitmap — a clip's still is in `bitmaps` too.
+      for (let i = 0; i < clipReaders.length; i++) {
+        const r = clipReaders[i];
+        if (r) { try { r.release(); } catch { /* already released */ } }
+      }
+      clipReaders.length = 0;
       for (let i = 0; i < bitmaps.length; i++) {
         try { bitmaps[i].close(); } catch { /* already released */ }
       }
@@ -1976,7 +2273,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       const res = await fetch(`/api/listings/${listingId}/reel-copy`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoIds: selectedPhotos.map((p) => p.id) }),
+        body: JSON.stringify({ photoIds: selectedPhotos.filter((p) => !p.clip).map((p) => p.id) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? `Couldn't write the copy (${res.status}).`);
@@ -2190,7 +2487,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           <button key={f} onClick={() => chooseFormat(f)} disabled={busy} className={pill(format === f)}>{SPEC[f].label}</button>
         ))}
       </div>
-      <p className="text-xs text-ink-400 mb-5">{s.hint} · up to {cap} photos · about {seconds} seconds</p>
+      <p className="text-xs text-ink-400 mb-5">{s.hint} · up to {cap} photos{clipsOffered ? " and clips" : ""} · about {seconds} seconds{clipSeconds > 0 ? ` (clips ${clipSeconds}s)` : ""}</p>
       {format === "reel" && length === "full" && seconds < 30 && chosen.length < cap && (
         <p className="text-xs text-ink-400 -mt-4 mb-5">Reels reach furthest between 30 and 60 seconds — add a few more photos, or switch to Short.</p>
       )}
@@ -2375,15 +2672,100 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         </div>
       </div>
 
+      {/* Video clips — a few seconds of the boat moving, alongside the photos.
+          Offered when the source has any: the listing's own videos, or (in the
+          Studio) a video file off this device. */}
+      {clipsOffered && (
+        <div className="mb-5">
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-2">
+            <p className="label-caps text-ink-500">Video clips · {chosenClipCount} of {maxClips}</p>
+            {source.localClips && (
+              <>
+                <button
+                  onClick={() => localClipRef.current?.click()}
+                  disabled={busy || clipsBlocked || clipsFull || selectionFull || !!trimOpening}
+                  className="text-xs font-semibold text-accent-700 hover:underline disabled:opacity-40 disabled:no-underline"
+                >
+                  {trimOpening ? "Opening\u2026" : "Add clip"}
+                </button>
+                <input
+                  ref={localClipRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => onLocalClipFile(e.target.files)}
+                />
+              </>
+            )}
+          </div>
+          {clipsBlocked ? (
+            <p className="text-xs text-ink-400">Stack builds its bands from photographs, so it can&rsquo;t take video clips &mdash; pick another look to use them.</p>
+          ) : (
+            <>
+              {(source.videos?.length ?? 0) > 0 && (
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                  {source.videos!.map((v) => {
+                    const opening = trimOpening === v.id;
+                    const open = trim?.video.id === v.id;
+                    return (
+                      <button
+                        key={v.id}
+                        onClick={() => { void openTrimmer(v); }}
+                        disabled={busy || clipsFull || selectionFull || !!trimOpening}
+                        title={v.title}
+                        className={`relative block w-full aspect-video overflow-hidden rounded-sm border-2 bg-ink-100 transition-colors disabled:opacity-40 ${open ? "border-accent-500" : "border-transparent hover:border-ink-300"}`}
+                      >
+                        {v.posterUrl && <RetryImg src={v.posterUrl} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                        <span className="absolute inset-0 flex items-center justify-center">
+                          <span className="h-7 w-7 rounded-full bg-ink-950/70 text-white text-[11px] flex items-center justify-center">{opening ? "\u2026" : "\u25B6"}</span>
+                        </span>
+                        <span className="absolute bottom-0 inset-x-0 text-[10px] text-white bg-ink-950/60 px-1 py-0.5 truncate text-left">{v.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              <p className="text-xs text-ink-400 mt-1.5">
+                {source.localClips ? "Add a video from this device, then" : "Tap a video, then"} choose 2, 3 or 4 seconds of it. Clips are silent and play in the order like a photo; each counts toward the {cap}-photo limit. Up to {maxClips}{phoneLike ? " on a phone" : ""}.
+                {marqueeOn && " On Marquee, clips always play in the bottom band."}
+                {clipsFull && " That\u2019s the most clips for one reel \u2014 remove one to add another."}
+                {!clipsFull && selectionFull && " The selection is full \u2014 remove a photo to make room for a clip."}
+              </p>
+            </>
+          )}
+          {trim && !clipsBlocked && (
+            <ReelClipTrimmer
+              key={trim.video.id}
+              title={trim.video.title}
+              source={trim.source}
+              previewSrc={trim.previewSrc}
+              onAdd={(c) => addClip(trim.video, c)}
+              onCancel={closeTrimmer}
+            />
+          )}
+          {clipError && <p className="mt-2 text-xs text-danger-700">{clipError}</p>}
+        </div>
+      )}
+
       {/* Photo picker */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
           <p className="label-caps text-ink-500">Photos · {chosen.length} of {cap}</p>
           <div className="flex gap-3">
-            <button onClick={() => { setChosen(photos.slice(0, cap).map((p) => p.id)); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-accent-700 hover:underline">First {cap}</button>
+            <button onClick={() => {
+              // Clips already cut stay in, at the end; photographs fill the rest.
+              const clipIds = chosen.filter(isClipId);
+              setChosen(photos.slice(0, Math.max(0, cap - clipIds.length)).map((p) => p.id).concat(clipIds));
+              setResult(null); setPhase("idle");
+            }} disabled={busy} className="text-xs font-semibold text-accent-700 hover:underline">First {cap}</button>
             <button onClick={() => { setChosen([]); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-ink-400 hover:underline">Clear</button>
           </div>
         </div>
+        {clipsBlocked && chosenClipCount > 0 && (
+          <p className="text-xs text-warn-700 mb-2">
+            Stack uses photographs only, so your {chosenClipCount === 1 ? "clip is" : `${chosenClipCount} clips are`} left out of this reel. {chosenClipCount === 1 ? "It comes" : "They come"} back when you pick another look.
+          </p>
+        )}
         <p className="text-xs text-ink-400 mt-1.5 mb-2">Tap photos in the order you want them to play — the number shows each one&rsquo;s place, and the first gets the title. Tap again to remove one. &ldquo;First {cap}&rdquo; takes them in slideshow order, cover first.</p>
         {/* Marquee looks: where each picked photo lands. The badges read the
             same split the renderer uses (marqueeSplit ↔ planMarquee). */}
@@ -2440,6 +2822,33 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
                       {isTop ? "Top" : "Bottom"}
                     </span>
                   </button>
+                )}
+              </div>
+            );
+          })}
+          {/* Clips the broker has cut: numbered in the order like a photo.
+              Tap to remove. */}
+          {clipItems.map((c) => {
+            const idx = selectedPhotos.findIndex((q) => q.id === c.id);
+            const playing = idx >= 0;
+            return (
+              <div key={c.id} className="relative">
+                <button
+                  onClick={() => togglePhoto(c.id)}
+                  disabled={busy}
+                  title={`${c.filename ?? "Clip"} \u2014 tap to remove`}
+                  aria-label={`Video clip${playing ? `, number ${idx + 1}` : ""}. Tap to remove it.`}
+                  className={`relative block w-full aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${playing ? "border-accent-500" : "border-hairline-strong opacity-55"}`}
+                >
+                  {c.previewUrl && <RetryImg src={c.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                  {playing && <span className="absolute top-0.5 left-0.5 text-[10px] font-semibold bg-ink-950/80 text-white rounded px-1">{idx + 1}</span>}
+                  <span className="absolute bottom-0.5 left-0.5 text-[10px] font-semibold bg-accent-500 text-ink-950 rounded px-1">Clip {c.clip?.lengthSec ?? 3}s</span>
+                  <span className="absolute top-0.5 right-0.5 h-4 w-4 rounded-full bg-ink-950/80 text-white text-[10px] leading-none flex items-center justify-center">&times;</span>
+                </button>
+                {playing && marqueeSplit && (
+                  <span className="absolute bottom-0 right-0 p-[3px] pointer-events-none">
+                    <span className="text-[10px] font-semibold leading-none rounded px-1 py-[3px] bg-white/90 text-ink-600 border border-ink-300 inline-block">Bottom</span>
+                  </span>
                 )}
               </div>
             );
@@ -2532,7 +2941,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             {busy ? (
               <button onClick={() => { cancelRef.current = true; }} className="text-sm font-medium px-4 py-2.5 rounded-ctl border border-hairline-strong text-ink-600 hover:border-ink-400 transition-colors">Cancel</button>
             ) : (
-              <button onClick={render} disabled={chosen.length === 0 || supported === false}
+              <button onClick={render} disabled={photoCount === 0 || supported === false}
                 className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-ink-950 text-sm font-semibold px-5 py-2.5 rounded-ctl transition-colors">
                 {result ? "Make it again" : `Make the ${format === "reel" ? "reel" : "film"}`}
               </button>
@@ -2551,6 +2960,10 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
 
         {phase === "error" && errorMsg && (
           <p className="mt-4 text-sm text-danger-700">{errorMsg}</p>
+        )}
+        {clipNote && <p className="mt-4 text-sm text-warn-700">{clipNote}</p>}
+        {!busy && photoCount === 0 && chosenClipCount > 0 && (
+          <p className="mt-4 text-xs text-ink-500">Add at least one photo &mdash; the title sits on a photograph.</p>
         )}
 
         {/* The working canvas doubles as the live preview while rendering. */}

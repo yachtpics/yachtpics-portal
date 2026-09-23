@@ -6,6 +6,7 @@ import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { normalizeHex } from "@/lib/reelStyles";
 import type { BrokerCard } from "@/lib/yachtpicsBrand";
 import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource } from "@/components/ReelMaker";
+import { detectPhone, CLIP_MAX, CLIP_MAX_PHONE } from "@/lib/reelClips";
 
 /**
  * Reel Studio — admin only
@@ -87,7 +88,7 @@ export default function ReelStudioPage() {
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [brokers, setBrokers] = useState<BrokerRow[]>([]);
   const [brokerId, setBrokerId] = useState("yachtpics");
-  const [budget, setBudget] = useState<{ maxPhotos: number; longEdgeScale: number } | undefined>(undefined);
+  const [budget, setBudget] = useState<{ maxPhotos: number; longEdgeScale: number; maxClips?: number } | undefined>(undefined);
   const fileRef = useRef<HTMLInputElement>(null);
   // Every object URL handed out, so they can all be released on the way out.
   const urls = useRef<string[]>([]);
@@ -124,15 +125,18 @@ export default function ReelStudioPage() {
    * tab would die mid-render. Big-memory Android (Chrome reports deviceMemory
    * up to 8) gets a middle budget; anything reporting 4GB or less, or any
    * iPhone, gets the small one.
+   *
+   * Video clips follow the same rule: three on a computer, two on a phone
+   * (each one holds a video decoder open while the reel renders). The
+   * detection itself now lives in reelClips (detectPhone) so the listing reel
+   * applies the same clip limit.
    */
   useEffect(() => {
-    const nav = navigator as Navigator & { deviceMemory?: number; userAgentData?: { mobile?: boolean } };
-    const ua = nav.userAgent || "";
-    const mobile = nav.userAgentData?.mobile === true || /Android|iPhone|iPad|iPod|Mobile/i.test(ua)
-      || (window.matchMedia?.("(pointer: coarse)").matches && window.innerWidth < 1100);
-    const mem = nav.deviceMemory ?? (mobile ? 4 : 8);
+    const { mobile, mem } = detectPhone();
     if (!mobile) { setBudget(undefined); return; }
-    setBudget(mem >= 8 ? { maxPhotos: 18, longEdgeScale: 0.85 } : { maxPhotos: 12, longEdgeScale: 0.75 });
+    setBudget(mem >= 8
+      ? { maxPhotos: 18, longEdgeScale: 0.85, maxClips: CLIP_MAX_PHONE }
+      : { maxPhotos: 12, longEdgeScale: 0.75, maxClips: CLIP_MAX_PHONE });
   }, []);
 
   // ── The brokers, for the card on the end ─────────────────────────────────
@@ -261,6 +265,8 @@ export default function ReelStudioPage() {
     locked: false,
     brand,
     budget,
+    // "Add clip": a video file off this device, cut to a few seconds.
+    localClips: true,
     // Ours by default — the reason the Studio exists. Picking a broker hands
     // the end card back to them.
     defaultYpBrand: brokerId === "yachtpics",
@@ -308,7 +314,7 @@ export default function ReelStudioPage() {
             className="block w-full text-sm text-ink-600 file:mr-3 file:py-2 file:px-4 file:rounded-ctl file:border file:border-hairline-strong file:text-sm file:font-semibold file:bg-white file:text-ink-700"
           />
           {budget && (
-            <p className="text-xs text-ink-400 mt-2">On a phone, up to {budget.maxPhotos} photos per reel.</p>
+            <p className="text-xs text-ink-400 mt-2">On a phone, up to {budget.maxPhotos} photos and {budget.maxClips ?? CLIP_MAX} video clips per reel.</p>
           )}
           {photos.length > 0 && (
             <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5 mt-3">

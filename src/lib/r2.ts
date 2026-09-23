@@ -240,6 +240,26 @@ export async function r2VideoSize(key: string): Promise<number | null> {
  *
  * GET is included because gallery zip downloads fetch video bytes with
  * JavaScript; plain <video> playback never needed CORS.
+ *
+ * `range` is allowed, and the length/range headers exposed, because the Reel
+ * reads video clips straight out of this bucket with HTTP range requests
+ * (mediabunny's UrlSource fetches only the bytes around the chosen seconds,
+ * not the whole file). Without them the browser hides Content-Range from the
+ * page and the clip can't be read. ETag is exposed as well so a multipart
+ * upload can read each part's tag.
+ *
+ * If the API token can't change bucket settings, paste the same rule into the
+ * Cloudflare dashboard by hand (bucket → Settings → CORS Policy):
+ *
+ *   [
+ *     {
+ *       "AllowedOrigins": ["https://portal.yachtpics.com", "http://localhost:3000"],
+ *       "AllowedMethods": ["GET", "PUT", "HEAD"],
+ *       "AllowedHeaders": ["content-type", "range"],
+ *       "ExposeHeaders": ["Content-Range", "Content-Length", "Accept-Ranges", "ETag"],
+ *       "MaxAgeSeconds": 3600
+ *     }
+ *   ]
  */
 export async function r2EnsureVideoCors(): Promise<void> {
   await r2().send(new PutBucketCorsCommand({
@@ -252,7 +272,8 @@ export async function r2EnsureVideoCors(): Promise<void> {
             "http://localhost:3000",
           ],
           AllowedMethods: ["GET", "PUT", "HEAD"],
-          AllowedHeaders: ["content-type"],
+          AllowedHeaders: ["content-type", "range"],
+          ExposeHeaders: ["Content-Range", "Content-Length", "Accept-Ranges", "ETag"],
           MaxAgeSeconds: 3600,
         },
       ],

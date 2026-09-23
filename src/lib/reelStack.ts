@@ -125,6 +125,13 @@ export type Unit =
        * `still` (Marquee Still): the top band is the cover alone, unmoving.
        */
       kind: "marquee"; hold: number; hero: number[]; bottom: number[]; moves: MarqueeMove[]; still?: boolean;
+      /**
+       * When each bottom photograph's turn begins, relative to the unit, and
+       * how long it lasts. Equal shares when the reel has no video clips; a
+       * clip's turn is exactly its own length and the photographs share what
+       * is left.
+       */
+      bottomStarts: number[]; bottomLens: number[];
     }
   | { kind: "end"; hold: number };
 
@@ -254,8 +261,19 @@ export function planSingles(n: number, opts: {
    */
   thirds?: "single" | "wall" | null;
   seed: number;
+  /**
+   * Video clips: a number at index i means item i is a clip that holds for
+   * exactly that many seconds. A clip is never in the burst, never placed in a
+   * third or a wall, and never stretched by the hold pattern — it plays full
+   * frame for its own length. Absent or null everywhere: unchanged.
+   */
+  fixedHolds?: (number | null | undefined)[];
 }): Timeline {
   const { titleHold, hold, endHold, dissolve, burst, vocab, seed } = opts;
+  const fixedAt = (i: number): number | null => {
+    const v = opts.fixedHolds ? opts.fixedHolds[i] : null;
+    return typeof v === "number" && v > 0 ? v : null;
+  };
   // A burst only makes sense with cuts to flash on — never under dissolves.
   const burstN = burst && vocab && n >= BURST_MIN_PHOTOS ? Math.min(BURST_MAX, n - 1) : 0;
   // The burst sits at the climax — just past the middle of the run, never
@@ -300,6 +318,13 @@ export function planSingles(n: number, opts: {
       // photographs hanging on screen with a strobe through the middle.
       const clashes = mode === "wall" && burstN > 0 && i < burstStart + burstN && i + runN > burstStart;
       if (clashes) { i = burstStart + burstN; continue; }
+      // A video clip never joins a wall: the settled photographs sit still,
+      // and a clip that stopped moving would just be a photograph.
+      if (mode === "wall") {
+        let clip = false;
+        for (let k = 0; k < runN; k++) if (fixedAt(i + k) !== null) clip = true;
+        if (clip) { i++; continue; }
+      }
       spent += runN;
 
       if (mode === "wall") {
@@ -332,6 +357,8 @@ export function planSingles(n: number, opts: {
           const at = i + k;
           // The burst keeps the whole frame — it is a punch, not a placement.
           if (at >= burstStart && at < burstStart + burstN) continue;
+          // So does a video clip.
+          if (fixedAt(at) !== null) continue;
           slots[at] = dealt[k];
           last = dealt[k];
         }
@@ -343,19 +370,21 @@ export function planSingles(n: number, opts: {
   const units: Unit[] = [];
   let pi = 0;
   for (let i = 0; i < n; i++) {
-    const inBurst = i >= burstStart && i < burstStart + burstN;
+    const fixed = fixedAt(i);
+    const inBurst = fixed === null && i >= burstStart && i < burstStart + burstN;
     const wall = walls[i];
     let h: number;
-    if (i === 0) h = titleHold;
+    if (fixed !== null) h = fixed;
+    else if (i === 0) h = titleHold;
     else if (inBurst) h = BURST_DT;
     else if (!vocab) h = hold;
     else if (i === n - 1) h = hold * LANDING_MULT;
     else h = hold * HOLD_PATTERN[pi++ % HOLD_PATTERN.length];
     // A placed photograph is smaller, so it gets a little longer to be read.
-    if ((slots[i] !== null || wall) && !inBurst && i !== 0) h *= THIRDS_HOLD_MULT;
+    if (fixed === null && (slots[i] !== null || wall) && !inBurst && i !== 0) h *= THIRDS_HOLD_MULT;
     // The finished wall earns an extra beat — the point of building it is
     // that all three can be looked at together.
-    if (wall && wall.length === WALL_ROWS) h *= WALL_COMPLETE_MULT;
+    if (fixed === null && wall && wall.length === WALL_ROWS) h *= WALL_COMPLETE_MULT;
     units.push({ kind: "photo", index: i, hold: h, burst: inBurst, slot: slots[i], placed: wall ?? undefined });
   }
   units.push({ kind: "end", hold: endHold });
@@ -541,29 +570,42 @@ export function dealMarqueeMoves(count: number, seed: number): MarqueeMove[] {
  */
 export function splitMarquee(
   categories: (string | null | undefined)[],
-  opts: { still?: boolean; topIndices?: number[] } = {},
+  opts: { still?: boolean; topIndices?: number[]; clipIndices?: number[] } = {},
 ): { hero: number[]; bottom: number[] } {
   const n = categories.length;
   if (n === 0) return { hero: [], bottom: [] };
+  // Video clips always play in the bottom band, never the top: the top band
+  // is the hero, cover-cropped and drifting, and a clip is neither.
+  const clips = opts.clipIndices ?? [];
+  const isClip = (i: number) => clips.indexOf(i) >= 0;
+  const firstPhoto = (() => { for (let i = 0; i < n; i++) if (!isClip(i)) return i; return -1; })();
+  if (firstPhoto < 0) return { hero: [], bottom: Array.from({ length: n }, (_, i) => i) };
   const chosen = (opts.topIndices ?? [])
-    .filter((i, k, a) => i >= 0 && i < n && Math.floor(i) === i && a.indexOf(i) === k)
+    .filter((i, k, a) => i >= 0 && i < n && Math.floor(i) === i && a.indexOf(i) === k && !isClip(i))
     .sort((a, b) => a - b);
   let hero: number[];
   if (chosen.length) {
     hero = chosen.slice(0, opts.still ? 1 : MARQUEE_HERO_MAX);
   } else if (opts.still) {
-    hero = [0];
+    hero = [firstPhoto];
   } else {
-    hero = [0];
-    for (let i = 1; i < n && hero.length < MARQUEE_HERO_MAX; i++) {
+    hero = [firstPhoto];
+    for (let i = firstPhoto + 1; i < n && hero.length < MARQUEE_HERO_MAX; i++) {
+      if (isClip(i)) continue;
       const c = (categories[i] ?? "").trim().toLowerCase();
       if (MARQUEE_HERO_CATEGORIES.indexOf(c) >= 0) hero.push(i);
     }
-    if (hero.length < 2) hero = [0, 1, 2].filter((i) => i < n);
+    if (hero.length < 2) {
+      hero = [];
+      for (let i = 0; i < n && hero.length < 3; i++) if (!isClip(i)) hero.push(i);
+    }
   }
   const rest: number[] = [];
   for (let i = 0; i < n; i++) if (hero.indexOf(i) < 0) rest.push(i);
-  if (rest.length >= MARQUEE_BOTTOM_MIN) return { hero, bottom: rest };
+  // The bottom band needs a cut, and — with clips in it — at least one
+  // photograph to share the time that isn't the clips' own.
+  const restHasPhoto = rest.some((i) => !isClip(i));
+  if (rest.length >= MARQUEE_BOTTOM_MIN && (restHasPhoto || clips.length === 0)) return { hero, bottom: rest };
   const all: number[] = [];
   for (let i = 0; i < n; i++) all.push(i);
   return { hero, bottom: all };
@@ -588,18 +630,47 @@ export function planMarquee(categories: (string | null | undefined)[], opts: {
   still?: boolean;
   /** The broker's own top-band picks (indices into `categories`); see splitMarquee. */
   topIndices?: number[];
+  /**
+   * Video clips: a length (seconds) at index i means item i is a clip. It
+   * always plays in the bottom band, for exactly that long, and the reel runs
+   * that much longer — the same as a clip in any single-photo look.
+   */
+  clipLens?: (number | null | undefined)[];
 }): Timeline {
   const { titleHold, hold, endHold, dissolve, seed } = opts;
   const still = !!opts.still;
   const n = categories.length;
   if (n === 0) return finish([{ kind: "end", hold: endHold }], []);
-  const singles = planSingles(n, { titleHold, hold, endHold, dissolve, burst: false, vocab: null, thirds: null, seed });
+  const clipLen = (i: number): number | null => {
+    const v = opts.clipLens ? opts.clipLens[i] : null;
+    return typeof v === "number" && v > 0 ? v : null;
+  };
+  const clipIndices: number[] = [];
+  for (let i = 0; i < n; i++) if (clipLen(i) !== null) clipIndices.push(i);
+  const singles = planSingles(n, {
+    titleHold, hold, endHold, dissolve, burst: false, vocab: null, thirds: null, seed,
+    fixedHolds: opts.clipLens,
+  });
   // Where the end card starts in the equivalent single-photo reel.
   const photoPortion = singles.starts[singles.units.length - 1];
-  const { hero, bottom } = splitMarquee(categories, { still, topIndices: opts.topIndices });
+  const { hero, bottom } = splitMarquee(categories, { still, topIndices: opts.topIndices, clipIndices });
   const moves = dealMarqueeMoves(Math.max(0, bottom.length - 1), seed);
+  // Each bottom turn: a clip gets its own length, the photographs share the
+  // rest equally. With no clips every share is equal, as it always was.
+  let clipSum = 0;
+  let photoTurns = 0;
+  bottom.forEach((i) => { const c = clipLen(i); if (c !== null) clipSum += c; else photoTurns++; });
+  const photoShare = photoTurns > 0
+    ? Math.max(0.5, (photoPortion - clipSum) / photoTurns)
+    : 0;
+  const bottomLens = bottom.map((i) => clipLen(i) ?? photoShare);
+  // Every clip is in the bottom band and planSingles counted each at its own
+  // length, so the turns add up to the unit's hold exactly.
+  const bottomStarts: number[] = [];
+  let at = 0;
+  bottomLens.forEach((len) => { bottomStarts.push(at); at += len; });
   const units: Unit[] = [
-    { kind: "marquee", hold: photoPortion, hero, bottom, moves, still },
+    { kind: "marquee", hold: photoPortion, hero, bottom, moves, still, bottomStarts, bottomLens },
     { kind: "end", hold: endHold },
   ];
   return finish(units, [{ type: "dissolve", dur: dissolve, dir: "left" }]);
