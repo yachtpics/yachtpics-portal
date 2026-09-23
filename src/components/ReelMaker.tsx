@@ -817,31 +817,31 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       /**
        * The Marquee's three bands, fixed for the whole reel.
        *
-       * The composition starts where Instagram's top overlay ends (14%, the
-       * same line the title block never climbs past on the other looks). The
-       * bottom band is sized first: tall enough that a 3:2 landscape shows
-       * WHOLE at full frame width (W / 1.5 — 720px on a 1080 reel), ending at
-       * 90% (a little lower than Gallery's 86%; the photograph may sit behind
-       * the caption row — the type-safe rule governs type, not pictures). The
-       * middle band is sized for an ordinary title block (lead-in, one-line
-       * name, spec row, location — about 300px drawn) with ~30px either side;
-       * the top band takes what is left. The title block is centred between
-       * the two photographs on its measured drawn height, so the gaps above
-       * and below it are equal, and the hairlines on the photo edges sit at
-       * equal distances from the text. On 1080×1920:
+       * The top photograph starts at 10%, under Instagram's header: the 14%
+       * line is a rule for TYPE, and a picture behind the profile row loses
+       * nothing that matters. The bottom band is tall enough that a 3:2
+       * landscape shows WHOLE at full frame width (W / 1.5 — 720px on a 1080
+       * reel), ending about 90% down (the type-safe rule governs type, not
+       * pictures). The middle band carries the title; an ordinary block draws
+       * about 300px, so it is set a little under full size by drawTitle's
+       * shrink-to-fit (20px minimum gap to each photo), centred on its drawn
+       * height so the gaps above and below are equal. On 1080×1920:
        *
-       *   top band    14%    → 33.75%   269 → 648   (379px) heroes, cover-cropped
-       *   middle band 33.75% → 52.5%    648 → 1008  (360px) the title
-       *   bottom band 52.5%  → 90%     1008 → 1728  (720px) the rest, one at a time
+       *   top band      192 →  710   (518px, ≈2.08:1) heroes, cover-cropped
+       *   middle band   710 → 1010   (300px)          the title
+       *   bottom band  1010 → 1730   (720px, 3:2)     the rest, one at a time
        */
       const marqueeOn = units.some((u) => u.kind === "marquee");
-      const mqBottom = Math.round(H * 0.90);
       const mq = {
-        top: Math.round(H * 0.14),
-        heroEnd: Math.round(H * 0.3375),
-        bottomTop: mqBottom - Math.round(W / 1.5),
-        bottom: mqBottom,
-        typeFloor: H * 0.65,
+        top: Math.round(H * 0.10),        // top photo starts here (under Instagram's header — fine for a picture)
+        heroEnd: Math.round(H * 0.37),    // top photo ends, title band starts
+        titleH: Math.round(300 * sc),     // title band height (the block shrinks to fit it)
+        bottomH: Math.round(W / 1.5),     // bottom photo height: a 3:2 landscape whole at full width
+        typeFloor: H * 0.65,              // no type below this (Instagram's caption and buttons)
+        /** Title band ends, bottom photo starts. */
+        get bottomTop() { return this.heroEnd + this.titleH; },
+        /** Bottom photo ends. */
+        get bottom() { return this.heroEnd + this.titleH + this.bottomH; },
       };
       /** Where drawTitle centres its block on a Marquee; null on every other look. */
       const titleBand = marqueeOn ? { top: mq.heroEnd, bottom: Math.min(mq.bottomTop, mq.typeFloor) } : null;
@@ -1626,7 +1626,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       const MQ_BOTTOM_DRIFT = 0.4;
       /** Zoom-dissolve: the incoming photograph starts this much larger. */
       const MQ_ZOOM_FROM = 1.08;
-      const mqBottomH = mq.bottom - mq.bottomTop;
+      const mqBottomH = mq.bottomH;
 
       const drawMarquee = (hero: number[], bottom: number[], moves: MarqueeMove[], hold: number, local: number, alpha: number, still: boolean) => {
         ctx.save();

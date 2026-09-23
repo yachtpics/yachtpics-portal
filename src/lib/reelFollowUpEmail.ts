@@ -165,8 +165,24 @@ export function followUpSubject(key: FollowUpKey, stats: ReelStats): string {
   }
   return statsAreWorthSharing(stats)
     ? `${stats.total} reels made this week — the open house runs to ${closes}`
-    : `Your photographs, as a reel — free until ${closes}`;
+    : `Two new reel looks — free until ${closes}`;
 }
+
+// ── What's new since the announcement (Sept 23) ──────────────────────────
+// The week-one email carries the product news rather than repeating the
+// announcement: two Marquee looks and the Long length landed after it went out.
+const newItem = (strong: string, rest: string) =>
+  `<tr>
+    <td style="padding:0 10px 12px 0;vertical-align:top;color:#c39e4e;font-size:15px;line-height:1.6;">&mdash;</td>
+    <td style="padding:0 0 12px;font-size:15px;color:#374151;line-height:1.6;"><strong style="color:#111827;">${strong}</strong> ${rest}</td>
+  </tr>`;
+
+const whatsNew = `
+  <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 22px;">
+    ${newItem("Marquee.", "Your hero shots drift across the top, the name and specification sit in the middle, and the rest of the boat plays below, one photograph at a time.")}
+    ${newItem("Marquee Still.", "The same, with your cover held perfectly still. Quieter &mdash; and very good on a big yacht.")}
+    ${newItem("Long.", "Up to forty photographs in under a minute, for the boats that need more than eighteen frames to tell it.")}
+  </table>`;
 
 // ── Week one ──────────────────────────────────────────────────────────────
 
@@ -189,20 +205,23 @@ export function weekOneHtml(opts: { firstName: string; stats: ReelStats; unsubTo
       <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">What brokers made this week</h1>
       ${p(`Hi ${firstName},`)}
       ${numbers}
+      ${p(`And since last week, two new looks and a longer cut:`)}
+      ${whatsNew}
       ${p(`If you haven&rsquo;t made one yet, it takes about a minute. Open a listing, press <strong style="color:#111827;">Reel</strong>, pick a look. The photographs are already there &mdash; you don&rsquo;t upload anything, write anything or edit anything.`)}
       ${p(`It&rsquo;s open to every account until <strong style="color:#111827;">${closes}</strong>, and anything you make is yours to keep whatever you decide after that.`)}
       ${cta("Make one for your best boat")}
       ${p(`If you&rsquo;ve already made one, we&rsquo;d like to see it &mdash; just reply with the link.`, true)}
       ${signoff}`
     : `
-      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">A reminder</p>
-      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">It takes about a minute</h1>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New this week</p>
+      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Two new looks, and room for the whole boat</h1>
       ${p(`Hi ${firstName},`)}
-      ${p(`The reel builder is open to every account until <strong style="color:#111827;">${closes}</strong>, and it may be the least work anything on the Portal has ever asked of you: open a listing, press <strong style="color:#111827;">Reel</strong>, pick a look. Nothing to upload, nothing to write, nothing to edit. Around forty seconds of finished video, in under a minute.`)}
-      ${p(`Press <strong style="color:#111827;">Send to my phone</strong> when it&rsquo;s done and it&rsquo;s in your camera roll, ready to post with whatever audio you like.`)}
-      ${p(`Anything you make is yours to keep &mdash; whatever you decide after ${closes}.`)}
-      ${cta("Make a reel")}
-      ${p(`Not sure which boat? Pick the one with the best exterior shots. That&rsquo;s the one it flatters most.`, true)}
+      ${p(`Since the reel builder opened, we&rsquo;ve added two looks built around one idea: the boat&rsquo;s best angle holds the screen while the rest of it plays beneath.`)}
+      ${whatsNew}
+      ${p(`Open a listing, press <strong style="color:#111827;">Reel</strong>, pick a look. Nothing to upload, nothing to write, nothing to edit &mdash; your photographs are already there.`)}
+      ${p(`Open to every account until <strong style="color:#111827;">${closes}</strong>. Anything you make is yours to keep, whatever you decide after that.`)}
+      ${cta("Try Marquee")}
+      ${p(`Not sure which boat? The one with the strongest profile shot &mdash; that&rsquo;s the one Marquee was made for.`, true)}
       ${signoff}`;
 
   return shell(inner, unsubToken ? unsubscribeFooterHtml(unsubToken) : "");
