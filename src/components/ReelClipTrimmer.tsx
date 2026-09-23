@@ -107,6 +107,12 @@ export default function ReelClipTrimmer({
         <video
           ref={videoRef}
           src={previewSrc}
+          // Fetch the preview as a CORS request too. Without this the browser
+          // caches R2's reply WITHOUT the CORS headers, and the clip reader's
+          // fetch of the same URL a moment later is served that cached copy
+          // and blocked — "can't be read by the browser" until a hard reload
+          // (Sept 23). Harmless for local blob: URLs.
+          crossOrigin="anonymous"
           muted
           playsInline
           preload="auto"
