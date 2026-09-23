@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { ANNOUNCEMENT_TYPE } from "@/lib/announcementEmail";
 import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown } from "@/lib/reelPromo";
@@ -64,6 +65,8 @@ const LOOK_LABEL: Record<string, string> = {
 };
 
 export default async function ReelsPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -72,22 +75,53 @@ export default async function ReelsPage() {
   // When the clock starts. The announcement is the honest mark; until it goes
   // out, the open house opening is the next best thing — anything made before
   // either is Charlie testing, and says nothing about uptake.
-  const { data: announceRow } = await service
-    .from("email_log")
-    .select("sent_at")
-    .eq("email_type", ANNOUNCEMENT_TYPE)
-    .order("sent_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
+  //
+  // Only the event read depends on that answer. Everything else on the page —
+  // who's who, the vessel names, the follow-up stats and how many of each
+  // follow-up already went — is independent, so it all goes out in the same
+  // wave instead of queueing behind it (five round trips down to two).
+  const loadEvents = async () => {
+    const { data: announceRow } = await service
+      .from("email_log")
+      .select("sent_at")
+      .eq("email_type", ANNOUNCEMENT_TYPE)
+      .order("sent_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-  const announcedAt: string | null = announceRow?.sent_at ?? null;
-  const since = announcedAt ?? REEL_PROMO_START;
+    const announcedAt: string | null = announceRow?.sent_at ?? null;
+    const since = announcedAt ?? REEL_PROMO_START;
 
-  const [{ data: eventsRaw }, { data: profilesRaw }, { data: listingsRaw }] = await Promise.all([
-    service.from("reel_events").select("*").gte("created_at", since).order("created_at", { ascending: false }),
+    const { data: eventsRaw } = await service
+      .from("reel_events").select("*").gte("created_at", since).order("created_at", { ascending: false });
+    return { announcedAt, eventsRaw };
+  };
+
+  const countSent = async (key: FollowUpKey) => {
+    const { count } = await service
+      .from("email_log")
+      .select("id", { count: "exact", head: true })
+      .eq("email_type", FOLLOWUP_TYPE[key])
+      .eq("status", "sent");
+    return count ?? 0;
+  };
+
+  const [
+    { announcedAt, eventsRaw },
+    { data: profilesRaw },
+    { data: listingsRaw },
+    stats,
+    sentWeek1,
+    sentLastcall,
+  ] = await Promise.all([
+    loadEvents(),
     service.from("profiles").select("id, first_name, last_name, display_email, role"),
     service.from("listings").select("id, vessel_name"),
+    readReelStats(service),
+    countSent("week1"),
+    countSent("lastcall"),
   ]);
+  const alreadySentByKey: Record<FollowUpKey, number> = { week1: sentWeek1, lastcall: sentLastcall };
 
   const events = (eventsRaw ?? []) as EventRow[];
 
@@ -183,8 +217,8 @@ export default async function ReelsPage() {
 
   // The follow-ups. They live on THIS page rather than on /admin/announce on
   // purpose: the week-one email's copy is these numbers, so the button that
-  // sends it belongs under the table that shows them.
-  const stats = await readReelStats(service);
+  // sends it belongs under the table that shows them. (`stats` is read in the
+  // first wave above.)
   const proof = statsAreWorthSharing(stats);
 
   const audience = (profilesRaw ?? []).filter(
@@ -206,12 +240,7 @@ export default async function ReelsPage() {
 
   const followUps = await Promise.all(
     followUpMeta.map(async (m) => {
-      const { count } = await service
-        .from("email_log")
-        .select("id", { count: "exact", head: true })
-        .eq("email_type", FOLLOWUP_TYPE[m.key])
-        .eq("status", "sent");
-      const already = count ?? 0;
+      const already = alreadySentByKey[m.key];
       const w = FOLLOWUP_WINDOW[m.key];
       return {
         ...m,

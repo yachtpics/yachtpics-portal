@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { planForPriceId } from "@/lib/plans";
@@ -15,6 +16,8 @@ function money(n: number): string {
 }
 
 export default async function AdminPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

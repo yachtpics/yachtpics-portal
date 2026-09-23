@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 // JSZip is loaded on demand inside the download handler, not up front — it's a
 // sizeable library and it's only needed when someone actually zips photos.
 import {
@@ -20,7 +21,6 @@ import { orderPhotos } from "@/lib/photoOrder";
 import { guessCategory } from "@/lib/guessCategory";
 import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
-import ListingQRCode from "@/components/ListingQRCode";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 import ListingSkeleton from "./_components/ListingSkeleton";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
@@ -31,6 +31,11 @@ import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import RetryImg from "@/components/RetryImg";
 import SortableVideoList from "@/components/SortableVideoList";
+
+// The QR card sits well down the page and only shows once a slideshow is
+// published, so its encoder library (qrcode) is loaded on demand rather than
+// shipped with the page's first bundle.
+const ListingQRCode = dynamic(() => import("@/components/ListingQRCode"), { ssr: false });
 
 interface Photo {
   id: string;

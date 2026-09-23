@@ -1,15 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/lib/requireAdmin";
 
 export async function DELETE(req: NextRequest) {
   try {
+    // Admin only. This route had NO auth check at all — /api isn't covered by
+    // the middleware, so anyone who knew a listing id could delete it and its
+    // photos with the service-role key.
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+    const supabase = auth.admin;
+
     const { listingId } = await req.json();
     if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
 
     // Get all photos to delete from storage
     const { data: photos } = await supabase

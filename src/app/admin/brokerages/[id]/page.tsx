@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -18,6 +19,8 @@ type Row = {
 };
 
 export default async function BrokerageDetailPage({ params }: { params: { id: string } }) {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

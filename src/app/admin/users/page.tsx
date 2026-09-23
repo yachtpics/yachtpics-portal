@@ -1,7 +1,10 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import SetTempPasswordButton from "../brokers/[id]/_components/SetTempPasswordButton";
 
 export default async function AdminUsersPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
   const { data: admins } = await supabase

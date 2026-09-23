@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -8,6 +9,8 @@ import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 import AssistantContactEditor from "./_components/AssistantContactEditor";
 
 export default async function AdminAssistantDetailPage({ params }: { params: { id: string } }) {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
   const { data: assistant } = await supabase

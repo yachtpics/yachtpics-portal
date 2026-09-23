@@ -1,9 +1,12 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
 export default async function MetricsPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
   const serviceSupabase = createServiceClient(

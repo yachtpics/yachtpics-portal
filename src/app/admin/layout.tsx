@@ -1,19 +1,11 @@
-import { createClient } from "@/lib/supabase/server";
-import { redirect } from "next/navigation";
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import AdminNav from "./_components/AdminNav";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/auth/login");
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", user.id)
-    .single();
-
-  if (profile?.role !== "admin") redirect("/dashboard");
+  // Same cached check every admin page runs itself. On a full page load the
+  // layout and the page share one lookup; on client-side navigation Next skips
+  // this layout, which is why the pages can't rely on it.
+  await requireAdminPage();
 
   return (
     <div className="flex min-h-screen bg-ink-50">

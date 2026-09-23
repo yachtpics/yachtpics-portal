@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { TIPS, tipEmailType, tipApprovalKey, tipEmailHtml } from "@/lib/portalTips";
 import TipsControls, { type TipRow } from "./TipsControls";
@@ -5,6 +6,8 @@ import TipsControls, { type TipRow } from "./TipsControls";
 export const dynamic = "force-dynamic";
 
 export default async function AdminTipsPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

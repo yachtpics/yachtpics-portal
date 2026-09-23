@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import ListingEditForm from "@/components/ListingEditForm";
 
 /**
@@ -9,6 +10,8 @@ import ListingEditForm from "@/components/ListingEditForm";
  *
  * Same form the brokers use; the update API already permitted admins.
  */
-export default function AdminEditListingPage() {
+export default async function AdminEditListingPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   return <ListingEditForm basePath="/admin/listings" />;
 }

@@ -1,25 +1,30 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import AdminBrokersBrowser, { type BrokerRow } from "./_components/AdminBrokersBrowser";
 
 export default async function AdminBrokersPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
-  const { data: brokers } = await supabase
-    .from("profiles")
-    .select(`
+  // The brokers and the admin names are independent reads — one wave, not two.
+  const [{ data: brokers }, { data: adminProfiles }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(`
       id, first_name, last_name, display_email, phone, created_at, welcomed_at, invited_by, email_bounced_at, email_bounce_reason,
       broker_details(brokerage_name),
       subscriptions(status, trial_ends_at)
     `)
-    .eq("role", "broker")
-    .order("last_name", { ascending: true })
-    .order("first_name", { ascending: true });
-
-  const { data: adminProfiles } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name")
-    .eq("role", "admin");
+      .eq("role", "broker")
+      .order("last_name", { ascending: true })
+      .order("first_name", { ascending: true }),
+    supabase
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .eq("role", "admin"),
+  ]);
   const adminNameById = new Map(
     (adminProfiles ?? []).map((a) => [
       a.id as string,

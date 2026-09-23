@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import { notFound } from "next/navigation";
 import Link from "next/link";
@@ -11,9 +12,14 @@ import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
 import { planLabel } from "@/lib/subscriptionAccess";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string; from?: string; listing?: string } }) {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
-  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }] =
+  // Listings this broker co-brokers (owned by someone else) only needs the
+  // broker id from the URL, so it rides in the same wave as everything else
+  // instead of waiting behind it.
+  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }, { data: coBrokeredRows }] =
     await Promise.all([
       supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
@@ -23,6 +29,10 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
       supabase.from("profiles").select("id, first_name, last_name").eq("role", "admin").order("first_name", { ascending: true }),
       supabase.from("site_pages").select("label, filename").eq("is_active", true).order("label"),
+      supabase
+        .from("listing_co_brokers")
+        .select("listing_id, listings:listing_id(id, vessel_name, status, profiles:broker_id(first_name, last_name, display_email))")
+        .eq("broker_id", params.id),
     ]);
 
   if (!profile) notFound();
@@ -75,11 +85,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     }
   }
 
-  // Listings this broker co-brokers (owned by someone else).
-  const { data: coBrokeredRows } = await supabase
-    .from("listing_co_brokers")
-    .select("listing_id, listings:listing_id(id, vessel_name, status, profiles:broker_id(first_name, last_name, display_email))")
-    .eq("broker_id", params.id);
+  // Listings this broker co-brokers (owned by someone else) — fetched above.
   const coBrokered = (coBrokeredRows ?? []).map((r) => {
     const l = r.listings as unknown as { id: string; vessel_name: string | null; status: string; profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null } | null;
     const owner = l?.profiles;

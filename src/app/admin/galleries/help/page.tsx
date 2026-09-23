@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import Link from "next/link";
 
 const sections = [
@@ -71,7 +72,9 @@ const quickRef = [
   ["Delete a gallery", "Open gallery → Delete this gallery (bottom)"],
 ];
 
-export default function AdminGalleriesHelpPage() {
+export default async function AdminGalleriesHelpPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
       <div className="mb-8">

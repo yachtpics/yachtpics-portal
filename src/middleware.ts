@@ -28,7 +28,41 @@ export async function middleware(request: NextRequest) {
       },
     })
 
-    const { data: { user } } = await supabase.auth.getUser()
+    // ── This middleware is a redirect convenience, NOT the security boundary ──
+    //
+    // It only decides whether to bounce a signed-out visitor to the login page
+    // (and a signed-in one away from it). What actually protects data is:
+    //   - every admin page calls requireAdminPage() (getUser + role check),
+    //   - every /api/admin route calls requireAdmin() or its own getUser + role,
+    //   - dashboard/client pages call getUser() or read through RLS, which
+    //     verifies the token on the database side for every query.
+    //
+    // So here we use getSession(), which reads the session from the cookie
+    // locally, instead of getUser(), which is a round trip to Supabase Auth.
+    // That round trip ran before EVERY /dashboard, /admin and /client request —
+    // prefetches included — and delayed even the loading skeleton.
+    //
+    // Cookie refresh is unchanged: getSession() still refreshes an expired
+    // access token with the refresh token and writes the new cookies through
+    // setAll() above, exactly as getUser() did (it goes through the same
+    // session-loading step first). Only `!!session` is read — touching
+    // session.user on the server would log Supabase's "insecure" warning.
+    const path = request.nextUrl.pathname
+    const isAuthPage = path.startsWith('/auth/login') || path.startsWith('/auth/signup')
+
+    let user: unknown = null
+    if (isAuthPage) {
+      // The "already signed in, go to the dashboard" bounce keeps the verified
+      // check. A revoked-but-unexpired token would otherwise pass here, get
+      // sent to /dashboard, be rejected there by getUser(), come back to
+      // /auth/login — and loop. Login/signup are rare, so this costs nothing
+      // on everyday navigation.
+      const { data } = await supabase.auth.getUser()
+      user = data.user
+    } else {
+      const { data: { session } } = await supabase.auth.getSession()
+      user = session ? true : null
+    }
 
     // Protect dashboard routes
     if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {

@@ -87,8 +87,11 @@ export default async function DashboardPage() {
 
   type ScRow = { listing_id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; location: string | null; broker_name: string | null; hero_storage_path: string | null };
   const scRows = ((scData ?? []) as ScRow[]).slice(0, 12);
-  let featured: FeaturedBoat[] = [];
-  if (scRows.length > 0) {
+  // Signing the strip's photos runs in the same Promise.all as the
+  // role-specific reads below, so those reads happen while the photos are being
+  // signed instead of waiting for the signing to finish first.
+  const loadFeatured = async (): Promise<FeaturedBoat[]> => {
+    if (scRows.length === 0) return [];
     const svc = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const paths = Array.from(new Set(scRows.map((r) => r.hero_storage_path).filter(Boolean))) as string[];
     const urls = new Map<string, string>();
@@ -106,7 +109,7 @@ export default async function DashboardPage() {
         if (signed?.signedUrl) urls.set(path, signed.signedUrl);
       }));
     }
-    featured = scRows.map((r) => ({
+    return scRows.map((r) => ({
       id: r.listing_id,
       vesselName: r.vessel_name ?? "Untitled Vessel",
       subtitle: [r.year, r.make, r.model].filter(Boolean).join(" "),
@@ -114,33 +117,41 @@ export default async function DashboardPage() {
       heroUrl: r.hero_storage_path ? (urls.get(r.hero_storage_path) ?? null) : null,
       brokerName: r.broker_name,
     }));
-  }
+  };
 
   // ── Assistant dashboard ──────────────────────────────────────────────────
   if (isAssistant) {
-    const { data: links } = await supabase
-      .from("broker_assistants")
-      .select("broker_id, profiles:broker_id(first_name, last_name, display_email)")
-      .eq("assistant_id", user.id);
+    const loadAssistantData = async () => {
+      const { data: links } = await supabase
+        .from("broker_assistants")
+        .select("broker_id, profiles:broker_id(first_name, last_name, display_email)")
+        .eq("assistant_id", user.id);
 
-    const brokers = (links ?? []).map((l) => {
-      const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
-      return {
-        id: l.broker_id as string,
-        name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : p?.display_email ?? "Broker",
-      };
-    });
+      const brokers = (links ?? []).map((l) => {
+        const p = (l.profiles as unknown as { first_name: string | null; last_name: string | null; display_email: string | null } | null);
+        return {
+          id: l.broker_id as string,
+          name: p?.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : p?.display_email ?? "Broker",
+        };
+      });
 
-    // Fetch recent listings across all linked brokers
-    const brokerIds = brokers.map((b) => b.id);
-    const { data: recentListings } = brokerIds.length > 0
-      ? await supabase
-          .from("listings")
-          .select("id, vessel_name, location, status, broker_id")
-          .in("broker_id", brokerIds)
-          .order("updated_at", { ascending: false })
-          .limit(5)
-      : { data: [] };
+      // Fetch recent listings across all linked brokers
+      const brokerIds = brokers.map((b) => b.id);
+      const { data: recentListings } = brokerIds.length > 0
+        ? await supabase
+            .from("listings")
+            .select("id, vessel_name, location, status, broker_id")
+            .in("broker_id", brokerIds)
+            .order("updated_at", { ascending: false })
+            .limit(5)
+        : { data: [] };
+      return { brokers, recentListings };
+    };
+
+    const [featured, { brokers, recentListings }] = await Promise.all([
+      loadFeatured(),
+      loadAssistantData(),
+    ]);
 
     const brokerMap = Object.fromEntries(brokers.map((b) => [b.id, b.name]));
 
@@ -211,13 +222,16 @@ export default async function DashboardPage() {
   }
 
   // ── Broker dashboard ─────────────────────────────────────────────────────
-  // Four independent reads — issued together, not queued behind one another.
+  // Four independent reads — issued together, not queued behind one another,
+  // and alongside the strip's photo signing.
   const [
+    featured,
     { data: listings },
     { data: subscription },
     { data: brokerDetails },
     { count: shootCount },
   ] = await Promise.all([
+    loadFeatured(),
     supabase
       .from("listings")
       .select("id, vessel_name, location, status, updated_at")

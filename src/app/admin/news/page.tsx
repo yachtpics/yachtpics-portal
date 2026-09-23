@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import Link from "next/link";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import NewsControls, { type NewsAdminRow } from "./NewsControls";
@@ -28,6 +29,8 @@ type Raw = {
 };
 
 export default async function AdminNewsPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

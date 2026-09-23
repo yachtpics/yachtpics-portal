@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import TableSearch from "@/components/TableSearch";
@@ -21,6 +22,8 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default async function AdminGalleriesPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

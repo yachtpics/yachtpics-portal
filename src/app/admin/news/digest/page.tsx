@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import Link from "next/link";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { DIGEST_SELECT, digestEmailType, digestWeekLabel, type DigestRow } from "@/lib/newsDigest";
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
  * approve it, send yourself a copy, then send it to everyone.
  */
 export default async function AdminNewsDigestPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

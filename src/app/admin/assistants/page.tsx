@@ -1,3 +1,4 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import DeleteAssistantButton from "./[id]/_components/DeleteAssistantButton";
@@ -15,6 +16,8 @@ function loginLabel(iso: string | null | undefined): { text: string; stale: bool
 }
 
 export default async function AdminAssistantsPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
   const { data: assistants } = await supabase

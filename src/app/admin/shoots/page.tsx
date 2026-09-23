@@ -1,8 +1,11 @@
+import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import TableSearch from "@/components/TableSearch";
 
 export default async function AdminShootsPage() {
+  // Role check lives in the page, not only the layout — see requireAdminPage.
+  await requireAdminPage();
   const supabase = await createClient();
 
   const { data: shoots } = await supabase

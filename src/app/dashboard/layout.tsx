@@ -12,12 +12,18 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   if (!user) redirect("/auth/login");
 
-  // Fetch profile + subscription
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("first_name, last_name, role, welcomed_at, is_brokerage_admin, brokerage_id")
-    .eq("id", user.id)
-    .single();
+  // Fetch profile + subscription together. The subscription only matters for
+  // brokers, but asking for it alongside the profile (and ignoring it for
+  // anyone else) saves a whole round trip on every broker page load, versus
+  // waiting for the profile to say "broker" before asking.
+  const [{ data: profile }, { data: brokerSubscription }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("first_name, last_name, role, welcomed_at, is_brokerage_admin, brokerage_id")
+      .eq("id", user.id)
+      .single(),
+    supabase.from("subscriptions").select("status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single(),
+  ]);
 
   // Gallery clients don't belong in the broker dashboard
   if (profile?.role === "client") redirect("/client");
@@ -43,9 +49,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const role = profile?.role ?? "broker";
 
-  const { data: subscription } = role === "broker"
-    ? await supabase.from("subscriptions").select("status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single()
-    : { data: null };
+  const subscription = role === "broker" ? brokerSubscription : null;
 
   // Start the 30-day trial on first login: if this broker's trial hasn't been
   // seeded yet (trial_ends_at is null) and they aren't already paying, start it now.
