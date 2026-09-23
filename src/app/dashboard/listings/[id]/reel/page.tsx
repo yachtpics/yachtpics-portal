@@ -119,10 +119,9 @@ export default function ListingReelPage() {
       // photo bucket); the file itself is on R2 and gets a fresh signed link
       // each time it is opened — for the trimmer and again for the render —
       // from the same route the rest of the portal uses.
-      // Admins only for now (Samantha first): brokers get it once the R2 CORS
-      // step is confirmed in production. To open it to everyone, drop the
-      // `admin ?` below.
-      const videoRows = admin ? ((vids ?? []) as VideoRow[]) : [];
+      // Open to everyone who can open this reel page (Sept 23, after Charlie's
+      // end-to-end test: R2 CORS set, clip rendered, played on his phone).
+      const videoRows = (vids ?? []) as VideoRow[];
       const posters = await Promise.all(videoRows.map(async (v) => {
         if (!v.thumbnail_path) return null;
         const { data } = await supabase.storage.from("listing-photos")
