@@ -147,7 +147,7 @@ export default function ReelStudioPage() {
     const { mobile, mem } = detectPhone();
     if (!mobile) { setBudget(undefined); return; }
     setBudget(mem >= 8
-      ? { maxPhotos: 18, longEdgeScale: 0.85, maxClips: CLIP_MAX_PHONE }
+      ? { maxPhotos: 18, longEdgeScale: 0.85, maxClips: CLIP_MAX }
       : { maxPhotos: 12, longEdgeScale: 0.75, maxClips: CLIP_MAX_PHONE });
   }, []);
 

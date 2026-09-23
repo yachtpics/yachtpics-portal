@@ -452,7 +452,10 @@ export default function ReelMaker({
    */
   // A phone gets fewer clips (each one holds a video decoder open during the
   // render). Measured after mount, like the Studio's photo budget.
-  useEffect(() => { setPhoneLike(detectPhone().mobile); }, []);
+  // A big-memory phone (Chrome reports deviceMemory 8, e.g. the Z Fold) gets the
+  // full three, same as a computer — Charlie's call, Sept 23; lower it again if
+  // renders start dying on the phone.
+  useEffect(() => { const d = detectPhone(); setPhoneLike(d.mobile && d.mem < 8); }, []);
   const maxClips = Math.min(budget?.maxClips ?? CLIP_MAX, phoneLike ? CLIP_MAX_PHONE : CLIP_MAX);
 
   /**
