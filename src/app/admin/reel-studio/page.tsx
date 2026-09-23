@@ -53,6 +53,12 @@ const EMPTY_DRAFT: Draft = {
 
 const DRAFT_KEY = "yp.reelStudio.draft";
 
+/** A video off the picker. Some Android pickers hand over an empty type, so fall back to the extension. */
+function isVideoFile(file: File): boolean {
+  if (file.type) return file.type.startsWith("video/");
+  return /\.(mp4|mov|m4v|webm|3gp)$/i.test(file.name);
+}
+
 /** The photographs on a phone are 12MP and up; a number or nothing. */
 function num(v: string): number | null {
   const n = Number(String(v).replace(/[^0-9.]/g, ""));
@@ -85,6 +91,12 @@ export default function ReelStudioPage() {
   const supabase = createClient();
 
   const [photos, setPhotos] = useState<StudioPhoto[]>([]);
+  /**
+   * Videos picked with the photos, waiting for ReelMaker's clip trimmer. It
+   * takes them one at a time (onPendingClipsConsumed) once it is on screen —
+   * which needs at least one photo, since the first photo carries the title.
+   */
+  const [pendingVideos, setPendingVideos] = useState<File[]>([]);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [brokers, setBrokers] = useState<BrokerRow[]>([]);
   const [brokerId, setBrokerId] = useState("yachtpics");
@@ -152,11 +164,15 @@ export default function ReelStudioPage() {
 
   useEffect(() => () => { urls.current.forEach((u) => URL.revokeObjectURL(u)); }, []);
 
-  // ── Photographs off the device ───────────────────────────────────────────
+  // ── Photographs (and videos) off the device ──────────────────────────────
   async function addFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
+    const all = Array.from(list);
+    if (fileRef.current) fileRef.current.value = "";
+    const videos = all.filter(isVideoFile);
+    const images = all.filter((f) => !isVideoFile(f));
     const added: StudioPhoto[] = [];
-    for (const file of Array.from(list)) {
+    for (const file of images) {
       const previewUrl = URL.createObjectURL(file);
       urls.current.push(previewUrl);
       // The natural size, read once: loadBitmap needs it to work out the
@@ -170,8 +186,10 @@ export default function ReelStudioPage() {
         height: size?.height ?? null,
       });
     }
-    setPhotos((prev) => [...prev, ...added]);
-    if (fileRef.current) fileRef.current.value = "";
+    // Set together, so a pick of photos and videos mounts ReelMaker with the
+    // queue already in hand and the first trimmer opens straight away.
+    if (added.length > 0) setPhotos((prev) => [...prev, ...added]);
+    if (videos.length > 0) setPendingVideos((prev) => [...prev, ...videos]);
   }
 
   function removePhoto(id: string) {
@@ -284,7 +302,7 @@ export default function ReelStudioPage() {
       <div className="px-6 pt-8 max-w-3xl mx-auto">
         <h1 className="text-display text-ink-900">Reel Studio</h1>
         <p className="text-ink-500 mt-1 text-sm">
-          Make a reel from photos on this device. Nothing is uploaded — it renders here.
+          Pick photos and short videos from this device. Nothing is uploaded — it renders here.
         </p>
 
         {/* Photographs */}
@@ -293,7 +311,7 @@ export default function ReelStudioPage() {
             <p className="label-caps text-ink-500">Photos · {photos.length}</p>
             <div className="flex gap-3">
               <button onClick={() => fileRef.current?.click()} className="text-xs font-semibold text-accent-700 hover:underline">
-                {photos.length === 0 ? "Choose photos" : "Add photos"}
+                Add photos &amp; videos
               </button>
               {photos.length > 0 && (
                 <button
@@ -309,10 +327,20 @@ export default function ReelStudioPage() {
             ref={fileRef}
             type="file"
             multiple
-            accept="image/*"
+            accept="image/*,video/*"
             onChange={(e) => { void addFiles(e.target.files); }}
             className="block w-full text-sm text-ink-600 file:mr-3 file:py-2 file:px-4 file:rounded-ctl file:border file:border-hairline-strong file:text-sm file:font-semibold file:bg-white file:text-ink-700"
           />
+          {pendingVideos.length > 0 && photos.length === 0 && (
+            <p className="text-xs text-warn-700 mt-2">
+              Add at least one photo — the first photo carries the title. Your {pendingVideos.length === 1 ? "video is" : `${pendingVideos.length} videos are`} waiting.
+            </p>
+          )}
+          {pendingVideos.length > 0 && photos.length > 0 && needsTitle && (
+            <p className="text-xs text-warn-700 mt-2">
+              Give it a title below — your {pendingVideos.length === 1 ? "video is" : `${pendingVideos.length} videos are`} waiting for the trimmer.
+            </p>
+          )}
           {budget && (
             <p className="text-xs text-ink-400 mt-2">On a phone, up to {budget.maxPhotos} photos and {budget.maxClips ?? CLIP_MAX} video clips per reel.</p>
           )}
@@ -334,7 +362,7 @@ export default function ReelStudioPage() {
             </div>
           )}
           <p className="text-xs text-ink-400 mt-2">
-            The order you pick them in below is the order they play. Remove one here and it leaves the reel too.
+            The order you pick them in below is the order they play. Remove one here and it leaves the reel too. Videos open in the clip trimmer below, one at a time, to cut a few seconds from each.
           </p>
         </div>
 
@@ -448,13 +476,17 @@ export default function ReelStudioPage() {
             </p>
             <p className="text-xs text-ink-400 mt-1">
               {photos.length === 0
-                ? "Every look, length and framing the brokers get — rendered here, on this device."
+                ? "Photos and short videos — every look, length and framing the brokers get, rendered here on this device. A reel needs at least one photo."
                 : "The title is the headline on the opening frame and the last thing on the end card."}
             </p>
           </div>
         </div>
       ) : (
-        <ReelMaker source={source} />
+        <ReelMaker
+          source={source}
+          pendingClipFiles={pendingVideos}
+          onPendingClipsConsumed={(n) => setPendingVideos((prev) => prev.slice(n))}
+        />
       )}
     </>
   );

@@ -283,7 +283,22 @@ export type ReelSource = {
  */
 const BLANK_CARD: BrokerCard = { name: "", brokerage: null, phone: null, email: null, website: null, logoUrl: null };
 
-export default function ReelMaker({ source }: { source: ReelSource }) {
+export default function ReelMaker({
+  source,
+  pendingClipFiles,
+  onPendingClipsConsumed,
+}: {
+  source: ReelSource;
+  /**
+   * The Studio: video files picked with its "Add photos & videos" button,
+   * waiting for the trimmer. Only read when `source.localClips` is on. Each is
+   * opened in turn through the same path as "Add clip" — one trimmer at a
+   * time; the next opens once the last is added or cancelled.
+   */
+  pendingClipFiles?: File[];
+  /** Called with how many files were taken off the front of `pendingClipFiles`. */
+  onPendingClipsConsumed?: (n: number) => void;
+}) {
   const supabase = createClient();
   const { listing, photos, broker, listingId, isAdmin, isOwner, locked, budget } = source;
   /** Studio only: this reel is of something that isn't a boat. */
@@ -324,6 +339,12 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   const [clipNote, setClipNote] = useState("");
   const [phoneLike, setPhoneLike] = useState(false);
   const localClipRef = useRef<HTMLInputElement>(null);
+  /** Set when queued videos had to be skipped (the clip cap, or a full selection). */
+  const [queueNote, setQueueNote] = useState("");
+  /** Scroll the trimmer into view when the queue (not a tap here) opened it. */
+  const trimBoxRef = useRef<HTMLDivElement>(null);
+  const scrollToTrimRef = useRef(false);
+  const lastTakenRef = useRef<File | null>(null);
   /**
    * Marquee looks: the photos the broker has pinned to the top band, in the
    * order they were pinned (the oldest is the one a fifth pin replaces). Empty
@@ -533,6 +554,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   }
 
   // ── Video clips ─────────────────────────────────────────────────────────
+  const busy = phase === "loading" || phase === "rendering";
   const clipsOffered = (source.videos?.length ?? 0) > 0 || !!source.localClips;
   const clipsFull = chosenClipCount >= maxClips;
   const selectionFull = chosen.length >= cap;
@@ -597,14 +619,54 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     setPhase("idle");
   }
 
+  /** The Studio: one video file off this device, into the trimmer. */
+  function openLocalFile(file: File) {
+    const key = `${file.name}-${file.size}-${file.lastModified}`;
+    void openTrimmer({ id: key, title: file.name, posterUrl: null, open: async () => ({ blob: file }) });
+  }
+
   /** The Studio: a video file off this device. */
   function onLocalClipFile(list: FileList | null) {
     const file = list && list.length > 0 ? list[0] : null;
     if (localClipRef.current) localClipRef.current.value = "";
     if (!file) return;
-    const key = `${file.name}-${file.size}-${file.lastModified}`;
-    void openTrimmer({ id: key, title: file.name, posterUrl: null, open: async () => ({ blob: file }) });
+    setQueueNote("");
+    openLocalFile(file);
   }
+
+  /**
+   * The Studio's queue: videos picked up top with the photos. Whenever no
+   * trimmer is open (or opening) and nothing is rendering, the next queued
+   * file goes through exactly the "Add clip" path above. Past the clip cap —
+   * or with the selection full — whatever is left is dropped, with a note.
+   * On Stack the queue simply waits: the trimmer comes back with another look.
+   */
+  const pendingCount = source.localClips ? pendingClipFiles?.length ?? 0 : 0;
+  useEffect(() => {
+    if (pendingCount === 0 || !pendingClipFiles || !onPendingClipsConsumed) return;
+    if (trim || trimOpening || busy || clipsBlocked) return;
+    if (clipsFull || selectionFull) {
+      setQueueNote(clipsFull
+        ? `Only ${maxClips} clips per reel \u2014 the rest were skipped.`
+        : "The selection is full \u2014 the rest of the videos were skipped.");
+      onPendingClipsConsumed(pendingCount);
+      return;
+    }
+    const next = pendingClipFiles[0];
+    // Already taken (an effect re-run before the parent's list caught up).
+    if (lastTakenRef.current === next) return;
+    lastTakenRef.current = next;
+    onPendingClipsConsumed(1);
+    scrollToTrimRef.current = true;
+    openLocalFile(next);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingCount, pendingClipFiles, trim, trimOpening, busy, clipsBlocked, clipsFull, selectionFull, maxClips]);
+
+  useEffect(() => {
+    if (!trim || !scrollToTrimRef.current) return;
+    scrollToTrimRef.current = false;
+    trimBoxRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [trim]);
 
   function togglePhoto(pid: string) {
     setChosen((prev) => {
@@ -2400,7 +2462,6 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
 
   // ── UI ──────────────────────────────────────────────────────────────────
 
-  const busy = phase === "loading" || phase === "rendering";
   // Whether this browser can hand a video file to the share sheet at all.
   const canSaveToCameraRoll =
     !!result && typeof navigator !== "undefined" && typeof navigator.canShare === "function" &&
@@ -2699,7 +2760,10 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             )}
           </div>
           {clipsBlocked ? (
-            <p className="text-xs text-ink-400">Stack builds its bands from photographs, so it can&rsquo;t take video clips &mdash; pick another look to use them.</p>
+            <p className="text-xs text-ink-400">
+              Stack builds its bands from photographs, so it can&rsquo;t take video clips &mdash; pick another look to use them.
+              {pendingCount > 0 && ` ${pendingCount === 1 ? "Your video is" : `${pendingCount} videos are`} waiting for the trimmer.`}
+            </p>
           ) : (
             <>
               {(source.videos?.length ?? 0) > 0 && (
@@ -2734,6 +2798,12 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             </>
           )}
           {trim && !clipsBlocked && (
+            <div ref={trimBoxRef}>
+            {pendingCount > 0 && (
+              <p className="mt-2 text-xs text-ink-400">
+                {pendingCount === 1 ? "One more video" : `${pendingCount} more videos`} after this one.
+              </p>
+            )}
             <ReelClipTrimmer
               key={trim.video.id}
               title={trim.video.title}
@@ -2742,8 +2812,10 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
               onAdd={(c) => addClip(trim.video, c)}
               onCancel={closeTrimmer}
             />
+            </div>
           )}
           {clipError && <p className="mt-2 text-xs text-danger-700">{clipError}</p>}
+          {queueNote && <p className="mt-2 text-xs text-warn-700">{queueNote}</p>}
         </div>
       )}
 

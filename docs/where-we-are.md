@@ -1,5 +1,7 @@
 # Where we are — September 23, 2026
 
+- **Sept 23 — Reel Studio: "Add photos & videos".** The Studio's top picker now takes photos and videos (`accept="image/*,video/*"`); videos queue in the page (`pendingVideos`) and ReelMaker opens each in the same clip trimmer as "Add clip" (`pendingClipFiles` / `onPendingClipsConsumed` props), one after another, skipping past the clip cap with a note; with no photo yet they wait with "Add at least one photo…". "Add clip" stays. NOT BROWSER-TESTED.
+
 ## Sept 23 — Video clips in reels (listing reel + Reel Studio) — NOT PUSHED, NOT BROWSER-TESTED
 
 - **What it does.** A reel can now carry short video clips alongside its photos: **muted, 2s / 3s (default) / 4s each, at most 3 per reel (2 on a phone)**. Each clip counts toward the photo cap and takes its place in the order like a photo (numbered tile, badge **"Clip 3s"**, tap to remove). Built into `ReelMaker`, so both pages have it:
