@@ -119,11 +119,12 @@ export type Unit =
   | {
       /**
        * The Marquee: one continuous unit covering every photograph. `hero`
-       * are the top band's photographs in play order; `strip` the bottom
-       * band's, in the order they slide past. Indices into the selection.
+       * are the top band's photographs in play order; `bottom` the bottom
+       * band's, shown one at a time in play order; `moves[k]` is the cut from
+       * bottom[k] to bottom[k + 1]. Indices into the selection.
        * `still` (Marquee Still): the top band is the cover alone, unmoving.
        */
-      kind: "marquee"; hold: number; hero: number[]; strip: number[]; still?: boolean;
+      kind: "marquee"; hold: number; hero: number[]; bottom: number[]; moves: MarqueeMove[]; still?: boolean;
     }
   | { kind: "end"; hold: number };
 
@@ -477,12 +478,43 @@ const MARQUEE_HERO_CATEGORIES = ["profiles", "profiles running", "aerial"];
 /** The most photographs the top band rotates through. */
 export const MARQUEE_HERO_MAX = 4;
 /**
- * Below this many photographs the strip can't be filled from what the top
- * band leaves, so it runs every selected photograph, heroes included.
+ * The bottom band shows one photograph at a time, so it needs two to have a
+ * cut at all. When fewer than this are left for it, the top photos join the
+ * bottom band too (Marquee and Marquee Still alike).
  */
-export const MARQUEE_SHARE_BELOW = 6;
-/** Marquee Still: below this many non-cover photographs, the cover joins the strip. */
-export const MARQUEE_STILL_STRIP_MIN = 3;
+export const MARQUEE_BOTTOM_MIN = 2;
+
+/**
+ * How one bottom-band photograph gives way to the next.
+ *  crossfade — the new one dissolves in over the old.
+ *  push-left — the new one slides in from the right, pushing the old out left.
+ *  push-up   — the new one slides up from below, pushing the old out the top.
+ *  wipe      — a hard edge sweeps left to right, a thin accent line riding it.
+ *  zoom      — the new one fades in over the old from 1.08× down to 1×.
+ */
+export type MarqueeMove = "crossfade" | "push-left" | "push-up" | "wipe" | "zoom";
+export const MARQUEE_MOVES: MarqueeMove[] = ["crossfade", "push-left", "push-up", "wipe", "zoom"];
+/** Length of a bottom-band transition, in seconds (shortened if a hold is shorter). */
+export const MARQUEE_BOTTOM_XF = 0.6;
+
+/**
+ * Deal the bottom band's cuts: one move per cut, picked evenly from
+ * MARQUEE_MOVES by a random seeded from the reel's own seed (so the preview
+ * and the exported file, and every render of the same photo set, get the same
+ * sequence), never the same move twice running.
+ */
+export function dealMarqueeMoves(count: number, seed: number): MarqueeMove[] {
+  const rand = seededRandom(seed * 11 + 7);
+  const out: MarqueeMove[] = [];
+  let last: MarqueeMove | null = null;
+  for (let k = 0; k < count; k++) {
+    const pool = MARQUEE_MOVES.filter((m) => m !== last);
+    const pick = pool[Math.min(pool.length - 1, Math.floor(rand() * pool.length))];
+    out.push(pick);
+    last = pick;
+  }
+  return out;
+}
 
 /**
  * Which photographs go in which band.
@@ -492,54 +524,70 @@ export const MARQUEE_STILL_STRIP_MIN = 3;
  * selection order, four at most. If that finds fewer than two, the first three
  * selected photos instead, so the band always has somewhere to go.
  *
- * Bottom strip: everything else, in selection order. A selection too small to
- * fill the strip on its own (under six) runs all of them there, heroes too.
+ * Bottom band: everything else, in selection order, one at a time. If that
+ * leaves fewer than MARQUEE_BOTTOM_MIN, every selected photo runs there, the
+ * top ones included, so the band still has a cut.
  *
- * `still` (Marquee Still): the top band is the cover alone, and the strip is
- * every other photograph in selection order — profiles and aerials included.
- * If that leaves fewer than MARQUEE_STILL_STRIP_MIN, the cover rides in the
- * strip too.
+ * `still` (Marquee Still): the top band is the cover alone, and the bottom
+ * band is every other photograph in selection order — profiles and aerials
+ * included — with the same fewer-than-MARQUEE_BOTTOM_MIN padding.
+ *
+ * `topIndices` (the broker's own choice, indices into the selection): when it
+ * names any photo, the top band is those photos in selection order — four at
+ * most, or just the first of them for Still — and the bottom band is every
+ * other photo in selection order, padded the same way. Empty or absent, the
+ * automatic rule runs. The picker's Top/Bottom badges call this with the same
+ * inputs as the renderer, so they can't disagree with the film.
  */
 export function splitMarquee(
   categories: (string | null | undefined)[],
-  opts: { still?: boolean } = {},
-): { hero: number[]; strip: number[] } {
+  opts: { still?: boolean; topIndices?: number[] } = {},
+): { hero: number[]; bottom: number[] } {
   const n = categories.length;
-  if (n === 0) return { hero: [], strip: [] };
-  if (opts.still) {
-    const strip: number[] = [];
-    const from = n - 1 < MARQUEE_STILL_STRIP_MIN ? 0 : 1;
-    for (let i = from; i < n; i++) strip.push(i);
-    return { hero: [0], strip };
+  if (n === 0) return { hero: [], bottom: [] };
+  const chosen = (opts.topIndices ?? [])
+    .filter((i, k, a) => i >= 0 && i < n && Math.floor(i) === i && a.indexOf(i) === k)
+    .sort((a, b) => a - b);
+  let hero: number[];
+  if (chosen.length) {
+    hero = chosen.slice(0, opts.still ? 1 : MARQUEE_HERO_MAX);
+  } else if (opts.still) {
+    hero = [0];
+  } else {
+    hero = [0];
+    for (let i = 1; i < n && hero.length < MARQUEE_HERO_MAX; i++) {
+      const c = (categories[i] ?? "").trim().toLowerCase();
+      if (MARQUEE_HERO_CATEGORIES.indexOf(c) >= 0) hero.push(i);
+    }
+    if (hero.length < 2) hero = [0, 1, 2].filter((i) => i < n);
   }
-  let hero: number[] = [0];
-  for (let i = 1; i < n && hero.length < MARQUEE_HERO_MAX; i++) {
-    const c = (categories[i] ?? "").trim().toLowerCase();
-    if (MARQUEE_HERO_CATEGORIES.indexOf(c) >= 0) hero.push(i);
-  }
-  if (hero.length < 2) hero = [0, 1, 2].filter((i) => i < n);
-  const strip: number[] = [];
-  for (let i = 0; i < n; i++) {
-    if (n < MARQUEE_SHARE_BELOW || hero.indexOf(i) < 0) strip.push(i);
-  }
-  return { hero, strip };
+  const rest: number[] = [];
+  for (let i = 0; i < n; i++) if (hero.indexOf(i) < 0) rest.push(i);
+  if (rest.length >= MARQUEE_BOTTOM_MIN) return { hero, bottom: rest };
+  const all: number[] = [];
+  for (let i = 0; i < n; i++) all.push(i);
+  return { hero, bottom: all };
 }
 
 /**
  * The Marquee film: one continuous unit, then the end card.
  *
- * It doesn't cut per photograph, but it must run exactly as long as a
+ * It doesn't cut as a whole, but it must run exactly as long as a
  * single-photo reel of the same photographs at the same Length — the page's
  * "about N seconds" readout and the time budget behind each Length both
  * assume it. So the photo portion is taken straight from `planSingles` (the
  * quiet, dissolve-only plan: title hold plus one even hold per photograph),
- * and the Marquee animates continuously across it. The end card and the
- * dissolve into it are the same as every other quiet look's.
+ * and the Marquee animates inside it: the top band's heroes and the bottom
+ * band's photographs each get an equal share of it. The bottom band's cuts
+ * are dealt here (`moves`, one per cut) so every render agrees. The end card
+ * and the dissolve into it are the same as every other quiet look's.
  */
 export function planMarquee(categories: (string | null | undefined)[], opts: {
   titleHold: number; hold: number; endHold: number; dissolve: number; seed: number;
   /** Marquee Still: cover alone and unmoving in the top band. */
   still?: boolean;
+  /** The broker's own top-band picks (indices into `categories`); see splitMarquee. */
+  topIndices?: number[];
 }): Timeline {
   const { titleHold, hold, endHold, dissolve, seed } = opts;
   const still = !!opts.still;
@@ -548,9 +596,10 @@ export function planMarquee(categories: (string | null | undefined)[], opts: {
   const singles = planSingles(n, { titleHold, hold, endHold, dissolve, burst: false, vocab: null, thirds: null, seed });
   // Where the end card starts in the equivalent single-photo reel.
   const photoPortion = singles.starts[singles.units.length - 1];
-  const { hero, strip } = splitMarquee(categories, { still });
+  const { hero, bottom } = splitMarquee(categories, { still, topIndices: opts.topIndices });
+  const moves = dealMarqueeMoves(Math.max(0, bottom.length - 1), seed);
   const units: Unit[] = [
-    { kind: "marquee", hold: photoPortion, hero, strip, still },
+    { kind: "marquee", hold: photoPortion, hero, bottom, moves, still },
     { kind: "end", hold: endHold },
   ];
   return finish(units, [{ type: "dissolve", dur: dissolve, dir: "left" }]);

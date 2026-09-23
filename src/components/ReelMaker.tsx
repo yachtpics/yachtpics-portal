@@ -23,7 +23,7 @@ import {
   type BrokerCard, type YpPhone,
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { planStack, planSingles, planMarquee, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
+import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 
@@ -270,6 +270,13 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
   // An ORDERED list, not a set: the order the broker taps is the order the
   // reel plays. The number on each thumbnail is its place in the film.
   const [chosen, setChosen] = useState<string[]>([]);
+  /**
+   * Marquee looks: the photos the broker has pinned to the top band, in the
+   * order they were pinned (the oldest is the one a fifth pin replaces). Empty
+   * means automatic. Kept across look changes, so Marquee <-> Marquee Still
+   * keeps the choice; pruned when a photo leaves the selection.
+   */
+  const [topIds, setTopIds] = useState<string[]>([]);
   const [showPrice, setShowPrice] = useState(true);
   const [showLocation, setShowLocation] = useState(true);
   // Room captions — the broker's call, off until they turn it on.
@@ -445,6 +452,60 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     return chosen.map((pid) => byId.get(pid)).filter((p): p is ReelPhoto => !!p);
   }, [photos, chosen]);
 
+  // A photo that leaves the selection (tap, Clear, a format/length trim)
+  // leaves the top band with it.
+  useEffect(() => {
+    setTopIds((prev) => {
+      const next = prev.filter((x) => chosen.indexOf(x) >= 0);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [chosen]);
+
+  /**
+   * The Marquee split's inputs, built once and handed to both the renderer
+   * (planMarquee, in `timeline`) and the picker's Top/Bottom badges
+   * (`marqueeSplit`), so a badge can never disagree with the film.
+   */
+  const marqueeOn = isMarquee(styleKey) && format === "reel";
+  const marqueeStill = !!REEL_STYLES[styleKey].heroStill;
+  const marqueeCategories = useMemo(() => selectedPhotos.map((p) => p.category ?? null), [selectedPhotos]);
+  const marqueeTopIndices = useMemo(() => {
+    const out: number[] = [];
+    selectedPhotos.forEach((p, i) => { if (topIds.indexOf(p.id) >= 0) out.push(i); });
+    return out;
+  }, [selectedPhotos, topIds]);
+  const marqueeSplit = useMemo(
+    () => (marqueeOn ? splitMarquee(marqueeCategories, { still: marqueeStill, topIndices: marqueeTopIndices }) : null),
+    [marqueeOn, marqueeCategories, marqueeStill, marqueeTopIndices],
+  );
+  const marqueeManual = marqueeTopIndices.length > 0;
+
+  /**
+   * Tap a badge: the photo moves to the other band. Automatic mode first
+   * becomes the same choice made by hand, so only the tapped photo changes.
+   * A fifth Top replaces the oldest pin; on Still the new one swaps in.
+   */
+  function toggleTop(pid: string) {
+    if (!marqueeSplit) return;
+    const heroIds = marqueeSplit.hero.map((i) => selectedPhotos[i].id);
+    const base = marqueeManual ? topIds.filter((x) => chosen.indexOf(x) >= 0) : heroIds;
+    let next: string[];
+    if (heroIds.indexOf(pid) >= 0) {
+      // Still always holds one photo on top; with nothing pinned there is
+      // nothing to take away — tap another photo's Bottom badge instead.
+      if (marqueeStill && !marqueeManual) return;
+      next = base.filter((x) => x !== pid);
+    } else if (marqueeStill) {
+      next = [pid];
+    } else {
+      next = base.filter((x) => x !== pid).concat(pid);
+      if (next.length > MARQUEE_HERO_MAX) next = next.slice(next.length - MARQUEE_HERO_MAX);
+    }
+    setTopIds(next);
+    setResult(null);
+    setPhase("idle");
+  }
+
   const timeline = useMemo(() => {
     const look = REEL_STYLES[styleKey];
     const scale = look.holdScale;
@@ -464,13 +525,14 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     // as the quiet single-photo reel of the same photographs would — the
     // planner takes that length from planSingles and animates across it.
     if (look.layout === "marquee" && format === "reel") {
-      return planMarquee(selectedPhotos.map((p) => p.category ?? null), {
+      return planMarquee(marqueeCategories, {
         titleHold: s.titleHold * scale,
         hold: s.hold * scale,
         endHold,
         dissolve: fadeFor(format, styleKey),
         seed,
-        still: !!look.heroStill,
+        still: marqueeStill,
+        topIndices: marqueeTopIndices,
       });
     }
     // Every other look: one photograph at a time. Every photo after the
@@ -496,7 +558,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     });
     // `s` carries the reel's hold — derived from the length's time budget and
     // the photo count — so the total redraws when Length or the selection changes.
-  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin]);
+  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   /**
@@ -761,18 +823,18 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
        *
        *   top band    14%  → 42%    hero photographs, one at a time
        *   middle band 42%  → 66.5%  the title on the ground, accent hairlines
-       *   strip       66.5% → 86%   the rest of the boat, sliding past
+       *   bottom band 66.5% → 86%   the rest of the boat, one at a time
        */
       const marqueeOn = units.some((u) => u.kind === "marquee");
       const mq = {
         top: Math.round(H * 0.14),
         heroEnd: Math.round(H * 0.42),
-        stripTop: Math.round(H * 0.665),
+        bottomTop: Math.round(H * 0.665),
         bottom: Math.round(H * 0.86),
         typeFloor: H * 0.65,
       };
       /** Where drawTitle centres its block on a Marquee; null on every other look. */
-      const titleBand = marqueeOn ? { top: mq.heroEnd, bottom: Math.min(mq.stripTop, mq.typeFloor) } : null;
+      const titleBand = marqueeOn ? { top: mq.heroEnd, bottom: Math.min(mq.bottomTop, mq.typeFloor) } : null;
 
       /**
        * The band a placed photograph occupies: the top, middle or bottom
@@ -1521,33 +1583,21 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
        * own) and an accent hairline on its top and bottom edges. Static; the
        * type fades up over the first 0.6s and stays.
        *
-       * Strip — every other photograph as a 4:3 tile, cropped to fill, with a
-       * thin accent gap between tiles, sliding right to left at one constant
-       * speed: the whole strip passes exactly once over the photo portion of
-       * the reel. It is a loop, so the band is full from the first frame and
-       * nothing jumps. Only the tiles that intersect the band are drawn.
+       * Bottom band — the rest of the boat, one photograph at a time, cropped
+       * to fill the band, each held for an equal share of the reel under a
+       * gentler drift than the top band's. Each cut is the move the planner
+       * dealt for it (`moves`: crossfade, push left, push up, wipe with an
+       * accent line on its edge, or zoom-dissolve), about 0.6s, and everything
+       * is clipped to the band so nothing spills into the title.
        */
       const MQ_HERO_FADE = 1.0;
-      const mqGap = Math.max(4, 8 * sc);
-      const mqStripH = mq.bottom - mq.stripTop;
-      const mqTileW = Math.round((mqStripH * 4) / 3);
-      const mqPitch = mqTileW + mqGap;
-      // Each strip photograph's 4:3 source crop, worked out once on first use.
-      const mqCrops: { sx: number; sy: number; sw: number; sh: number }[] = [];
-      const mqCrop = (i: number) => {
-        const hit = mqCrops[i];
-        if (hit) return hit;
-        const bmp = bitmaps[i];
-        if (!bmp) return null;
-        const want = mqTileW / mqStripH;
-        let sw = bmp.width, sh = bmp.height;
-        if (sw / sh > want) sw = sh * want; else sh = sw / want;
-        const c = { sx: (bmp.width - sw) / 2, sy: (bmp.height - sh) / 2, sw, sh };
-        mqCrops[i] = c;
-        return c;
-      };
+      /** The bottom band's drift, as a share of the look's zoom — gentler than the top's. */
+      const MQ_BOTTOM_DRIFT = 0.4;
+      /** Zoom-dissolve: the incoming photograph starts this much larger. */
+      const MQ_ZOOM_FROM = 1.08;
+      const mqBottomH = mq.bottom - mq.bottomTop;
 
-      const drawMarquee = (hero: number[], strip: number[], hold: number, local: number, alpha: number, still: boolean) => {
+      const drawMarquee = (hero: number[], bottom: number[], moves: MarqueeMove[], hold: number, local: number, alpha: number, still: boolean) => {
         ctx.save();
         ctx.globalAlpha = alpha;
         ctx.fillStyle = st.ground;
@@ -1591,29 +1641,68 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           }
         }
 
-        // Strip.
-        const m = strip.length;
-        if (m > 0 && mqStripH > 0) {
-          const loop = m * mqPitch;
-          const speed = hold > 0 ? loop / hold : 0;
-          let off = (local * speed) % loop;
-          if (off < 0) off += loop;
-          // The accent under the whole band is what shows in the gaps.
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = st.accent;
-          ctx.fillRect(0, mq.stripTop, W, mqStripH);
-          let n = Math.floor(off / mqPitch);
-          let x = n * mqPitch - off;
-          while (x < W) {
-            if (x + mqTileW > 0) {
-              const i = strip[n % m];
-              const bmp = bitmaps[i];
-              const c = mqCrop(i);
-              if (bmp && c) ctx.drawImage(bmp, c.sx, c.sy, c.sw, c.sh, x, mq.stripTop, mqTileW, mqStripH);
+        // Bottom band.
+        const bN = bottom.length;
+        if (bN > 0 && mqBottomH > 0) {
+          const seg = hold / bN;
+          const xf = Math.min(MARQUEE_BOTTOM_XF, seg * 0.4);
+          const bz = st.zoom * MQ_BOTTOM_DRIFT;
+          /** One bottom photograph, cover-cropped to the band, offset by (dx, dy), scaled by `extra` on top of its drift. */
+          const drawBottom = (slot: number, a: number, dx: number, dy: number, extra: number) => {
+            const i = bottom[slot];
+            const bmp = bitmaps[i];
+            if (!bmp || a <= 0) return;
+            const drift = ease((local - slot * seg) / (seg + xf));
+            const out = isExterior(selectedPhotos[i]?.category);
+            const from = out ? 1 + bz : 1;
+            const to = out ? 1 : 1 + bz;
+            const k = (from + (to - from) * drift) * extra;
+            const scale = Math.max(W / bmp.width, mqBottomH / bmp.height) * k;
+            const sw = W / scale, sh = mqBottomH / scale;
+            ctx.globalAlpha = alpha * a;
+            ctx.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, dx, mq.bottomTop + dy, W, mqBottomH);
+          };
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, mq.bottomTop, W, mqBottomH);
+          ctx.clip();
+          const j = Math.min(bN - 1, Math.max(0, Math.floor(local / seg)));
+          const into = local - j * seg;
+          if (j > 0 && into < xf) {
+            const p = ease(into / xf);
+            const move = moves[j - 1] ?? "crossfade";
+            if (move === "push-left") {
+              drawBottom(j - 1, 1, -W * p, 0, 1);
+              drawBottom(j, 1, W * (1 - p), 0, 1);
+            } else if (move === "push-up") {
+              drawBottom(j - 1, 1, 0, -mqBottomH * p, 1);
+              drawBottom(j, 1, 0, mqBottomH * (1 - p), 1);
+            } else if (move === "wipe") {
+              // A hard edge sweeping left to right, the new photograph behind
+              // it, a thin accent line riding the edge.
+              const edge = W * p;
+              drawBottom(j - 1, 1, 0, 0, 1);
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(0, mq.bottomTop, edge, mqBottomH);
+              ctx.clip();
+              drawBottom(j, 1, 0, 0, 1);
+              ctx.restore();
+              const lw = Math.max(2, 4 * sc);
+              ctx.globalAlpha = alpha;
+              ctx.fillStyle = st.accent;
+              ctx.fillRect(edge - lw / 2, mq.bottomTop, lw, mqBottomH);
+            } else if (move === "zoom") {
+              drawBottom(j - 1, 1, 0, 0, 1);
+              drawBottom(j, p, 0, 0, MQ_ZOOM_FROM + (1 - MQ_ZOOM_FROM) * p);
+            } else {
+              drawBottom(j - 1, 1, 0, 0, 1);
+              drawBottom(j, p, 0, 0, 1);
             }
-            x += mqPitch;
-            n++;
+          } else {
+            drawBottom(j, 1, 0, 0, 1);
           }
+          ctx.restore();
         }
 
         // The middle band's edges: accent hairlines at the title's rule
@@ -1622,7 +1711,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         ctx.globalAlpha = alpha;
         ctx.fillStyle = st.accent;
         ctx.fillRect(0, mq.heroEnd - hl / 2, W, hl);
-        ctx.fillRect(0, mq.stripTop - hl / 2, W, hl);
+        ctx.fillRect(0, mq.bottomTop - hl / 2, W, hl);
         ctx.restore();
 
         drawTitle(alpha * ease(local / 0.6));
@@ -1697,7 +1786,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         } else if (u.kind === "stack") {
           drawStack(u.events, u.hold, local, alpha);
         } else if (u.kind === "marquee") {
-          drawMarquee(u.hero, u.strip, u.hold, local, alpha, !!u.still);
+          drawMarquee(u.hero, u.bottom, u.moves, u.hold, local, alpha, !!u.still);
         } else {
           drawEndCard(alpha);
         }
@@ -2181,7 +2270,7 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           ) : styleKey === "stack" && format === "reel" ? (
             <p className="text-xs text-ink-400">Stack fills three bands, each with a whole photograph — nothing to choose here.</p>
           ) : isMarquee(styleKey) && format === "reel" ? (
-            <p className="text-xs text-ink-400">{REEL_STYLES[styleKey].name} crops each photograph to fill its band — the hero across the top, the rest as tiles in the strip below. Nothing to choose here.</p>
+            <p className="text-xs text-ink-400">{REEL_STYLES[styleKey].name} crops each photograph to fill its band — the hero across the top, the rest one at a time in the band below. Nothing to choose here.</p>
           ) : styleKey === "gallery" ? (
             // The inset always shows the complete photograph.
             <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>
@@ -2241,16 +2330,63 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           </div>
         </div>
         <p className="text-xs text-ink-400 mt-1.5 mb-2">Tap photos in the order you want them to play — the number shows each one&rsquo;s place, and the first gets the title. Tap again to remove one. &ldquo;First {cap}&rdquo; takes them in slideshow order, cover first.</p>
+        {/* Marquee looks: where each picked photo lands. The badges read the
+            same split the renderer uses (marqueeSplit ↔ planMarquee). */}
+        {marqueeSplit && (
+          <div className="mb-2">
+            <p className="text-xs text-ink-600">
+              {marqueeManual
+                ? "Top: the photos marked Top. The rest play along the bottom, one at a time."
+                : marqueeStill
+                  ? "Top: your first pick, held still. The rest play along the bottom, one at a time. Tap a badge to choose a different one."
+                  : "Top: your first pick plus any Profile, Running or Aerial shots. The rest play along the bottom, one at a time. Tap a badge to choose yourself."}
+              {marqueeManual && (
+                <>
+                  {" "}
+                  <button onClick={() => { setTopIds([]); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-accent-700 hover:underline">Back to automatic</button>
+                </>
+              )}
+            </p>
+            {selectedPhotos.length > 0 && (
+              <p className="text-xs text-ink-400 mt-0.5">
+                Top {marqueeSplit.hero.length} · Bottom {marqueeSplit.bottom.length}
+                {marqueeSplit.hero.some((i) => marqueeSplit.bottom.indexOf(i) >= 0) && " — with this few photos the top ones play in the bottom band too"}
+              </p>
+            )}
+          </div>
+        )}
         <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
           {photos.map((p) => {
             const on = chosen.includes(p.id);
             const idx = selectedPhotos.findIndex((q) => q.id === p.id);
+            const isTop = !!marqueeSplit && idx >= 0 && marqueeSplit.hero.indexOf(idx) >= 0;
             return (
-              <button key={p.id} onClick={() => togglePhoto(p.id)} disabled={busy} title={p.category ?? p.filename ?? ""}
-                className={`relative aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${on ? "border-accent-500" : "border-transparent opacity-55 hover:opacity-90"}`}>
-                {p.previewUrl && <RetryImg src={p.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover" />}
-                {on && <span className="absolute top-0.5 left-0.5 text-[10px] font-semibold bg-ink-950/80 text-white rounded px-1">{idx + 1}</span>}
-              </button>
+              <div key={p.id} className="relative">
+                <button onClick={() => togglePhoto(p.id)} disabled={busy} title={p.category ?? p.filename ?? ""}
+                  className={`relative block w-full aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${on ? "border-accent-500" : "border-transparent opacity-55 hover:opacity-90"}`}>
+                  {p.previewUrl && <RetryImg src={p.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover" />}
+                  {on && <span className="absolute top-0.5 left-0.5 text-[10px] font-semibold bg-ink-950/80 text-white rounded px-1">{idx + 1}</span>}
+                </button>
+                {/* A sibling, not nested — a button can't hold a button. The
+                    hit area is 28px square in the bottom-right corner, clear of
+                    the order number top-left; the pill inside is smaller. */}
+                {on && marqueeSplit && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); toggleTop(p.id); }}
+                    disabled={busy}
+                    aria-label={isTop ? `Photo ${idx + 1} is in the top band. Move it to the bottom band.` : `Photo ${idx + 1} is in the bottom band. Move it to the top band.`}
+                    title={isTop
+                      ? (marqueeStill && !marqueeManual ? "On top. Tap another photo\u2019s Bottom badge to put that one on top instead." : "On top. Tap to move to the bottom band.")
+                      : "In the bottom band. Tap to move to the top."}
+                    className="absolute bottom-0 right-0 min-w-[28px] min-h-[28px] flex items-end justify-end p-[3px]"
+                  >
+                    <span className={`text-[10px] font-semibold leading-none rounded px-1 py-[3px] ${isTop ? "bg-accent-500 text-ink-950 border border-accent-500" : "bg-white/90 text-ink-600 border border-ink-300"}`}>
+                      {isTop ? "Top" : "Bottom"}
+                    </span>
+                  </button>
+                )}
+              </div>
             );
           })}
         </div>

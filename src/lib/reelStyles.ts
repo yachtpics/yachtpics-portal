@@ -73,13 +73,13 @@ export type ReelStyle = {
    *
    * "marquee": a split screen that never cuts — hero photographs crossfading
    * in a top band, the title on a plate in the middle, the rest of the boat
-   * sliding past in a strip below. Reels only; it is not offered on a film.
+   * one photograph at a time in a band below. Reels only; not on a film.
    */
   layout?: "single" | "stack" | "marquee";
   /**
    * Marquee layout only: the top band holds the cover photograph alone, dead
    * still — no drift, no zoom, no crossfade — and every other photograph
-   * goes to the strip. Marquee Still sets it; plain Marquee rotates heroes.
+   * goes to the bottom band. Marquee Still sets it; plain Marquee rotates heroes.
    */
   heroStill?: boolean;
   /**
@@ -335,21 +335,22 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
    * shots and aerials — one at a time, each held long under the same slow
    * drift as the brochure looks, dissolving into the next. The middle band is
    * a plate in the ground colour carrying the title, edged top and bottom in
-   * an accent hairline. The bottom band is every other photograph in a
-   * continuous right-to-left strip at a steady pace, so the details keep
-   * coming without a single cut. Reels only: the bands need a 9:16 frame.
+   * an accent hairline. The bottom band is every other photograph, one at a
+   * time, each under a gentle drift and giving way to the next with a varied
+   * move (crossfade, push, wipe, zoom-dissolve). Reels only: the bands need a
+   * 9:16 frame.
    */
   marquee: {
     ...MARQUEE_LOOK,
     key: "marquee",
     name: "Marquee",
-    blurb: "Hero on top, details in the middle, the rest of the boat sliding past below.",
+    blurb: "Hero on top, details in the middle, the rest of the boat below, one photo at a time.",
   },
 
   /**
    * Marquee Still — Marquee with the top band held. The cover photograph
    * alone fills it for the whole reel, not moving at all; everything else
-   * (profiles and aerials included) slides past in the strip. Same bands,
+   * (profiles and aerials included) plays one at a time in the bottom band. Same bands,
    * palette, type and timing as Marquee — only the top band's behaviour and
    * which photographs go where differ. Reels only.
    */
@@ -357,7 +358,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     ...MARQUEE_LOOK,
     key: "marquee_still",
     name: "Marquee Still",
-    blurb: "The cover holds at the top, details in the middle, the rest of the boat sliding past below.",
+    blurb: "The cover holds at the top, details in the middle, the rest of the boat below, one photo at a time.",
     heroStill: true,
   },
 };

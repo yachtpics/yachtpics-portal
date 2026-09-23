@@ -2,9 +2,11 @@
 
 ## Sept 23 — Marquee, a new reel look (reel only)
 
-- **Marquee Still** (`marquee_still`, right after Marquee in the picker, reel only, same Film fallback to Editorial): Marquee with the top band held on the cover alone — no drift, zoom or crossfade — and every other photo (profiles/aerials included) in the strip, cover added to the strip if fewer than 3 remain; same bands, palette, type, timing and end card via `splitMarquee(…, { still })` / `heroStill`.
+- **Bottom band is one photo at a time now, not a scrolling strip** (Charlie didn't like the strip; Marquee and Marquee Still both). Each bottom photo is cover-cropped to the full band, held for an equal share of the Marquee segment under a gentle drift (40% of the top band's zoom), and cut to the next in ~0.6s, clipped to the band, with a move dealt per cut by `dealMarqueeMoves` in `reelStack.ts`: **crossfade, push left, push up, wipe** (hard edge left→right with a thin accent line) or **zoom-dissolve** (in from 1.08×). The moves are picked evenly and never the same twice in a row, from `seededRandom(seed * 11 + 7)` with the reel's usual `seed`, so preview, export and every render of the same photo set match. They are stored on the unit (`bottom`, `moves`). The strip code (tiles, 4:3 crops, loop) is gone. New padding rule: if **fewer than 2** photos are left for the bottom, the top photos join it too (both looks).
+- **Marquee top/bottom badges and manual Top pinning:** while a Marquee look is chosen, each picked photo in the picker shows a **Top** / **Bottom** badge (from the same `splitMarquee` call the renderer makes); tapping it pins photos to the top band (`topIds` → `splitMarquee(…, { topIndices })`, max 4, or 1 on Still), with a one-line explainer, a "Top N · Bottom M" count and **Back to automatic**.
+- **Marquee Still** (`marquee_still`, right after Marquee in the picker, reel only, same Film fallback to Editorial): Marquee with the top band held on the cover alone — no drift, zoom or crossfade — and every other photo (profiles/aerials included) in the bottom band, cover added to it if fewer than 2 remain; same bands, palette, type, timing and end card via `splitMarquee(…, { still })` / `heroStill`.
 - **Marquee** is the seventh look, after Stack in the picker: *"Hero on top,
-  details in the middle, the rest of the boat sliding past below."* A split
+  details in the middle, the rest of the boat below, one photo at a time."* A split
   screen that holds for the whole reel while the photographs move inside it.
   **Reel (9:16) only** — hidden on Film exactly as Stack is (the `looks` memo
   filters both out; switching to Film while on Marquee falls back to
@@ -19,17 +21,14 @@
   strings, so `subject === "free"` just works), accent hairlines on the top
   and bottom edges; the type fades up over 0.6s and stays, and is kept above
   the 65% type-safe line (a block too tall for the band is scaled down about
-  its centre rather than spilling). **Strip** 66.5–86%: 4:3 tiles with a thin
-  accent gap, sliding right to left at one constant speed — the whole strip
-  passes exactly once over the photo portion, as a seamless loop (full from
-  frame one, no jump). Only tiles intersecting the band are drawn; source
-  crops are computed once per photo; no new decoding.
+  its centre rather than spilling). **Bottom band** 66.5–86%: one photo at a
+  time (see the first bullet above).
 - **Which photos go where** (`splitMarquee` in `src/lib/reelStack.ts`). Top
   band: the first selected photo (the cover) plus any selected **Profiles**,
   **Profiles Running** or **Aerial** photos, in selection order, capped at 4;
-  if that finds fewer than 2, the first 3 selected photos. Strip: everything
-  else, in selection order. A selection of **fewer than 6** puts every photo
-  in the strip, heroes included, so the strip isn't nearly empty.
+  if that finds fewer than 2, the first 3 selected photos. Bottom band:
+  everything else, in selection order. If **fewer than 2** are left for it,
+  every photo plays there, heroes included, so the band still has a cut.
 - **Timing.** `planMarquee` returns one `"marquee"` unit plus the usual end
   card. The marquee unit's length is taken from `planSingles` (the quiet,
   dissolve-only plan for the same photo count, Length and `holdScale` 1), so
@@ -38,7 +37,7 @@
   the Framing chips are replaced by a one-line note.
 - Admin reel metrics (`/admin/reels`) label the new look "Marquee".
 - **Not yet seen in a browser** — typechecks clean, but the first real render
-  is the test: check the band proportions, the strip speed on Short vs Long,
+  is the test: check the band proportions, the bottom-band cuts on Short vs Long,
   and a long vessel name in the middle band.
 
 ## Sept 23 — video order and the admin slideshow toggle
