@@ -58,6 +58,7 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
     .from("videos")
     .select("id, storage_path, storage_host, filename, created_at")
     .eq("gallery_id", gallery.id)
+    .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at");
   const videoSlides = (await withVideoUrls(supabase, videos ?? [], { expiresIn: 7200 }))
     .map((v) => ({ url: v.url, filename: v.filename ?? null }))

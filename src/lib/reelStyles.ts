@@ -1,5 +1,6 @@
 /**
- * Reel looks — the six ways a listing film can present itself.
+ * Reel looks — the eight ways a listing film can present itself (five on a
+ * 16:9 film: Stack, Marquee and Marquee Still are reel-only).
  *
  * Drawn from how the top houses actually publish. Three conventions from that
  * research shaped all of this:
@@ -18,13 +19,13 @@
  * the boat: a 120' tri-deck and a classic sloop should not present alike.
  */
 
-export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic" | "energy" | "stack";
+export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic" | "energy" | "stack" | "marquee" | "marquee_still";
 
 export type Backdrop =
   | "scrim"      // full-bleed photo, type grounded on a bottom-up gradient
   | "letterbox"  // 1.85:1 window, type in the black bar below it (reels only)
   | "inset"      // photo inset on a light ground, type beneath
-  | "plate";     // photo above a solid colour plate, type on the plate
+  | "plate";     // photo above a solid colour plate, type on the plate (Marquee)
 
 export type ReelStyle = {
   key: StyleKey;
@@ -69,8 +70,18 @@ export type ReelStyle = {
    * horizontal bands, one swapping per beat — every landscape photo shown
    * whole, three views of the boat on screen at once. Reels only; on a 16:9
    * film a stack look behaves as "single".
+   *
+   * "marquee": a split screen that never cuts — hero photographs crossfading
+   * in a top band, the title on a plate in the middle, the rest of the boat
+   * sliding past in a strip below. Reels only; it is not offered on a film.
    */
-  layout?: "single" | "stack";
+  layout?: "single" | "stack" | "marquee";
+  /**
+   * Marquee layout only: the top band holds the cover photograph alone, dead
+   * still — no drift, no zoom, no crossfade — and every other photograph
+   * goes to the strip. Marquee Still sets it; plain Marquee rotates heroes.
+   */
+  heroStill?: boolean;
   /**
    * "burst": a three-photo flash burst straight after the title — the
    * near-subliminal cuts that stop a thumb in the first three seconds.
@@ -97,6 +108,31 @@ export type ReelStyle = {
    * either, which already owns the divided frame.
    */
   thirds?: "single" | "wall";
+};
+
+/**
+ * Everything Marquee and Marquee Still share — palette, type, pace. Only the
+ * name, blurb and `heroStill` differ, so a colour change lands on both.
+ */
+const MARQUEE_LOOK: Omit<ReelStyle, "key" | "name" | "blurb"> = {
+  ground: "#0b1118",
+  text: "#ffffff",
+  soft: "rgba(255,255,255,0.84)",
+  quiet: "rgba(255,255,255,0.60)",
+  accent: "#d4b877",
+  light: false,
+  backdrop: "plate",
+  serifHeadline: true,
+  headline: "caps",
+  align: "center",
+  // The band's own accent hairlines frame the type; a third rule inside
+  // the block would only fuss it.
+  rule: "none",
+  headTrack: 6,
+  zoom: 0.06,
+  holdScale: 1,
+  cut: "dissolve",
+  layout: "marquee",
 };
 
 export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
@@ -290,9 +326,48 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     layout: "stack",
     hook: "burst",
   },
+
+  /**
+   * Marquee — the split screen that stays put while the boat moves inside it.
+   *
+   * Three bands for the whole reel, no cuts until the end card. The top band
+   * holds the hero photographs — the cover shot and any profiles, running
+   * shots and aerials — one at a time, each held long under the same slow
+   * drift as the brochure looks, dissolving into the next. The middle band is
+   * a plate in the ground colour carrying the title, edged top and bottom in
+   * an accent hairline. The bottom band is every other photograph in a
+   * continuous right-to-left strip at a steady pace, so the details keep
+   * coming without a single cut. Reels only: the bands need a 9:16 frame.
+   */
+  marquee: {
+    ...MARQUEE_LOOK,
+    key: "marquee",
+    name: "Marquee",
+    blurb: "Hero on top, details in the middle, the rest of the boat sliding past below.",
+  },
+
+  /**
+   * Marquee Still — Marquee with the top band held. The cover photograph
+   * alone fills it for the whole reel, not moving at all; everything else
+   * (profiles and aerials included) slides past in the strip. Same bands,
+   * palette, type and timing as Marquee — only the top band's behaviour and
+   * which photographs go where differ. Reels only.
+   */
+  marquee_still: {
+    ...MARQUEE_LOOK,
+    key: "marquee_still",
+    name: "Marquee Still",
+    blurb: "The cover holds at the top, details in the middle, the rest of the boat sliding past below.",
+    heroStill: true,
+  },
 };
 
-export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic", "energy", "stack"];
+export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic", "energy", "stack", "marquee", "marquee_still"];
+
+/** Marquee or Marquee Still — any look laid out as the three-band split screen. */
+export function isMarquee(key: StyleKey): boolean {
+  return REEL_STYLES[key].layout === "marquee";
+}
 
 // ── Brand colours ────────────────────────────────────────────────────────────
 //

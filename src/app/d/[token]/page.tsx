@@ -105,6 +105,7 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
         .from("videos")
         .select("id, storage_path, storage_host, filename, created_at")
         .eq("listing_id", link.listing_id)
+        .order("display_order", { ascending: true, nullsFirst: false })
         .order("created_at")
     : { data: [] };
 

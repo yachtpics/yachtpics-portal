@@ -38,6 +38,7 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
     .from("videos")
     .select("id, storage_path, storage_host, filename, created_at")
     .eq("gallery_id", params.id)
+    .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at");
   const videosWithUrls = await withVideoUrls(supabase, videos ?? [], { expiresIn: 3600 });
 

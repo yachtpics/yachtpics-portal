@@ -116,6 +116,15 @@ export type Unit =
       placed?: PlacedPhoto[];
     }
   | { kind: "stack"; hold: number; events: StackEvent[] }
+  | {
+      /**
+       * The Marquee: one continuous unit covering every photograph. `hero`
+       * are the top band's photographs in play order; `strip` the bottom
+       * band's, in the order they slide past. Indices into the selection.
+       * `still` (Marquee Still): the top band is the cover alone, unmoving.
+       */
+      kind: "marquee"; hold: number; hero: number[]; strip: number[]; still?: boolean;
+    }
   | { kind: "end"; hold: number };
 
 export type Timeline = {
@@ -459,6 +468,92 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
 
   const transitions = dealTransitions(units.length - 1, STACK_VOCAB, seed);
   return finish(units, transitions);
+}
+
+// ── Marquee ──────────────────────────────────────────────────────────────────
+
+/** Categories that earn a place in the Marquee's top band, lowercased. */
+const MARQUEE_HERO_CATEGORIES = ["profiles", "profiles running", "aerial"];
+/** The most photographs the top band rotates through. */
+export const MARQUEE_HERO_MAX = 4;
+/**
+ * Below this many photographs the strip can't be filled from what the top
+ * band leaves, so it runs every selected photograph, heroes included.
+ */
+export const MARQUEE_SHARE_BELOW = 6;
+/** Marquee Still: below this many non-cover photographs, the cover joins the strip. */
+export const MARQUEE_STILL_STRIP_MIN = 3;
+
+/**
+ * Which photographs go in which band.
+ *
+ * Top band: the first selected photo (the cover — the one the title belongs
+ * to), then any selected Profiles, Profiles Running or Aerial shots in
+ * selection order, four at most. If that finds fewer than two, the first three
+ * selected photos instead, so the band always has somewhere to go.
+ *
+ * Bottom strip: everything else, in selection order. A selection too small to
+ * fill the strip on its own (under six) runs all of them there, heroes too.
+ *
+ * `still` (Marquee Still): the top band is the cover alone, and the strip is
+ * every other photograph in selection order — profiles and aerials included.
+ * If that leaves fewer than MARQUEE_STILL_STRIP_MIN, the cover rides in the
+ * strip too.
+ */
+export function splitMarquee(
+  categories: (string | null | undefined)[],
+  opts: { still?: boolean } = {},
+): { hero: number[]; strip: number[] } {
+  const n = categories.length;
+  if (n === 0) return { hero: [], strip: [] };
+  if (opts.still) {
+    const strip: number[] = [];
+    const from = n - 1 < MARQUEE_STILL_STRIP_MIN ? 0 : 1;
+    for (let i = from; i < n; i++) strip.push(i);
+    return { hero: [0], strip };
+  }
+  let hero: number[] = [0];
+  for (let i = 1; i < n && hero.length < MARQUEE_HERO_MAX; i++) {
+    const c = (categories[i] ?? "").trim().toLowerCase();
+    if (MARQUEE_HERO_CATEGORIES.indexOf(c) >= 0) hero.push(i);
+  }
+  if (hero.length < 2) hero = [0, 1, 2].filter((i) => i < n);
+  const strip: number[] = [];
+  for (let i = 0; i < n; i++) {
+    if (n < MARQUEE_SHARE_BELOW || hero.indexOf(i) < 0) strip.push(i);
+  }
+  return { hero, strip };
+}
+
+/**
+ * The Marquee film: one continuous unit, then the end card.
+ *
+ * It doesn't cut per photograph, but it must run exactly as long as a
+ * single-photo reel of the same photographs at the same Length — the page's
+ * "about N seconds" readout and the time budget behind each Length both
+ * assume it. So the photo portion is taken straight from `planSingles` (the
+ * quiet, dissolve-only plan: title hold plus one even hold per photograph),
+ * and the Marquee animates continuously across it. The end card and the
+ * dissolve into it are the same as every other quiet look's.
+ */
+export function planMarquee(categories: (string | null | undefined)[], opts: {
+  titleHold: number; hold: number; endHold: number; dissolve: number; seed: number;
+  /** Marquee Still: cover alone and unmoving in the top band. */
+  still?: boolean;
+}): Timeline {
+  const { titleHold, hold, endHold, dissolve, seed } = opts;
+  const still = !!opts.still;
+  const n = categories.length;
+  if (n === 0) return finish([{ kind: "end", hold: endHold }], []);
+  const singles = planSingles(n, { titleHold, hold, endHold, dissolve, burst: false, vocab: null, thirds: null, seed });
+  // Where the end card starts in the equivalent single-photo reel.
+  const photoPortion = singles.starts[singles.units.length - 1];
+  const { hero, strip } = splitMarquee(categories, { still });
+  const units: Unit[] = [
+    { kind: "marquee", hold: photoPortion, hero, strip, still },
+    { kind: "end", hold: endHold },
+  ];
+  return finish(units, [{ type: "dissolve", dur: dissolve, dir: "left" }]);
 }
 
 /** White-flash strength at time `t` given the cut times. */

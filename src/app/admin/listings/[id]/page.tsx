@@ -125,8 +125,9 @@ export default async function AdminListingPage({ params, searchParams }: { param
 
   const { data: videos } = await supabase
     .from("videos")
-    .select("id, storage_path, storage_host, filename, created_at, title, description")
+    .select("id, storage_path, storage_host, filename, created_at, in_slideshow, display_order, title, description")
     .eq("listing_id", params.id)
+    .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at");
   const videosWithUrls = await withVideoUrls(supabase, videos ?? [], { expiresIn: 3600 });
 

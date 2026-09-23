@@ -59,6 +59,8 @@ const LOOK_LABEL: Record<string, string> = {
   classic: "Classic",
   energy: "Energy",
   stack: "Stack",
+  marquee: "Marquee",
+  marquee_still: "Marquee Still",
 };
 
 export default async function ReelsPage() {

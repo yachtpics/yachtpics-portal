@@ -16,6 +16,8 @@ import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
 import ListingEngagement from "@/components/ListingEngagement";
+import SortableVideoList from "@/components/SortableVideoList";
+import { arrayMove } from "@dnd-kit/sortable";
 
 interface Photo {
   id: string;
@@ -60,6 +62,9 @@ interface Video {
   filename: string | null;
   created_at: string;
   url: string | null;
+  /** Whether it plays in the client slideshow (/s/[slug]). Defaults on. */
+  in_slideshow?: boolean | null;
+  display_order?: number | null;
   title?: string | null;
   description?: string | null;
 }
@@ -204,6 +209,47 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [deletingVideoIds, setDeletingVideoIds] = useState<Set<string>>(new Set());
   const [videoError, setVideoError] = useState<string | null>(null);
   const videoInputRef = useRef<HTMLInputElement>(null);
+
+  // Slideshow toggle and reorder go through /api/admin/videos/[id] (service
+  // role): the repo's videos RLS has no admin update policy, and an update RLS
+  // filters out comes back with no error, so a browser write could silently
+  // do nothing.
+  async function patchVideo(videoId: string, patch: { in_slideshow?: boolean; display_order?: number }): Promise<boolean> {
+    try {
+      const res = await fetch(`/api/admin/videos/${videoId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  async function toggleVideoSlideshow(videoId: string, current: boolean) {
+    setVideos(prev => prev.map(v => v.id === videoId ? { ...v, in_slideshow: !current } : v));
+    const ok = await patchVideo(videoId, { in_slideshow: !current });
+    if (!ok) {
+      setVideos(prev => prev.map(v => v.id === videoId ? { ...v, in_slideshow: current } : v));
+      setVideoError("Couldn't change that video's slideshow setting — please try again.");
+    }
+  }
+
+  async function moveVideo(activeId: string, overId: string) {
+    const before = videos;
+    const oldIndex = before.findIndex(v => v.id === activeId);
+    const newIndex = before.findIndex(v => v.id === overId);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(before, oldIndex, newIndex).map((v, idx) => ({ ...v, display_order: idx }));
+    setVideos(next);
+    setVideoError(null);
+    const results = await Promise.all(next.map((v, idx) => patchVideo(v.id, { display_order: idx })));
+    if (results.some(ok => !ok)) {
+      setVideos(before);
+      setVideoError("Couldn't save the new video order — please try again.");
+    }
+  }
 
   useEffect(() => { setMounted(true); }, []);
   useEffect(() => {
@@ -1571,7 +1617,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
             <h2 className="text-h2 text-ink-900">Listing Videos</h2>
-            <p className="text-ink-500 text-sm mt-0.5">Upload MP4 or MOV video for this listing. Videos appear first in the client slideshow.</p>
+            <p className="text-ink-500 text-sm mt-0.5">Upload MP4 or MOV video for this listing. Videos appear first in the client slideshow, in the order shown here — drag the grip to reorder.</p>
           </div>
           <button
             onClick={() => videoInputRef.current?.click()}
@@ -1606,9 +1652,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <p className="text-ink-400 text-sm">No videos yet — click to upload an MP4</p>
           </div>
         ) : (
-          <div className="space-y-4">
-            {videos.filter(v => !deletingVideoIds.has(v.id)).map((video) => (
-              <div key={video.id} className="rounded-card overflow-hidden border border-hairline">
+          <SortableVideoList items={videos.filter(v => !deletingVideoIds.has(v.id))} onMove={moveVideo}>
+            {(video, handle) => (
+              <div className="rounded-card overflow-hidden border border-hairline bg-white">
                 {video.url && (
                   <video
                     src={video.url}
@@ -1618,9 +1664,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     className="w-full max-h-[420px] bg-black"
                   />
                 )}
-                <div className="px-4 py-3 bg-ink-50 flex items-center gap-3">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-ink-800 truncate">🎬 {video.filename ?? "video.mp4"}</p>
+                <div className="px-4 py-3 bg-ink-50 flex flex-wrap items-center gap-3">
+                  {handle}
+                  <div className="flex-1 basis-40 min-w-0">
+                    <p className="text-sm font-medium text-ink-800 truncate">
+                      🎬 {video.filename ?? "video.mp4"}
+                      {video.in_slideshow === false && <span className="ml-2 text-[11px] font-semibold text-ink-500 bg-ink-100 border border-hairline-strong rounded-full px-2 py-0.5">Hidden from slideshow</span>}
+                    </p>
                     <p className="text-xs text-ink-400 mt-0.5 tabular-nums">
                       {new Date(video.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
                     </p>
@@ -1638,6 +1688,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     </div>
                   </div>
                   <button
+                    onClick={() => toggleVideoSlideshow(video.id, video.in_slideshow !== false)}
+                    title={video.in_slideshow !== false ? "Hide this video from the client slideshow" : "Show this video in the client slideshow"}
+                    className="text-xs font-medium text-ink-500 hover:text-accent-700 transition-colors shrink-0"
+                  >
+                    {video.in_slideshow !== false ? "Hide from slideshow" : "Show in slideshow"}
+                  </button>
+                  <button
                     onClick={() => setPendingVideoDelete({
                       id: video.id,
                       storagePath: video.storage_path,
@@ -1649,8 +1706,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+          </SortableVideoList>
         )}
       </div>
 

@@ -30,6 +30,7 @@ import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import RetryImg from "@/components/RetryImg";
+import SortableVideoList from "@/components/SortableVideoList";
 
 interface Photo {
   id: string;
@@ -231,6 +232,7 @@ export default function BrokerListingPage() {
   const [docError, setDocError] = useState<string | null>(null);
   const [videoDeleteError, setVideoDeleteError] = useState<string | null>(null);
   const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  const [videoOrderError, setVideoOrderError] = useState<string | null>(null);
   // Who owns this listing — video files are stored under their folder rather
   // than the uploader's, so an assistant's uploads stay with the broker's media.
   const [listingBrokerId, setListingBrokerId] = useState<string | null>(null);
@@ -238,7 +240,7 @@ export default function BrokerListingPage() {
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
   // Videos
-  interface Video { id: string; storage_path: string; storage_host?: string | null; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; title?: string | null; description?: string | null; }
+  interface Video { id: string; storage_path: string; storage_host?: string | null; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; display_order?: number | null; title?: string | null; description?: string | null; }
   const [videos, setVideos] = useState<Video[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
@@ -379,8 +381,9 @@ export default function BrokerListingPage() {
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("videos")
-        .select("id, storage_path, storage_host, filename, created_at, in_slideshow, title, description")
+        .select("id, storage_path, storage_host, filename, created_at, in_slideshow, display_order, title, description")
         .eq("listing_id", id)
+        .order("display_order", { ascending: true, nullsFirst: false })
         .order("created_at"),
       supabase.from("client_sends")
         .select("id, client_email, client_name, sent_at, included_slideshow, document_count, message, open_count, last_opened_at")
@@ -892,6 +895,27 @@ export default function BrokerListingPage() {
   async function toggleVideoSlideshow(videoId: string, current: boolean) {
     setVideos(prev => prev.map(v => v.id === videoId ? { ...v, in_slideshow: !current } : v));
     await supabase.from("videos").update({ in_slideshow: !current }).eq("id", videoId);
+  }
+
+  // Drag-to-reorder. Writes display_order = position for every video, the
+  // same way the photo grid saves its order; every reader sorts on it.
+  async function moveVideo(activeId: string, overId: string) {
+    const before = videos;
+    const oldIndex = before.findIndex(v => v.id === activeId);
+    const newIndex = before.findIndex(v => v.id === overId);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(before, oldIndex, newIndex).map((v, idx) => ({ ...v, display_order: idx }));
+    setVideos(next);
+    setVideoOrderError(null);
+    // .select() so an update that RLS silently filters out (no error, zero
+    // rows) is caught rather than looking saved.
+    const results = await Promise.all(
+      next.map((v, idx) => supabase.from("videos").update({ display_order: idx }).eq("id", v.id).select("id"))
+    );
+    if (results.some(r => r.error || !r.data || r.data.length === 0)) {
+      setVideos(before);
+      setVideoOrderError("Couldn't save the new video order — please try again.");
+    }
   }
 
   async function downloadVideo(videoId: string, filename: string | null) {
@@ -1793,7 +1817,7 @@ export default function BrokerListingPage() {
         <div className="flex items-start justify-between flex-wrap gap-4 mb-5">
           <div>
             <h2 className="label-caps text-ink-600">Listing Videos</h2>
-            <p className="text-ink-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow.</p>
+            <p className="text-ink-500 text-sm mt-0.5">Upload MP4 video for this listing. Videos appear first in the client slideshow, in the order shown here — drag the grip to reorder.</p>
           </div>
           <button
             onClick={() => hasAccess(accessStatus) && requireRights(() => videoInputRef.current?.click())}
@@ -1828,6 +1852,13 @@ export default function BrokerListingPage() {
           </div>
         )}
 
+        {videoOrderError && (
+          <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
+            <span>{videoOrderError}</span>
+            <button onClick={() => setVideoOrderError(null)} className="shrink-0 font-bold text-danger-600 hover:text-danger-700" aria-label="Dismiss">×</button>
+          </div>
+        )}
+
         {videos.length === 0 ? (
           <div
             onClick={() => hasAccess(accessStatus) && requireRights(() => videoInputRef.current?.click())}
@@ -1843,9 +1874,9 @@ export default function BrokerListingPage() {
             }
           </div>
         ) : (
-          <div className="space-y-4">
-            {videos.filter(v => !deletingVideoIds.has(v.id)).map((video) => (
-              <div key={video.id} className="rounded-xl overflow-hidden border border-hairline-strong">
+          <SortableVideoList items={videos.filter(v => !deletingVideoIds.has(v.id))} onMove={moveVideo}>
+            {(video, handle) => (
+              <div className="rounded-xl overflow-hidden border border-hairline-strong bg-white">
                 {video.url && (
                   <video
                     src={video.url}
@@ -1855,8 +1886,9 @@ export default function BrokerListingPage() {
                     className="w-full max-h-[420px] bg-black"
                   />
                 )}
-                <div className="flex items-center gap-3 px-4 py-3 bg-ink-50">
-                  <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-ink-50">
+                  {handle}
+                  <div className="flex-1 basis-40 min-w-0">
                     <p className="text-sm font-medium text-ink-800 truncate">
                       {video.filename ?? "video.mp4"}
                       {!video.in_slideshow && <span className="ml-2 text-[11px] font-semibold text-ink-500 bg-ink-100 border border-hairline-strong rounded-full px-2 py-0.5">Hidden from slideshow</span>}
@@ -1902,8 +1934,8 @@ export default function BrokerListingPage() {
                   </button>
                 </div>
               </div>
-            ))}
-          </div>
+            )}
+          </SortableVideoList>
         )}
       </div>
 

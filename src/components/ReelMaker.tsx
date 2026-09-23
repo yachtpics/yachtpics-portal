@@ -15,7 +15,7 @@ import {
   wrapSegments,
 } from "@/lib/canvasText";
 import {
-  REEL_STYLES, STYLE_ORDER, isExterior, roomLabel, applyBrand, dominantColor, rgba,
+  REEL_STYLES, STYLE_ORDER, isMarquee, isExterior, roomLabel, applyBrand, dominantColor, rgba,
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
 import {
@@ -23,7 +23,7 @@ import {
   type BrokerCard, type YpPhone,
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { planStack, planSingles, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
+import { planStack, planSingles, planMarquee, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 
@@ -389,9 +389,13 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
    * film there is nothing to stack against: the name crowds the frame and the
    * photographs fall back to singles, which is Energy under another name. So
    * Stack isn't offered on film until it has a layout of its own.
+   *
+   * Marquee is the same story: three bands stacked down a 9:16 frame. On a
+   * 16:9 film each band would be a sliver, so it's reels only too — and so
+   * is Marquee Still, the same bands with the top one held.
    */
   const looks = useMemo(
-    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack")),
+    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack" && !isMarquee(k))),
     [format],
   );
 
@@ -401,6 +405,9 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     // Stack is a reel look. Switching to film falls back to Energy — the
     // nearest thing in pace — rather than leaving a look that can't run.
     if (f === "film" && styleKey === "stack") setStyleKey("energy");
+    // Marquee (and Marquee Still) is reel-only too; its nearest on a film is
+    // the house look — serif, dissolves, the same unhurried pace.
+    if (f === "film" && isMarquee(styleKey)) setStyleKey("editorial");
     setFit(SPEC[f].defaultFit);
     setResult(null);
     setPhase("idle");
@@ -452,6 +459,19 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
     // every photo once. Only on a 9:16 reel; a film has no vertical to stack into.
     if (look.layout === "stack" && format === "reel") {
       return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold, seed });
+    }
+    // The Marquee never cuts until the end card, but it runs exactly as long
+    // as the quiet single-photo reel of the same photographs would — the
+    // planner takes that length from planSingles and animates across it.
+    if (look.layout === "marquee" && format === "reel") {
+      return planMarquee(selectedPhotos.map((p) => p.category ?? null), {
+        titleHold: s.titleHold * scale,
+        hold: s.hold * scale,
+        endHold,
+        dissolve: fadeFor(format, styleKey),
+        seed,
+        still: !!look.heroStill,
+      });
     }
     // Every other look: one photograph at a time. Every photo after the
     // title holds for exactly the same beat — varying it per photo is the
@@ -728,6 +748,31 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       // or landscape occupies inside it. The room caption anchors to this, so
       // it sits in the corner of the picture rather than the corner of the frame.
       let photoRect = { x: frame.x, y: frame.y, w: frame.w, h: frame.h };
+
+      /**
+       * The Marquee's three bands, fixed for the whole reel.
+       *
+       * The composition starts where Instagram's top overlay ends (14%, the
+       * same line the title block never climbs past on the other looks) and
+       * ends at 86% — the foot of Gallery's print, the lowest any reel look
+       * sets a photograph with ground beneath it. The TYPE obeys the stricter
+       * rule every look's type obeys: nothing below 65%, where the caption
+       * and the action buttons sit. Ground above and below the bands.
+       *
+       *   top band    14%  → 42%    hero photographs, one at a time
+       *   middle band 42%  → 66.5%  the title on the ground, accent hairlines
+       *   strip       66.5% → 86%   the rest of the boat, sliding past
+       */
+      const marqueeOn = units.some((u) => u.kind === "marquee");
+      const mq = {
+        top: Math.round(H * 0.14),
+        heroEnd: Math.round(H * 0.42),
+        stripTop: Math.round(H * 0.665),
+        bottom: Math.round(H * 0.86),
+        typeFloor: H * 0.65,
+      };
+      /** Where drawTitle centres its block on a Marquee; null on every other look. */
+      const titleBand = marqueeOn ? { top: mq.heroEnd, bottom: Math.min(mq.stripTop, mq.typeFloor) } : null;
 
       /**
        * The band a placed photograph occupies: the top, middle or bottom
@@ -1126,6 +1171,25 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             ? filmFloor
             : H - 140 * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
+        // The Marquee: the block is centred in the middle band, clear of the
+        // hairlines. A block too tall for the band (a three-line name over a
+        // long spec row) is scaled down about its centre rather than allowed
+        // to spill onto the photographs or below the type-safe line. The
+        // measure pass above is untouched — measureText ignores the transform.
+        if (titleBand) {
+          const pad = 28 * sc;
+          const bandTop = titleBand.top + pad;
+          const bandBottom = titleBand.bottom - pad;
+          const mid = (bandTop + bandBottom) / 2;
+          const fitK = Math.min(1, Math.max(1, bandBottom - bandTop) / Math.max(1, blockH));
+          if (fitK < 1) {
+            ctx.translate(anchor, mid);
+            ctx.scale(fitK, fitK);
+            ctx.translate(-anchor, -mid);
+          }
+          y = mid - blockH / 2 + firstAscent;
+        }
+
         if (maker) {
           // The lead-in above the name — italic for Editorial, tracked caps
           // for the rest — one line or several, never past the edge.
@@ -1443,6 +1507,127 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         stackAlpha = 1;
       };
 
+      /**
+       * The Marquee: a split screen that stays put while things move inside it.
+       *
+       * Top band — the hero photographs, one at a time, cropped to fill the
+       * band, each held for an equal share of the reel under the same slow
+       * drift the brochure looks use (exteriors pull out, interiors push in),
+       * dissolving softly into the next. `still` (Marquee Still): the cover
+       * alone, cropped the same way, with no drift, zoom or crossfade at all.
+       *
+       * Middle band — the ground, with the title block centred on it (drawn
+       * by drawTitle, so the fonts, casing and brand colours are the look's
+       * own) and an accent hairline on its top and bottom edges. Static; the
+       * type fades up over the first 0.6s and stays.
+       *
+       * Strip — every other photograph as a 4:3 tile, cropped to fill, with a
+       * thin accent gap between tiles, sliding right to left at one constant
+       * speed: the whole strip passes exactly once over the photo portion of
+       * the reel. It is a loop, so the band is full from the first frame and
+       * nothing jumps. Only the tiles that intersect the band are drawn.
+       */
+      const MQ_HERO_FADE = 1.0;
+      const mqGap = Math.max(4, 8 * sc);
+      const mqStripH = mq.bottom - mq.stripTop;
+      const mqTileW = Math.round((mqStripH * 4) / 3);
+      const mqPitch = mqTileW + mqGap;
+      // Each strip photograph's 4:3 source crop, worked out once on first use.
+      const mqCrops: { sx: number; sy: number; sw: number; sh: number }[] = [];
+      const mqCrop = (i: number) => {
+        const hit = mqCrops[i];
+        if (hit) return hit;
+        const bmp = bitmaps[i];
+        if (!bmp) return null;
+        const want = mqTileW / mqStripH;
+        let sw = bmp.width, sh = bmp.height;
+        if (sw / sh > want) sw = sh * want; else sh = sw / want;
+        const c = { sx: (bmp.width - sw) / 2, sy: (bmp.height - sh) / 2, sw, sh };
+        mqCrops[i] = c;
+        return c;
+      };
+
+      const drawMarquee = (hero: number[], strip: number[], hold: number, local: number, alpha: number, still: boolean) => {
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = st.ground;
+        ctx.fillRect(0, 0, W, H);
+
+        // Top band.
+        const bandH = mq.heroEnd - mq.top;
+        const hN = hero.length;
+        if (hN > 0 && bandH > 0) {
+          const seg = hold / hN;
+          const xf = Math.min(MQ_HERO_FADE, seg * 0.4);
+          const drawHero = (slot: number, a: number) => {
+            const i = hero[slot];
+            const bmp = bitmaps[i];
+            if (!bmp || a <= 0) return;
+            // The drift runs on through the next dissolve, so the photograph
+            // never freezes while it is being carried out. A still band has
+            // no drift: the cover sits at its plain cover crop throughout.
+            let k = 1;
+            if (!still) {
+              const drift = ease((local - slot * seg) / (seg + xf));
+              const out = isExterior(selectedPhotos[i]?.category);
+              const from = out ? 1 + st.zoom : 1;
+              const to = out ? 1 : 1 + st.zoom;
+              k = from + (to - from) * drift;
+            }
+            // Cover the band; the source rectangle does the cropping and the
+            // zoom, so nothing needs a clip.
+            const scale = Math.max(W / bmp.width, bandH / bmp.height) * k;
+            const sw = W / scale, sh = bandH / scale;
+            ctx.globalAlpha = alpha * a;
+            ctx.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, 0, mq.top, W, bandH);
+          };
+          const j = still ? 0 : Math.min(hN - 1, Math.max(0, Math.floor(local / seg)));
+          const into = local - j * seg;
+          if (!still && j > 0 && into < xf) {
+            drawHero(j - 1, 1);
+            drawHero(j, ease(into / xf));
+          } else {
+            drawHero(j, 1);
+          }
+        }
+
+        // Strip.
+        const m = strip.length;
+        if (m > 0 && mqStripH > 0) {
+          const loop = m * mqPitch;
+          const speed = hold > 0 ? loop / hold : 0;
+          let off = (local * speed) % loop;
+          if (off < 0) off += loop;
+          // The accent under the whole band is what shows in the gaps.
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = st.accent;
+          ctx.fillRect(0, mq.stripTop, W, mqStripH);
+          let n = Math.floor(off / mqPitch);
+          let x = n * mqPitch - off;
+          while (x < W) {
+            if (x + mqTileW > 0) {
+              const i = strip[n % m];
+              const bmp = bitmaps[i];
+              const c = mqCrop(i);
+              if (bmp && c) ctx.drawImage(bmp, c.sx, c.sy, c.sw, c.sh, x, mq.stripTop, mqTileW, mqStripH);
+            }
+            x += mqPitch;
+            n++;
+          }
+        }
+
+        // The middle band's edges: accent hairlines at the title's rule
+        // weight, so they survive the encode.
+        const hl = Math.max(1.5, 2.2 * sc);
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = st.accent;
+        ctx.fillRect(0, mq.heroEnd - hl / 2, W, hl);
+        ctx.fillRect(0, mq.stripTop - hl / 2, W, hl);
+        ctx.restore();
+
+        drawTitle(alpha * ease(local / 0.6));
+      };
+
       const drawWatermark = () => {
         ctx.save();
         ctx.translate(W / 2, H / 2);
@@ -1511,6 +1696,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           else if (!u.burst && !stacked && !u.placed) drawRoomLabel(u.index, local, u.hold, alpha, u.slot !== null && u.slot !== undefined);
         } else if (u.kind === "stack") {
           drawStack(u.events, u.hold, local, alpha);
+        } else if (u.kind === "marquee") {
+          drawMarquee(u.hero, u.strip, u.hold, local, alpha, !!u.still);
         } else {
           drawEndCard(alpha);
         }
@@ -1795,13 +1982,17 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
    * ours). Two pieces of type, one band. Until that's resolved the honest
    * thing is to say so rather than show a switch that does nothing.
    *
-   * Stack moves too fast to read one at all.
+   * Stack moves too fast to read one at all. Marquee (and Marquee Still) has
+   * several photographs on screen and most of them moving, so a caption
+   * couldn't say which.
    */
   const labelsUnavailable: string | null =
     format !== "reel"
       ? null
       : styleKey === "stack"
         ? "Stack moves too fast for room labels."
+        : isMarquee(styleKey)
+          ? `${REEL_STYLES[styleKey].name} keeps several photographs moving at once, so there are no room labels.`
         : styleKey === "cinematic" || styleKey === "gallery"
           ? `${REEL_STYLES[styleKey].name} keeps all type off the photograph, and on a reel that band is holding the title — so no room labels here.`
           : null;
@@ -1862,10 +2053,11 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
         <p className="text-xs text-ink-400 -mt-4 mb-5">Reels reach furthest between 30 and 60 seconds — add a few more photos, or switch to Short.</p>
       )}
 
-      {/* Look — six complete points of view, not colour swaps. */}
+      {/* Look — complete points of view, not colour swaps. Eight on a reel,
+          five on a film (Stack, Marquee and Marquee Still are reel-only). */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
-        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${looks.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
+        <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${looks.length >= 7 ? "lg:grid-cols-4" : looks.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
           {looks.map((k) => {
             const stl = REEL_STYLES[k];
             const on = styleKey === k;
@@ -1988,6 +2180,8 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             <p className="text-xs text-ink-400">Cinematic fills its letterbox band; there&rsquo;s nothing to choose here.</p>
           ) : styleKey === "stack" && format === "reel" ? (
             <p className="text-xs text-ink-400">Stack fills three bands, each with a whole photograph — nothing to choose here.</p>
+          ) : isMarquee(styleKey) && format === "reel" ? (
+            <p className="text-xs text-ink-400">{REEL_STYLES[styleKey].name} crops each photograph to fill its band — the hero across the top, the rest as tiles in the strip below. Nothing to choose here.</p>
           ) : styleKey === "gallery" ? (
             // The inset always shows the complete photograph.
             <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>

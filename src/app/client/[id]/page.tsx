@@ -54,6 +54,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
     .from("videos")
     .select("id, storage_path, storage_host, filename, created_at, uploaded_by")
     .eq("gallery_id", params.id)
+    .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at");
 
   // Only claim YachtPics ownership in the footer when ALL media is ours

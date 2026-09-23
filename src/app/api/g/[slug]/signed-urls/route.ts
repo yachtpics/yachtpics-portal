@@ -50,6 +50,7 @@ export async function POST(_req: NextRequest, { params }: { params: { slug: stri
       .from("videos")
       .select("id, storage_path, storage_host, created_at")
       .eq("gallery_id", gallery.id)
+      .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at");
 
     // Six hours — longer than any realistic download session, well short of

@@ -47,7 +47,7 @@ async function syncVideos(
     .from("videos")
     .select("id, storage_path, filename, thumbnail_path, title, description, display_order, created_at")
     .eq("listing_id", listingId)
-    .order("display_order", { ascending: true })
+    .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true });
 
   if (!rows?.length) return [];

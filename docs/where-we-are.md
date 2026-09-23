@@ -1,4 +1,73 @@
-# Where we are — September 21, 2026
+# Where we are — September 23, 2026
+
+## Sept 23 — Marquee, a new reel look (reel only)
+
+- **Marquee Still** (`marquee_still`, right after Marquee in the picker, reel only, same Film fallback to Editorial): Marquee with the top band held on the cover alone — no drift, zoom or crossfade — and every other photo (profiles/aerials included) in the strip, cover added to the strip if fewer than 3 remain; same bands, palette, type, timing and end card via `splitMarquee(…, { still })` / `heroStill`.
+- **Marquee** is the seventh look, after Stack in the picker: *"Hero on top,
+  details in the middle, the rest of the boat sliding past below."* A split
+  screen that holds for the whole reel while the photographs move inside it.
+  **Reel (9:16) only** — hidden on Film exactly as Stack is (the `looks` memo
+  filters both out; switching to Film while on Marquee falls back to
+  Editorial).
+- **Layout (1080×1920).** Three full-width bands between 14% (where
+  Instagram's top overlay ends) and 86% (the foot of Gallery's print), ground
+  above and below. **Top band** 14–42%: the hero photographs, one at a time,
+  cropped to fill, each held for an equal share of the reel with the usual
+  slow drift (exteriors pull out, interiors push in) and a ~1s crossfade.
+  **Middle band** 42–66.5%: the ground colour with the title block centred on
+  it, drawn by `drawTitle` (same fonts, same prepared name/builder/spec/where
+  strings, so `subject === "free"` just works), accent hairlines on the top
+  and bottom edges; the type fades up over 0.6s and stays, and is kept above
+  the 65% type-safe line (a block too tall for the band is scaled down about
+  its centre rather than spilling). **Strip** 66.5–86%: 4:3 tiles with a thin
+  accent gap, sliding right to left at one constant speed — the whole strip
+  passes exactly once over the photo portion, as a seamless loop (full from
+  frame one, no jump). Only tiles intersecting the band are drawn; source
+  crops are computed once per photo; no new decoding.
+- **Which photos go where** (`splitMarquee` in `src/lib/reelStack.ts`). Top
+  band: the first selected photo (the cover) plus any selected **Profiles**,
+  **Profiles Running** or **Aerial** photos, in selection order, capped at 4;
+  if that finds fewer than 2, the first 3 selected photos. Strip: everything
+  else, in selection order. A selection of **fewer than 6** puts every photo
+  in the strip, heroes included, so the strip isn't nearly empty.
+- **Timing.** `planMarquee` returns one `"marquee"` unit plus the usual end
+  card. The marquee unit's length is taken from `planSingles` (the quiet,
+  dissolve-only plan for the same photo count, Length and `holdScale` 1), so
+  the "about N seconds" readout and the Length budgets hold. Same end card,
+  same dissolve into it. No room labels on Marquee (the switch explains why);
+  the Framing chips are replaced by a one-line note.
+- Admin reel metrics (`/admin/reels`) label the new look "Marquee".
+- **Not yet seen in a browser** — typechecks clean, but the first real render
+  is the test: check the band proportions, the strip speed on Short vs Long,
+  and a long vessel name in the middle band.
+
+## Sept 23 — video order and the admin slideshow toggle
+
+- **Admins can choose which videos go in the client slideshow.** The admin
+  listing page's video cards now have the same **Hide from slideshow / Show in
+  slideshow** button and **Hidden from slideshow** badge as the broker page.
+  The write goes through a new `PATCH /api/admin/videos/[id]` (`requireAdmin` +
+  service role), not the browser client: the repo's `videos` RLS
+  (`supabase/videos-setup.sql`) has no admin policy, and an update that RLS
+  filters out returns no error — it would look saved and change nothing.
+- **Drag-to-reorder on both listing pages (admin and broker).** Each video card
+  has the photo grid's grip (`title="Drag to reorder"`); only the grip starts a
+  drag, after 8px of movement, so taps on the buttons and the player still
+  work on a phone. Dropping writes `display_order = position` for every video.
+  Shared component: `src/components/SortableVideoList.tsx`. The broker page
+  writes via the browser client and checks rows came back, so a write RLS
+  refuses (e.g. a co-broker) reverts with an error instead of lying. Uploads
+  still append at the end (`videos.length + i`).
+- **`display_order` is honoured everywhere.** Every videos list now sorts
+  `display_order ASC NULLS LAST, created_at`: admin + broker listing pages,
+  `/s/[slug]` (still filtered to `in_slideshow`), `/d/[token]`, the
+  send-to-client email's video links, website publish (`sitePublish.ts`), and
+  the gallery readers (`/client/[id]`, `/g/[slug]` + its signed-urls route,
+  admin gallery page) for consistency.
+- **Backfill migration written, needs applying:**
+  `supabase/migrations/20260923_video_display_order_backfill.sql` numbers any
+  null `display_order` by `created_at` within each listing (after any already
+  numbered rows) and sets the column default to 0.
 
 ## Sept 18–21 — reel findability, brokerage admins, and the delivery-email nudge
 

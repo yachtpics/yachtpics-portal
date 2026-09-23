@@ -89,6 +89,7 @@ export default async function PublicSlideshowPage({
         .select("id, storage_path, storage_host, filename")
         .eq("listing_id", listing.id)
         .eq("in_slideshow", true)
+        .order("display_order", { ascending: true, nullsFirst: false })
         .order("created_at"),
     ]);
 

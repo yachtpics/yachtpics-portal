@@ -108,7 +108,9 @@ export async function POST(req: NextRequest) {
         .from("videos")
         .select("id, storage_path, storage_host, filename")
         .in("id", videoIds)
-        .eq("listing_id", listingId);
+        .eq("listing_id", listingId)
+        .order("display_order", { ascending: true, nullsFirst: false })
+        .order("created_at");
       // A week, matching the document links above — these sit in an inbox.
       for (const v of vids ?? []) {
         const url = await signVideoUrl(supabaseAdmin, v, { expiresIn: 60 * 60 * 24 * 7 });
