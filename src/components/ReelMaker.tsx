@@ -683,7 +683,10 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
       // while its unit is on screen, plus the neighbour in a crossfade — so
       // six is plenty. Building all of them up front cost a frame-sized canvas
       // per photo (~320MB at forty photos) on top of the bitmaps.
-      const wantsBackdrops = !st.light && backdrop === "scrim" && (fit === "whole" || stacked);
+      // The Marquee's bottom band in "whole photo" mode floats each photograph
+      // on the same blurred plate, cropped to the band.
+      const marqueeWhole = fit === "whole" && units.some((u) => u.kind === "marquee");
+      const wantsBackdrops = !st.light && ((backdrop === "scrim" && (fit === "whole" || stacked)) || marqueeWhole);
       const BACKDROP_CACHE = 6;
       const getBackdrop = (i: number): HTMLCanvasElement | null => {
         if (!wantsBackdrops) return null;
@@ -815,22 +818,29 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
        * The Marquee's three bands, fixed for the whole reel.
        *
        * The composition starts where Instagram's top overlay ends (14%, the
-       * same line the title block never climbs past on the other looks) and
-       * ends at 86% — the foot of Gallery's print, the lowest any reel look
-       * sets a photograph with ground beneath it. The TYPE obeys the stricter
-       * rule every look's type obeys: nothing below 65%, where the caption
-       * and the action buttons sit. Ground above and below the bands.
+       * same line the title block never climbs past on the other looks). The
+       * bottom band is sized first: tall enough that a 3:2 landscape shows
+       * WHOLE at full frame width (W / 1.5 — 720px on a 1080 reel), ending at
+       * 90% (a little lower than Gallery's 86%; the photograph may sit behind
+       * the caption row — the type-safe rule governs type, not pictures). The
+       * middle band is sized for an ordinary title block (lead-in, one-line
+       * name, spec row, location — about 300px drawn) with ~30px either side;
+       * the top band takes what is left. The title block is centred between
+       * the two photographs on its measured drawn height, so the gaps above
+       * and below it are equal, and the hairlines on the photo edges sit at
+       * equal distances from the text. On 1080×1920:
        *
-       *   top band    14%  → 42%    hero photographs, one at a time
-       *   middle band 42%  → 66.5%  the title on the ground, accent hairlines
-       *   bottom band 66.5% → 86%   the rest of the boat, one at a time
+       *   top band    14%    → 33.75%   269 → 648   (379px) heroes, cover-cropped
+       *   middle band 33.75% → 52.5%    648 → 1008  (360px) the title
+       *   bottom band 52.5%  → 90%     1008 → 1728  (720px) the rest, one at a time
        */
       const marqueeOn = units.some((u) => u.kind === "marquee");
+      const mqBottom = Math.round(H * 0.90);
       const mq = {
         top: Math.round(H * 0.14),
-        heroEnd: Math.round(H * 0.42),
-        bottomTop: Math.round(H * 0.665),
-        bottom: Math.round(H * 0.86),
+        heroEnd: Math.round(H * 0.3375),
+        bottomTop: mqBottom - Math.round(W / 1.5),
+        bottom: mqBottom,
         typeFloor: H * 0.65,
       };
       /** Where drawTitle centres its block on a Marquee; null on every other look. */
@@ -1233,69 +1243,87 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             ? filmFloor
             : H - 140 * sc - blockH + (maker ? 0 : nameSize * 0.82);
 
-        // The Marquee: the block is centred in the middle band, clear of the
-        // hairlines. A block too tall for the band (a three-line name over a
-        // long spec row) is scaled down about its centre rather than allowed
-        // to spill onto the photographs or below the type-safe line. The
-        // measure pass above is untouched — measureText ignores the transform.
+        // Every baseline in the block, as an offset from the FIRST baseline.
+        // The draw below places each line at y + its offset, and the Marquee
+        // measures the block from the same offsets, so the two can't disagree.
+        // (Each is the step the draw has always taken, written out once.)
+        const leadCapH = leadIsItalic ? 46 * sc : capSize;
+        const offName = maker ? leadLineH * (leadLines.length - 1) + leadCapH + gapLeadToName + nameSize * 0.82 : 0;
+        const offNameLast = offName + nameSize * 0.94 * (lines.length - 1);
+        const offAfterName = offNameLast + (collapseTrail ? 0 : gapNameToSpec);
+        const offSpecLast = offAfterName + (spec ? specLineH * (specLines.length - 1) : 0);
+        const offWhere = offAfterName + (spec ? specLineH * (specLines.length - 1) + capSize + gapSpecTrail : 0);
+        const leadFont = leadIsItalic ? `italic 400 ${leadSize}px ${serifFamily}, Georgia, serif` : `600 ${leadSize}px ${sans}`;
+        const nameFont = `${headWeight} ${nameSize}px ${headFamily}`;
+        const specFont = `600 ${capSize}px ${sans}`;
+        const whereFont = `500 ${23 * sc}px ${sans}`;
+        const nameLine = (li: number) =>
+          st.headline === "editorial" && li === lines.length - 1 ? `${lines[li]}.` : lines[li];
+
+        // The Marquee: the block is centred between the two photographs on its
+        // DRAWN height — the first line's ink top to the last line's ink foot,
+        // measured with the fonts the draw uses — so the gap from the top
+        // photo to the type equals the gap from the type to the bottom photo,
+        // and the hairlines on the photo edges sit at equal distances from it.
+        // A block too tall for the band (a three-line name over a long spec
+        // row) is scaled down about that centre rather than allowed to spill
+        // onto the photographs. measureText ignores the transform.
         if (titleBand) {
-          const pad = 28 * sc;
-          const bandTop = titleBand.top + pad;
-          const bandBottom = titleBand.bottom - pad;
-          const mid = (bandTop + bandBottom) / 2;
-          const fitK = Math.min(1, Math.max(1, bandBottom - bandTop) / Math.max(1, blockH));
+          const minGap = 20 * sc;
+          ctx.font = maker ? leadFont : nameFont;
+          const firstText = maker && leadLines.length ? leadLines[0] : lines.length ? nameLine(0) : "";
+          const inkTop = ctx.measureText(firstText).actualBoundingBoxAscent || firstAscent;
+          let lastOff: number;
+          let lastText: string;
+          if (where) { ctx.font = whereFont; lastOff = offWhere; lastText = where.toUpperCase(); }
+          else if (spec && specLines.length) { ctx.font = specFont; lastOff = offSpecLast; lastText = specLines[specLines.length - 1]; }
+          else { ctx.font = nameFont; lastOff = offNameLast; lastText = lines.length ? nameLine(lines.length - 1) : ""; }
+          const inkFoot = Math.max(0, ctx.measureText(lastText).actualBoundingBoxDescent || 0);
+          const drawnH = inkTop + lastOff + inkFoot;
+          const mid = (titleBand.top + titleBand.bottom) / 2;
+          const room = Math.max(1, titleBand.bottom - titleBand.top - minGap * 2);
+          const fitK = Math.min(1, room / Math.max(1, drawnH));
           if (fitK < 1) {
             ctx.translate(anchor, mid);
             ctx.scale(fitK, fitK);
             ctx.translate(-anchor, -mid);
           }
-          y = mid - blockH / 2 + firstAscent;
+          y = mid - drawnH / 2 + inkTop;
         }
 
         if (maker) {
           // The lead-in above the name — italic for Editorial, tracked caps
           // for the rest — one line or several, never past the edge.
           ctx.fillStyle = st.accent;
-          ctx.font = leadIsItalic ? `italic 400 ${leadSize}px ${serifFamily}, Georgia, serif` : `600 ${leadSize}px ${sans}`;
+          ctx.font = leadFont;
           leadLines.forEach((ln, li) => put(ln, anchor, y + li * leadLineH, leadTrack));
-          y += leadLineH * (leadLines.length - 1) + (leadIsItalic ? 46 * sc : capSize) + gapLeadToName + nameSize * 0.82;
         }
 
         ctx.fillStyle = st.text;
-        ctx.font = `${headWeight} ${nameSize}px ${headFamily}`;
+        ctx.font = nameFont;
+        // Editorial closes the name with a full stop — the detail that turns a
+        // label into a statement.
         for (let li = 0; li < lines.length; li++) {
-          const isLast = li === lines.length - 1;
-          // Editorial closes the name with a full stop — the detail that turns a
-          // label into a statement.
-          const line = st.headline === "editorial" && isLast ? `${lines[li]}.` : lines[li];
-          put(line, anchor, y, st.headTrack * sc);
-          if (!isLast) y += nameSize * 0.94;
+          put(nameLine(li), anchor, y + offName + li * nameSize * 0.94, st.headTrack * sc);
         }
 
         // The same distance from the name's baseline to the spec's, rule or no
         // rule — the rule sits halfway along it. Nothing follows a collapsed
         // free card, so it draws neither (and measured neither, above).
-        if (!collapseTrail) {
-          if (st.rule !== "none") {
-            y += gapNameToSpec / 2;
-            drawRule(anchor, y, leftAligned ? 108 * sc : 96 * sc, alpha, leftAligned);
-            y += gapNameToSpec / 2;
-          } else {
-            y += gapNameToSpec;
-          }
+        if (!collapseTrail && st.rule !== "none") {
+          drawRule(anchor, y + offNameLast + gapNameToSpec / 2, leftAligned ? 108 * sc : 96 * sc, alpha, leftAligned);
         }
 
         if (spec) {
           ctx.fillStyle = st.quiet;
-          ctx.font = `600 ${capSize}px ${sans}`;
-          specLines.forEach((ln, li) => put(ln, anchor, y + li * specLineH, 6 * sc));
-          y += specLineH * (specLines.length - 1) + capSize + gapSpecTrail;
+          ctx.font = specFont;
+          specLines.forEach((ln, li) => put(ln, anchor, y + offAfterName + li * specLineH, 6 * sc));
         }
 
         if (where) {
           ctx.fillStyle = st.soft;
-          ctx.font = `500 ${23 * sc}px ${sans}`;
-          put(where.toUpperCase(), anchor, y, 5 * sc);
+          ctx.font = whereFont;
+          put(where.toUpperCase(), anchor, y + offWhere, 5 * sc);
         }
         ctx.restore();
       };
@@ -1583,9 +1611,12 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
        * own) and an accent hairline on its top and bottom edges. Static; the
        * type fades up over the first 0.6s and stays.
        *
-       * Bottom band — the rest of the boat, one photograph at a time, cropped
-       * to fill the band, each held for an equal share of the reel under a
-       * gentler drift than the top band's. Each cut is the move the planner
+       * Bottom band — the rest of the boat, one photograph at a time, each
+       * held for an equal share of the reel under a gentler drift than the top
+       * band's. It follows the Framing chips: "whole" (the default) shows the
+       * complete photograph, contained in the band on the same blurred
+       * backdrop the other looks use (a 3:2 landscape fills it exactly); "fill"
+       * crops it to cover the band. The top band is always cropped to fill. Each cut is the move the planner
        * dealt for it (`moves`: crossfade, push left, push up, wipe with an
        * accent line on its edge, or zoom-dissolve), about 0.6s, and everything
        * is clipped to the band so nothing spills into the title.
@@ -1647,7 +1678,14 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
           const seg = hold / bN;
           const xf = Math.min(MARQUEE_BOTTOM_XF, seg * 0.4);
           const bz = st.zoom * MQ_BOTTOM_DRIFT;
-          /** One bottom photograph, cover-cropped to the band, offset by (dx, dy), scaled by `extra` on top of its drift. */
+          const whole = fit === "whole";
+          /**
+           * One bottom photograph in the band, offset by (dx, dy), scaled by
+           * `extra` on top of its drift. Fill: cover-cropped. Whole: its
+           * blurred backdrop cover-cropped to the band, the complete photograph
+           * contained on it — the drift damped as the other looks damp it, and
+           * scaled so it never grows past the band (a 3:2 frame stays whole).
+           */
           const drawBottom = (slot: number, a: number, dx: number, dy: number, extra: number) => {
             const i = bottom[slot];
             const bmp = bitmaps[i];
@@ -1656,11 +1694,26 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             const out = isExterior(selectedPhotos[i]?.category);
             const from = out ? 1 + bz : 1;
             const to = out ? 1 : 1 + bz;
-            const k = (from + (to - from) * drift) * extra;
-            const scale = Math.max(W / bmp.width, mqBottomH / bmp.height) * k;
-            const sw = W / scale, sh = mqBottomH / scale;
+            const k = from + (to - from) * drift;
+            const y0 = mq.bottomTop + dy;
             ctx.globalAlpha = alpha * a;
-            ctx.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, dx, mq.bottomTop + dy, W, mqBottomH);
+            if (!whole) {
+              const scale = Math.max(W / bmp.width, mqBottomH / bmp.height) * k * extra;
+              const sw = W / scale, sh = mqBottomH / scale;
+              ctx.drawImage(bmp, (bmp.width - sw) / 2, (bmp.height - sh) / 2, sw, sh, dx, y0, W, mqBottomH);
+              return;
+            }
+            const bd = getBackdrop(i);
+            if (bd) {
+              const bs = Math.max(W / bd.width, mqBottomH / bd.height);
+              const bw = W / bs, bh = mqBottomH / bs;
+              ctx.drawImage(bd, (bd.width - bw) / 2, (bd.height - bh) / 2, bw, bh, dx, y0, W, mqBottomH);
+            }
+            const damp = 0.45;
+            const kw = ((1 + (k - 1) * damp) / (1 + bz * damp)) * extra;
+            const scale = Math.min(W / bmp.width, mqBottomH / bmp.height) * kw;
+            const dw = bmp.width * scale, dh = bmp.height * scale;
+            ctx.drawImage(bmp, dx + (W - dw) / 2, y0 + (mqBottomH - dh) / 2, dw, dh);
           };
           ctx.save();
           ctx.beginPath();
@@ -2269,8 +2322,6 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
             <p className="text-xs text-ink-400">Cinematic fills its letterbox band; there&rsquo;s nothing to choose here.</p>
           ) : styleKey === "stack" && format === "reel" ? (
             <p className="text-xs text-ink-400">Stack fills three bands, each with a whole photograph — nothing to choose here.</p>
-          ) : isMarquee(styleKey) && format === "reel" ? (
-            <p className="text-xs text-ink-400">{REEL_STYLES[styleKey].name} crops each photograph to fill its band — the hero across the top, the rest one at a time in the band below. Nothing to choose here.</p>
           ) : styleKey === "gallery" ? (
             // The inset always shows the complete photograph.
             <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>
@@ -2281,7 +2332,11 @@ export default function ReelMaker({ source }: { source: ReelSource }) {
                 <button onClick={() => { setFit("fill"); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(fit === "fill")}>Fill the frame</button>
               </div>
               <p className="text-xs text-ink-400 mt-1.5">
-                {fit === "whole"
+                {isMarquee(styleKey) && format === "reel"
+                  ? fit === "whole"
+                    ? "The bottom band shows each photograph complete, on a soft backdrop \u2014 a horizontal fills it edge to edge. The top band is always cropped to fill."
+                    : "The bottom band crops each photograph to fill it. The top band is always cropped to fill."
+                  : fit === "whole"
                   ? "Every photograph shown complete, on a soft backdrop \u2014 nothing cropped away."
                   : format === "reel"
                     ? "Cinematic crop with a slow push-in. On a vertical reel this cuts most of a horizontal frame."
