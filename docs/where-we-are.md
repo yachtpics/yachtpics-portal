@@ -1,5 +1,6 @@
 # Where we are — September 23, 2026
 
+- **Sept 24 — Week-one reel follow-up forced quiet + auto-sends Fri Sept 25, 9–10am ET.** `WEEK1_FORCE_QUIET = true` (leads with the new looks, now incl. a "Video clips." item; subject "Two new reel looks and video clips — free until …"); the daily cron calls `/api/cron/reel-followup`, which sends via the same `runReelFollowUpSend` as the admin button only when the week-one window is open AND the ET date is `WEEK1_AUTO_SEND_ON` ("2026-09-25"); email_log dedup means a hand send first is fine. Must be PUSHED before 13:00 UTC Friday. Last call unchanged (hand send).
 - **Sept 23 — Reel Studio: "Add photos & videos".** The Studio's top picker now takes photos and videos (`accept="image/*,video/*"`); videos queue in the page (`pendingVideos`) and ReelMaker opens each in the same clip trimmer as "Add clip" (`pendingClipFiles` / `onPendingClipsConsumed` props), one after another, skipping past the clip cap with a note; with no photo yet they wait with "Add at least one photo…". "Add clip" stays. NOT BROWSER-TESTED.
 
 ## Sept 23 — Video clips in reels (listing reel + Reel Studio) — NOT PUSHED, NOT BROWSER-TESTED

@@ -18,6 +18,8 @@ export const maxDuration = 60;
 //   • announce         — EVERY DAY (self-gated by approval + send window)
 //   • news-digest      — Monday   (drafts the weekly piece; sends nothing)
 //   • tips             — Tuesday  (self-gated by approval + weekly pacing)
+//   • reel-followup    — EVERY DAY (week one only; self-gated by send window +
+//                        ET date == WEEK1_AUTO_SEND_ON + email_log dedup)
 const PROD = "https://portal.yachtpics.com";
 
 export async function GET(req: NextRequest) {
@@ -46,6 +48,11 @@ export async function GET(req: NextRequest) {
   // app_settings, and the email_log dedup that skips anyone already sent to.
   // With no approval it is a no-op; with approval it can still only send once.
   jobs.push("/api/cron/announce");
+  // Week-one reel follow-up. Safe daily: it only sends on WEEK1_AUTO_SEND_ON
+  // (Eastern date) inside the week-one window, and runReelFollowUpSend skips
+  // anyone already in email_log for that campaign — so a hand send earlier, or
+  // a second run the same day, can't send anyone a second copy.
+  jobs.push("/api/cron/reel-followup");
   // news-digest only drafts "Yachting this week" — it never sends. It checks
   // the Eastern weekday itself too, so a stray call can't write a Thursday piece.
   if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/news-digest");

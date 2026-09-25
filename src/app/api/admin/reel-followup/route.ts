@@ -25,6 +25,9 @@ function isKey(v: unknown): v is FollowUpKey {
  * deadline, so they are read and then sent by hand — there is no version of
  * "arm it and forget it" that is safe for an email whose copy depends on what
  * happened yesterday.
+ * Exception: week one (forced quiet, so no live numbers) also auto-sends once
+ * via /api/cron/reel-followup on WEEK1_AUTO_SEND_ON — same send function, same
+ * email_log dedup, so a hand send here first means the cron skips everyone.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();

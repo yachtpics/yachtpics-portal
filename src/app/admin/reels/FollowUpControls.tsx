@@ -17,6 +17,7 @@ export default function FollowUpControls({
     alreadySent: number;
     remaining: number;
     proof: boolean;
+    autoSendArmed?: boolean;
   }[];
 }) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -67,6 +68,11 @@ export default function FollowUpControls({
           </div>
           <p className="text-sm text-ink-500 mb-1">{c.blurb}</p>
           <p className="text-xs text-ink-400 mb-3">{c.windowLabel}</p>
+          {c.autoSendArmed && (
+            <p className="text-xs text-success-700 mb-3">
+              Scheduled — goes out automatically Friday Sept 25, 9–10am ET. Sending by hand before then is fine; it won&rsquo;t send twice.
+            </p>
+          )}
 
           <div className="mb-3 px-3 py-2 bg-ink-50 border border-hairline rounded-ctl">
             <p className="label-caps mb-0.5">Subject as it stands</p>
@@ -75,7 +81,7 @@ export default function FollowUpControls({
               <p className="text-xs text-ink-400 mt-1">
                 {c.proof
                   ? "The numbers are strong enough to lead with — this send will quote them."
-                  : "Too quiet to lead with numbers — this send falls back to the version that makes the case on the tool. Re-check nearer the day; it switches on its own."}
+                  : "This send leads with the new looks, not the numbers."}
               </p>
             )}
           </div>

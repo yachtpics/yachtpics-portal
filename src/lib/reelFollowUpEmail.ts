@@ -12,6 +12,8 @@
  * themselves (see THIN_WEEK); otherwise the same email goes out making the
  * case on the tool rather than on the crowd. Neither variant ever sends on a
  * schedule: Charlie reads the numbers on /admin/reels and presses the button.
+ * EXCEPTION (Sept 24): week one is forced quiet and auto-sends once via the
+ * daily cron on WEEK1_AUTO_SEND_ON — see below and /api/cron/reel-followup.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -71,6 +73,40 @@ export const THIN_WEEK = { brokers: 5, reels: 10 };
 
 export function statsAreWorthSharing(s: ReelStats): boolean {
   return s.brokers >= THIN_WEEK.brokers && s.total >= THIN_WEEK.reels;
+}
+
+// Charlie, Sept 24: lead with the new looks, not the count.
+export const WEEK1_FORCE_QUIET = true;
+
+/**
+ * The one ET calendar date (YYYY-MM-DD, America/New_York) on which the daily
+ * cron sends the week-one follow-up by itself. Still gated by the send window
+ * and by the email_log dedup, so a hand send before then can't double up.
+ */
+export const WEEK1_AUTO_SEND_ON = "2026-09-25";
+
+/** Today's date in America/New_York as YYYY-MM-DD. */
+export function easternDate(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(now);
+  const get = (t: string) => parts.filter((x) => x.type === t)[0]?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** True only on WEEK1_AUTO_SEND_ON (Eastern) — the day the cron may send. */
+export function week1AutoSendToday(now: Date = new Date()): boolean {
+  return easternDate(now) === WEEK1_AUTO_SEND_ON;
+}
+
+/** True until the auto-send date has passed (Eastern) — for the admin card. */
+export function week1AutoSendArmed(now: Date = new Date()): boolean {
+  return easternDate(now) <= WEEK1_AUTO_SEND_ON && now.getTime() <= Date.parse(FOLLOWUP_WINDOW.week1.before);
+}
+
+/** Whether the week-one email quotes the numbers (false while forced quiet). */
+export function weekOneQuotesNumbers(s: ReelStats): boolean {
+  return !WEEK1_FORCE_QUIET && statsAreWorthSharing(s);
 }
 
 /**
@@ -163,14 +199,15 @@ export function followUpSubject(key: FollowUpKey, stats: ReelStats): string {
     const days = reelPromoDaysLeft();
     return days <= 1 ? "Last day to make a reel on the house" : `Two days left — the reel open house closes ${closes}`;
   }
-  return statsAreWorthSharing(stats)
+  return weekOneQuotesNumbers(stats)
     ? `${stats.total} reels made this week — the open house runs to ${closes}`
-    : `Two new reel looks — free until ${closes}`;
+    : `Two new reel looks and video clips — free until ${closes}`;
 }
 
 // ── What's new since the announcement (Sept 23) ──────────────────────────
 // The week-one email carries the product news rather than repeating the
-// announcement: two Marquee looks and the Long length landed after it went out.
+// announcement: two Marquee looks, the Long length and video clips landed
+// after it went out. Both week-one versions use this list.
 const newItem = (strong: string, rest: string) =>
   `<tr>
     <td style="padding:0 10px 12px 0;vertical-align:top;color:#c39e4e;font-size:15px;line-height:1.6;">&mdash;</td>
@@ -182,6 +219,7 @@ const whatsNew = `
     ${newItem("Marquee.", "Your hero shots drift across the top, the name and specification sit in the middle, and the rest of the boat plays below, one photograph at a time.")}
     ${newItem("Marquee Still.", "The same, with your cover held perfectly still. Quieter &mdash; and very good on a big yacht.")}
     ${newItem("Long.", "Up to forty photographs in under a minute, for the boats that need more than eighteen frames to tell it.")}
+    ${newItem("Video clips.", "Add a few seconds of your listing video to any reel &mdash; a bow run, an aerial pass &mdash; right alongside the photographs.")}
   </table>`;
 
 // ── Week one ──────────────────────────────────────────────────────────────
@@ -189,7 +227,7 @@ const whatsNew = `
 export function weekOneHtml(opts: { firstName: string; stats: ReelStats; unsubToken?: string }): string {
   const { firstName, stats, unsubToken } = opts;
   const closes = reelPromoEndsOn();
-  const proof = statsAreWorthSharing(stats);
+  const proof = weekOneQuotesNumbers(stats);
 
   const numbers = `
     <div style="margin:0 0 26px;padding:18px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
@@ -205,7 +243,7 @@ export function weekOneHtml(opts: { firstName: string; stats: ReelStats; unsubTo
       <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">What brokers made this week</h1>
       ${p(`Hi ${firstName},`)}
       ${numbers}
-      ${p(`And since last week, two new looks and a longer cut:`)}
+      ${p(`And since last week, two new looks, a longer cut and video clips:`)}
       ${whatsNew}
       ${p(`If you haven&rsquo;t made one yet, it takes about a minute. Open a listing, press <strong style="color:#111827;">Reel</strong>, pick a look. The photographs are already there &mdash; you don&rsquo;t upload anything, write anything or edit anything.`)}
       ${p(`It&rsquo;s open to every account until <strong style="color:#111827;">${closes}</strong>, and anything you make is yours to keep whatever you decide after that.`)}
@@ -214,7 +252,7 @@ export function weekOneHtml(opts: { firstName: string; stats: ReelStats; unsubTo
       ${signoff}`
     : `
       <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New this week</p>
-      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Two new looks, and room for the whole boat</h1>
+      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Two new looks, video clips, and room for the whole boat</h1>
       ${p(`Hi ${firstName},`)}
       ${p(`Since the reel builder opened, we&rsquo;ve added two looks built around one idea: the boat&rsquo;s best angle holds the screen while the rest of it plays beneath.`)}
       ${whatsNew}

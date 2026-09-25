@@ -3,8 +3,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { ANNOUNCEMENT_TYPE } from "@/lib/announcementEmail";
 import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown } from "@/lib/reelPromo";
 import {
-  readReelStats, statsAreWorthSharing, followUpSubject,
-  followUpWindowOpen, FOLLOWUP_TYPE, FOLLOWUP_WINDOW, type FollowUpKey,
+  readReelStats, statsAreWorthSharing, followUpSubject, weekOneQuotesNumbers,
+  followUpWindowOpen, week1AutoSendArmed, FOLLOWUP_TYPE, FOLLOWUP_WINDOW, type FollowUpKey,
 } from "@/lib/reelFollowUpEmail";
 import FollowUpControls from "./FollowUpControls";
 
@@ -229,7 +229,7 @@ export default async function ReelsPage() {
     {
       key: "week1",
       title: "One week in",
-      blurb: "What brokers made, and a nudge to the ones who haven't. Leads with the numbers when they're strong enough to lead with.",
+      blurb: "The new looks and video clips, and a nudge to the ones who haven't made a reel. Forced to the quiet version (no numbers) since Sept 24.",
     },
     {
       key: "lastcall",
@@ -242,14 +242,18 @@ export default async function ReelsPage() {
     followUpMeta.map(async (m) => {
       const already = alreadySentByKey[m.key];
       const w = FOLLOWUP_WINDOW[m.key];
+      const remaining = Math.max(0, audience - already);
       return {
         ...m,
         subject: followUpSubject(m.key, stats),
         windowOpen: followUpWindowOpen(m.key),
         windowLabel: `Can be sent ${fmtDay(w.after)} to ${fmtDay(w.before)}`,
         alreadySent: already,
-        remaining: Math.max(0, audience - already),
-        proof,
+        remaining,
+        // Week one is forced quiet (WEEK1_FORCE_QUIET), so it only "quotes the
+        // numbers" if that flag is off; last call still follows the stats.
+        proof: m.key === "week1" ? weekOneQuotesNumbers(stats) : proof,
+        autoSendArmed: m.key === "week1" && week1AutoSendArmed() && remaining > 0,
       };
     })
   );
