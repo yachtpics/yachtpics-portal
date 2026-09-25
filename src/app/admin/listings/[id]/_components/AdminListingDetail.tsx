@@ -839,7 +839,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             {listing.vessel_name ?? "Untitled vessel"}
           </h1>
           <p className="text-ink-500 text-sm mt-0.5">
-            {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
+            {[listing.year, listing.make, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}
           </p>
           {/* A bordered control rather than a text link. As a link tucked on the
               end of the specs line it was genuinely hard to find — it took three

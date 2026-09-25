@@ -7,6 +7,7 @@ type Listing = {
   id: string;
   vessel_name: string | null;
   vessel_type: string | null;
+  make?: string | null;
   year: number | null;
   length_ft: string | null;
   location: string | null;
@@ -172,6 +173,7 @@ export default function BrokerListingsPublisher({
                 <p className="text-xs text-ink-500 mt-0.5">
                   {[
                     listing.year,
+                    listing.make,
                     listing.vessel_type,
                     listing.length_ft ? `${listing.length_ft}′` : null,
                     listing.location,

@@ -24,7 +24,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("status, trial_ends_at, current_period_end, stripe_subscription_id, stripe_price_id").eq("broker_id", params.id).single(),
-      supabase.from("listings").select("id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
+      supabase.from("listings").select("id, vessel_name, vessel_type, make, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
       supabase.from("shoots").select("id, shoot_date, amount_cents, payment_status, invoice_number, listings:listing_id(vessel_name)").eq("broker_id", params.id).order("shoot_date", { ascending: false }).limit(10),
       supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
       supabase.from("profiles").select("id, first_name, last_name").eq("role", "admin").order("first_name", { ascending: true }),

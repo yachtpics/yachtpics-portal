@@ -1221,7 +1221,7 @@ export default function BrokerListingPage() {
               {reelPromoActive() && <span className="ml-1.5 text-[10px] font-bold uppercase tracking-wide text-accent-700">Free</span>}
             </Link>
           </div>
-          <p className="text-ink-500 text-sm mt-1">{listing.location ?? ""}</p>
+          <p className="text-ink-500 text-sm mt-1">{[listing.year, listing.make, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null, listing.location].filter(Boolean).join(" · ")}</p>
           {isBrokerageAdmin && (
             <button
               onClick={toggleShare}
