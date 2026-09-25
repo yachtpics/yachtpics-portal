@@ -118,7 +118,7 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                   <td className="px-6 py-4">
                     <p className="font-medium text-ink-900">{listing.vessel_name ?? "Untitled"}</p>
                     <p className="text-xs text-ink-500 mt-0.5">
-                      {[listing.year, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null].filter(Boolean).join(" · ")}
+                      {[listing.year, listing.make, listing.vessel_type, listing.length_ft ? `${listing.length_ft}′` : null].filter(Boolean).join(" · ")}
                     </p>
                   </td>
                   {/* Straight to the broker, same as on the listing itself.

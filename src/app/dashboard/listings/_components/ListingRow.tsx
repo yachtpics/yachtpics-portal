@@ -13,6 +13,7 @@ type Listing = {
   id: string;
   vessel_name: string | null;
   vessel_type: string | null;
+  make?: string | null;
   year: number | null;
   length_ft: number | null;
   location: string | null;
@@ -362,6 +363,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
             <p className="text-xs text-ink-400 mt-0.5 truncate">
               {[
                 listing.year,
+                listing.make,
                 listing.vessel_type,
                 listing.length_ft ? `${listing.length_ft}′` : null,
                 listing.location,
