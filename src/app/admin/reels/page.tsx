@@ -1,7 +1,6 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { ANNOUNCEMENT_TYPE } from "@/lib/announcementEmail";
-import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown } from "@/lib/reelPromo";
+import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown, REEL_ANNOUNCEMENT_TYPE as ANNOUNCEMENT_TYPE } from "@/lib/reelPromo";
 import {
   readReelStats, statsAreWorthSharing, followUpSubject, weekOneQuotesNumbers,
   followUpWindowOpen, week1AutoSendArmed, FOLLOWUP_TYPE, FOLLOWUP_WINDOW, type FollowUpKey,
@@ -25,7 +24,11 @@ export const dynamic = "force-dynamic";
  * got posted. The gap between those two columns is the real signal.
  */
 
-type Kind = "render" | "download" | "send_to_phone" | "copy_caption" | "added_to_listing";
+// 'claim' (Sept 29): one of a listing's two included reels was used. It only
+// ever accompanies a download / send / save / add row for the same film, so
+// every rollup below counts the take-action kinds by name and leaves claims
+// out — the numbers read exactly as before; claims show in the log only.
+type Kind = "render" | "download" | "send_to_phone" | "copy_caption" | "added_to_listing" | "save_to_camera_roll" | "claim";
 
 type EventRow = {
   id: string;
@@ -51,6 +54,8 @@ const KIND_LABEL: Record<Kind, string> = {
   send_to_phone: "Sent to phone",
   copy_caption: "Copied caption",
   added_to_listing: "Added to listing",
+  save_to_camera_roll: "Saved to camera roll",
+  claim: "Included reel used",
 };
 
 const LOOK_LABEL: Record<string, string> = {

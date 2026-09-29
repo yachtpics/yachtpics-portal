@@ -106,7 +106,7 @@ export default function AnnounceControls({
         </p>
         <div className="flex items-center justify-between gap-4">
           <span className={`text-sm font-medium ${approved ? "text-success-700" : "text-ink-500"}`}>
-            {approved ? "✓ Approved — goes out at the next 9am ET" : "On hold — nothing will send"}
+            {approved ? `✓ Approved — goes out ${scheduleLabel}` : "On hold — nothing will send"}
           </span>
           <button onClick={toggleApprove} disabled={busy === "approve" || busy === "unapprove"}
             className={`text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet disabled:opacity-50 ${

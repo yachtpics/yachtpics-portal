@@ -3,11 +3,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
 import { loadBitmap } from "@/lib/canvasText";
 import { normalizeHex } from "@/lib/reelStyles";
-import { reelPromoActive } from "@/lib/reelPromo";
 import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource, type ReelVideo } from "@/components/ReelMaker";
 
 /**
@@ -46,24 +44,14 @@ export default function ListingReelPage() {
         admin = meProf?.role === "admin";
       }
 
-      // During the open house the Reel is unlocked for everyone — subscribed,
-      // trialling or lapsed. Every other paid tool keeps its own gate.
-      // An admin is never locked either way: the gate is the listing broker's
-      // plan, and YachtPics cutting a reel on a lapsed broker's boat is not
-      // what it's for (same fix as the Social page, 2026-09-19).
-      let locked = false;
-      if (reelPromoActive() || admin) {
-        locked = false;
-      } else {
-        try {
-          const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}`);
-          // A server hiccup is not a lapsed plan. Only a real answer can lock.
-          if (subRes.ok) {
-            const subData = await subRes.json();
-            locked = !hasAccess(subData?.status);
-          }
-        } catch { /* stay unlocked on a status hiccup */ }
-      }
+      // No plan lock on the listing reel any more (Sept 29). During the open
+      // house it was open to all; from Oct 1 ET a non-subscriber's listing
+      // comes with two included reels, and the server (/api/reels/claim) is
+      // the only thing that decides whether a take-action is allowed. ReelMaker
+      // asks it on mount and before every download / send / save / add, and
+      // watermarks the preview itself once the two are used. Admins and
+      // subscribers come back from that route as unlimited.
+      const locked = false;
 
       const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }] = await Promise.all([
         supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),

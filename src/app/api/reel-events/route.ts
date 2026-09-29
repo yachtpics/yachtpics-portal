@@ -8,7 +8,7 @@ export const runtime = "nodejs";
  * POST /api/reel-events  → record one Reel usage event.
  *
  * Body: { kind, listingId?, shape? }
- *   kind   render | download | send_to_phone | copy_caption | added_to_listing
+ *   kind   render | download | send_to_phone | copy_caption | added_to_listing | save_to_camera_roll
  *   shape  only meaningful on a render: what was made
  *
  * The broker is resolved server-side from the listing rather than taken from

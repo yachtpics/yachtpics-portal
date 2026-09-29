@@ -24,6 +24,14 @@ export const REEL_PROMO_START = "2026-09-09T04:00:00Z";
  */
 export const REEL_PROMO_END = "2026-10-01T03:59:59Z";
 
+/**
+ * email_log type of the original reel announcement (sent Sept 16–22 2026).
+ * The follow-ups and /admin/reels date themselves from it. It lives here, not
+ * in announcementEmail.ts, because that file holds whichever campaign is
+ * CURRENT and moved on to the website announcement on Sept 29.
+ */
+export const REEL_ANNOUNCEMENT_TYPE = "announcement_reel_2026_09";
+
 export function reelPromoActive(now: Date = new Date()): boolean {
   const t = now.getTime();
   return t >= Date.parse(REEL_PROMO_START) && t <= Date.parse(REEL_PROMO_END);

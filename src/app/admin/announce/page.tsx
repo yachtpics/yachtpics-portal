@@ -1,6 +1,8 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT } from "@/lib/announcementEmail";
+import {
+  announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT, ANNOUNCEMENT_SEND_AFTER, ANNOUNCEMENT_SEND_BEFORE,
+} from "@/lib/announcementEmail";
 import AnnounceControls from "./AnnounceControls";
 
 export const dynamic = "force-dynamic";
@@ -34,17 +36,22 @@ export default async function AdminAnnouncePage() {
   // above a date a week gone, while approving would actually have armed a send
   // for whenever the job next happened to run. A stale date on a control that
   // mails 148 people is worth fixing before it is worth explaining.
+  //
+  // The cron also refuses to send before ANNOUNCEMENT_SEND_AFTER, so the next
+  // run that can actually send is the first 13:00 UTC at or after that moment.
   const nextRun = (() => {
-    const now = new Date();
-    const todayRun = new Date(now);
-    todayRun.setUTCHours(13, 0, 0, 0);
-    return now.getTime() < todayRun.getTime()
-      ? todayRun
-      : new Date(todayRun.getTime() + 86_400_000);
+    const windowOpens = Date.parse(ANNOUNCEMENT_SEND_AFTER);
+    const from = new Date(Math.max(Date.now(), windowOpens));
+    const run = new Date(from);
+    run.setUTCHours(13, 0, 0, 0);
+    return from.getTime() <= run.getTime() ? run : new Date(run.getTime() + 86_400_000);
   })();
-  const scheduleLabel = nextRun.toLocaleString("en-US", {
-    weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
-  }) + " ET";
+  const windowClosed = Date.now() > Date.parse(ANNOUNCEMENT_SEND_BEFORE);
+  const scheduleLabel = windowClosed
+    ? "— the scheduled window has closed (use Send now, or move the dates in announcementEmail.ts)"
+    : nextRun.toLocaleString("en-US", {
+        weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+      }) + " ET";
 
   const previewHtml = announcementHtml({ firstName: "Charlie", unsubToken: "preview" });
 

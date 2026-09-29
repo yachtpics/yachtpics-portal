@@ -18,10 +18,18 @@ export type ReelEventKind =
   | "download"
   | "send_to_phone"
   | "copy_caption"
-  | "added_to_listing";
+  | "added_to_listing"
+  | "save_to_camera_roll";
 
+/**
+ * The kinds the page may file through /api/reel-events. 'save_to_camera_roll'
+ * was being sent before the table accepted it (every one refused with a 400)
+ * until the Sept 29 migration widened the check. 'claim' is deliberately NOT
+ * here: an included-reel claim is written only by /api/reels/claim, so the
+ * allowance can't be spent or forged from this endpoint.
+ */
 export const REEL_EVENT_KINDS: ReelEventKind[] = [
-  "render", "download", "send_to_phone", "copy_caption", "added_to_listing",
+  "render", "download", "send_to_phone", "copy_caption", "added_to_listing", "save_to_camera_roll",
 ];
 
 /** What was made — only carried on a 'render' row. */

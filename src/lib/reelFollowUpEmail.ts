@@ -18,8 +18,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
-import { reelPromoEndsOn, reelPromoDaysLeft, REEL_PROMO_START } from "@/lib/reelPromo";
-import { ANNOUNCEMENT_TYPE } from "@/lib/announcementEmail";
+import { reelPromoEndsOn, reelPromoDaysLeft, REEL_PROMO_START, REEL_ANNOUNCEMENT_TYPE as ANNOUNCEMENT_TYPE } from "@/lib/reelPromo";
 import { REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 
 const PORTAL = "https://portal.yachtpics.com";

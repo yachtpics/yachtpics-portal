@@ -281,6 +281,14 @@ export type ReelSource = {
  * No broker behind the reel — the Studio, before one is picked. Every line of
  * the end card is optional, so a blank card simply draws nothing.
  */
+/** An id for one finished render — what the allowance counts. */
+function newRenderId(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  } catch { /* insecure context — fall through */ }
+  return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 const BLANK_CARD: BrokerCard = { name: "", brokerage: null, phone: null, email: null, website: null, logoUrl: null };
 
 export default function ReelMaker({
@@ -378,8 +386,22 @@ export default function ReelMaker({
   const [phase, setPhase] = useState<"idle" | "loading" | "rendering" | "done" | "error">("idle");
   const [progress, setProgress] = useState(0);
   const [errorMsg, setErrorMsg] = useState("");
-  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number } | null>(null);
+  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; renderId: string } | null>(null);
   const [adding, setAdding] = useState(false);
+
+  /**
+   * The included-reel allowance (from Oct 1 2026 ET): two reels per listing
+   * for a broker who isn't subscribed; unlimited for subscribers, admins and
+   * during the open house. The server (/api/reels/claim) decides — this is
+   * only what it last told us. Null until it answers, and stays null if it
+   * can't: an unknown allowance never blocks anything.
+   */
+  const [allowance, setAllowance] = useState<{ unlimited: boolean; used: number; remaining: number | null } | null>(null);
+  /** Renders the server has accepted as taken — taking one again is free. */
+  const [claimedIds, setClaimedIds] = useState<Record<string, true>>({});
+  /** Set when a share sheet was refused because the claim ate the tap's activation. */
+  const [shareAgain, setShareAgain] = useState(false);
+  const usedUp = !!allowance && !allowance.unlimited && allowance.remaining === 0;
   const [added, setAdded] = useState(false);
   const cancelRef = useRef(false);
 
@@ -837,6 +859,66 @@ export default function ReelMaker({
     } catch { /* tracking never breaks the page */ }
   }
 
+  /** Ask the server what's left on this listing. Quiet on failure. */
+  async function refreshAllowance() {
+    if (!listingId) return;
+    try {
+      const res = await fetch(`/api/reels/claim?listingId=${encodeURIComponent(listingId)}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const d = await res.json();
+      setAllowance({
+        unlimited: d?.unlimited === true,
+        used: typeof d?.used === "number" ? d.used : 0,
+        remaining: typeof d?.remaining === "number" ? d.remaining : null,
+      });
+    } catch { /* unknown allowance: nothing is blocked */ }
+  }
+
+  useEffect(() => {
+    void refreshAllowance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [listingId]);
+
+  /**
+   * Before a reel leaves the page — download, send to my phone, save to
+   * camera roll, add to listing — it is claimed against the listing's
+   * allowance. True means go ahead. False only on a real "both used" answer
+   * (402); anything else — our outage, a network blip — lets the broker have
+   * their reel, because they shouldn't pay for our failure.
+   * The Studio (no listing) never claims.
+   */
+  async function claimReel(renderId: string): Promise<boolean> {
+    if (!listingId) return true;
+    if (claimedIds[renderId]) return true;
+    try {
+      const res = await fetch("/api/reels/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, renderId }),
+      });
+      if (res.status === 402) {
+        setAllowance((a) => ({ unlimited: false, used: Math.max(a?.used ?? 0, 2), remaining: 0 }));
+        return false;
+      }
+      if (!res.ok) {
+        console.warn("Reel claim failed; allowing the action.", res.status);
+        return true;
+      }
+      const d = await res.json().catch(() => ({}));
+      setClaimedIds((c) => ({ ...c, [renderId]: true }));
+      if (d?.unlimited === true) {
+        setAllowance((a) => a && a.unlimited ? a : { unlimited: true, used: 0, remaining: null });
+      } else if (typeof d?.remaining === "number") {
+        void refreshAllowance();
+        setAllowance({ unlimited: false, used: Math.max(0, 2 - d.remaining), remaining: d.remaining });
+      }
+      return true;
+    } catch (err) {
+      console.warn("Reel claim unreachable; allowing the action.", err);
+      return true;
+    }
+  }
+
   async function render() {
     // The broker card is optional: a Studio reel branded as YachtPics has no
     // broker behind it at all.
@@ -854,6 +936,12 @@ export default function ReelMaker({
     setClipNote("");
     setPhase("loading");
     setProgress(0);
+
+    // A listing whose two included reels are used still previews — with the
+    // same watermark a lapsed plan used to get. Decided once, at the start.
+    const watermark = locked || usedUp;
+    const renderId = newRenderId();
+    setShareAgain(false);
 
     // Whose film is this? The broker's, or — admin only — YachtPics' own ad.
     const yp = ypBrand && isAdmin;
@@ -2235,7 +2323,7 @@ export default function ReelMaker({
           ctx.fillRect(0, 0, W, H);
           ctx.restore();
         }
-        if (locked) drawWatermark();
+        if (watermark) drawWatermark();
 
         await source.add(t, 1 / FPS);
         if (f % 6 === 0) setProgress(Math.round((f / totalFrames) * 100));
@@ -2246,7 +2334,7 @@ export default function ReelMaker({
       if (!buffer) throw new Error("The video came back empty.");
       const blob = new Blob([buffer], { type: "video/mp4" });
       const url = URL.createObjectURL(blob);
-      setResult({ url, blob, format, seconds: Math.round(total) });
+      setResult({ url, blob, format, seconds: Math.round(total), renderId });
       setProgress(100);
       setPhase("done");
       // What was made, not what was selected: the look, the shape and the
@@ -2380,6 +2468,7 @@ export default function ReelMaker({
     setPhoneError("");
     setPhone(null);
     setPhonePct(0);
+    if (!(await claimReel(result.renderId))) { setSendingPhone(false); return; }
     try {
       const filename = `${safeName(listing.vessel_name)}-${result.format}.mp4`;
       const file = new File([result.blob], filename, { type: "video/mp4" });
@@ -2425,17 +2514,35 @@ export default function ReelMaker({
   async function saveToCameraRoll() {
     if (!result || locked) return;
     const filename = `${safeName(listing.vessel_name)}-${result.format}.mp4`;
+    // The share sheet only opens inside the tap that asked for it, and Safari
+    // counts an awaited network call as the tap being over. So when the claim
+    // is already settled (this render was taken before, or the listing is
+    // unlimited) the sheet opens first and the claim goes alongside it; only
+    // a first take on a metered listing waits for the server — and if that
+    // costs the sheet, the button asks for one more tap (the claim is then
+    // settled, so the second opens at once).
+    const settled = !listingId || !!claimedIds[result.renderId] || allowance?.unlimited === true;
+    if (settled) {
+      void claimReel(result.renderId);
+    } else if (!(await claimReel(result.renderId))) {
+      return;
+    }
     try {
       await navigator.share({
         files: [new File([result.blob], filename, { type: result.blob.type || "video/mp4" })],
         title: listing.vessel_name ?? "Reel",
       });
+      setShareAgain(false);
       track("save_to_camera_roll");
-    } catch { /* the sheet was dismissed — nothing to report */ }
+    } catch (err) {
+      // Dismissed — nothing to report. Refused for want of a fresh tap — say so.
+      if (!settled && err instanceof Error && err.name === "NotAllowedError") setShareAgain(true);
+    }
   }
 
-  function download() {
+  async function download() {
     if (!result || locked) return;
+    if (!(await claimReel(result.renderId))) return;
     const a = document.createElement("a");
     a.href = result.url;
     a.download = `${safeName(listing?.vessel_name)}-${result.format}.mp4`;
@@ -2446,6 +2553,7 @@ export default function ReelMaker({
   async function addToListing() {
     if (!result || locked || !listing || !listingId) return;
     setAdding(true);
+    if (!(await claimReel(result.renderId))) { setAdding(false); return; }
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not signed in.");
@@ -2471,6 +2579,12 @@ export default function ReelMaker({
     navigator.canShare({ files: [new File([result.blob], "reel.mp4", { type: "video/mp4" })] });
   const seconds = Math.round(timeline.total);
   const promoOn = reelPromoActive();
+  // This render can't leave the page: both included reels are used and it
+  // isn't one of them. (A render already claimed stays takeable.)
+  const allowanceSpent = !!result && usedUp && !claimedIds[result.renderId];
+  // "N of 2 left" — non-subscribers only, only after the open house.
+  const showAllowanceLine = !!listingId && !promoOn && !!allowance && !allowance.unlimited
+    && typeof allowance.remaining === "number" && allowance.remaining > 0;
   const style = applyBrand(REEL_STYLES[styleKey], brand);
   const brandOn = !!(brand.accent || brand.ground);
   // Nothing to caption if the photos were never categorised.
@@ -3054,6 +3168,11 @@ export default function ReelMaker({
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {locked ? (
                 <Link href="/dashboard/billing" className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">🔒 Subscribe to Download</Link>
+              ) : allowanceSpent ? (
+                <p className="text-sm text-ink-500 text-center max-w-md">
+                  The two reels included with this listing have been used. Subscribers make as many as they like.{" "}
+                  <Link href="/dashboard/billing" className="text-accent-700 font-semibold hover:underline">See plans</Link>
+                </p>
               ) : (
                 <>
                   <button onClick={download} className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">⬇ Download MP4</button>
@@ -3082,6 +3201,12 @@ export default function ReelMaker({
                 </>
               )}
             </div>
+            {showAllowanceLine && (
+              <p className="text-xs text-ink-400 text-center mt-2">Included with this listing: {allowance!.remaining} of 2 left.</p>
+            )}
+            {shareAgain && !allowanceSpent && (
+              <p className="text-xs text-ink-500 text-center mt-2">Tap <span className="font-semibold">Save to camera roll</span> once more to open the share sheet.</p>
+            )}
             {phoneError && <p className="mt-3 text-sm text-danger-700 text-center">{phoneError}</p>}
 
             {phone && (
@@ -3099,7 +3224,7 @@ export default function ReelMaker({
               </div>
             )}
 
-            {listingId && result.format === "film" && !added && !locked && (
+            {listingId && result.format === "film" && !added && !locked && !allowanceSpent && (
               <p className="text-xs text-ink-400 text-center mt-2">Adding it puts the film at the front of your client slideshow and in Send to Client.</p>
             )}
             {result.format === "reel" && (
