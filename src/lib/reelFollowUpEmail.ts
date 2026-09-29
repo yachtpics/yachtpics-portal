@@ -278,12 +278,14 @@ export function lastCallHtml(opts: { firstName: string; stats: ReelStats; unsubT
     <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">${days <= 1 ? "Last day" : "Closing " + closes}</p>
     <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">${days <= 1 ? "Last day for a reel on the house" : "Two days left"}</h1>
     ${p(`Hi ${firstName},`)}
-    ${p(`The reel builder goes back behind the subscription on <strong style="color:#111827;">${closes}</strong>. ${
+    ${p(`The reel open house closes on <strong style="color:#111827;">${closes}</strong>. ${
       proof
         ? `${stats.brokers} brokers have made ${stats.total} between them so far.`
         : `If you haven&rsquo;t tried it, this is the window.`
     }`)}
     ${p(`One listing, one press, about a minute. And whatever you make in the next ${days <= 1 ? "day" : "two days"} stays yours &mdash; to post and re-post long after the window shuts.`)}
+    ${p(`New this week: add a few seconds of your listing video to any reel.`)}
+    ${p(`After the 30th, every listing still comes with two reels, free &mdash; make them, keep them, post them. Subscribers make as many as they like.`)}
     ${cta(days <= 1 ? "Make one today" : "Make one before it closes")}
     ${p(`If you&rsquo;ve been meaning to and haven&rsquo;t, your best boat takes a minute.`, true)}
     ${signoff}`;
