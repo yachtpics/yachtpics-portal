@@ -2582,6 +2582,8 @@ export default function ReelMaker({
   // This render can't leave the page: both included reels are used and it
   // isn't one of them. (A render already claimed stays takeable.)
   const allowanceSpent = !!result && usedUp && !claimedIds[result.renderId];
+  // A listing on the allowance (a non-subscriber's, after the open house).
+  const metered = !!listingId && !!allowance && !allowance.unlimited;
   // "N of 2 left" — non-subscribers only, only after the open house.
   const showAllowanceLine = !!listingId && !promoOn && !!allowance && !allowance.unlimited
     && typeof allowance.remaining === "number" && allowance.remaining > 0;
@@ -3163,7 +3165,14 @@ export default function ReelMaker({
         {result && (
           <>
             <div className="mt-5 flex justify-center">
-              <video src={result.url} controls playsInline className="rounded-sm shadow-print bg-ink-950 w-full" style={{ maxWidth: result.format === "reel" ? 300 : 560 }} />
+              {/* On a metered listing the player's own Download menu and the
+                  right-click "Save video as" would take a reel off the page
+                  without a claim, so both are switched off there. (Not a lock —
+                  a determined user can still dig the blob out; it keeps the
+                  honest path the obvious one.) */}
+              <video src={result.url} controls playsInline className="rounded-sm shadow-print bg-ink-950 w-full" style={{ maxWidth: result.format === "reel" ? 300 : 560 }}
+                controlsList={metered ? "nodownload" : undefined}
+                onContextMenu={metered ? (e) => e.preventDefault() : undefined} />
             </div>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {locked ? (

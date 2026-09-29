@@ -14,8 +14,9 @@ import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource, type Reel
  * The loader. Everything that makes the film — the looks, the lengths, the
  * framing, the end card, the encoder — lives in <ReelMaker>, which the admin
  * Reel Studio uses too. This page's only job is to assemble the listing's half
- * of it: the boat, the broker's card and colours, the photographs in
- * walk-through order, and whether the plan behind the listing is paid up.
+ * of it: the boat, the broker's card and colours, and the photographs in
+ * walk-through order. (The included-reel allowance is ReelMaker's and the
+ * server's business — see /api/reels/claim.)
  */
 
 type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number };
