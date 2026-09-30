@@ -36,10 +36,10 @@ const PROOF_VIEWS = 53;
 
 // Scheduled-send window (the Vercel cron fires daily at 13:00 UTC = 9am ET).
 // The cron only sends inside this window; with the email_log dedup that
-// guarantees a single send. Opens Tuesday Oct 6 so it doesn't land on top of
-// the reel emails (Sept 16, 22, 25) and the reel offer closing Sept 30.
+// guarantees a single send. Opens Friday Oct 2 (Charlie, Sept 30 — moved up
+// from Oct 6; he's travelling, so it goes out on the cron, approved ahead).
 // Manual "Send to all" on /admin/announce ignores the window.
-export const ANNOUNCEMENT_SEND_AFTER = "2026-10-06T12:00:00Z";
+export const ANNOUNCEMENT_SEND_AFTER = "2026-10-02T12:00:00Z";
 export const ANNOUNCEMENT_SEND_BEFORE = "2026-10-14T13:00:00Z";
 
 export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
