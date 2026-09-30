@@ -12,8 +12,8 @@ export default function ContentRightsModal({ onAccept, onCancel }: Props) {
   const [checked, setChecked] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 px-4">
-      <div className="bg-white rounded-surface shadow-elev-3 max-w-lg w-full p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 px-4 py-6">
+      <div className="bg-white rounded-surface shadow-elev-3 max-w-lg w-full p-6 max-h-full overflow-y-auto overscroll-contain">
         <p className="label-caps mb-1">Content rights</p>
         <h2 className="text-h2 text-ink-900 mb-1">Before you upload</h2>
         <p className="text-sm text-ink-500 mb-4">

@@ -13,8 +13,8 @@ export default function DownloadLicenseModal({ onAccept, onCancel }: Props) {
   const [checked, setChecked] = useState(false);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 px-4">
-      <div className="bg-white rounded-surface shadow-elev-3 max-w-lg w-full p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/80 px-4 py-6">
+      <div className="bg-white rounded-surface shadow-elev-3 max-w-lg w-full p-6 max-h-full overflow-y-auto overscroll-contain">
         <p className="label-caps mb-1">License</p>
         <h2 className="text-h2 text-ink-900 mb-1">Photo &amp; Video License Agreement</h2>
         <p className="text-sm text-ink-500 mb-4">

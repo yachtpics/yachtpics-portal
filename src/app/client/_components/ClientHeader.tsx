@@ -76,8 +76,8 @@ export default function ClientHeader({ name }: { name: string | null }) {
       </header>
 
       {pwOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/60 px-4" onClick={() => setPwOpen(false)}>
-          <div className="bg-white rounded-surface shadow-elev-3 max-w-sm w-full p-6" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink-950/60 px-4 py-6" onClick={() => setPwOpen(false)}>
+          <div className="bg-white rounded-surface shadow-elev-3 max-w-sm w-full p-6 max-h-full overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
             <h2 className="text-h2 text-ink-900 mb-1">Change password</h2>
             <p className="text-sm text-ink-500 mb-4">Set a new password for your account.</p>
             <Input
