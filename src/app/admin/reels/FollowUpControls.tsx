@@ -70,7 +70,9 @@ export default function FollowUpControls({
           <p className="text-xs text-ink-400 mb-3">{c.windowLabel}</p>
           {c.autoSendArmed && (
             <p className="text-xs text-success-700 mb-3">
-              Scheduled — goes out automatically Friday Sept 25, 9–10am ET. Sending by hand before then is fine; it won&rsquo;t send twice.
+              {c.key === "week1"
+                ? "Scheduled — goes out automatically Friday Sept 25, 9–10am ET. Sending by hand before then is fine; it won\u2019t send twice."
+                : "Scheduled — goes out automatically Wednesday Sept 30, 9–10am ET. Sending by hand before then is fine; it won\u2019t send twice."}
             </p>
           )}
 

@@ -14,6 +14,7 @@
  * schedule: Charlie reads the numbers on /admin/reels and presses the button.
  * EXCEPTION (Sept 24): week one is forced quiet and auto-sends once via the
  * daily cron on WEEK1_AUTO_SEND_ON — see below and /api/cron/reel-followup.
+ * Sept 30: last call auto-sends the same way on LASTCALL_AUTO_SEND_ON.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -84,6 +85,14 @@ export const WEEK1_FORCE_QUIET = true;
  */
 export const WEEK1_AUTO_SEND_ON = "2026-09-25";
 
+/**
+ * Same idea for the last-call follow-up (Charlie, Sept 30): the daily cron
+ * (13:00 UTC = 9am ET) sends it on the open house's final day, when
+ * reelPromoDaysLeft() is 1 and the copy reads "Last day". Same window and
+ * email_log dedup guards as week one.
+ */
+export const LASTCALL_AUTO_SEND_ON = "2026-09-30";
+
 /** Today's date in America/New_York as YYYY-MM-DD. */
 export function easternDate(now: Date = new Date()): string {
   const parts = new Intl.DateTimeFormat("en-US", {
@@ -101,6 +110,16 @@ export function week1AutoSendToday(now: Date = new Date()): boolean {
 /** True until the auto-send date has passed (Eastern) — for the admin card. */
 export function week1AutoSendArmed(now: Date = new Date()): boolean {
   return easternDate(now) <= WEEK1_AUTO_SEND_ON && now.getTime() <= Date.parse(FOLLOWUP_WINDOW.week1.before);
+}
+
+/** True only on LASTCALL_AUTO_SEND_ON (Eastern) — the day the cron may send. */
+export function lastCallAutoSendToday(now: Date = new Date()): boolean {
+  return easternDate(now) === LASTCALL_AUTO_SEND_ON;
+}
+
+/** True until the last-call auto-send date has passed (Eastern) — for the admin card. */
+export function lastCallAutoSendArmed(now: Date = new Date()): boolean {
+  return easternDate(now) <= LASTCALL_AUTO_SEND_ON && now.getTime() <= Date.parse(FOLLOWUP_WINDOW.lastcall.before);
 }
 
 /** Whether the week-one email quotes the numbers (false while forced quiet). */

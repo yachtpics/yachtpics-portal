@@ -3,7 +3,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown, REEL_ANNOUNCEMENT_TYPE as ANNOUNCEMENT_TYPE } from "@/lib/reelPromo";
 import {
   readReelStats, statsAreWorthSharing, followUpSubject, weekOneQuotesNumbers,
-  followUpWindowOpen, week1AutoSendArmed, FOLLOWUP_TYPE, FOLLOWUP_WINDOW, type FollowUpKey,
+  followUpWindowOpen, week1AutoSendArmed, lastCallAutoSendArmed, FOLLOWUP_TYPE, FOLLOWUP_WINDOW, type FollowUpKey,
 } from "@/lib/reelFollowUpEmail";
 import FollowUpControls from "./FollowUpControls";
 
@@ -258,7 +258,8 @@ export default async function ReelsPage() {
         // Week one is forced quiet (WEEK1_FORCE_QUIET), so it only "quotes the
         // numbers" if that flag is off; last call still follows the stats.
         proof: m.key === "week1" ? weekOneQuotesNumbers(stats) : proof,
-        autoSendArmed: m.key === "week1" && week1AutoSendArmed() && remaining > 0,
+        autoSendArmed:
+          (m.key === "week1" ? week1AutoSendArmed() : lastCallAutoSendArmed()) && remaining > 0,
       };
     })
   );
