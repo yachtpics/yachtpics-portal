@@ -22,6 +22,7 @@ export const PHOTO_CATEGORIES = [
   "Day Head",
   "Dinette",
   "Dining",
+  "Electrical Panel",
   "Electrical Room",
   "Enclosed Flybridge",
   "Enclosed Flybridge Aft Deck",

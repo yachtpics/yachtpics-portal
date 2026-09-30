@@ -50,6 +50,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Generator Room",
   "Mechanical Room",
   "Electrical Room",
+  "Electrical Panel",
   "Lazarette",
 
   // Living spaces
