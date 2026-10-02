@@ -24,15 +24,34 @@ import {
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
 import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
-import { drawTransition } from "@/lib/reelTransitions";
+import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
 import {
   CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader,
   type ClipSource, type ClipLength, type ClipReader,
 } from "@/lib/reelClips";
+// Type only: the engine itself is loaded with a dynamic import inside
+// render(), and only when a Walkthrough render starts.
+import type { DepthMotion } from "@/lib/depthMotion";
 
 export type { ClipSource, ClipLength } from "@/lib/reelClips";
+
+/**
+ * The depth looks (every look with `motion: "depth"` — Walkthrough and
+ * Underway) are shown to admins only while they are being tried on real
+ * listings. Flip to false to open them to every broker — nothing else needs
+ * to change.
+ */
+const WALKTHROUGH_ADMIN_ONLY = true;
+/**
+ * A depth frame slower than this means software WebGL: use the flat zoom.
+ * Software WebGL takes ~1s for one frame of the ray-marched shader (measured
+ * headless, Oct 2), so it trips this by a wide margin; a real GPU does the
+ * same frame in milliseconds. 120ms also caps what a slow-but-real GPU can
+ * add to a 45-second reel (~1,350 frames) at under three minutes.
+ */
+const DEPTH_FRAME_BUDGET_MS = 120;
 
 /**
  * The Reel Maker
@@ -385,6 +404,9 @@ export default function ReelMaker({
   const [supported, setSupported] = useState<boolean | null>(null);
   const [phase, setPhase] = useState<"idle" | "loading" | "rendering" | "done" | "error">("idle");
   const [progress, setProgress] = useState(0);
+  // Walkthrough: true while the depth of each photograph is being read
+  // (still phase "loading" — the status line just says what it is doing).
+  const [depthReading, setDepthReading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; renderId: string } | null>(null);
   const [adding, setAdding] = useState(false);
@@ -543,10 +565,17 @@ export default function ReelMaker({
    * 16:9 film each band would be a sliver, so it's reels only too — and so
    * is Marquee Still, the same bands with the top one held.
    */
+  const depthLooksAllowed = !WALKTHROUGH_ADMIN_ONLY || isAdmin;
   const looks = useMemo(
-    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack" && !isMarquee(k))),
-    [format],
+    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack" && !isMarquee(k)))
+      .filter((k) => REEL_STYLES[k].motion !== "depth" || depthLooksAllowed),
+    [format, depthLooksAllowed],
   );
+  // The depth looks are not offered here (a broker, while they are
+  // admin-only): a selection that somehow holds one goes back to the house look.
+  useEffect(() => {
+    if (REEL_STYLES[styleKey].motion === "depth" && !depthLooksAllowed) setStyleKey("editorial");
+  }, [styleKey, depthLooksAllowed]);
 
   // When the format changes, reset the fit and trim the selection to the cap.
   function chooseFormat(f: Format) {
@@ -967,8 +996,14 @@ export default function ReelMaker({
     // finally below whatever happens.
     const clipReaders: (ClipReader | null)[] = [];
     let logo: ImageBitmap | null = null;
+    // Walkthrough's depth engine, when the look asks for it and the browser
+    // can run it. Null means every photograph uses the ordinary flat zoom.
+    let depth: DepthMotion | null = null;
     const backdropCache = new Map<number, HTMLCanvasElement>();
     const backdropOrder: number[] = []; // oldest first
+    // Underway's soft wipe composites two frames through a gradient and needs
+    // a frame-sized canvas to do it: made on first use, released below.
+    let joinScratch: HTMLCanvasElement | null = null;
 
     try {
       // Fonts first — otherwise the first frames silently fall back.
@@ -1054,6 +1089,68 @@ export default function ReelMaker({
         setClipNote(clipTrouble === 1
           ? "One clip couldn\u2019t be read this time, so it plays as a still photograph. Remove it and add it again to check it."
           : `${clipTrouble} clips couldn\u2019t be read this time, so they play as still photographs. Remove them and add them again to check them.`);
+      }
+
+      // The depth looks: read the depth of every photograph before the
+      // encoder starts — the model runs in a worker, one photograph at a
+      // time, and its answer is kept for the session, so "Make it again" on
+      // the same photographs skips straight past this — and choose each
+      // photograph's camera move. Anything that goes wrong here (no WebGL2,
+      // the model won't load, one photo fails) only means those photographs
+      // get the ordinary flat zoom; the render never stops for it.
+      if (st.motion === "depth" && depthLooksAllowed) {
+        try {
+          const dm = await import("@/lib/depthMotion");
+          if (dm.depthMotionSupported()) {
+            depth = await dm.createDepthMotion();
+            setDepthReading(true);
+            setProgress(0);
+            // A phone reads a smaller image: a third less work per photograph.
+            const phoneBudget = (budget?.longEdgeScale ?? 1) < 1 || phoneLike;
+            let speedChecked = false;
+            // In play order. A depth look is a single-photo film (no thirds,
+            // no burst, no Stack or Marquee), so the timeline plays the
+            // selection exactly in order — unit k is item k — and clips sit in
+            // it like photographs. `turn` counts photographs only: it rotates
+            // each one's list of moves and sets which way it drifts.
+            const todo: number[] = [];
+            selectedPhotos.forEach((p, i) => { if (!p.clip && bitmaps[i]) todo.push(i); });
+            let lastMove: string | null = null;
+            for (let n = 0; n < todo.length; n++) {
+              if (cancelRef.current) { setPhase("idle"); return; }
+              const i = todo[n];
+              const ok = await depth.prepare(i, selectedPhotos[i].id, bitmaps[i], {
+                inputShort: phoneBudget ? 308 : undefined,
+                exterior: isExterior(selectedPhotos[i].category),
+                // The move the photograph before this one got (a photograph
+                // whose depth failed plays the flat zoom and doesn't count).
+                lastMove,
+                turn: n,
+              });
+              if (ok) lastMove = ok;
+              // After the first photograph, time one frame. A machine drawing
+              // WebGL in software takes about a second a frame — a reel would
+              // take the best part of an hour — so it gets the flat zoom
+              // for the whole reel instead (all or nothing: a reel that
+              // changes kind of motion halfway reads as a mistake).
+              if (ok && !speedChecked) {
+                speedChecked = true;
+                depth.frame(i, bitmaps[i], 0.5); // uploads the texture
+                const t0 = performance.now();
+                depth.frame(i, bitmaps[i], 0.6);
+                const ms = performance.now() - t0;
+                if (ms > DEPTH_FRAME_BUDGET_MS) throw new Error(`depth frame took ${Math.round(ms)}ms`);
+              }
+              setProgress(Math.round(((n + 1) / todo.length) * 100));
+            }
+            setDepthReading(false);
+          }
+        } catch (err) {
+          console.warn("Depth motion unavailable; using the flat zoom.", err);
+          if (depth) { try { depth.dispose(); } catch { /* already released */ } }
+          depth = null;
+          setDepthReading(false);
+        }
       }
 
       /**
@@ -1306,7 +1403,7 @@ export default function ReelMaker({
       };
 
       const drawPhoto = (i: number, localT: number, hold: number, alpha: number, wholeOverride?: boolean, slot?: number | null) => {
-        const bmp = imgAt(i);
+        let bmp = imgAt(i);
         if (!bmp) return;
         // The drift runs to the end of the outgoing transition, so the
         // photograph never freezes while a dissolve or dip carries it out.
@@ -1342,6 +1439,18 @@ export default function ReelMaker({
         }
         // A video clip carries its own motion — no drift or zoom on top.
         if (isClipAt(i)) k = 1;
+        // The depth looks: a camera moves through the photograph instead of
+        // the photograph being enlarged, on the same drift clock. Which move,
+        // which way and how far is the engine's call, photograph by
+        // photograph (it chose them when the depth was read, interiors and
+        // exteriors each with their own rotation), so only the progress is
+        // passed. The move is already in the canvas the engine hands back, so
+        // the zoom here stays at 1. If the engine can't draw this photograph,
+        // it falls through to the zoom.
+        if (depth && !isClipAt(i) && bitmaps[i]) {
+          const moved = depth.frame(i, bitmaps[i], drift);
+          if (moved) { bmp = moved; k = 1; }
+        }
 
         // An inset look always shows the complete photograph — cropping a
         // 121-footer to a square to fill the window loses her bow and stern,
@@ -2279,6 +2388,38 @@ export default function ReelMaker({
       });
       const CLIP_RELEASE_AFTER = 1.5;
 
+      /**
+       * Underway's joins. The planner gave every join the same dissolve
+       * length; what KIND of join it is gets decided here, as it is drawn,
+       * because the wipe depends on the move the engine chose for the
+       * outgoing photograph. Between two full-frame photographs only:
+       *  - outside ↔ inside the boat (either way): a dip to the ground;
+       *  - out of a photograph whose camera glided: a soft wipe travelling
+       *    the way it was gliding;
+       *  - otherwise a dissolve (with the sample's smoothstep curve).
+       * Without depth (the flat-zoom fallback) there is no glide, so it is a
+       * dip or a dissolve. A join into or out of a video clip, and into the
+       * end card, keeps the look's ordinary dissolve. The title photograph
+       * is a photograph like any other here — its own title timing is
+       * unchanged. Every other look gets `tr` back untouched.
+       */
+      const joinFor = (k: number, tr: Transition): Transition => {
+        if (st.joins !== "varied") return tr;
+        const ua = units[k - 1], ub = units[k];
+        if (ua.kind !== "photo" || ub.kind !== "photo") return tr;
+        if (ua.burst || ub.burst || (ua.placed && ua.placed.length > 0) || (ub.placed && ub.placed.length > 0)) return tr;
+        if ((ua.slot !== null && ua.slot !== undefined) || (ub.slot !== null && ub.slot !== undefined)) return tr;
+        if (isClipAt(ua.index) || isClipAt(ub.index)) return tr;
+        if (isExterior(selectedPhotos[ua.index]?.category) !== isExterior(selectedPhotos[ub.index]?.category)) {
+          return { ...tr, type: "dip", timing: "smooth" };
+        }
+        const went = depth ? depth.info(ua.index) : null;
+        if (went && went.move === "glide") {
+          return { ...tr, type: "softwipe", dir: went.sign > 0 ? "right" : "left", timing: "smooth" };
+        }
+        return { ...tr, type: "dissolve", timing: "smooth" };
+      };
+
       for (let f = 0; f < totalFrames; f++) {
         if (cancelRef.current) { await output.cancel(); setPhase("idle"); return; }
         const t = f / FPS;
@@ -2309,7 +2450,9 @@ export default function ReelMaker({
             return u.slot !== null && u.slot !== undefined;
           };
           const disjoint = placedAt(k) || placedAt(k - 1);
-          drawTransition(ctx, W, H, tr, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t), disjoint);
+          const join = joinFor(k, tr);
+          if (join.type === "softwipe" && !joinScratch) joinScratch = document.createElement("canvas");
+          drawTransition(ctx, W, H, join, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t), disjoint, joinScratch);
         } else {
           drawUnit(k, 1, t);
         }
@@ -2376,6 +2519,11 @@ export default function ReelMaker({
       }
       backdropCache.clear();
       backdropOrder.length = 0;
+      if (joinScratch) { joinScratch.width = 0; joinScratch.height = 0; joinScratch = null; }
+      // The depth engine's textures and canvases. Its worker and the depth
+      // maps it has read stay for the session, so a re-render is quick.
+      if (depth) { try { depth.dispose(); } catch { /* already released */ } depth = null; }
+      setDepthReading(false);
     }
   }
 
@@ -2673,7 +2821,8 @@ export default function ReelMaker({
       )}
 
       {/* Look — complete points of view, not colour swaps. Eight on a reel,
-          five on a film (Stack, Marquee and Marquee Still are reel-only). */}
+          five on a film (Stack, Marquee and Marquee Still are reel-only), plus
+          Walkthrough and Underway on both for admins while WALKTHROUGH_ADMIN_ONLY is on. */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
         <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${looks.length >= 7 ? "lg:grid-cols-4" : looks.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
@@ -3123,7 +3272,7 @@ export default function ReelMaker({
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-sm font-semibold text-ink-900">{result ? "Your video is ready" : phase === "rendering" ? "Rendering…" : phase === "loading" ? "Loading photos…" : "Ready to make"}</p>
+            <p className="text-sm font-semibold text-ink-900">{result ? "Your video is ready" : phase === "rendering" ? "Rendering…" : phase === "loading" ? (depthReading ? "Reading depth…" : "Loading photos…") : "Ready to make"}</p>
             <p className="text-xs text-ink-400 mt-0.5">
               {result ? `${SPEC[result.format].label} · ${result.seconds}s · silent (add trending audio when you post)` : "Renders right here in your browser — usually under a minute."}
             </p>
@@ -3145,7 +3294,7 @@ export default function ReelMaker({
             <div className="h-1.5 w-full bg-ink-100 rounded-full overflow-hidden">
               <div className="h-full bg-accent-500 transition-[width] duration-200" style={{ width: `${progress}%` }} />
             </div>
-            <p className="text-xs text-ink-400 mt-1.5">{phase === "loading" ? "Loading photos" : "Encoding frames"} · {progress}%</p>
+            <p className="text-xs text-ink-400 mt-1.5">{phase === "loading" ? (depthReading ? "Reading depth" : "Loading photos") : "Encoding frames"} · {progress}%</p>
           </div>
         )}
 

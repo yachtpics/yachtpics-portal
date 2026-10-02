@@ -42,6 +42,14 @@ const nextConfig = {
         source: "/dashboard/:path*",
         headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" }],
       },
+      // The Walkthrough look's depth model and runtime (~41 MB). The folder is
+      // versioned (/depth/v1/), so a file never changes in place — a new model
+      // or runtime goes in /depth/v2/ — and the browser can keep these for a
+      // year instead of downloading them again for every reel.
+      {
+        source: "/depth/:path*",
+        headers: [{ key: "Cache-Control", value: "public, max-age=31536000, immutable" }],
+      },
     ];
   },
 };

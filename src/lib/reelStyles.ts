@@ -1,6 +1,8 @@
 /**
- * Reel looks — the eight ways a listing film can present itself (five on a
- * 16:9 film: Stack, Marquee and Marquee Still are reel-only).
+ * Reel looks — the ten ways a listing film can present itself (seven on a
+ * 16:9 film: Stack, Marquee and Marquee Still are reel-only). Walkthrough and
+ * Underway (the depth looks) are admin-only for now (see
+ * WALKTHROUGH_ADMIN_ONLY in the ReelMaker).
  *
  * Drawn from how the top houses actually publish. Three conventions from that
  * research shaped all of this:
@@ -19,7 +21,7 @@
  * the boat: a 120' tri-deck and a classic sloop should not present alike.
  */
 
-export type StyleKey = "editorial" | "cinematic" | "gallery" | "classic" | "energy" | "stack" | "marquee" | "marquee_still";
+export type StyleKey = "editorial" | "cinematic" | "walkthrough" | "underway" | "gallery" | "classic" | "energy" | "stack" | "marquee" | "marquee_still";
 
 export type Backdrop =
   | "scrim"      // full-bleed photo, type grounded on a bottom-up gradient
@@ -108,12 +110,63 @@ export type ReelStyle = {
    * either, which already owns the divided frame.
    */
   thirds?: "single" | "wall";
+  /**
+   * How each photograph moves while it holds. Left out, it is the flat zoom
+   * every look has always had: the whole picture scaled by `zoom`. "depth"
+   * moves a camera through the photograph instead — near things grow and
+   * shift faster than far things, the way a room does when you walk through
+   * it — using a depth map estimated from the photograph in the browser
+   * (@/lib/depthMotion). Which move each photograph gets, and how far, is
+   * decided there; `zoom` is then only the flat zoom used where depth can't
+   * be read. Every pixel still comes from the photograph.
+   */
+  motion?: "depth";
+  /**
+   * How one photograph gives way to the next, beyond `cut`. Left out, every
+   * join is the look's own cut. "varied" (Underway) lets the join answer the
+   * two photographs either side of it: a dip to the ground when the film
+   * steps between outside and inside the boat, a soft wipe out of a
+   * photograph whose camera was gliding sideways (travelling the way the
+   * camera was), a dissolve otherwise. Same length as the dissolve, so the
+   * timeline is unchanged; only joins between two full-frame photographs.
+   */
+  joins?: "varied";
 };
 
 /**
  * Everything Marquee and Marquee Still share — palette, type, pace. Only the
  * name, blurb and `heroStill` differ, so a colour change lands on both.
  */
+/**
+ * Everything Walkthrough and Underway share — palette, type, motion. The
+ * name, blurb, pace and how photographs join differ, so a colour change
+ * lands on both.
+ */
+const DEPTH_LOOK: Omit<ReelStyle, "key" | "name" | "blurb" | "holdScale"> = {
+  ground: "#000000",
+  text: "#ffffff",
+  soft: "rgba(255,255,255,0.72)",
+  quiet: "rgba(255,255,255,0.48)",
+  accent: "#c9b183",
+  light: false,
+  // Full-bleed on a reel and a film alike: the depth move needs the whole
+  // frame, and a letterbox would cut away most of what it moves through.
+  backdrop: "scrim",
+  serifHeadline: true,
+  headline: "caps",
+  align: "center",
+  rule: "none",
+  headTrack: 11,
+  // Only the fallback: the flat zoom a photograph gets if its depth can't be
+  // read (or the browser can't run the engine). The depth moves and their
+  // strength live in @/lib/depthMotion (MOVES, SCORE_FULL…), per photograph.
+  zoom: 0.085,
+  cut: "dissolve",
+  layout: "single",
+  hook: "none",
+  motion: "depth",
+};
+
 const MARQUEE_LOOK: Omit<ReelStyle, "key" | "name" | "blurb"> = {
   ground: "#0b1118",
   text: "#ffffff",
@@ -194,6 +247,48 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     zoom: 0.05,
     holdScale: 1.15,
     cut: "dissolve",
+  },
+
+  /**
+   * Walkthrough — the camera moves through the photograph.
+   *
+   * Cinematic's palette and type, full-bleed, with a different kind of
+   * motion: instead of enlarging the picture, a camera travels through it,
+   * so the chair in the foreground passes by faster than the windows behind
+   * it. That parallax is what reads as being aboard rather than looking at a
+   * print. The moves vary — walking in on an arc, gliding past, rising,
+   * a diagonal, walking back out — chosen photograph by photograph, never the
+   * same twice running, each given as much movement as that photograph can
+   * take. A depth map for each photograph is estimated in the broker's own
+   * browser before the render starts (several seconds a photo). Quiet and
+   * slow, dissolves only: suited to a big yacht with big photography. No
+   * thirds and no burst — the motion is the point, and it needs the frame.
+   */
+  walkthrough: {
+    ...DEPTH_LOOK,
+    key: "walkthrough",
+    name: "Walkthrough",
+    blurb: "The camera moves through each photograph. Depth, not a zoom.",
+    // About 3.25s a photo on a film — the pace of the sample Charlie
+    // approved — and 2.4s on a Full reel of up to eighteen.
+    holdScale: 1.25,
+  },
+
+  /**
+   * Underway — Walkthrough's moves, cut for the feed.
+   *
+   * The same camera moves, a little quicker, and the joins answer the
+   * photographs: a dip to black stepping between outside and inside the boat,
+   * a soft wipe out of a photograph that was gliding past (carrying the
+   * movement on), a dissolve otherwise. Reels and films alike.
+   */
+  underway: {
+    ...DEPTH_LOOK,
+    key: "underway",
+    name: "Underway",
+    blurb: "Walkthrough's moves with wipes and dips between rooms. Made for social.",
+    holdScale: 1.15,
+    joins: "varied",
   },
 
   /**
@@ -363,7 +458,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   },
 };
 
-export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "gallery", "classic", "energy", "stack", "marquee", "marquee_still"];
+export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "walkthrough", "underway", "gallery", "classic", "energy", "stack", "marquee", "marquee_still"];
 
 /** Marquee or Marquee Still — any look laid out as the three-band split screen. */
 export function isMarquee(key: StyleKey): boolean {

@@ -20,11 +20,22 @@ export type TransitionType =
   | "push"      // incoming shoves the outgoing off, no blur
   | "wipe"      // hard-edged reveal with a thin light seam
   | "zoom"      // outgoing blows up and fades, incoming settles in from large
-  | "dip";      // dip through the ground colour
+  | "dip"       // dip through the ground colour
+  | "softwipe"; // feathered wipe, both frames visible across a soft edge (Underway)
 
 export type Dir = "left" | "right" | "up" | "down" | "diag";
 
-export type Transition = { type: TransitionType; dur: number; dir: Dir };
+export type Transition = {
+  type: TransitionType;
+  dur: number;
+  dir: Dir;
+  /**
+   * Underway's curves, taken from the sample Charlie approved: a smoothstep
+   * dissolve, and a dip that is fully out by 45% and comes back from 55%
+   * (a beat of pure ground between rooms). Left out, the curves above.
+   */
+  timing?: "smooth";
+};
 
 /** A weighted entry in a look's vocabulary. */
 type Entry = { type: TransitionType; weight: number; dur: number };
@@ -109,6 +120,8 @@ export function dealTransitions(
 
 /** Ease-out — fast off the line, settles. */
 export const easeOut = (p: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, p)), 3);
+/** Smoothstep — Underway's dissolve and soft wipe. */
+export const smoothstep = (p: number) => { const x = Math.min(1, Math.max(0, p)); return x * x * (3 - 2 * x); };
 /** Ease in-out — for wipes and dissolves. */
 export const easeInOut = (p: number) => { const x = Math.min(1, Math.max(0, p)); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };
 
@@ -133,6 +146,12 @@ export function drawTransition(
   a: Draw,
   b: Draw,
   disjoint = false,
+  /**
+   * A canvas the size of the frame, for the soft wipe (it holds the outgoing
+   * frame while the incoming one is drawn). The caller owns and releases it;
+   * without one, a soft wipe falls back to a dissolve.
+   */
+  scratch?: HTMLCanvasElement | null,
 ) {
   const sc = Math.min(W, H) / 1080;
   switch (tr.type) {
@@ -142,7 +161,7 @@ export function drawTransition(
       return;
 
     case "dissolve": {
-      const e = easeInOut(p);
+      const e = tr.timing === "smooth" ? smoothstep(p) : easeInOut(p);
       if (disjoint) {
         // The two photographs are in different parts of the frame, so the
         // incoming one cannot cover the outgoing one as it arrives. Drawn the
@@ -165,6 +184,14 @@ export function drawTransition(
     }
 
     case "dip": {
+      if (tr.timing === "smooth") {
+        // Underway: the outgoing frame is gone by 45%, the incoming one
+        // starts at 55% — a breath of pure ground between outside and inside.
+        ctx.fillStyle = ground; ctx.fillRect(0, 0, W, H);
+        if (p < 0.5) a(Math.max(0, 1 - 2.2 * p));
+        else b(Math.max(0, 2.2 * p - 1.2));
+        return;
+      }
       // Through the ground: out by the halfway point, in from it.
       if (p < 0.5) { a(1); ctx.save(); ctx.globalAlpha = easeInOut(p * 2); ctx.fillStyle = ground; ctx.fillRect(0, 0, W, H); ctx.restore(); }
       else { ctx.fillStyle = ground; ctx.fillRect(0, 0, W, H); b(easeInOut((p - 0.5) * 2)); }
@@ -230,6 +257,47 @@ export function drawTransition(
         ctx.stroke();
         ctx.restore();
       }
+      return;
+    }
+
+    case "softwipe": {
+      // The incoming frame is revealed behind a feathered edge that travels
+      // across the frame ("right": left to right). The edge is 22% of the
+      // width, its profile and its travel both smoothstepped. Drawn as: the
+      // outgoing frame copied aside, the incoming frame drawn in full, then
+      // the outgoing laid back over it through a gradient that is opaque
+      // ahead of the edge and clear behind it.
+      if (!scratch) { a(1); b(smoothstep(p)); return; }
+      const sctx = scratch.getContext("2d");
+      if (!sctx) { a(1); b(smoothstep(p)); return; }
+      if (scratch.width !== W || scratch.height !== H) { scratch.width = W; scratch.height = H; }
+      const F = 0.22;
+      const e = smoothstep(p);
+      a(1);
+      sctx.globalCompositeOperation = "copy";
+      sctx.drawImage(ctx.canvas, 0, 0);
+      b(1);
+      // m(x) = smoothstep(clamp((e(1+F) − x) / F)) is how much of the incoming
+      // frame shows at x; the outgoing frame is kept at 1 − m(x).
+      const x1 = e * (1 + F), x0 = x1 - F;
+      const rightward = tr.dir !== "left";
+      const g = rightward
+        ? sctx.createLinearGradient(x0 * W, 0, x1 * W, 0)
+        : sctx.createLinearGradient((1 - x0) * W, 0, (1 - x1) * W, 0);
+      const STOPS = 16;
+      for (let k = 0; k <= STOPS; k++) {
+        const s = k / STOPS;               // 0 at x0 (fully incoming) .. 1 at x1
+        const m = smoothstep(1 - s);
+        g.addColorStop(s, `rgba(0,0,0,${(1 - m).toFixed(4)})`);
+      }
+      sctx.globalCompositeOperation = "destination-in";
+      sctx.fillStyle = g;
+      sctx.fillRect(0, 0, W, H);
+      sctx.globalCompositeOperation = "source-over";
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.drawImage(scratch, 0, 0);
+      ctx.restore();
       return;
     }
 

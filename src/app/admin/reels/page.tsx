@@ -61,6 +61,8 @@ const KIND_LABEL: Record<Kind, string> = {
 const LOOK_LABEL: Record<string, string> = {
   editorial: "Editorial",
   cinematic: "Cinematic",
+  walkthrough: "Walkthrough",
+  underway: "Underway",
   gallery: "Gallery",
   classic: "Classic",
   energy: "Energy",
