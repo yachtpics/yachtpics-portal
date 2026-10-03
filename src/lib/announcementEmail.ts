@@ -2,45 +2,40 @@
 // Marketing-class email: it carries the unsubscribe footer and is sent only to
 // recipients who haven't opted out. Styling mirrors the welcome/trial emails.
 //
-// This file always holds the CURRENT campaign. The previous one — the reel
-// generator (`announcement_reel_2026_09`) — is in git history, and its type
-// now lives in reelPromo.ts as REEL_ANNOUNCEMENT_TYPE for the reel follow-ups.
+// This file always holds the CURRENT campaign. The previous ones — the reel
+// generator (`announcement_reel_2026_09`) and the yachtpics.com listing pages
+// (`announcement_website_2026_10`, sent to all 150 on Oct 2) — are in git
+// history. The reel one's type lives in reelPromo.ts as REEL_ANNOUNCEMENT_TYPE
+// for the reel follow-ups.
 
 import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
-
-const SITE = "https://www.yachtpics.com";
 
 /**
  * Stable type used for email_log dedup. Bump the suffix for the next campaign —
  * reusing a type would silently skip everyone who received the earlier one.
+ * A new type also starts UNAPPROVED: the scheduled send waits for Approve on
+ * /admin/announce (app_settings `${ANNOUNCEMENT_TYPE}_approved`).
  */
-export const ANNOUNCEMENT_TYPE = "announcement_website_2026_10";
+export const ANNOUNCEMENT_TYPE = "announcement_walkthrough_2026_10";
 
 /**
- * Subject: option A from broker-announcement-draft.md. Body: Version 1 (short).
- * No price, no pitch for the subscription. The pages are the gift; the contact
- * taps they produce are what make the subscription conversation easy later.
+ * The depth looks, Walkthrough and Underway, opening to every broker on Fri
+ * Oct 9 2026 at 9:00 AM ET (DEPTH_LOOKS_OPEN_AT in depthLooksRelease.ts).
+ * No price, no competitor, no "first"/"only".
  */
-export const ANNOUNCEMENT_SUBJECT = "Your listings now have a home on yachtpics.com";
+export const ANNOUNCEMENT_SUBJECT = "Your listing photos now move like you\u2019re aboard";
 
-/**
- * PROOF LINE — refresh before sending. GA4 → Reports → Engagement → Pages and
- * screens, last 7 days, most-viewed boat page. Never use a boat that has since
- * been marked as a pocket listing or taken off the site.
- * Last refreshed Sept 29 2026 (Sept 22–28): Agave, 53 views — the most-viewed
- * page on the whole site that week, homepage included.
- */
-const PROOF_BOAT = "the 97′ Marlow Explorer <em>Agave</em>";
-const PROOF_URL = `${SITE}/brokerage_boats/97_marlow_explorer_agave/`;
-const PROOF_VIEWS = 53;
-
-// Scheduled-send window (the Vercel cron fires daily at 13:00 UTC = 9am ET).
-// The cron only sends inside this window; with the email_log dedup that
-// guarantees a single send. Opens Friday Oct 2 (Charlie, Sept 30 — moved up
-// from Oct 6; he's travelling, so it goes out on the cron, approved ahead).
-// Manual "Send to all" on /admin/announce ignores the window.
-export const ANNOUNCEMENT_SEND_AFTER = "2026-10-02T12:00:00Z";
-export const ANNOUNCEMENT_SEND_BEFORE = "2026-10-14T13:00:00Z";
+// Scheduled-send window. The Vercel cron calls the announce job once a day,
+// around 13:00–13:35 UTC (9am ET); it only sends inside this window, and with
+// the email_log dedup that means a single send. The window opens at the same
+// instant the looks unlock (13:00 UTC Fri Oct 9), never before it, so the
+// first run that can send is Friday morning's — provided the campaign has been
+// approved on /admin/announce. If it hasn't been approved by the Friday run,
+// it goes out on the first daily run after approval, up to Fri Oct 16.
+// Manual "Send to all" on /admin/announce ignores the window — before Oct 9
+// 9am ET that would announce looks brokers can't open yet.
+export const ANNOUNCEMENT_SEND_AFTER = "2026-10-09T13:00:00Z";
+export const ANNOUNCEMENT_SEND_BEFORE = "2026-10-16T13:00:00Z";
 
 export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
   const { firstName, unsubToken } = opts;
@@ -57,19 +52,19 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics</p>
     </div>
     <div style="padding:40px;">
-      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New on yachtpics.com</p>
-      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Your listings now have a home on yachtpics.com</h1>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New in the Portal</p>
+      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Your listing photos, now a walkthrough</h1>
 
       ${p(`Hi ${firstName},`)}
 
-      ${p(`Selected boats we photograph for you now get their own page on yachtpics.com: full gallery, key specs, and a direct line to you.`)}
+      ${p(`Two new looks in the reel maker turn the photos you already have into a walkthrough. The camera moves through each photograph, so the foreground passes and the room opens up, the way it does when you step aboard.`)}
 
-      ${p(`There&rsquo;s nothing to set up and no cost. When buyers find your boat, they email you directly. We don&rsquo;t sit in the middle.`)}
+      ${p(`<strong>Walkthrough</strong> is the quiet one, made for the listing film. <strong>Underway</strong> adds wipes and dips between spaces, made for social.`)}
 
-      ${p(`The pages are already being found. Last week alone, one of them, <a href="${PROOF_URL}" style="color:#84662a;text-decoration:underline;">${PROOF_BOAT}</a>, was viewed ${PROOF_VIEWS} times.`)}
+      ${p(`Every frame is the real boat. Nothing is generated and nothing is filled in, so what a buyer sees is what is there.`)}
 
       <div style="margin:0 0 26px;padding:16px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
-        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">If a boat should stay quiet, open the listing in the Portal and check <strong style="color:#4a3d17;">Keep this a pocket listing</strong>. It won&rsquo;t appear.</p>
+        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">To try it, open a listing in the Portal, choose <strong style="color:#4a3d17;">Reel</strong>, and pick <strong style="color:#4a3d17;">Walkthrough</strong> or <strong style="color:#4a3d17;">Underway</strong>. Allow a couple of minutes: it reads the depth of each photograph before it renders.</p>
       </div>
 
       <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">Charlie Clark<br><span style="color:#9ca3af;">YachtPics</span></p>

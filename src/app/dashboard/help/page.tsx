@@ -1,4 +1,9 @@
 import Link from "next/link";
+import { depthLooksOpen } from "@/lib/depthLooksRelease";
+
+// Rendered on every request: the depth looks' line appears on its release
+// day without a rebuild.
+export const dynamic = "force-dynamic";
 
 const sections = [
   {
@@ -214,7 +219,27 @@ const quickRef = [
   ["Sign out", "Sidebar → Sign out (bottom-left)"],
 ];
 
+/**
+ * The depth looks' line under Marketing Tools, after the list of looks. Only
+ * shown once they are open to everyone (depthLooksOpen) — worked out on each
+ * request, never at module load, so it appears on the day without a rebuild.
+ */
+const DEPTH_LOOKS_STEP =
+  "Reel — Walkthrough and Underway: two looks where the camera moves through each photograph instead of zooming in, so the foreground passes and the room opens up. Walkthrough is the quiet one, made for the listing film; Underway adds wipes and dips between spaces, made for social. Every frame is the real boat — nothing is generated or filled in. Allow a couple of minutes: it reads the depth of each photograph before it renders.";
+
+function sectionsNow() {
+  if (!depthLooksOpen()) return sections;
+  return sections.map((s) => {
+    const at = s.steps.findIndex((step) => step.startsWith("Reel — pick a look"));
+    if (at < 0) return s;
+    const steps = s.steps.slice();
+    steps.splice(at + 1, 0, DEPTH_LOOKS_STEP);
+    return { ...s, steps };
+  });
+}
+
 export default function HelpPage() {
+  const shown = sectionsNow();
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
 
@@ -245,7 +270,7 @@ export default function HelpPage() {
 
       {/* Section cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
-        {sections.map((s) => (
+        {shown.map((s) => (
           <div key={s.num} className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
             <div className="flex items-center gap-3 mb-3">
               <span className="text-xs font-bold text-accent-700 bg-accent-50 px-2 py-0.5 rounded-full">

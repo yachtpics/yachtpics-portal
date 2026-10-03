@@ -3,6 +3,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import {
   announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT, ANNOUNCEMENT_SEND_AFTER, ANNOUNCEMENT_SEND_BEFORE,
 } from "@/lib/announcementEmail";
+import { depthLooksOpen, DEPTH_LOOKS_OPEN_AT } from "@/lib/depthLooksRelease";
 import AnnounceControls from "./AnnounceControls";
 
 export const dynamic = "force-dynamic";
@@ -55,11 +56,22 @@ export default async function AdminAnnouncePage() {
 
   const previewHtml = announcementHtml({ firstName: "Charlie", unsubToken: "preview" });
 
+  // This campaign announces Walkthrough and Underway, which brokers can only
+  // open from DEPTH_LOOKS_OPEN_AT. The scheduled window already starts there;
+  // "Send now" ignores the window, so say so while it would jump the gun.
+  const opensOn = new Date(Date.parse(DEPTH_LOOKS_OPEN_AT)).toLocaleString("en-US", {
+    weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/New_York",
+  }) + " ET";
+  const sendNowWarning = depthLooksOpen()
+    ? null
+    : `Brokers can't see Walkthrough and Underway until ${opensOn}. Sending now would announce looks they can't open yet.`;
+
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-display text-ink-900">Announcement</h1>
         <p className="text-ink-500 text-sm mt-1">&ldquo;{ANNOUNCEMENT_SUBJECT}&rdquo;</p>
+        <p className="text-ink-400 text-xs mt-1">The Walkthrough and Underway reel looks, open to every broker from {opensOn}.</p>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -77,6 +89,7 @@ export default async function AdminAnnouncePage() {
           alreadySent={alreadySent}
           initialApproved={approved}
           scheduleLabel={scheduleLabel}
+          sendNowWarning={sendNowWarning}
         />
       </div>
     </div>

@@ -7,11 +7,14 @@ export default function AnnounceControls({
   alreadySent,
   initialApproved,
   scheduleLabel,
+  sendNowWarning,
 }: {
   eligible: number;
   alreadySent: number;
   initialApproved: boolean;
   scheduleLabel: string;
+  /** Shown above "Send now" when sending immediately would be premature. */
+  sendNowWarning?: string | null;
 }) {
   const [approved, setApproved] = useState(initialApproved);
   const [busy, setBusy] = useState<string | null>(null);
@@ -121,6 +124,7 @@ export default function AnnounceControls({
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
         <h2 className="text-h2 text-ink-900 mb-1">Send now (optional)</h2>
         <p className="text-sm text-ink-500 mb-3">Skip the schedule and send immediately. Type <strong className="text-ink-900">SEND</strong> to confirm.</p>
+        {sendNowWarning && <p className="text-sm text-warn-700 mb-3">{sendNowWarning}</p>}
         <div className="flex flex-wrap items-center gap-2">
           <input
             value={confirmText}

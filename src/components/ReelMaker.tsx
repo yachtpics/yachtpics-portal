@@ -23,6 +23,7 @@ import {
   type BrokerCard, type YpPhone,
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
+import { depthLooksOpen, msUntilDepthLooksOpen } from "@/lib/depthLooksRelease";
 import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
@@ -37,13 +38,6 @@ import type { DepthMotion } from "@/lib/depthMotion";
 
 export type { ClipSource, ClipLength } from "@/lib/reelClips";
 
-/**
- * The depth looks (every look with `motion: "depth"` — Walkthrough and
- * Underway) are shown to admins only while they are being tried on real
- * listings. Flip to false to open them to every broker — nothing else needs
- * to change.
- */
-const WALKTHROUGH_ADMIN_ONLY = true;
 /**
  * A depth frame slower than this means software WebGL: use the flat zoom.
  * Software WebGL takes ~1s for one frame of the ray-marched shader (measured
@@ -565,7 +559,24 @@ export default function ReelMaker({
    * 16:9 film each band would be a sliver, so it's reels only too — and so
    * is Marquee Still, the same bands with the top one held.
    */
-  const depthLooksAllowed = !WALKTHROUGH_ADMIN_ONLY || isAdmin;
+  /**
+   * The depth looks (every look with `motion: "depth"` — Walkthrough and
+   * Underway): admins always; every broker from DEPTH_LOOKS_OPEN_AT (Fri
+   * Oct 9, 9:00 AM ET). Read after mount, not during render, so the server's
+   * picker and the browser's can't disagree if the page is rendered either
+   * side of the instant; and a page left open over it picks them up on the
+   * minute rather than at the next reload.
+   */
+  const [depthLooksReleased, setDepthLooksReleased] = useState(false);
+  useEffect(() => {
+    if (depthLooksOpen()) { setDepthLooksReleased(true); return; }
+    const ms = msUntilDepthLooksOpen();
+    // setTimeout can't wait past ~24.8 days; a page open that long reloads anyway.
+    if (ms > 2_147_000_000) return;
+    const timer = setTimeout(() => setDepthLooksReleased(true), ms + 1000);
+    return () => clearTimeout(timer);
+  }, []);
+  const depthLooksAllowed = isAdmin || depthLooksReleased;
   const looks = useMemo(
     () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack" && !isMarquee(k)))
       .filter((k) => REEL_STYLES[k].motion !== "depth" || depthLooksAllowed),
@@ -2822,7 +2833,8 @@ export default function ReelMaker({
 
       {/* Look — complete points of view, not colour swaps. Eight on a reel,
           five on a film (Stack, Marquee and Marquee Still are reel-only), plus
-          Walkthrough and Underway on both for admins while WALKTHROUGH_ADMIN_ONLY is on. */}
+          Walkthrough and Underway on both — admins always, brokers from
+          DEPTH_LOOKS_OPEN_AT (Fri Oct 9 2026, 9:00 AM ET). */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
         <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${looks.length >= 7 ? "lg:grid-cols-4" : looks.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>

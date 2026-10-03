@@ -10,7 +10,7 @@ const APPROVE_KEY = `${ANNOUNCEMENT_TYPE}_approved`;
 
 // Scheduled trigger for the product announcement. Sends ONLY when all hold true:
 //   1. the request carries the cron secret,
-//   2. now is inside the campaign window (the intended Monday),
+//   2. now is inside the campaign window (ANNOUNCEMENT_SEND_AFTER/BEFORE),
 //   3. an admin has approved the campaign.
 // Already-sent recipients are skipped by runAnnouncementSend's dedup.
 export async function GET(req: NextRequest) {

@@ -1,8 +1,8 @@
 /**
  * Reel looks — the ten ways a listing film can present itself (seven on a
  * 16:9 film: Stack, Marquee and Marquee Still are reel-only). Walkthrough and
- * Underway (the depth looks) are admin-only for now (see
- * WALKTHROUGH_ADMIN_ONLY in the ReelMaker).
+ * Underway (the depth looks) are admins-only until DEPTH_LOOKS_OPEN_AT
+ * (@/lib/depthLooksRelease — Fri Oct 9 2026, 9:00 AM ET), then everyone's.
  *
  * Drawn from how the top houses actually publish. Three conventions from that
  * research shaped all of this:
