@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { isPeriod, periodET, planReelServiceMonth } from "@/lib/reelService";
+import { isPeriod, periodET, planReelServiceMonth, replanUnmade } from "@/lib/reelService";
 import { deliverReelServiceJobs } from "@/lib/reelServiceEmail";
 
 export const runtime = "nodejs";
@@ -11,6 +11,8 @@ export const maxDuration = 60;
  *   { action: "subscription", brokerId, enabled, reelsPerListing?, note? } → enrol / update / pause
  *   { action: "plan", period?, brokerIds? }                              → fill the month's missing jobs
  *   { action: "deliver", jobIds }                                        → mark delivered + email
+ *   { action: "durations", durations: { videoId: seconds } }             → record measured video lengths
+ *   { action: "replan_unmade", period, listingIds }                      → re-plan those listings' planned/failed jobs
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
@@ -56,6 +58,31 @@ export async function POST(req: NextRequest) {
     if (jobIds.length === 0) return NextResponse.json({ error: "No reels chosen." }, { status: 400 });
     const result = await deliverReelServiceJobs(admin, jobIds, userId);
     return NextResponse.json({ ok: true, ...result });
+  }
+
+  if (action === "durations") {
+    // Video lengths measured in the admin's browser (Reel Service), for the planner.
+    const d = body?.durations && typeof body.durations === "object" ? body.durations as Record<string, unknown> : {};
+    const ids = Object.keys(d).slice(0, 200);
+    let saved = 0;
+    for (const id of ids) {
+      const sec = Number(d[id]);
+      if (!/^[0-9a-f-]{36}$/i.test(id) || !Number.isFinite(sec) || sec <= 0 || sec > 6 * 3600) continue;
+      const { error } = await admin.from("videos").update({ duration_sec: Math.round(sec * 10) / 10 }).eq("id", id);
+      if (!error) saved++;
+    }
+    return NextResponse.json({ ok: true, saved });
+  }
+
+  if (action === "replan_unmade") {
+    const period = isPeriod(body?.period) ? body.period : periodET();
+    const listingIds: string[] = Array.isArray(body?.listingIds) ? body.listingIds.filter((x: unknown) => typeof x === "string").slice(0, 200) : [];
+    try {
+      const r = await replanUnmade(admin, period, listingIds);
+      return NextResponse.json({ ok: true, period, ...r });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Re-planning failed." }, { status: 500 });
+    }
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

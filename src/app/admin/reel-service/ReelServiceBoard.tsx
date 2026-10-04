@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REEL_STYLES, STYLE_ORDER, type StyleKey } from "@/lib/reelStyles";
-import { ANGLE_LABEL, lookPlaysClips, periodLabel, type ReelServiceAngle, type ReelServiceSettings } from "@/lib/reelService";
+import { ANGLE_LABEL, VIDEO_LED_LOOKS, VIDEO_LED_MIN_FOOTAGE, footageOf, periodLabel, type ReelServiceAngle, type ReelServiceSettings } from "@/lib/reelService";
+import { probeClip } from "@/lib/reelClips";
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
+
+/** A listing video, for the footage badge and "Measure videos". */
+export type BoardVideo = { id: string; listing_id: string; duration_sec: number | null; title: string | null };
 
 export type BoardSub = { brokerId: string; name: string; enabled: boolean; reelsPerListing: number; note: string | null };
 export type BoardJob = {
@@ -56,7 +60,7 @@ function byListing(list: BoardJob[]): { listingId: string; boat: string; jobs: B
 /** Planned, failed, or stuck "rendering" from a closed tab: these can be made. */
 const renderable = (s: string) => s === "planned" || s === "failed" || s === "rendering";
 
-export default function ReelServiceBoard({ period, subs, jobs }: { period: string; subs: BoardSub[]; jobs: BoardJob[] }) {
+export default function ReelServiceBoard({ period, subs, jobs, videos }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[] }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
@@ -153,6 +157,48 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
   const allRenderable = jobs.filter((j) => renderable(j.status)).map((j) => j.id);
   const allReady = jobs.filter((j) => j.status === "ready").map((j) => j.id);
   const allNextRound = nextRound(jobs);
+  const unmeasured = videos.filter((v) => !(v.duration_sec && v.duration_sec > 0));
+
+  /**
+   * Measure the listing videos whose length isn't known (in this browser,
+   * reading only the file's header), save the lengths, then re-plan those
+   * listings' not-yet-made reels so their segments use the real footage.
+   */
+  async function measureVideos() {
+    if (unmeasured.length === 0) return;
+    setBusy("measure");
+    setMsg("");
+    const durations: Record<string, number> = {};
+    const failed: string[] = [];
+    for (let i = 0; i < unmeasured.length; i++) {
+      const v = unmeasured[i];
+      setMsg(`Measuring video ${i + 1} of ${unmeasured.length}…`);
+      try {
+        const res = await fetch("/api/videos/signed-urls", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ videoId: v.id }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if (!res.ok || typeof d?.url !== "string") throw new Error(d?.error ?? "no link");
+        const probe = await probeClip({ url: d.url as string }, 0);
+        if (probe.durationSec) durations[v.id] = Math.round(probe.durationSec * 10) / 10;
+        else failed.push(v.title ?? v.id);
+      } catch {
+        failed.push(v.title ?? v.id);
+      }
+    }
+    setBusy("");
+    if (Object.keys(durations).length) {
+      await call("measure", "/api/admin/reel-service", { action: "durations", durations });
+      const listingIds = unmeasured.filter((v) => durations[v.id]).map((v) => v.listing_id).filter((x, i, a) => a.indexOf(x) === i);
+      const r = await call("measure", "/api/admin/reel-service", { action: "replan_unmade", period, listingIds });
+      setMsg(`Measured ${Object.keys(durations).length} video${Object.keys(durations).length === 1 ? "" : "s"}; re-planned ${r?.created ?? 0} unmade reel${r?.created === 1 ? "" : "s"}.${failed.length ? ` Couldn’t read: ${failed.join(", ")}.` : ""}`);
+    } else {
+      setMsg(`Couldn’t read: ${failed.join(", ")}.`);
+    }
+  }
+
   const shownSubs = subs.filter((s) => s.enabled || jobs.some((j) => j.broker_id === s.brokerId));
   const currentJob = current ? jobById[current] : null;
 
@@ -168,6 +214,13 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
           className="text-sm font-medium px-4 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 disabled:opacity-40">
           {busy === "plan" ? "Planning…" : `Plan ${periodLabel(period)}`}
         </button>
+        {unmeasured.length > 0 && (
+          <button onClick={() => void measureVideos()} disabled={!!busy || rendering}
+            title="Read the length of each listing video (header only), then re-plan the reels not yet made so their segments use the real footage."
+            className="text-sm font-medium px-4 py-2 rounded-ctl border border-warn-300 bg-warn-50 text-warn-800 disabled:opacity-40">
+            {busy === "measure" ? "Measuring…" : `Measure videos (${unmeasured.length})`}
+          </button>
+        )}
         <button onClick={() => make(allRenderable)} disabled={allRenderable.length === 0 || !!busy}
           className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl">
           Make all ready-to-render ({allRenderable.length})
@@ -241,7 +294,10 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
               byListing(mine).map((g) => (
               <div key={g.listingId} className="border-t border-hairline first:border-t-0">
                 <div className="px-5 pt-3 pb-2 flex items-center justify-between gap-3 bg-ink-50">
-                  <p className="text-sm font-semibold text-ink-900">{g.boat}</p>
+                  <p className="text-sm font-semibold text-ink-900 flex items-center gap-2 flex-wrap">
+                    {g.boat}
+                    <FootageBadge videos={videos.filter((v) => v.listing_id === g.listingId)} />
+                  </p>
                   <p className="text-xs text-ink-500 tabular-nums">
                     {g.jobs.filter((j) => j.status === "ready" || j.status === "delivered").length} of {g.jobs.length} made
                     {" · "}{g.jobs.filter((j) => j.status === "delivered").length} delivered
@@ -251,7 +307,11 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
                 {g.jobs.map((j) => {
                   const st = j.settings;
                   const look = j.look as StyleKey;
-                  const clips = st?.clips?.length ?? 0;
+                  const segs = st?.segments ?? [];
+                  const vSec = st?.estVideoSec ?? segs.reduce((a, x) => a + (x.durSec ?? 0), 0);
+                  const pSec = st?.estPhotoSec ?? 0;
+                  const pct = vSec + pSec > 0 ? Math.round((vSec / (vSec + pSec + 3)) * 100) : 0;
+                  const lookOptions = st?.videoLed ? VIDEO_LED_LOOKS.concat(VIDEO_LED_LOOKS.indexOf(look) < 0 ? [look] : []) : STYLE_ORDER;
                   const out = outcomes[j.id];
                   const waiting = queue.indexOf(j.id) >= 0;
                   const isCurrent = current === j.id;
@@ -262,7 +322,9 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
                           #{j.slot} {ANGLE_LABEL[j.angle as ReelServiceAngle] ?? j.angle}{st?.launch ? <span className="font-normal text-accent-700"> &middot; launch</span> : null}
                         </p>
                         <p className="text-xs text-ink-500 mt-0.5">
-                          {st?.photoIds?.length ?? 0} photos &middot; {lookPlaysClips(look) ? `${clips} clip${clips === 1 ? "" : "s"}` : `clips off (${REEL_STYLES[look]?.name ?? look})`} &middot; {st?.length ?? "full"}
+                          <span className={st?.videoLed ? "font-semibold text-ink-700" : ""}>{st?.videoLed ? "Video-led" : "Photo-led"}</span>
+                          {" · "}video {Math.round(vSec)} s ({segs.length} segment{segs.length === 1 ? "" : "s"}) / {st?.photoIds?.length ?? 0} photos
+                          {" · "}~{pct}% video{" · "}~{Math.round(vSec + pSec + 3)} s
                         </p>
                         {j.error && j.status === "failed" && <p className="text-xs text-danger-700 mt-1">{j.error}</p>}
                         {out && out.ok && <p className="text-xs text-success-700 mt-1">Made &middot; {out.note}</p>}
@@ -273,7 +335,7 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
                       <select value={look} disabled={j.status === "delivered" || isCurrent || waiting || !!busy}
                         onChange={(e) => void call("look", `/api/admin/reel-service/jobs/${j.id}`, { action: "look", look: e.target.value })}
                         className="text-xs border border-hairline-strong rounded-ctl px-2 py-1.5 text-ink-800">
-                        {STYLE_ORDER.map((k) => <option key={k} value={k}>{REEL_STYLES[k].name}</option>)}
+                        {lookOptions.map((k) => <option key={k} value={k}>{REEL_STYLES[k].name}</option>)}
                       </select>
                       <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${STATUS_STYLE[j.status] ?? "bg-ink-100 text-ink-600"}`}>{j.status}</span>
                       <div className="flex gap-2 flex-wrap">
@@ -320,4 +382,29 @@ export default function ReelServiceBoard({ period, subs, jobs }: { period: strin
       })}
     </div>
   );
+}
+
+/**
+ * Footage on a listing: "Needs more video" (with the seconds) when there's
+ * under VIDEO_LED_MIN_FOOTAGE of usable video, "not measured" when some
+ * video's length isn't known yet, otherwise the footage it has.
+ */
+function FootageBadge({ videos }: { videos: BoardVideo[] }) {
+  const f = footageOf(videos.map((v) => ({ id: v.id, display_order: null, duration_sec: v.duration_sec, title: v.title })));
+  const secs = f.measuredSec ?? 0;
+  if (videos.length === 0 || (f.unmeasured === 0 && f.usableSec < VIDEO_LED_MIN_FOOTAGE)) {
+    return (
+      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-danger-50 text-danger-700">
+        Needs more video &middot; {videos.length === 0 ? "no video" : `${secs} s footage`}
+      </span>
+    );
+  }
+  if (f.unmeasured > 0) {
+    return (
+      <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-warn-50 text-warn-800">
+        {f.unmeasured} video{f.unmeasured === 1 ? "" : "s"} not measured{secs ? ` · ${secs} s measured` : ""}
+      </span>
+    );
+  }
+  return <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-success-50 text-success-700">{secs} s footage</span>;
 }

@@ -62,3 +62,9 @@ create policy "reel_service_jobs admin all" on public.reel_service_jobs
 drop policy if exists "reel_service_jobs broker reads own finished" on public.reel_service_jobs;
 create policy "reel_service_jobs broker reads own finished" on public.reel_service_jobs
   for select using (broker_id = auth.uid() and status in ('ready', 'delivered'));
+
+-- Video-led reels (Oct 4, later): the planner needs each listing video's
+-- length to cut segments and to tell when a listing has too little footage.
+-- Measured in the admin's browser (Reel Service "Measure videos", and every
+-- Reel Service render) and written back here. Null = not measured yet.
+alter table public.videos add column if not exists duration_sec numeric;

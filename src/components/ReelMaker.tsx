@@ -29,7 +29,7 @@ import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
 import {
-  CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader,
+  CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader, createClipInputPool,
   type ClipSource, type ClipLength, type ClipReader,
 } from "@/lib/reelClips";
 // Type only: the engine itself is loaded with a dynamic import inside
@@ -322,6 +322,12 @@ export type ReelAutoConfig = {
   order: ReelAutoItem[];
   showPrice?: boolean;
   showLocation?: boolean;
+  /**
+   * Video-led reels: let the order open on a clip (the title is drawn over
+   * it, exactly as over a title photo) instead of moving the first photo
+   * ahead of it. The interactive Reel Maker always keeps a photo first.
+   */
+  videoFirst?: boolean;
 };
 export type ReelAutoProgress = { phase: "loading" | "depth" | "rendering"; pct: number };
 export type { StyleKey as ReelStyleKey };
@@ -594,13 +600,13 @@ export default function ReelMaker({
     const out = chosen
       .map((pid) => byId.get(pid))
       .filter((p): p is ReelPhoto => !!p && !(clipsBlocked && !!p.clip));
-    if (out.length > 0 && out[0].clip) {
+    if (out.length > 0 && out[0].clip && !auto?.videoFirst) {
       let k = -1;
       for (let i = 0; i < out.length; i++) if (!out[i].clip) { k = i; break; }
       if (k > 0) { const first = out.splice(k, 1)[0]; out.unshift(first); }
     }
     return out;
-  }, [photos, clipItems, chosen, clipsBlocked]);
+  }, [photos, clipItems, chosen, clipsBlocked, auto?.videoFirst]);
 
   const photoCount = useMemo(() => selectedPhotos.filter((p) => !p.clip).length, [selectedPhotos]);
   const clipSeconds = useMemo(
@@ -1102,6 +1108,10 @@ export default function ReelMaker({
     // mediabunny Input — released as soon as its clip has played, and in the
     // finally below whatever happens.
     const clipReaders: (ClipReader | null)[] = [];
+    // Clips cut from the same video share one opened source (one Input, one
+    // range cache) — a video-led reel can hold a dozen segments of one
+    // walkthrough. Released segment by segment, and wholesale in the finally.
+    const clipPool = createClipInputPool();
     let logo: ImageBitmap | null = null;
     // Walkthrough's depth engine, when the look asks for it and the browser
     // can run it. Null means every photograph uses the ordinary flat zoom.
@@ -1168,7 +1178,8 @@ export default function ReelMaker({
           // decoded frame by frame as the render reaches it. A clip that
           // can't be opened plays as a still rather than stopping the film.
           try {
-            const reader = await openClipReader(p.clip, clipBox);
+            const clipKey = p.clip.videoId ?? p.clip.fileKey;
+            const reader = await openClipReader(p.clip, clipBox, clipKey ? { pool: clipPool, key: clipKey } : undefined);
             clipReaders[i] = reader;
             bitmaps.push(reader.poster);
           } catch {
@@ -2727,6 +2738,7 @@ export default function ReelMaker({
         if (r) { try { r.release(); } catch { /* already released */ } }
       }
       clipReaders.length = 0;
+      clipPool.disposeAll();
       for (let i = 0; i < bitmaps.length; i++) {
         try { bitmaps[i].close(); } catch { /* already released */ }
       }

@@ -153,27 +153,142 @@ export type ClipReader = {
 };
 
 /**
+ * One opened source video, shared by every clip (segment) cut from it in a
+ * render: one mediabunny Input (one range-request cache, one parse of the
+ * file) and its primary track. Each segment still has its own CanvasSink, and
+ * its decoder only runs while that segment plays (see advance / release).
+ */
+type SharedInput = {
+  input: Input;
+  track: InputVideoTrack;
+  first: number;
+  vw: number;
+  vh: number;
+  overUrl: boolean;
+};
+
+/**
+ * A per-render pool of opened source videos, keyed by video (a listing
+ * video's id, or a Studio file's key). The first segment of a video opens it;
+ * every segment holds a reference; the Input is disposed when the last
+ * segment of that video releases it. A video that fails to open fails fast
+ * for its later segments too (they play as stills, as before).
+ *
+ * Before Oct 4 every clip opened its own Input. With one clip per video (the
+ * broker's picker) nothing changes: same file, same frames, same output.
+ */
+export type ClipInputPool = {
+  acquire(key: string, open: () => Promise<ClipSource>): Promise<SharedInput>;
+  release(key: string): void;
+  disposeAll(): void;
+};
+
+export function createClipInputPool(): ClipInputPool {
+  const entries: Record<string, { p: Promise<SharedInput>; refs: number; value: SharedInput | null }> = {};
+  return {
+    acquire(key, open) {
+      let e = entries[key];
+      if (!e) {
+        const p = (async () => {
+          const src = await open();
+          const overUrl = "url" in src;
+          const mb = await import("mediabunny");
+          const input = makeInput(mb, src);
+          try {
+            const track = await openTrack(input, overUrl);
+            const vw = await track.getDisplayWidth();
+            const vh = await track.getDisplayHeight();
+            const first = await input.getFirstTimestamp([track]);
+            const shared: SharedInput = { input, track, first, vw, vh, overUrl };
+            return shared;
+          } catch (err) {
+            input.dispose();
+            throw classify(err, overUrl);
+          }
+        })();
+        e = { p, refs: 0, value: null };
+        entries[key] = e;
+        const entry = e;
+        p.then((v) => { entry.value = v; }).catch(() => { /* reported to each caller */ });
+      }
+      e.refs++;
+      return e.p;
+    },
+    release(key) {
+      const e = entries[key];
+      if (!e) return;
+      e.refs = Math.max(0, e.refs - 1);
+      if (e.refs === 0 && e.value) {
+        try { e.value.input.dispose(); } catch { /* already gone */ }
+        e.value = null;
+        // A later segment of the same video (there shouldn't be one) reopens it.
+        delete entries[key];
+      }
+    },
+    disposeAll() {
+      Object.keys(entries).forEach((k) => {
+        const e = entries[k];
+        if (e.value) { try { e.value.input.dispose(); } catch { /* already gone */ } }
+        delete entries[k];
+      });
+    },
+  };
+}
+
+/**
  * Open a clip for rendering. `box` is the rectangle the clip will be drawn
  * into and `cover` whether it fills it (crop) or sits whole inside it; the
  * decoded frames are sized to exactly what that needs, never larger than the
  * video itself.
+ *
+ * With a `pool` and a `key` (the source video), clips cut from the same video
+ * share one opened Input (see createClipInputPool); without, the clip opens
+ * its own, as it always did.
  */
 export async function openClipReader(
   clip: { open: () => Promise<ClipSource>; inSec: number; lengthSec: number },
   box: { w: number; h: number; cover: boolean },
+  shared?: { pool: ClipInputPool; key: string },
 ): Promise<ClipReader> {
-  const src = await clip.open();
-  const overUrl = "url" in src;
+  let input: Input;
+  let track: InputVideoTrack;
+  let first: number;
+  let vw: number;
+  let vh: number;
+  let overUrl: boolean;
+  if (shared) {
+    let si: SharedInput;
+    try {
+      si = await shared.pool.acquire(shared.key, clip.open);
+    } catch (err) {
+      shared.pool.release(shared.key);
+      throw err instanceof ClipError ? err : classify(err, true);
+    }
+    ({ input, track, first, vw, vh, overUrl } = si);
+  } else {
+    const src = await clip.open();
+    overUrl = "url" in src;
+    const mb = await import("mediabunny");
+    input = makeInput(mb, src);
+    try {
+      track = await openTrack(input, overUrl);
+      vw = await track.getDisplayWidth();
+      vh = await track.getDisplayHeight();
+      first = await input.getFirstTimestamp([track]);
+    } catch (err) {
+      input.dispose();
+      throw classify(err, overUrl);
+    }
+  }
+  const dropInput = () => {
+    if (shared) shared.pool.release(shared.key);
+    else { try { input.dispose(); } catch { /* already gone */ } }
+  };
   const mb = await import("mediabunny");
-  const input = makeInput(mb, src);
   let sink: CanvasSink;
   let start: number;
   let poster: ImageBitmap;
   try {
-    const track = await openTrack(input, overUrl);
-    const vw = await track.getDisplayWidth();
-    const vh = await track.getDisplayHeight();
-    const first = await input.getFirstTimestamp([track]);
     start = first + Math.max(0, clip.inSec);
     const fitScale = box.cover
       ? Math.max(box.w / vw, box.h / vh)
@@ -191,7 +306,7 @@ export async function openClipReader(
     if (!f0) throw new ClipError("codec");
     poster = await createImageBitmap(f0.canvas);
   } catch (err) {
-    input.dispose();
+    dropInput();
     throw classify(err, overUrl);
   }
 
@@ -236,7 +351,7 @@ export async function openClipReader(
       if (iter) { iter.return(undefined).catch(() => {}); iter = null; }
       current = null;
       pending = null;
-      try { input.dispose(); } catch { /* already gone */ }
+      dropInput();
     },
   };
 }

@@ -71,28 +71,54 @@ export default function ReelServiceRenderer({
         if (!source.isAdmin) throw new Error("Only an admin can render Reel Service reels.");
 
         const notes: string[] = [];
-        const clipItems: (ReelAutoItem | null)[] = [];
-        const clips = Array.isArray(st.clips) ? st.clips : [];
-        for (let i = 0; i < clips.length; i++) {
-          const c = clips[i];
-          onProgress(`Measuring clip ${i + 1} of ${clips.length}`, 0);
-          const v = (source.videos ?? []).find((x) => x.id === c.videoId);
-          if (!v) { clipItems.push(null); notes.push(`Clip ${i + 1}: the video is no longer on the listing.`); continue; }
+        // Segments: measure each source video once (its length turns the
+        // planned position into seconds), then lay each video's segments out
+        // in time order without overlaps. A video that can't be read drops
+        // its segments with a note; the reel still renders.
+        const segs = Array.isArray(st.segments) ? st.segments : [];
+        const durations: Record<string, number | null> = {};
+        const measured: Record<string, number> = {};
+        const vids = segs.map((x) => x.videoId).filter((v, i, a) => a.indexOf(v) === i);
+        for (let i = 0; i < vids.length; i++) {
+          onProgress(`Measuring video ${i + 1} of ${vids.length}`, 0);
+          const v = (source.videos ?? []).find((x) => x.id === vids[i]);
+          if (!v) { durations[vids[i]] = null; notes.push("A planned video is no longer on the listing."); continue; }
           try {
-            const src = await v.open();
-            const probe = await probeClip(src, 0);
-            const len = (c.lengthSec ?? 3) as ClipLength;
-            const dur = probe.durationSec ?? 0;
-            if (dur > 0 && dur < len + 0.3) { clipItems.push(null); notes.push(`Clip ${i + 1}: the video is shorter than ${len}s.`); continue; }
-            const span = Math.max(0, dur - len - 0.2);
-            const frac = Math.min(1, Math.max(0, Number(c.inFrac) || 0.35));
-            const inSec = dur > 0 ? Math.round(frac * span * 10) / 10 : 0;
-            clipItems.push({ videoId: v.id, inSec, lengthSec: len });
+            const probe = await probeClip(await v.open(), 0);
+            durations[vids[i]] = probe.durationSec ?? null;
+            if (probe.durationSec) measured[v.id] = Math.round(probe.durationSec * 10) / 10;
           } catch (e) {
-            clipItems.push(null);
-            notes.push(`Clip ${i + 1}: ${e instanceof Error ? e.message : "couldn’t be read"} (left out).`);
+            durations[vids[i]] = null;
+            notes.push(`${v.title}: ${e instanceof Error ? e.message : "couldn\u2019t be read"} (its segments were left out).`);
           }
         }
+        // Remember the lengths for the planner (best effort).
+        if (Object.keys(measured).length) {
+          void fetch("/api/admin/reel-service", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "durations", durations: measured }),
+          }).catch(() => {});
+        }
+        const resolved: (ReelAutoItem | null)[] = segs.map(() => null);
+        const lastEnd: Record<string, number> = {};
+        // Walk each video's segments in time order so a later one never overlaps an earlier one.
+        const byTime = segs.map((x, i) => ({ x, i })).sort((a, b) => (a.x.videoId === b.x.videoId ? a.x.inFrac - b.x.inFrac : a.x.videoId < b.x.videoId ? -1 : 1));
+        let dropped = 0;
+        byTime.forEach(({ x, i }) => {
+          const d = durations[x.videoId];
+          if (d === undefined || d === null) { if (d === null) dropped++; return; }
+          const len = (x.durSec ?? 3) as ClipLength;
+          const lo = Math.max(d * 0.03, lastEnd[x.videoId] ?? 0);
+          const hi = d * 0.97 - len;
+          let start = Math.max(lo, Math.min(1, Math.max(0, Number(x.inFrac) || 0)) * d);
+          if (start > hi) { dropped++; return; }
+          start = Math.round(start * 10) / 10;
+          lastEnd[x.videoId] = start + len + 0.2;
+          resolved[i] = { videoId: x.videoId, inSec: start, lengthSec: len };
+        });
+        if (dropped) notes.push(`${dropped} segment${dropped === 1 ? "" : "s"} left out (video too short or unreadable).`);
+        const clipItems = resolved;
 
         const order: ReelAutoItem[] = [];
         st.order.forEach((it) => {
@@ -114,6 +140,7 @@ export default function ReelServiceRenderer({
             order,
             showPrice: st.showPrice !== false,
             showLocation: st.showLocation !== false,
+            videoFirst: st.videoLed === true,
           },
           notes,
         });

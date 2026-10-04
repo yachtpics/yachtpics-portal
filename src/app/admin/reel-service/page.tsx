@@ -1,7 +1,7 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isPeriod, periodET } from "@/lib/reelService";
-import ReelServiceBoard, { type BoardJob, type BoardSub } from "./ReelServiceBoard";
+import ReelServiceBoard, { type BoardJob, type BoardSub, type BoardVideo } from "./ReelServiceBoard";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,15 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
 
   const boardJobs = ((jobs ?? []) as unknown as BoardJob[]);
 
+  // The videos on this month's listings: the footage badge ("Needs more
+  // video") and "Measure videos" work from these, live.
+  const listingIds = boardJobs.map((j) => j.listing_id).filter((x, i, a) => a.indexOf(x) === i);
+  let boardVideos: BoardVideo[] = [];
+  if (listingIds.length) {
+    const { data: vids } = await admin.from("videos").select("id, listing_id, duration_sec, title").in("listing_id", listingIds);
+    boardVideos = (vids ?? []) as BoardVideo[];
+  }
+
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <h1 className="text-display text-ink-900">Reel Service</h1>
@@ -52,7 +61,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
           Couldn&rsquo;t read the Reel Service tables ({subErr.message}). The migration <code>20261004_reel_service.sql</code> may not be applied yet.
         </p>
       )}
-      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} />
+      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} />
     </div>
   );
 }
