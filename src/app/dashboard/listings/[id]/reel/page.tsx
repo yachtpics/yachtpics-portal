@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { orderPhotos } from "@/lib/photoOrder";
 import { loadBitmap } from "@/lib/canvasText";
 import { normalizeHex } from "@/lib/reelStyles";
+import { isDepthLooksSubscriber } from "@/lib/depthLooksRelease";
 import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource, type ReelVideo } from "@/components/ReelMaker";
 
 /**
@@ -54,13 +55,28 @@ export default function ListingReelPage() {
       // subscribers come back from that route as unlimited.
       const locked = false;
 
-      const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }] = await Promise.all([
+      // Subscriber (the listing broker's own plan, their office plan, or a
+      // comped account) — opens the depth looks from Mon Oct 5 rather than
+      // Fri Oct 9. Same lookup the social post page and the listing page use
+      // (/api/subscription/status → getEffectiveAccessStatus); a hiccup or a
+      // refusal (e.g. a viewer who isn't the broker or their assistant) is
+      // simply "not a subscriber" — they still get the looks on Oct 9.
+      // Admins don't need it (they always have the looks).
+      const subscriberCheck: Promise<boolean> = admin
+        ? Promise.resolve(false)
+        : fetch(`/api/subscription/status?brokerId=${l.broker_id}`)
+            .then((r) => (r.ok ? r.json() : null))
+            .then((d) => isDepthLooksSubscriber(d?.status))
+            .catch(() => false);
+
+      const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }, isSubscriber] = await Promise.all([
         supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
         supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
         supabase.from("photos").select("id, storage_path, category, filename, display_order").eq("listing_id", id).eq("is_visible", true).order("display_order"),
         supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
         // The listing's videos, offered as clips in the listing's own order.
         supabase.from("videos").select("id, title, filename, thumbnail_path, display_order").eq("listing_id", id).order("display_order"),
+        subscriberCheck,
       ]);
       const broker = {
         // No placeholder here: an end card reading "Broker" over a phone number
@@ -140,6 +156,7 @@ export default function ListingReelPage() {
         broker,
         listingId: id,
         isAdmin: admin,
+        isSubscriber,
         isOwner,
         locked,
         brand,

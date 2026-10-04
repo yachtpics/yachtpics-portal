@@ -1,8 +1,10 @@
 /**
- * Reel looks — the ten ways a listing film can present itself (seven on a
- * 16:9 film: Stack, Marquee and Marquee Still are reel-only). Walkthrough and
- * Underway (the depth looks) are admins-only until DEPTH_LOOKS_OPEN_AT
- * (@/lib/depthLooksRelease — Fri Oct 9 2026, 9:00 AM ET), then everyone's.
+ * Reel looks — the eleven ways a listing film can present itself (seven on a
+ * 16:9 film: Stack, Stack Underway, Marquee and Marquee Still are reel-only).
+ * Walkthrough and Underway (the depth looks) are admins-only until
+ * DEPTH_LOOKS_SUBSCRIBER_OPEN_AT for subscribers (Mon Oct 5 2026, 9:00 AM ET)
+ * and DEPTH_LOOKS_OPEN_AT for everyone (Fri Oct 9) — @/lib/depthLooksRelease.
+ * Stack Underway is admins-only, always (`adminOnly`).
  *
  * Drawn from how the top houses actually publish. Three conventions from that
  * research shaped all of this:
@@ -21,7 +23,7 @@
  * the boat: a 120' tri-deck and a classic sloop should not present alike.
  */
 
-export type StyleKey = "editorial" | "cinematic" | "walkthrough" | "underway" | "gallery" | "classic" | "energy" | "stack" | "marquee" | "marquee_still";
+export type StyleKey = "editorial" | "cinematic" | "walkthrough" | "underway" | "gallery" | "classic" | "energy" | "stack" | "stack_underway" | "marquee" | "marquee_still";
 
 export type Backdrop =
   | "scrim"      // full-bleed photo, type grounded on a bottom-up gradient
@@ -131,7 +133,29 @@ export type ReelStyle = {
    * timeline is unchanged; only joins between two full-frame photographs.
    */
   joins?: "varied";
+  /**
+   * Stack layout only. "main": the depth engine's camera move (the same
+   * engine and move choice as Walkthrough/Underway) on the Stack's main
+   * photographs — every full-frame photograph (the title photo, the
+   * breathers between runs, the landing) and, inside a run, the middle band
+   * (the main band — the centre of the frame). The top and bottom bands keep
+   * Stack's own push: depth in all three would be ~3× the render cost, and
+   * barely readable in a thin band. Where depth can't be read, Stack's
+   * normal motion. Not `motion: "depth"` on purpose — that field means a
+   * single-photo depth look and carries the broker release.
+   */
+  stackDepth?: "main";
+  /**
+   * Shown to admins only, always — not part of any broker release. A broker
+   * who somehow has the look selected is put back on Editorial.
+   */
+  adminOnly?: boolean;
 };
+
+/** True when a render of this look reads depth (the depth looks, and Stack Underway's main photographs). */
+export function readsDepth(st: ReelStyle): boolean {
+  return st.motion === "depth" || st.stackDepth === "main";
+}
 
 /**
  * Everything Marquee and Marquee Still share — palette, type, pace. Only the
@@ -186,6 +210,35 @@ const MARQUEE_LOOK: Omit<ReelStyle, "key" | "name" | "blurb"> = {
   holdScale: 1,
   cut: "dissolve",
   layout: "marquee",
+};
+
+/**
+ * Everything Stack and Stack Underway share — palette, type, pace, layout.
+ * Only the name, blurb and Stack Underway's depth on the main photographs
+ * differ, so a change to Stack lands on both.
+ */
+const STACK_LOOK: Omit<ReelStyle, "key" | "name" | "blurb"> = {
+  ground: "#06090f",
+  text: "#ffffff",
+  soft: "rgba(255,255,255,0.86)",
+  quiet: "rgba(255,255,255,0.62)",
+  accent: "#f0b429",
+  light: false,
+  backdrop: "scrim",
+  serifHeadline: false,
+  headline: "caps",
+  align: "center",
+  rule: "single",
+  headTrack: -2,
+  headWeight: 700,
+  zoom: 0.07,
+  // A band swap every ~1.5s on Full: fast, but each photograph gets three
+  // beats on screen before it goes, and eighteen photos land around 40s —
+  // inside the band the feed rewards.
+  holdScale: 0.8,
+  cut: "punch",
+  layout: "stack",
+  hook: "burst",
 };
 
 export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
@@ -396,30 +449,29 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
    * glitches, no light leaks, nothing the boat didn't earn.
    */
   stack: {
+    ...STACK_LOOK,
     key: "stack",
     name: "Stack",
     blurb: "Three bands trading on the beat, with full-frame breaks. For go-fasts.",
-    ground: "#06090f",
-    text: "#ffffff",
-    soft: "rgba(255,255,255,0.86)",
-    quiet: "rgba(255,255,255,0.62)",
-    accent: "#f0b429",
-    light: false,
-    backdrop: "scrim",
-    serifHeadline: false,
-    headline: "caps",
-    align: "center",
-    rule: "single",
-    headTrack: -2,
-    headWeight: 700,
-    zoom: 0.07,
-    // A band swap every ~1.5s on Full: fast, but each photograph gets three
-    // beats on screen before it goes, and eighteen photos land around 40s —
-    // inside the band the feed rewards.
-    holdScale: 0.8,
-    cut: "punch",
-    layout: "stack",
-    hook: "burst",
+  },
+
+  /**
+   * Stack Underway — Stack, with its main photographs moving in depth.
+   *
+   * Stack's bands, palette, type, timing and joins, unchanged. The main
+   * photographs — every full-frame one and the middle band of each run —
+   * get the depth engine's camera move (Walkthrough's engine and move
+   * choice) instead of the push; the top and bottom bands keep Stack's push.
+   * Reel-only like Stack. Admins only, always (not part of the depth looks'
+   * broker release).
+   */
+  stack_underway: {
+    ...STACK_LOOK,
+    key: "stack_underway",
+    name: "Stack Underway",
+    blurb: "Stack's three frames, with the main photo moving in depth.",
+    stackDepth: "main",
+    adminOnly: true,
   },
 
   /**
@@ -458,7 +510,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   },
 };
 
-export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "walkthrough", "underway", "gallery", "classic", "energy", "stack", "marquee", "marquee_still"];
+export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "walkthrough", "underway", "gallery", "classic", "energy", "stack", "stack_underway", "marquee", "marquee_still"];
 
 /** Marquee or Marquee Still — any look laid out as the three-band split screen. */
 export function isMarquee(key: StyleKey): boolean {

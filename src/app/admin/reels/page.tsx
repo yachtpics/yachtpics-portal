@@ -67,6 +67,7 @@ const LOOK_LABEL: Record<string, string> = {
   classic: "Classic",
   energy: "Energy",
   stack: "Stack",
+  stack_underway: "Stack Underway",
   marquee: "Marquee",
   marquee_still: "Marquee Still",
 };

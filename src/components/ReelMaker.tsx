@@ -23,7 +23,7 @@ import {
   type BrokerCard, type YpPhone,
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
-import { depthLooksOpen, msUntilDepthLooksOpen } from "@/lib/depthLooksRelease";
+import { depthLooksOpenFor, msUntilDepthLooksOpenFor } from "@/lib/depthLooksRelease";
 import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
@@ -172,6 +172,13 @@ function capFor(format: Format, length: Length) {
 const FPS = 30;
 
 /** A punch look cuts hard — a whisker of overlap so it never flashes black. */
+/**
+ * Stack Underway's main band: the middle of Stack's three (0 top, 2 bottom) —
+ * the centre of the frame, where the eye lands. Only this band (and the
+ * full-frame photographs) moves in depth; the other two keep Stack's push.
+ */
+const STACK_MAIN_ROW = 1;
+
 function fadeFor(fmt: Format, key: StyleKey) {
   return REEL_STYLES[key].cut === "punch" ? 0.08 : SPEC[fmt].fade;
 }
@@ -266,6 +273,13 @@ export type ReelSource = {
   /** Null when there's no listing behind the reel — the Studio. */
   listingId: string | null;
   isAdmin: boolean;
+  /**
+   * The listing broker is a subscriber (paid plan, office plan or comped —
+   * isDepthLooksSubscriber in @/lib/depthLooksRelease). Opens the depth looks
+   * from DEPTH_LOOKS_SUBSCRIBER_OPEN_AT instead of DEPTH_LOOKS_OPEN_AT. Worked
+   * out by the page before ReelMaker mounts. Left out: not a subscriber.
+   */
+  isSubscriber?: boolean;
   isOwner: boolean;
   locked: boolean;
   /** The broker's remembered colours, where the source has them. */
@@ -322,6 +336,7 @@ export default function ReelMaker({
 }) {
   const supabase = createClient();
   const { listing, photos, broker, listingId, isAdmin, isOwner, locked, budget } = source;
+  const isSubscriber = source.isSubscriber === true;
   /** Studio only: this reel is of something that isn't a boat. */
   const freeSubject = listing.subject === "free";
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -502,7 +517,7 @@ export default function ReelMaker({
    * motion. So on Stack the clips are left out of the reel (kept in the
    * selection, and back the moment another look is picked).
    */
-  const clipsBlocked = styleKey === "stack" && format === "reel";
+  const clipsBlocked = REEL_STYLES[styleKey].layout === "stack" && format === "reel";
 
   /**
    * What actually plays, in order: the chosen photographs and clips. The title
@@ -561,39 +576,55 @@ export default function ReelMaker({
    */
   /**
    * The depth looks (every look with `motion: "depth"` — Walkthrough and
-   * Underway): admins always; every broker from DEPTH_LOOKS_OPEN_AT (Fri
+   * Underway): admins always; subscribers from DEPTH_LOOKS_SUBSCRIBER_OPEN_AT
+   * (Mon Oct 5, 9:00 AM ET); every broker from DEPTH_LOOKS_OPEN_AT (Fri
    * Oct 9, 9:00 AM ET). Read after mount, not during render, so the server's
    * picker and the browser's can't disagree if the page is rendered either
-   * side of the instant; and a page left open over it picks them up on the
-   * minute rather than at the next reload.
+   * side of the instant; and a page left open over the viewer's instant
+   * picks them up about a second after it rather than at the next reload.
    */
   const [depthLooksReleased, setDepthLooksReleased] = useState(false);
   useEffect(() => {
-    if (depthLooksOpen()) { setDepthLooksReleased(true); return; }
-    const ms = msUntilDepthLooksOpen();
+    const who = { isAdmin, isSubscriber };
+    if (depthLooksOpenFor(who)) { setDepthLooksReleased(true); return; }
+    setDepthLooksReleased(false);
+    const ms = msUntilDepthLooksOpenFor(who);
     // setTimeout can't wait past ~24.8 days; a page open that long reloads anyway.
     if (ms > 2_147_000_000) return;
     const timer = setTimeout(() => setDepthLooksReleased(true), ms + 1000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isAdmin, isSubscriber]);
   const depthLooksAllowed = isAdmin || depthLooksReleased;
+  /**
+   * Whether this viewer may use a look at all: an `adminOnly` look (Stack
+   * Underway) is admins only, always; a depth look follows the release above.
+   */
+  const lookAllowed = (k: StyleKey) => {
+    const stl = REEL_STYLES[k];
+    if (stl.adminOnly && !isAdmin) return false;
+    if (stl.motion === "depth" && !depthLooksAllowed) return false;
+    return true;
+  };
   const looks = useMemo(
-    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => k !== "stack" && !isMarquee(k)))
-      .filter((k) => REEL_STYLES[k].motion !== "depth" || depthLooksAllowed),
-    [format, depthLooksAllowed],
+    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => REEL_STYLES[k].layout !== "stack" && !isMarquee(k)))
+      .filter(lookAllowed),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [format, depthLooksAllowed, isAdmin],
   );
-  // The depth looks are not offered here (a broker, while they are
-  // admin-only): a selection that somehow holds one goes back to the house look.
+  // A look not offered to this viewer (a depth look before their release, an
+  // admin-only look for a broker): a selection that somehow holds one goes
+  // back to the house look.
   useEffect(() => {
-    if (REEL_STYLES[styleKey].motion === "depth" && !depthLooksAllowed) setStyleKey("editorial");
-  }, [styleKey, depthLooksAllowed]);
+    if (!lookAllowed(styleKey)) setStyleKey("editorial");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [styleKey, depthLooksAllowed, isAdmin]);
 
   // When the format changes, reset the fit and trim the selection to the cap.
   function chooseFormat(f: Format) {
     setFormat(f);
     // Stack is a reel look. Switching to film falls back to Energy — the
     // nearest thing in pace — rather than leaving a look that can't run.
-    if (f === "film" && styleKey === "stack") setStyleKey("energy");
+    if (f === "film" && REEL_STYLES[styleKey].layout === "stack") setStyleKey("energy");
     // Marquee (and Marquee Still) is reel-only too; its nearest on a film is
     // the house look — serif, dissolves, the same unhurried pace.
     if (f === "film" && isMarquee(styleKey)) setStyleKey("editorial");
@@ -821,7 +852,9 @@ export default function ReelMaker({
     const scale = look.holdScale;
     const n = selectedPhotos.length;
     // Same boat, same photos → the same deal of transitions every time.
-    const seed = n * 131 + styleKey.length * 17;
+    // Stack Underway is Stack with depth on top: it deals exactly Stack's
+    // timeline and joins for the same photographs.
+    const seed = n * 131 + (look.layout === "stack" ? "stack" : styleKey).length * 17;
     // Our own ad's card carries more (the broker credit, the portal, us) —
     // it holds a beat and a half longer so it can be read.
     const endHold = s.endHold + (ypBrand && isAdmin ? 1.5 : 0);
@@ -1109,7 +1142,29 @@ export default function ReelMaker({
       // photograph's camera move. Anything that goes wrong here (no WebGL2,
       // the model won't load, one photo fails) only means those photographs
       // get the ordinary flat zoom; the render never stops for it.
-      if (st.motion === "depth" && depthLooksAllowed) {
+      // Stack Underway reads depth only for its main photographs — the
+      // full-frame ones and whatever lands in the middle band of a run — in
+      // the order they first play. Admins only (the look is admin-only); on a
+      // film there is no Stack, so nothing to read.
+      const stackMain: number[] = [];
+      if (st.stackDepth === "main" && isAdmin && format === "reel") {
+        const seenMain: Record<number, true> = {};
+        const addMain = (i: number) => {
+          if (seenMain[i] || !bitmaps[i] || selectedPhotos[i]?.clip) return;
+          seenMain[i] = true;
+          stackMain.push(i);
+        };
+        timeline.units.forEach((u) => {
+          if (u.kind === "photo") addMain(u.index);
+          else if (u.kind === "stack") {
+            u.events
+              .filter((e) => e.row === STACK_MAIN_ROW)
+              .sort((a, b) => a.at - b.at)
+              .forEach((e) => addMain(e.index));
+          }
+        });
+      }
+      if ((st.motion === "depth" && depthLooksAllowed) || stackMain.length > 0) {
         try {
           const dm = await import("@/lib/depthMotion");
           if (dm.depthMotionSupported()) {
@@ -1124,8 +1179,13 @@ export default function ReelMaker({
             // selection exactly in order — unit k is item k — and clips sit in
             // it like photographs. `turn` counts photographs only: it rotates
             // each one's list of moves and sets which way it drifts.
+            //
+            // Stack Underway: its main photographs only, in the order they
+            // first play (worked out above). The top and bottom bands never
+            // read depth — they keep Stack's push.
             const todo: number[] = [];
-            selectedPhotos.forEach((p, i) => { if (!p.clip && bitmaps[i]) todo.push(i); });
+            if (stackMain.length > 0) stackMain.forEach((i) => todo.push(i));
+            else selectedPhotos.forEach((p, i) => { if (!p.clip && bitmaps[i]) todo.push(i); });
             let lastMove: string | null = null;
             for (let n = 0; n < todo.length; n++) {
               if (cancelRef.current) { setPhase("idle"); return; }
@@ -2025,10 +2085,21 @@ export default function ReelMaker({
        */
       const drawBand = (
         index: number, r: Rect, dx: number, dy: number, zoom: number, alpha: number,
-        smear: number, axis: "x" | "y", clip?: Rect,
+        smear: number, axis: "x" | "y", clip?: Rect, depthU?: number,
       ) => {
-        const bmp = bitmaps[index];
-        if (!bmp) return;
+        const photo = bitmaps[index];
+        if (!photo) return;
+        let bmp: ImageBitmap | HTMLCanvasElement | OffscreenCanvas = photo;
+        // Stack Underway's main band: the depth engine's frame of this
+        // photograph at `depthU` along its move, in place of the push. The
+        // frame is the photograph's own size and every pixel of it lies
+        // inside the photograph (the engine's overscan), so covering the band
+        // with it, exactly as the bitmap would, never shows past the
+        // photograph's edge. Unprepared (depth unreadable) → the push.
+        if (depth && depthU !== undefined) {
+          const moved = depth.frame(index, photo, depthU);
+          if (moved) { bmp = moved; zoom = 1; }
+        }
         const base = Math.max(r.w / bmp.width, r.h / bmp.height) * zoom;
         const dw = bmp.width * base, dh = bmp.height * base;
         const x = r.x + (r.w - dw) / 2 + dx, y = r.y + (r.h - dh) / 2 + dy;
@@ -2073,8 +2144,15 @@ export default function ReelMaker({
           const life = Math.max(0.3, (state.until ?? runEnd) - state.since);
           const settle = Math.min(1, (t - state.since) / life);
           const zoom = 1 + 0.06 * settle;
+          // Stack Underway: the main band's photographs take the depth move
+          // on the same clock as the push (over the band's whole life); the
+          // outgoing one holds where its move ended. Undefined elsewhere —
+          // plain Stack, and the top and bottom bands, keep the push.
+          const mainDepth = !!depth && st.stackDepth === "main" && r === STACK_MAIN_ROW;
+          const du = mainDepth ? ease(settle) : undefined;
+          const duPrev = mainDepth ? 1 : undefined;
           if (p >= 1) {
-            drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x");
+            drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", undefined, du);
             continue;
           }
           // The swap, in the move this event was dealt.
@@ -2082,15 +2160,15 @@ export default function ReelMaker({
           const e = whipEase(p);
           switch (state.move) {
             case "fade": {
-              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x");
-              drawBand(state.index, rect, 0, 0, zoom, ease(p), 0, "x");
+              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x", undefined, duPrev);
+              drawBand(state.index, rect, 0, 0, zoom, ease(p), 0, "x", undefined, du);
               break;
             }
             case "wipe": {
               // A hard edge sweeping across the band, with a light seam.
-              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x");
+              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x", undefined, duPrev);
               const wx = rect.w * ease(p);
-              drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", { x: rect.x, y: rect.y, w: wx, h: rect.h });
+              drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", { x: rect.x, y: rect.y, w: wx, h: rect.h }, du);
               if (p > 0.02 && p < 0.98) {
                 ctx.save(); ctx.globalAlpha = stackAlpha * 0.6; ctx.fillStyle = "#ffffff";
                 ctx.fillRect(rect.x + wx - 1.2 * sc, rect.y, 2.4 * sc, rect.h); ctx.restore();
@@ -2101,16 +2179,16 @@ export default function ReelMaker({
             case "down": {
               // A vertical push inside the band — no smear, the band is short.
               const sign = state.move === "up" ? -1 : 1;
-              if (prev !== null) drawBand(prev, rect, 0, sign * rect.h * e, 1.06, 1, 0, "y");
-              drawBand(state.index, rect, 0, sign * rect.h * (e - 1), zoom, 1, 0, "y");
+              if (prev !== null) drawBand(prev, rect, 0, sign * rect.h * e, 1.06, 1, 0, "y", undefined, duPrev);
+              drawBand(state.index, rect, 0, sign * rect.h * (e - 1), zoom, 1, 0, "y", undefined, du);
               break;
             }
             default: {
               // The whip, left or right, under a motion smear.
               const sign = state.move === "left" ? -1 : 1;
               const smear = 90 * sc * Math.sin(Math.PI * p);
-              if (prev !== null) drawBand(prev, rect, sign * W * e, 0, 1.06, 1, smear, "x");
-              drawBand(state.index, rect, sign * W * (e - 1), 0, zoom, 1, smear, "x");
+              if (prev !== null) drawBand(prev, rect, sign * W * e, 0, 1.06, 1, smear, "x", undefined, duPrev);
+              drawBand(state.index, rect, sign * W * (e - 1), 0, zoom, 1, smear, "x", undefined, du);
             }
           }
         }
@@ -2767,8 +2845,8 @@ export default function ReelMaker({
   const labelsUnavailable: string | null =
     format !== "reel"
       ? null
-      : styleKey === "stack"
-        ? "Stack moves too fast for room labels."
+      : REEL_STYLES[styleKey].layout === "stack"
+        ? `${REEL_STYLES[styleKey].name} moves too fast for room labels.`
         : isMarquee(styleKey)
           ? `${REEL_STYLES[styleKey].name} keeps several photographs moving at once, so there are no room labels.`
         : styleKey === "cinematic" || styleKey === "gallery"
@@ -2833,8 +2911,10 @@ export default function ReelMaker({
 
       {/* Look — complete points of view, not colour swaps. Eight on a reel,
           five on a film (Stack, Marquee and Marquee Still are reel-only), plus
-          Walkthrough and Underway on both — admins always, brokers from
-          DEPTH_LOOKS_OPEN_AT (Fri Oct 9 2026, 9:00 AM ET). */}
+          Walkthrough and Underway on both — admins always, subscribers from
+          DEPTH_LOOKS_SUBSCRIBER_OPEN_AT (Mon Oct 5 2026, 9:00 AM ET), every
+          broker from DEPTH_LOOKS_OPEN_AT (Fri Oct 9) — and Stack Underway on
+          reels for admins only. */}
       <div className="mb-5">
         <p className="label-caps text-ink-500 mb-2">Look</p>
         <div className={`grid grid-cols-2 sm:grid-cols-3 gap-2 ${looks.length >= 7 ? "lg:grid-cols-4" : looks.length === 6 ? "lg:grid-cols-6" : "lg:grid-cols-5"}`}>
@@ -2958,8 +3038,8 @@ export default function ReelMaker({
           {styleKey === "cinematic" && format === "reel" ? (
             // The letterbox IS the framing — the band is always filled.
             <p className="text-xs text-ink-400">Cinematic fills its letterbox band; there&rsquo;s nothing to choose here.</p>
-          ) : styleKey === "stack" && format === "reel" ? (
-            <p className="text-xs text-ink-400">Stack fills three bands, each with a whole photograph — nothing to choose here.</p>
+          ) : REEL_STYLES[styleKey].layout === "stack" && format === "reel" ? (
+            <p className="text-xs text-ink-400">{REEL_STYLES[styleKey].name} fills three bands, each with a whole photograph — nothing to choose here.</p>
           ) : styleKey === "gallery" ? (
             // The inset always shows the complete photograph.
             <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>
@@ -3041,7 +3121,7 @@ export default function ReelMaker({
           </div>
           {clipsBlocked ? (
             <p className="text-xs text-ink-400">
-              Stack builds its bands from photographs, so it can&rsquo;t take video clips &mdash; pick another look to use them.
+              {REEL_STYLES[styleKey].name} builds its bands from photographs, so it can&rsquo;t take video clips &mdash; pick another look to use them.
               {pendingCount > 0 && ` ${pendingCount === 1 ? "Your video is" : `${pendingCount} videos are`} waiting for the trimmer.`}
             </p>
           ) : (
@@ -3115,7 +3195,7 @@ export default function ReelMaker({
         </div>
         {clipsBlocked && chosenClipCount > 0 && (
           <p className="text-xs text-warn-700 mb-2">
-            Stack uses photographs only, so your {chosenClipCount === 1 ? "clip is" : `${chosenClipCount} clips are`} left out of this reel. {chosenClipCount === 1 ? "It comes" : "They come"} back when you pick another look.
+            {REEL_STYLES[styleKey].name} uses photographs only, so your {chosenClipCount === 1 ? "clip is" : `${chosenClipCount} clips are`} left out of this reel. {chosenClipCount === 1 ? "It comes" : "They come"} back when you pick another look.
           </p>
         )}
         <p className="text-xs text-ink-400 mt-1.5 mb-2">Tap photos in the order you want them to play — the number shows each one&rsquo;s place, and the first gets the title. Tap again to remove one. &ldquo;First {cap}&rdquo; takes them in slideshow order, cover first.</p>

@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { depthLooksOpen } from "@/lib/depthLooksRelease";
+import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import {
+  depthLooksOpen,
+  depthLooksOpenFor,
+  isDepthLooksSubscriber,
+  DEPTH_LOOKS_SUBSCRIBER_OPEN_AT,
+} from "@/lib/depthLooksRelease";
 
 // Rendered on every request: the depth looks' line appears on its release
 // day without a rebuild.
@@ -221,14 +229,45 @@ const quickRef = [
 
 /**
  * The depth looks' line under Marketing Tools, after the list of looks. Only
- * shown once they are open to everyone (depthLooksOpen) — worked out on each
+ * shown once they are open to this viewer (depthLooksOpenFor — admins always,
+ * subscribers from Mon Oct 5, everyone from Fri Oct 9) — worked out on each
  * request, never at module load, so it appears on the day without a rebuild.
  */
 const DEPTH_LOOKS_STEP =
   "Reel — Walkthrough and Underway: two looks where the camera moves through each photograph instead of zooming in, so the foreground passes and the room opens up. Walkthrough is the quiet one, made for the listing film; Underway adds wipes and dips between spaces, made for social. Every frame is the real boat — nothing is generated or filled in. Allow a couple of minutes: it reads the depth of each photograph before it renders.";
 
-function sectionsNow() {
-  if (!depthLooksOpen()) return sections;
+/**
+ * Whether the depth looks are open to the person viewing the help page. Only
+ * asks the database inside the subscriber-only window (Oct 5 → Oct 9) — before
+ * it nobody but an admin sees them, after it everyone does. Any failure reads
+ * as "not open yet" for this viewer; the line then appears on Oct 9.
+ */
+async function depthLooksOpenForViewer(): Promise<boolean> {
+  const now = new Date();
+  if (depthLooksOpen(now)) return true;
+  const subscriberWindow = now.getTime() >= Date.parse(DEPTH_LOOKS_SUBSCRIBER_OPEN_AT);
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    const isAdmin = me?.role === "admin";
+    if (isAdmin || !subscriberWindow) return depthLooksOpenFor({ isAdmin, isSubscriber: false }, now);
+    // Same answer as the reel page: the broker's own plan or office plan,
+    // via getEffectiveAccessStatus (service role so RLS never blocks).
+    const service = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { status } = await getEffectiveAccessStatus(service, user.id);
+    return depthLooksOpenFor({ isAdmin, isSubscriber: isDepthLooksSubscriber(status) }, now);
+  } catch {
+    return false;
+  }
+}
+
+function sectionsNow(depthOpen: boolean) {
+  if (!depthOpen) return sections;
   return sections.map((s) => {
     const at = s.steps.findIndex((step) => step.startsWith("Reel — pick a look"));
     if (at < 0) return s;
@@ -238,8 +277,8 @@ function sectionsNow() {
   });
 }
 
-export default function HelpPage() {
-  const shown = sectionsNow();
+export default async function HelpPage() {
+  const shown = sectionsNow(await depthLooksOpenForViewer());
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
 
