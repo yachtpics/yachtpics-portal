@@ -24,7 +24,7 @@ import {
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
 import { depthLooksOpenFor, msUntilDepthLooksOpenFor } from "@/lib/depthLooksRelease";
-import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
+import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, SWAP_DUR, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
@@ -1048,6 +1048,10 @@ export default function ReelMaker({
     // Underway's soft wipe composites two frames through a gradient and needs
     // a frame-sized canvas to do it: made on first use, released below.
     let joinScratch: HTMLCanvasElement | null = null;
+    // Stack Underway's band swaps use the same soft wipe, on a canvas of
+    // their own (a band swap can be drawn inside a whole-frame soft wipe,
+    // which is still holding its outgoing frame in joinScratch).
+    let bandScratch: HTMLCanvasElement | null = null;
 
     try {
       // Fonts first — otherwise the first frames silently fall back.
@@ -2060,6 +2064,28 @@ export default function ReelMaker({
       };
 
       /**
+       * Underway's join choice, between two photographs (`from` going out,
+       * `to` coming in), keeping `tr`'s length so the timeline never moves:
+       *  - outside ↔ inside the boat (either way): a dip to the ground;
+       *  - out of a photograph whose camera glided: a soft wipe travelling
+       *    the way it was gliding;
+       *  - otherwise a dissolve (with the sample's smoothstep curve).
+       * Without depth (the flat-zoom fallback) there is no glide, so it is a
+       * dip or a dissolve. Shared by Underway's joins, Stack Underway's
+       * joins and Stack Underway's band swaps (see `joinFor`, `drawStack`).
+       */
+      const variedJoin = (from: number, to: number, tr: Transition): Transition => {
+        if (isExterior(selectedPhotos[from]?.category) !== isExterior(selectedPhotos[to]?.category)) {
+          return { ...tr, type: "dip", timing: "smooth" };
+        }
+        const went = depth ? depth.info(from) : null;
+        if (went && went.move === "glide") {
+          return { ...tr, type: "softwipe", dir: went.sign > 0 ? "right" : "left", timing: "smooth" };
+        }
+        return { ...tr, type: "dissolve", timing: "smooth" };
+      };
+
+      /**
        * The Stack: three horizontal bands, one swapping per beat with a whip.
        *
        * The bands fill the whole height. There's no type in this phase, so
@@ -2155,8 +2181,36 @@ export default function ReelMaker({
             drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", undefined, du);
             continue;
           }
-          // The swap, in the move this event was dealt.
           const prev = state.prevIndex;
+          // Stack Underway's swaps take Underway's joins, clipped to the
+          // band and on the swap's own clock (same length as Stack's swap):
+          // the main band gets the full choice — a dip between outside and
+          // inside, a soft wipe after a glide, else a dissolve; the top and
+          // bottom bands (no depth, so no glide) dip between outside and
+          // inside and otherwise keep the move Stack dealt them. The bands
+          // filling in at the start of a run (nothing to swap from) keep
+          // Stack's whip-in. Plain Stack never comes here.
+          if (st.stackDepth === "main" && st.joins === "varied" && prev !== null) {
+            const choice = variedJoin(prev, state.index, { type: "dissolve", dur: SWAP_DUR, dir: "left" });
+            if (r === STACK_MAIN_ROW || choice.type === "dip") {
+              const bandIdx = state.index;
+              if (choice.type === "softwipe" && !bandScratch) bandScratch = document.createElement("canvas");
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(rect.x, rect.y, rect.w, rect.h);
+              ctx.clip();
+              ctx.globalAlpha = stackAlpha;
+              drawTransition(
+                ctx, W, H, choice, p, st.ground,
+                (a) => drawBand(prev, rect, 0, 0, 1.06, a, 0, "x", undefined, duPrev),
+                (a) => drawBand(bandIdx, rect, 0, 0, zoom, a, 0, "x", undefined, du),
+                false, bandScratch,
+              );
+              ctx.restore();
+              continue;
+            }
+          }
+          // The swap, in the move this event was dealt.
           const e = whipEase(p);
           switch (state.move) {
             case "fade": {
@@ -2481,32 +2535,45 @@ export default function ReelMaker({
        * Underway's joins. The planner gave every join the same dissolve
        * length; what KIND of join it is gets decided here, as it is drawn,
        * because the wipe depends on the move the engine chose for the
-       * outgoing photograph. Between two full-frame photographs only:
-       *  - outside ↔ inside the boat (either way): a dip to the ground;
-       *  - out of a photograph whose camera glided: a soft wipe travelling
-       *    the way it was gliding;
-       *  - otherwise a dissolve (with the sample's smoothstep curve).
-       * Without depth (the flat-zoom fallback) there is no glide, so it is a
-       * dip or a dissolve. A join into or out of a video clip, and into the
-       * end card, keeps the look's ordinary dissolve. The title photograph
-       * is a photograph like any other here — its own title timing is
-       * unchanged. Every other look gets `tr` back untouched.
+       * outgoing photograph. Between two full-frame photographs only, by
+       * `variedJoin` (dip between outside and inside, soft wipe after a
+       * glide, else dissolve). A join into or out of a video clip, and into
+       * the end card, keeps the look's ordinary dissolve. The title
+       * photograph is a photograph like any other here — its own title
+       * timing is unchanged.
+       *
+       * Stack Underway: every join between two units takes the same choice,
+       * keeping the length Stack dealt it (so the timeline is Stack's). A
+       * stack run is judged by its main (middle) band — the photograph it
+       * opens on coming in, the one it ends on going out. Into or out of the
+       * end card, an ordinary dissolve. Plain Stack and every other look get
+       * `tr` back untouched.
        */
+      const mainOf = (u: (typeof units)[number], end: "in" | "out"): number | null => {
+        if (u.kind === "photo") return u.index;
+        if (u.kind !== "stack") return null;
+        let found: number | null = null;
+        for (let i = 0; i < u.events.length; i++) {
+          if (u.events[i].row !== STACK_MAIN_ROW) continue;
+          found = u.events[i].index;
+          if (end === "in") break;
+        }
+        return found;
+      };
       const joinFor = (k: number, tr: Transition): Transition => {
         if (st.joins !== "varied") return tr;
         const ua = units[k - 1], ub = units[k];
+        if (st.stackDepth === "main") {
+          if (ua.kind === "end" || ub.kind === "end") return { ...tr, type: "dissolve", timing: undefined };
+          const from = mainOf(ua, "out"), to = mainOf(ub, "in");
+          if (from === null || to === null) return { ...tr, type: "dissolve", timing: "smooth" };
+          return variedJoin(from, to, tr);
+        }
         if (ua.kind !== "photo" || ub.kind !== "photo") return tr;
         if (ua.burst || ub.burst || (ua.placed && ua.placed.length > 0) || (ub.placed && ub.placed.length > 0)) return tr;
         if ((ua.slot !== null && ua.slot !== undefined) || (ub.slot !== null && ub.slot !== undefined)) return tr;
         if (isClipAt(ua.index) || isClipAt(ub.index)) return tr;
-        if (isExterior(selectedPhotos[ua.index]?.category) !== isExterior(selectedPhotos[ub.index]?.category)) {
-          return { ...tr, type: "dip", timing: "smooth" };
-        }
-        const went = depth ? depth.info(ua.index) : null;
-        if (went && went.move === "glide") {
-          return { ...tr, type: "softwipe", dir: went.sign > 0 ? "right" : "left", timing: "smooth" };
-        }
-        return { ...tr, type: "dissolve", timing: "smooth" };
+        return variedJoin(ua.index, ub.index, tr);
       };
 
       for (let f = 0; f < totalFrames; f++) {
@@ -2609,6 +2676,9 @@ export default function ReelMaker({
       backdropCache.clear();
       backdropOrder.length = 0;
       if (joinScratch) { joinScratch.width = 0; joinScratch.height = 0; joinScratch = null; }
+      // (Assigned only inside drawStack, so TypeScript would read it as always null here.)
+      const bs = bandScratch as HTMLCanvasElement | null;
+      if (bs) { bs.width = 0; bs.height = 0; bandScratch = null; }
       // The depth engine's textures and canvases. Its worker and the depth
       // maps it has read stay for the session, so a re-render is quick.
       if (depth) { try { depth.dispose(); } catch { /* already released */ } depth = null; }

@@ -131,6 +131,9 @@ export type ReelStyle = {
    * photograph whose camera was gliding sideways (travelling the way the
    * camera was), a dissolve otherwise. Same length as the dissolve, so the
    * timeline is unchanged; only joins between two full-frame photographs.
+   * On Stack Underway (with `stackDepth: "main"`) the same choice applies
+   * to every join between units (a run judged by its middle band) and, per
+   * band, to the swaps inside a run, each at its own length (ReelMaker).
    */
   joins?: "varied";
   /**
@@ -458,10 +461,11 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   /**
    * Stack Underway — Stack, with its main photographs moving in depth.
    *
-   * Stack's bands, palette, type, timing and joins, unchanged. The main
+   * Stack's bands, palette, type and timing, unchanged. The main
    * photographs — every full-frame one and the middle band of each run —
    * get the depth engine's camera move (Walkthrough's engine and move
    * choice) instead of the push; the top and bottom bands keep Stack's push.
+   * Joins are Underway's (`joins: "varied"`), at the lengths Stack dealt.
    * Reel-only like Stack. Admins only, always (not part of the depth looks'
    * broker release).
    */
@@ -471,6 +475,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     name: "Stack Underway",
     blurb: "Stack's three frames, with the main photo moving in depth.",
     stackDepth: "main",
+    joins: "varied",
     adminOnly: true,
   },
 
