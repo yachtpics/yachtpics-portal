@@ -1,5 +1,17 @@
 # Where we are — October 4, 2026
 
+## Oct 4 — Subscriber early-access email (`announcement_walkthrough_early_2026_10`), Mon Oct 5 — NOT PUSHED (parent will push), NOT BROWSER-TESTED
+
+- **What:** a second announcement campaign alongside the general Walkthrough launch. Subject "You’re first: two new reel looks, before anyone else", eyebrow "Early access for subscribers", same template as the general email (shared `announcementShell` in `src/lib/announcementEmail.ts`; all its copy in `announcementEarlyHtml` there). The general email's HTML is unchanged.
+- **Window:** `DEPTH_LOOKS_SUBSCRIBER_OPEN_AT` (Mon Oct 5 13:00 UTC) → `DEPTH_LOOKS_OPEN_AT` (Fri Oct 9 13:00 UTC), both imported from `depthLooksRelease.ts`. The daily cron's Monday run (~13:00–13:35 UTC) is the first that can send; if approved later it goes on the next daily run up to Thu Oct 8.
+- **Approval:** app_settings key **`announcement_walkthrough_early_2026_10_approved`** = `true` (or Approve on /admin/announce). New type, so NOT approved — nothing sends until it is set.
+- **Audience:** brokers whose `getEffectiveAccessStatus` passes `isDepthLooksSubscriber` (active: paying Stripe incl. checkout trial, Office plan, comped; not the invite trial), looked up per broker, plus every assistant linked to one of them in `broker_assistants` (an assistant for several brokers qualifies if any one is a subscriber). Same rules as before: role broker/assistant, `email_opt_out = false`, has `display_email`, email_log dedup.
+- **General campaign now skips anyone with a `sent` email_log row for the early type** (counted as skipped; shown on /admin/announce as "left out"). Otherwise unchanged (type, window Oct 9–16, approval key, copy).
+- **Cron:** `/api/cron/announce` now walks `ANNOUNCEMENT_CAMPAIGNS` (early first, then general), each with its own window / approval / dedup, and returns `{ok, campaigns: {<type>: result}}`. `maxDuration = 60` on it.
+- **/admin/announce:** one section per campaign (description, window, approval key, preview, audience count, test, approve, send now with a "can't open yet" warning before each audience's open time). The API (`/api/admin/announce`, still `requireAdmin()`) takes `campaign: <type>`; missing = general launch.
+- **Files:** `src/lib/announcementEmail.ts`, `src/lib/sendAnnouncement.ts` (`planAnnouncement`, `getSubscriberBrokerIds`, `runAnnouncementSend(admin, sentBy, campaign?)`), `src/app/api/cron/announce/route.ts`, `src/app/api/admin/announce/route.ts`, `src/app/admin/announce/page.tsx`, `src/app/admin/announce/AnnounceControls.tsx`. Typecheck clean.
+- **To do:** push before Mon Oct 5 13:00 UTC; on /admin/announce send yourself a test of the early-access email, then approve it.
+
 ## Oct 4 — Subscribers get the depth looks Mon Oct 5; new admin-only look "Stack Underway" — NOT PUSHED, NOT BROWSER-TESTED
 
 - **Subscriber early access (Charlie's call, Oct 4).** Walkthrough and Underway now open to **subscribers from Mon Oct 5 2026, 9:00 AM ET** (`DEPTH_LOOKS_SUBSCRIBER_OPEN_AT = "2026-10-05T13:00:00Z"`), everyone else still from **Fri Oct 9, 9:00 AM ET** (`DEPTH_LOOKS_OPEN_AT`, unchanged), admins always. New in `src/lib/depthLooksRelease.ts`: `depthLooksOpenFor({ isAdmin, isSubscriber }, now?)`, `msUntilDepthLooksOpenFor(...)`, `isDepthLooksSubscriber(status)`.

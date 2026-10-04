@@ -2,13 +2,17 @@
 // Marketing-class email: it carries the unsubscribe footer and is sent only to
 // recipients who haven't opted out. Styling mirrors the welcome/trial emails.
 //
-// This file always holds the CURRENT campaign. The previous ones — the reel
+// This file holds the CURRENT campaigns — the general Walkthrough launch and,
+// alongside it, the subscriber-only early-access note (ANNOUNCEMENT_CAMPAIGNS
+// at the bottom lists both; the cron and /admin/announce run each on its own
+// window, approval key and email_log dedup). The previous ones — the reel
 // generator (`announcement_reel_2026_09`) and the yachtpics.com listing pages
 // (`announcement_website_2026_10`, sent to all 150 on Oct 2) — are in git
 // history. The reel one's type lives in reelPromo.ts as REEL_ANNOUNCEMENT_TYPE
 // for the reel follow-ups.
 
 import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
+import { DEPTH_LOOKS_OPEN_AT, DEPTH_LOOKS_SUBSCRIBER_OPEN_AT } from "@/lib/depthLooksRelease";
 
 /**
  * Stable type used for email_log dedup. Bump the suffix for the next campaign —
@@ -37,12 +41,23 @@ export const ANNOUNCEMENT_SUBJECT = "Your listing photos now move like you\u2019
 export const ANNOUNCEMENT_SEND_AFTER = "2026-10-09T13:00:00Z";
 export const ANNOUNCEMENT_SEND_BEFORE = "2026-10-16T13:00:00Z";
 
-export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
-  const { firstName, unsubToken } = opts;
-  const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
-  const p = (html: string) =>
-    `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">${html}</p>`;
+/**
+ * Subscriber early access — the same looks, sent only to subscribers (and
+ * their assistants) on Mon Oct 5, the morning the looks open to them
+ * (DEPTH_LOOKS_SUBSCRIBER_OPEN_AT). Window closes the instant the looks open
+ * to everyone (DEPTH_LOOKS_OPEN_AT), which is when the general campaign's
+ * window opens. Anyone who gets this one is left out of the general send.
+ * Approval key: `${ANNOUNCEMENT_EARLY_TYPE}_approved` in app_settings.
+ */
+export const ANNOUNCEMENT_EARLY_TYPE = "announcement_walkthrough_early_2026_10";
+export const ANNOUNCEMENT_EARLY_SEND_AFTER = DEPTH_LOOKS_SUBSCRIBER_OPEN_AT;
+export const ANNOUNCEMENT_EARLY_SEND_BEFORE = DEPTH_LOOKS_OPEN_AT;
 
+/** Shared shell for every announcement: dark header, gold eyebrow, h1, the
+ * campaign's body, signature, footer, unsubscribe footer. */
+function announcementShell(opts: { eyebrow: string; headline: string; body: string; unsubToken?: string }): string {
+  const { eyebrow, headline, body, unsubToken } = opts;
+  const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -52,20 +67,10 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics</p>
     </div>
     <div style="padding:40px;">
-      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">New in the Portal</p>
-      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">Your listing photos, now a walkthrough</h1>
+      <p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">${eyebrow}</p>
+      <h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">${headline}</h1>
 
-      ${p(`Hi ${firstName},`)}
-
-      ${p(`Two new looks in the reel maker turn the photos you already have into a walkthrough. The camera moves through each photograph, so the foreground passes and the room opens up, the way it does when you step aboard.`)}
-
-      ${p(`<strong>Walkthrough</strong> is the quiet one, made for the listing film. <strong>Underway</strong> adds wipes and dips between spaces, made for social.`)}
-
-      ${p(`Every frame is the real boat. Nothing is generated and nothing is filled in, so what a buyer sees is what is there.`)}
-
-      <div style="margin:0 0 26px;padding:16px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
-        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">To try it, open a listing in the Portal, choose <strong style="color:#4a3d17;">Reel</strong>, and pick <strong style="color:#4a3d17;">Walkthrough</strong> or <strong style="color:#4a3d17;">Underway</strong>. Allow a couple of minutes: it reads the depth of each photograph before it renders.</p>
-      </div>
+      ${body}
 
       <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">Charlie Clark<br><span style="color:#9ca3af;">YachtPics</span></p>
     </div>
@@ -75,4 +80,113 @@ export function announcementHtml(opts: { firstName: string; unsubToken?: string 
   </div>
 </body>
 </html>`;
+}
+
+/** One paragraph in the announcement body style. */
+const p = (html: string) =>
+  `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.6;">${html}</p>`;
+
+/** The beige callout box. Use calloutStrong() for bold words inside it. */
+const callout = (html: string) => `<div style="margin:0 0 26px;padding:16px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
+        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">${html}</p>
+      </div>`;
+const calloutStrong = (text: string) => `<strong style="color:#4a3d17;">${text}</strong>`;
+
+export function announcementHtml(opts: { firstName: string; unsubToken?: string }): string {
+  const { firstName, unsubToken } = opts;
+  return announcementShell({
+    eyebrow: "New in the Portal",
+    headline: "Your listing photos, now a walkthrough",
+    unsubToken,
+    body: `${p(`Hi ${firstName},`)}
+
+      ${p(`Two new looks in the reel maker turn the photos you already have into a walkthrough. The camera moves through each photograph, so the foreground passes and the room opens up, the way it does when you step aboard.`)}
+
+      ${p(`<strong>Walkthrough</strong> is the quiet one, made for the listing film. <strong>Underway</strong> adds wipes and dips between spaces, made for social.`)}
+
+      ${p(`Every frame is the real boat. Nothing is generated and nothing is filled in, so what a buyer sees is what is there.`)}
+
+      <div style="margin:0 0 26px;padding:16px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;">
+        <p style="margin:0;font-size:14px;color:#6b5a2a;line-height:1.6;">To try it, open a listing in the Portal, choose <strong style="color:#4a3d17;">Reel</strong>, and pick <strong style="color:#4a3d17;">Walkthrough</strong> or <strong style="color:#4a3d17;">Underway</strong>. Allow a couple of minutes: it reads the depth of each photograph before it renders.</p>
+      </div>`,
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * Subscriber early-access email — ALL ITS COPY IS HERE. Edit freely.
+ * ------------------------------------------------------------------ */
+export const ANNOUNCEMENT_EARLY_SUBJECT = "You\u2019re first: two new reel looks, before anyone else";
+
+export function announcementEarlyHtml(opts: { firstName: string; unsubToken?: string }): string {
+  const { firstName, unsubToken } = opts;
+  return announcementShell({
+    eyebrow: "Early access for subscribers",
+    headline: "Your listing photos, now a walkthrough",
+    unsubToken,
+    body: [
+      p(`Hi ${firstName},`),
+      p(`As a Portal subscriber, you get first access to two new reel looks, four days before they open to everyone else.`),
+      p(`<strong>Walkthrough</strong> moves the camera through each photograph, so the foreground passes and the room opens up, the way it does when you step aboard. <strong>Underway</strong> adds wipes and dips between spaces, made for social.`),
+      p(`Every frame is the real boat. Nothing is generated and nothing is filled in.`),
+      callout(`To try it, open a listing, choose ${calloutStrong("Reel")}, and pick ${calloutStrong("Walkthrough")} or ${calloutStrong("Underway")}. Give it a couple of minutes, since it reads the depth of each photograph before it renders.`),
+    ].join("\n\n      "),
+  });
+}
+
+/* ------------------------------------------------------------------ *
+ * The campaigns the cron and /admin/announce run. Each has its own
+ * window, approval key (`${type}_approved`) and email_log dedup.
+ * ------------------------------------------------------------------ */
+export type AnnouncementCampaign = {
+  type: string;
+  subject: string;
+  sendAfter: string;
+  sendBefore: string;
+  /** "subscribers" = brokers whose effective access is active, plus their assistants. */
+  audience: "all" | "subscribers";
+  /** Recipients who already got one of these types (status sent) are skipped. */
+  excludeSentTypes: string[];
+  /** Short line for /admin/announce. */
+  label: string;
+  description: string;
+  html: (opts: { firstName: string; unsubToken?: string }) => string;
+};
+
+export const EARLY_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
+  type: ANNOUNCEMENT_EARLY_TYPE,
+  subject: ANNOUNCEMENT_EARLY_SUBJECT,
+  sendAfter: ANNOUNCEMENT_EARLY_SEND_AFTER,
+  sendBefore: ANNOUNCEMENT_EARLY_SEND_BEFORE,
+  audience: "subscribers",
+  excludeSentTypes: [],
+  label: "Subscriber early access",
+  description: "Walkthrough and Underway, early access: subscribers (paying, Office plan or comped; not the invite trial) and their assistants.",
+  html: announcementEarlyHtml,
+};
+
+export const GENERAL_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
+  type: ANNOUNCEMENT_TYPE,
+  subject: ANNOUNCEMENT_SUBJECT,
+  sendAfter: ANNOUNCEMENT_SEND_AFTER,
+  sendBefore: ANNOUNCEMENT_SEND_BEFORE,
+  audience: "all",
+  excludeSentTypes: [ANNOUNCEMENT_EARLY_TYPE],
+  label: "General launch",
+  description: "The Walkthrough and Underway reel looks, open to every broker. Skips anyone who already got the subscriber early-access email.",
+  html: announcementHtml,
+};
+
+/** In send order: the early one first (their windows don't overlap anyway). */
+export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
+
+export function getAnnouncementCampaign(type: string | null | undefined): AnnouncementCampaign | null {
+  if (!type) return null;
+  for (let i = 0; i < ANNOUNCEMENT_CAMPAIGNS.length; i++) {
+    if (ANNOUNCEMENT_CAMPAIGNS[i].type === type) return ANNOUNCEMENT_CAMPAIGNS[i];
+  }
+  return null;
+}
+
+export function announcementApproveKey(c: AnnouncementCampaign): string {
+  return `${c.type}_approved`;
 }

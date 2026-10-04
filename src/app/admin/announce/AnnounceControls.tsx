@@ -3,14 +3,23 @@
 import { useState } from "react";
 
 export default function AnnounceControls({
+  campaignType,
+  audienceLabel,
   eligible,
   alreadySent,
+  excluded = 0,
   initialApproved,
   scheduleLabel,
   sendNowWarning,
 }: {
+  /** The campaign's email_log type — sent to /api/admin/announce as `campaign`. */
+  campaignType: string;
+  /** e.g. "brokers & assistants" or "subscribers & their assistants". */
+  audienceLabel: string;
   eligible: number;
   alreadySent: number;
+  /** In the audience but left out because they got another campaign (the early-access email). */
+  excluded?: number;
   initialApproved: boolean;
   scheduleLabel: string;
   /** Shown above "Send now" when sending immediately would be premature. */
@@ -22,7 +31,7 @@ export default function AnnounceControls({
   const [testEmail, setTestEmail] = useState("");
   const [confirmText, setConfirmText] = useState("");
 
-  const remaining = Math.max(0, eligible - alreadySent);
+  const remaining = Math.max(0, eligible - alreadySent - excluded);
 
   async function call(mode: string, extra: Record<string, unknown> = {}) {
     setBusy(mode);
@@ -31,7 +40,7 @@ export default function AnnounceControls({
       const res = await fetch("/api/admin/announce", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, ...extra }),
+        body: JSON.stringify({ mode, campaign: campaignType, ...extra }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Something went wrong");
@@ -77,8 +86,10 @@ export default function AnnounceControls({
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
         <h2 className="label-caps mb-1">Audience</h2>
         <p className="text-sm text-ink-500">
-          <strong className="text-ink-900 tabular-nums">{eligible}</strong> opted-in recipient{eligible === 1 ? "" : "s"} (brokers &amp; assistants).
-          {alreadySent > 0 && <> {alreadySent} already received it — <strong className="text-ink-900 tabular-nums">{remaining}</strong> would send.</>}
+          <strong className="text-ink-900 tabular-nums">{eligible}</strong> opted-in recipient{eligible === 1 ? "" : "s"} ({audienceLabel}).
+          {alreadySent > 0 && <> {alreadySent} already received it.</>}
+          {excluded > 0 && <> {excluded} got the subscriber early-access email and {excluded === 1 ? "is" : "are"} left out.</>}
+          {(alreadySent > 0 || excluded > 0) && <> <strong className="text-ink-900 tabular-nums">{remaining}</strong> would send.</>}
         </p>
       </div>
 

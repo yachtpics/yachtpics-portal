@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { logEmail } from "@/lib/logEmail";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
-import { announcementHtml, ANNOUNCEMENT_TYPE, ANNOUNCEMENT_SUBJECT } from "@/lib/announcementEmail";
+import { getAnnouncementCampaign, announcementApproveKey, ANNOUNCEMENT_TYPE } from "@/lib/announcementEmail";
 import { runAnnouncementSend } from "@/lib/sendAnnouncement";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// "live" on the subscriber campaign looks up ~150 brokers' access first.
+export const maxDuration = 60;
 
-const APPROVE_KEY = `${ANNOUNCEMENT_TYPE}_approved`;
 const FROM = "Charlie & Samantha at YachtPics <hello@yachtpics.com>";
 
 export async function POST(req: NextRequest) {
@@ -16,13 +17,18 @@ export async function POST(req: NextRequest) {
   if (auth.error) return auth.error;
   const { admin, userId } = auth;
 
-  let body: { mode?: string; testEmail?: string; confirm?: boolean };
+  let body: { mode?: string; testEmail?: string; confirm?: boolean; campaign?: string };
   try {
     body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
   const mode = body.mode;
+  // Which campaign to act on (its email_log type). Defaults to the general
+  // launch so an older client without the field keeps its old meaning.
+  const campaign = getAnnouncementCampaign(body.campaign ?? ANNOUNCEMENT_TYPE);
+  if (!campaign) return NextResponse.json({ error: "Unknown campaign" }, { status: 400 });
+  const APPROVE_KEY = announcementApproveKey(campaign);
 
   // Send a single test copy to the admin (or a supplied address) — never logged
   // as the real campaign, so it can't affect dedup.
@@ -35,23 +41,23 @@ export async function POST(req: NextRequest) {
     const to = body.testEmail || me?.display_email;
     if (!to) return NextResponse.json({ error: "No address to send the test to" }, { status: 400 });
     const token = me?.unsubscribe_token ?? undefined;
-    const html = announcementHtml({ firstName: me?.first_name ?? "there", unsubToken: token });
+    const html = campaign.html({ firstName: me?.first_name ?? "there", unsubToken: token });
     let ok = false;
     try {
       const res = await fetch("https://api.resend.com/emails", {
         method: "POST",
         headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ from: FROM, to, subject: `[TEST] ${ANNOUNCEMENT_SUBJECT}`, html, headers: token ? unsubscribeHeaders(token) : {} }),
+        body: JSON.stringify({ from: FROM, to, subject: `[TEST] ${campaign.subject}`, html, headers: token ? unsubscribeHeaders(token) : {} }),
       });
       ok = res.ok;
     } catch { ok = false; }
-    await logEmail({ emailType: "announcement_test", recipientEmail: to, subject: ANNOUNCEMENT_SUBJECT, status: ok ? "sent" : "failed", sentBy: userId });
+    await logEmail({ emailType: "announcement_test", recipientEmail: to, subject: campaign.subject, status: ok ? "sent" : "failed", sentBy: userId });
     return ok
       ? NextResponse.json({ ok: true, to })
       : NextResponse.json({ error: "Test send failed" }, { status: 500 });
   }
 
-  // Approve / hold the scheduled Monday send.
+  // Approve / hold the scheduled send for this campaign.
   if (mode === "approve" || mode === "unapprove") {
     const approved = mode === "approve";
     const { error } = await admin
@@ -64,7 +70,7 @@ export async function POST(req: NextRequest) {
   // Manual immediate send-to-all (fallback / override). Requires explicit confirm.
   if (mode === "live") {
     if (body.confirm !== true) return NextResponse.json({ error: "Confirmation required" }, { status: 400 });
-    const result = await runAnnouncementSend(admin, userId);
+    const result = await runAnnouncementSend(admin, userId, campaign);
     return NextResponse.json({ ok: true, ...result });
   }
 
