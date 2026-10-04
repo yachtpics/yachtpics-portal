@@ -1,5 +1,13 @@
 # Where we are — October 4, 2026
 
+## Oct 4 — Listing photo grid on phones: controls no longer cover the photo — NOT PUSHED (parent will push), NOT BROWSER-TESTED
+
+- **Why:** on Charlie's folded Z Fold (~360–390px wide, 2-column grid) the dashboard listing page (`src/app/dashboard/listings/[id]/page.tsx`, used by admins and brokers) showed five 44px white circles (star, drag grip, download, hide, delete) over each ~170px tile, hiding the photo. Touch screens always show them (`hover:none`).
+- **Phones (below `sm`, <640px):** download / hide-show / delete moved to a row of small ghost icon buttons (32px tap target, 16px icons, no border or shadow) **directly under the photo**, above the number + category line. Own row rather than inside the plaque because at ~170px the category select would have been squeezed to ~50px. Delete keeps its two-step confirm in that row ("Delete?" · Cancel · Confirm). The star (top-left) and drag grip (top-right) stay on the photo as 28px semi-transparent white corner buttons; the grip keeps the dnd-kit listeners inside the sortable card, so drag-to-reorder works as before.
+- **sm and up:** unchanged — 32px white star/grip, hover-revealed action bar over the bottom of the photo.
+- **Unchanged:** tap photo = lightbox (or select in select mode); select-mode checkbox (24px, top-left); all controls hidden in select mode. Only `SortablePhotoCard` touched. Typecheck clean.
+- **How to test:** phone (or devtools ~375px) → a listing → photos: full photo visible with two small corner buttons; icons under each photo; hide/show, download, delete→Cancel and delete→Confirm work; drag the grip to reorder; tap photo opens the viewer. Then desktop width: looks as before.
+
 ## Oct 4 — Admin photo download, phone-first (Save / share full-size photos) — NOT PUSHED (parent will push), NOT BROWSER-TESTED
 
 - **Why:** Charlie wants the listing originals on his phone when traveling, to post, without the hard drive.
