@@ -407,6 +407,8 @@ export default function BrokerListingPage() {
     if (!l) { router.push("/dashboard/listings"); return; }
 
     setIsBrokerageAdmin(profileData?.is_brokerage_admin === true);
+    // Admins (YachtPics) own the photos: never ask them to accept the broker download license.
+    if (profileData?.role === "admin") setDownloadLicenseAccepted(true);
     setListing(l);
     setIsShared((l as unknown as { is_shared: boolean }).is_shared === true);
     setHeroPhotoId((l as unknown as { hero_photo_id: string | null }).hero_photo_id ?? null);
