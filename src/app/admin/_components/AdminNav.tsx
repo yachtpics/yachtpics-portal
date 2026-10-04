@@ -23,6 +23,7 @@ import {
   Lock,
   Trash2,
   Wand2,
+  Repeat,
   type LucideIcon,
 } from "lucide-react";
 
@@ -51,6 +52,7 @@ const navItems: NavItem[] = [
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
   { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
+  { label: "Reel Service", href: "/admin/reel-service", icon: Repeat, short: "Service" },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
   { label: "Video Migration", href: "/admin/media", icon: Film },
@@ -78,6 +80,7 @@ const SIDEBAR_PRIORITY = [
   "/admin/metrics",
   "/admin/reels",
   "/admin/reel-studio",
+  "/admin/reel-service",
   "/admin/emails",
 ];
 
@@ -88,6 +91,7 @@ const MOBILE_PRIORITY = [
   "/admin/metrics",
   "/admin/reels",
   "/admin/reel-studio",
+  "/admin/reel-service",
   "/admin/emails",
 ];
 

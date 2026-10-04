@@ -33,12 +33,30 @@ export function sanitizeVideoContentType(raw: unknown): string {
 /** Where short-lived reel hand-offs live. Swept by the daily cron after 48h. */
 export const REEL_SHARE_PREFIX = "reel-shares/";
 
+/** Reel Service deliveries: reel-service/{broker_id}/{YYYY-MM}/{job_id}.mp4 */
+export const REEL_SERVICE_PREFIX = "reel-service/";
+
 export async function resolveVideoUploadTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown }
+  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown }
 ): Promise<VideoUploadTarget> {
   const filename = sanitizeVideoFilename(body?.filename);
+
+  // Reel Service (Oct 4): a reel rendered in the admin's browser for an
+  // enrolled broker. Admin only; one key per job, overwritten on a re-render.
+  if (body?.reelServiceJobId && typeof body.reelServiceJobId === "string") {
+    const { data: me } = await svc.from("profiles").select("role").eq("id", userId).maybeSingle();
+    if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
+    const { data: job } = await svc
+      .from("reel_service_jobs")
+      .select("id, broker_id, period")
+      .eq("id", body.reelServiceJobId)
+      .maybeSingle();
+    if (!job) return NextResponse.json({ error: "Reel job not found" }, { status: 404 });
+    const prefix = `${REEL_SERVICE_PREFIX}${job.broker_id}/${job.period}/`;
+    return { prefix, path: `${prefix}${job.id}.mp4` };
+  }
 
   if (body?.listingId && typeof body.listingId === "string") {
     const access = await assertListingAccess(svc, body.listingId, userId, { includeCoBroker: true });
@@ -84,7 +102,7 @@ export async function resolveVideoUploadTarget(
 export async function assertPathBelongsToTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; share?: unknown },
+  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown },
   path: unknown
 ): Promise<NextResponse | { path: string }> {
   if (typeof path !== "string" || !path) {

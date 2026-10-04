@@ -78,8 +78,8 @@ const serif = Cormorant_Garamond({
 });
 
 type Format = "reel" | "film";
-type Fit = "fill" | "whole";
-type Length = "short" | "full" | "long";
+export type Fit = "fill" | "whole";
+export type Length = "short" | "full" | "long";
 
 const SPEC: Record<Format, {
   w: number; h: number; label: string; hint: string;
@@ -305,6 +305,28 @@ export type ReelSource = {
 };
 
 /**
+ * Programmatic render — the admin Reel Service batch (Oct 4).
+ *
+ * With `auto` set, ReelMaker shows no controls: it starts from these settings
+ * (look, length, framing, the play order — photo ids and clips cut from the
+ * source's videos), renders once as soon as the browser's encoder is
+ * confirmed, and hands the MP4 to `onAutoDone`. It never claims against the
+ * included-reel allowance, never watermarks and files no reel_events rows.
+ * Without `auto`, nothing below changes the interactive Reel Maker.
+ */
+export type ReelAutoItem = string | { videoId: string; inSec: number; lengthSec: ClipLength };
+export type ReelAutoConfig = {
+  styleKey: StyleKey;
+  length: Length;
+  fit: Fit;
+  order: ReelAutoItem[];
+  showPrice?: boolean;
+  showLocation?: boolean;
+};
+export type ReelAutoProgress = { phase: "loading" | "depth" | "rendering"; pct: number };
+export type { StyleKey as ReelStyleKey };
+
+/**
  * No broker behind the reel — the Studio, before one is picked. Every line of
  * the end card is optional, so a blank card simply draws nothing.
  */
@@ -322,8 +344,17 @@ export default function ReelMaker({
   source,
   pendingClipFiles,
   onPendingClipsConsumed,
+  auto,
+  onAutoProgress,
+  onAutoDone,
+  onAutoError,
 }: {
   source: ReelSource;
+  /** Render once from these settings, with no controls (see ReelAutoConfig). */
+  auto?: ReelAutoConfig;
+  onAutoProgress?: (p: ReelAutoProgress) => void;
+  onAutoDone?: (r: { blob: Blob; seconds: number; clipNote: string }) => void;
+  onAutoError?: (message: string) => void;
   /**
    * The Studio: video files picked with its "Add photos & videos" button,
    * waiting for the trimmer. Only read when `source.localClips` is on. Each is
@@ -345,9 +376,9 @@ export default function ReelMaker({
 
   const [format, setFormat] = useState<Format>("reel");
   // Reels only — the film keeps its single timing.
-  const [length, setLength] = useState<Length>(DEFAULT_LENGTH);
-  const [fit, setFit] = useState<Fit>(SPEC.reel.defaultFit);
-  const [styleKey, setStyleKey] = useState<StyleKey>("editorial");
+  const [length, setLength] = useState<Length>(auto?.length ?? DEFAULT_LENGTH);
+  const [fit, setFit] = useState<Fit>(auto?.fit ?? SPEC.reel.defaultFit);
+  const [styleKey, setStyleKey] = useState<StyleKey>(auto?.styleKey ?? "editorial");
   // The broker's own colours, remembered on their profile. Null = the look's.
   const [brand, setBrand] = useState<BrandColors>(source.brand ?? {});
   const [matching, setMatching] = useState(false);
@@ -360,13 +391,43 @@ export default function ReelMaker({
   const brandSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // An ORDERED list, not a set: the order the broker taps is the order the
   // reel plays. The number on each thumbnail is its place in the film.
-  const [chosen, setChosen] = useState<string[]>([]);
+  // Auto mode: the clips the settings ask for, cut from the source's own
+  // videos exactly as "Add to reel" would, and the order as given.
+  const autoStart = useMemo(() => {
+    if (!auto) return null;
+    const items: ReelPhoto[] = [];
+    const ids: string[] = [];
+    const photoIds = photos.map((p) => p.id);
+    auto.order.forEach((it, n) => {
+      if (typeof it === "string") {
+        if (photoIds.indexOf(it) >= 0 && ids.indexOf(it) < 0) ids.push(it);
+        return;
+      }
+      const v = (source.videos ?? []).find((x) => x.id === it.videoId);
+      if (!v) return;
+      const id = `${CLIP_ID_PREFIX}${v.id}:auto${n}`;
+      const previewUrl = v.posterUrl ?? "";
+      items.push({
+        id,
+        previewUrl,
+        filename: v.title,
+        category: null,
+        loadBitmap: () => loadBitmap(previewUrl),
+        clip: { open: v.open, durationSec: null, videoId: v.id, inSec: it.inSec, lengthSec: it.lengthSec },
+      });
+      ids.push(id);
+    });
+    return { items, ids };
+    // Read once, at mount: an auto render is a fresh ReelMaker per job.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const [chosen, setChosen] = useState<string[]>(autoStart?.ids ?? []);
   /**
    * Video clips the broker has cut and added, as picker items (a ReelPhoto
    * with `clip` set). Their ids start "clip:" and sit in `chosen` alongside
    * the photo ids, so a clip takes its place in the order like a photograph.
    */
-  const [clipItems, setClipItems] = useState<ReelPhoto[]>([]);
+  const [clipItems, setClipItems] = useState<ReelPhoto[]>(autoStart?.items ?? []);
   /** The trimmer, when open: which video, how to read it, what to preview. */
   const [trim, setTrim] = useState<{ video: ReelVideo; source: ClipSource; previewSrc: string; objectUrl: boolean } | null>(null);
   const [trimOpening, setTrimOpening] = useState<string | null>(null);
@@ -388,8 +449,8 @@ export default function ReelMaker({
    * keeps the choice; pruned when a photo leaves the selection.
    */
   const [topIds, setTopIds] = useState<string[]>([]);
-  const [showPrice, setShowPrice] = useState(true);
-  const [showLocation, setShowLocation] = useState(true);
+  const [showPrice, setShowPrice] = useState(auto?.showPrice ?? true);
+  const [showLocation, setShowLocation] = useState(auto?.showLocation ?? true);
   // Room captions — the broker's call, off until they turn it on.
   const [showLabels, setShowLabels] = useState(false);
 
@@ -463,6 +524,8 @@ export default function ReelMaker({
    * so a new one joins the end of the selection rather than sitting unused.
    */
   useEffect(() => {
+    // Auto mode plays exactly the order it was given.
+    if (auto) return;
     setChosen((prev) => {
       const ids = photos.map((p) => p.id);
       // Clips aren't in `photos`; they stay where the broker put them.
@@ -921,7 +984,7 @@ export default function ReelMaker({
   function track(kind: string, shape?: Record<string, unknown>) {
     // A Studio reel has no listing to file a row against, and the whole point
     // of the measure is what got made for which boat. So it files nothing.
-    if (!listingId) return;
+    if (!listingId || auto) return;
     try {
       void fetch("/api/reel-events", {
         method: "POST",
@@ -934,7 +997,7 @@ export default function ReelMaker({
 
   /** Ask the server what's left on this listing. Quiet on failure. */
   async function refreshAllowance() {
-    if (!listingId) return;
+    if (!listingId || auto) return;
     try {
       const res = await fetch(`/api/reels/claim?listingId=${encodeURIComponent(listingId)}`, { cache: "no-store" });
       if (!res.ok) return;
@@ -1012,7 +1075,7 @@ export default function ReelMaker({
 
     // A listing whose two included reels are used still previews — with the
     // same watermark a lapsed plan used to get. Decided once, at the start.
-    const watermark = locked || usedUp;
+    const watermark = !auto && (locked || usedUp);
     const renderId = newRenderId();
     setShareAgain(false);
 
@@ -2923,6 +2986,41 @@ export default function ReelMaker({
           ? `${REEL_STYLES[styleKey].name} keeps all type off the photograph, and on a reel that band is holding the title — so no room labels here.`
           : null;
 
+  // ── Auto mode (Reel Service batch) ─────────────────────────────────────
+  const autoStartedRef = useRef(false);
+  const autoReportedRef = useRef(false);
+  useEffect(() => {
+    if (!auto || autoStartedRef.current) return;
+    if (supported === false) {
+      autoStartedRef.current = true;
+      autoReportedRef.current = true;
+      onAutoError?.("This browser can\u2019t encode H.264 video. Use Chrome or Edge on a computer.");
+      return;
+    }
+    if (supported !== true) return;
+    autoStartedRef.current = true;
+    if (photoCount === 0) {
+      autoReportedRef.current = true;
+      onAutoError?.("None of the planned photos are on the listing any more. Re-plan this reel.");
+      return;
+    }
+    void render();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, supported]);
+  useEffect(() => {
+    if (!auto || !autoStartedRef.current || autoReportedRef.current) return;
+    if (phase === "loading" || phase === "rendering") {
+      onAutoProgress?.({ phase: phase === "rendering" ? "rendering" : depthReading ? "depth" : "loading", pct: progress });
+    } else if (phase === "done" && result) {
+      autoReportedRef.current = true;
+      onAutoDone?.({ blob: result.blob, seconds: result.seconds, clipNote });
+    } else if (phase === "error") {
+      autoReportedRef.current = true;
+      onAutoError?.(errorMsg || "The render failed.");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auto, phase, progress, depthReading, result, errorMsg]);
+
   function pick<T>(setter: (v: T) => void) {
     return (v: T) => { setter(v); setResult(null); setPhase("idle"); };
   }
@@ -2932,6 +3030,15 @@ export default function ReelMaker({
     `text-sm font-medium px-4 py-2 rounded-ctl border transition-colors ${active ? "bg-ink-950 text-white border-ink-950" : "bg-white text-ink-600 border-hairline-strong hover:border-ink-300"}`;
   const chip = (active: boolean) =>
     `text-xs font-medium px-3 py-1.5 rounded-ctl border transition-colors ${active ? "bg-accent-500 text-ink-950 border-accent-500" : "bg-white text-ink-600 border-hairline-strong hover:border-ink-300"}`;
+
+  if (auto) {
+    // No controls: the working canvas doubles as a small live preview.
+    return (
+      <div className="flex justify-center">
+        <canvas ref={canvasRef} className="rounded-sm shadow-print w-full" style={{ maxWidth: format === "reel" ? 135 : 240, aspectRatio: `${s.w} / ${s.h}`, background: "#050b14" }} />
+      </div>
+    );
+  }
 
   return (
     <div className="px-6 py-8 max-w-3xl mx-auto">

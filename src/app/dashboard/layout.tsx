@@ -97,6 +97,31 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
+  // Reel Service (Oct 4): show "Your Reels" to a broker who is enrolled or has
+  // delivered reels, and to an assistant of such a broker. Any error (e.g. the
+  // tables not created yet) just hides the item.
+  let showReels = false;
+  if (role === "broker" || role === "assistant") {
+    try {
+      const svc = createServiceClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!
+      );
+      let brokerIds: string[] = [user.id];
+      if (role === "assistant") {
+        const { data: links } = await svc.from("broker_assistants").select("broker_id").eq("assistant_id", user.id);
+        brokerIds = ((links ?? []) as { broker_id: string }[]).map((l) => l.broker_id);
+      }
+      if (brokerIds.length > 0) {
+        const [{ count: subs }, { count: delivered }] = await Promise.all([
+          svc.from("reel_service_subscriptions").select("broker_id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("enabled", true),
+          svc.from("reel_service_jobs").select("id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("status", "delivered"),
+        ]);
+        showReels = (subs ?? 0) > 0 || (delivered ?? 0) > 0;
+      }
+    } catch { /* hidden */ }
+  }
+
   const userName =
     profile?.first_name
       ? `${profile.first_name} ${profile.last_name ?? ""}`.trim()
@@ -120,6 +145,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
           trialEndsAt={trialEndsAt}
           accessStatus={accessStatus}
           isBrokerageAdmin={profile?.is_brokerage_admin ?? false}
+          showReels={showReels}
         />
       )}
       <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">

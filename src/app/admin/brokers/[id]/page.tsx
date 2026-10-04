@@ -9,6 +9,7 @@ import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 import BrokerContactEditor from "./_components/BrokerContactEditor";
 import AddedByEditor from "./_components/AddedByEditor";
 import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
+import ReelServiceCard from "./_components/ReelServiceCard";
 import { planLabel } from "@/lib/subscriptionAccess";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string; from?: string; listing?: string } }) {
@@ -36,6 +37,14 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     ]);
 
   if (!profile) notFound();
+
+  // Reel Service enrolment (Oct 4). Before the migration is applied the table
+  // doesn't exist; the query just errors and the card shows "not enrolled".
+  const { data: reelService } = await supabase
+    .from("reel_service_subscriptions")
+    .select("enabled, reels_per_listing, note, started_at")
+    .eq("broker_id", params.id)
+    .maybeSingle();
 
   const name = profile.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : profile.display_email ?? "Broker";
 
@@ -213,6 +222,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
       {/* Assistants */}
       <AssistantsPanel brokerId={params.id} initialAssistants={assistantList} />
+
+      {/* Reel Service */}
+      <ReelServiceCard brokerId={params.id} initial={reelService ?? null} />
 
       {/* Listings */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 mb-6">

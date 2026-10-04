@@ -21,6 +21,7 @@ export const maxDuration = 60;
 //   • reel-followup    — EVERY DAY (week one + last call; each self-gated by its
 //                        send window + ET date == WEEK1_/LASTCALL_AUTO_SEND_ON
 //                        + email_log dedup)
+//   • reel-service     — EVERY DAY (plans the month's missing Reel Service jobs)
 const PROD = "https://portal.yachtpics.com";
 
 export async function GET(req: NextRequest) {
@@ -67,6 +68,10 @@ export async function GET(req: NextRequest) {
   // Reads the trade press, rewrites it in the portal's voice, files it for
   // /dashboard/news. Self-gating: no AI key, no run.
   jobs.push("/api/cron/news-fetch");
+  // Reel Service planner: fills the current month's missing reel jobs for
+  // enrolled brokers (the whole month on the 1st; mid-month enrolments any
+  // day). Idempotent, renders nothing, emails no one.
+  jobs.push("/api/cron/reel-service");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never

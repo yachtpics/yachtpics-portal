@@ -17,6 +17,7 @@ import {
   Newspaper,
   HelpCircle,
   Building2,
+  Clapperboard,
   type LucideIcon,
 } from "lucide-react";
 
@@ -58,9 +59,11 @@ interface Props {
   trialEndsAt: string | null;
   accessStatus: AccessStatus;
   isBrokerageAdmin?: boolean;
+  /** Reel Service: the broker (or one an assistant works for) is enrolled or has delivered reels. */
+  showReels?: boolean;
 }
 
-export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus, isBrokerageAdmin }: Props) {
+export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus, isBrokerageAdmin, showReels }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -75,7 +78,16 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86400000))
     : null;
 
-  const baseNavItems = role === "assistant" ? assistantNavItems : brokerNavItems;
+  const roleNavItems = role === "assistant" ? assistantNavItems : brokerNavItems;
+  // "Your Reels" (Reel Service) sits right after the listings item.
+  const listingsAt = roleNavItems.findIndex((i) => i.href === "/dashboard/listings");
+  const baseNavItems = showReels
+    ? [
+        ...roleNavItems.slice(0, listingsAt + 1),
+        { label: "Your Reels", href: "/dashboard/reels", icon: Clapperboard, short: "Reels" },
+        ...roleNavItems.slice(listingsAt + 1),
+      ]
+    : roleNavItems;
   const navItems = isBrokerageAdmin
     ? [baseNavItems[0], { label: "Brokerage", href: "/dashboard/brokerage", icon: Building2 }, ...baseNavItems.slice(1)]
     : baseNavItems;

@@ -105,7 +105,11 @@ function describePutFailure(status: number): string {
 }
 
 /** `share: true` files a short-lived hand-off copy under its own prefix. */
-export type PrivateBucketTarget = { listingId: string; share?: boolean } | { galleryId: string };
+export type PrivateBucketTarget =
+  | { listingId: string; share?: boolean }
+  | { galleryId: string }
+  /** Reel Service (admin only): reel-service/{broker}/{period}/{job}.mp4 */
+  | { reelServiceJobId: string };
 
 export type PrivateBucketUploadResult =
   | { ok: true; path: string; playbackUrl: string | null }
