@@ -18,6 +18,10 @@ import DownloadLinkManager from "./DownloadLinkManager";
 import ListingEngagement from "@/components/ListingEngagement";
 import SortableVideoList from "@/components/SortableVideoList";
 import { arrayMove } from "@dnd-kit/sortable";
+import {
+  SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
+  sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
+} from "@/lib/photoSave";
 
 interface Photo {
   id: string;
@@ -201,6 +205,122 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   // then extended locally when a new one is saved during this session
   const [customCategories, setCustomCategories] = useState<string[]>(globalCustomCategories);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Saving full-resolution originals (phone or desktop) ──────────────────
+  // Same files brokers download (the listing-photos originals), signed fresh
+  // at the moment of saving so a page left open for hours still works. No
+  // licence modal and no broker download log — this is the admin's own copy.
+  // Phone: photos are fetched, then a button opens the share sheet ("Save
+  // image" / Instagram / Facebook) — iOS needs a fresh tap for that, so the
+  // fetch can't happen inside the same tap. Up to SHARE_BATCH per sheet.
+  // Desktop: one photo → the file; several → a zip.
+  const [saveBusy, setSaveBusy] = useState<{ done: number; total: number; zipping?: boolean } | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [shareJob, setShareJob] = useState<{ targets: Photo[]; start: number; files: File[]; failed: number } | null>(null);
+  const saveLocked = saveBusy !== null || shareJob !== null;
+
+  async function saveItems(targets: Photo[]): Promise<{ url: string; name: string }[]> {
+    const fresh = new Map<string, string>();
+    try {
+      const { data } = await supabase.storage.from("listing-photos").createSignedUrls(targets.map((t) => t.storage_path), 900);
+      (data ?? []).forEach((d) => { if (d.path && d.signedUrl) fresh.set(d.path, d.signedUrl); });
+    } catch { /* fall back to the urls the page was given */ }
+    const out: { url: string; name: string }[] = [];
+    targets.forEach((t) => {
+      const url = fresh.get(t.storage_path) ?? t.url;
+      if (url) out.push({ url, name: photoFileName(listing.vessel_name, photos.indexOf(t), t) });
+    });
+    return out;
+  }
+
+  async function prepareShareBatch(targets: Photo[], start: number) {
+    const batch = targets.slice(start, start + SHARE_BATCH);
+    setShareJob(null);
+    setSaveError(null);
+    setSaveBusy({ done: 0, total: batch.length });
+    try {
+      const items = await saveItems(batch);
+      const { files, failed } = await fetchPhotoFiles(items, (done, total) => setSaveBusy({ done, total }));
+      if (files.length === 0) {
+        setSaveError("Couldn't get the photos. Check your connection and try again.");
+        return;
+      }
+      setShareJob({ targets, start, files, failed: failed + (batch.length - items.length) });
+    } catch {
+      setSaveError("Couldn't get the photos. Check your connection and try again.");
+    } finally {
+      setSaveBusy(null);
+    }
+  }
+
+  async function savePhotos(targets: Photo[]) {
+    if (targets.length === 0 || saveLocked) return;
+    setSaveError(null);
+    if (shouldUseShareSheet()) {
+      await prepareShareBatch(targets, 0);
+      return;
+    }
+    setSaveBusy({ done: 0, total: targets.length });
+    try {
+      const items = await saveItems(targets);
+      const { files, failed } = await fetchPhotoFiles(items, (done, total) => setSaveBusy({ done, total }));
+      if (files.length === 0) {
+        setSaveError("Couldn't get the photos. Check your connection and try again.");
+        return;
+      }
+      if (files.length === 1 || isTouchDevice()) {
+        await saveFilesSequentially(files);
+      } else {
+        setSaveBusy({ done: files.length, total: files.length, zipping: true });
+        const base = (listing.vessel_name ?? "photos").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "photos";
+        await saveFilesAsZip(files, `${base}-photos.zip`);
+      }
+      const missed = failed + (targets.length - items.length);
+      if (missed > 0) setSaveError(`${missed} photo${missed !== 1 ? "s" : ""} couldn't be downloaded; the rest were saved.`);
+      else { setMessage(`${files.length} photo${files.length !== 1 ? "s" : ""} downloaded.`); setTimeout(() => setMessage(""), 3000); }
+      if (selectMode) { setSelectedIds(new Set()); setSelectMode(false); }
+    } catch {
+      setSaveError("The download didn't finish. Please try again.");
+    } finally {
+      setSaveBusy(null);
+    }
+  }
+
+  // Runs straight from the button's click — nothing awaited before share().
+  function shareReadyBatch() {
+    if (!shareJob) return;
+    const job = shareJob;
+    sharePhotoFiles(job.files).then((result) => {
+      if (result === "cancelled") return; // keep the batch; they can tap again
+      if (result === "failed") {
+        setSaveError("Your phone wouldn't open the share sheet. Try \u201cDownload instead\u201d.");
+        return;
+      }
+      const nextStart = job.start + SHARE_BATCH;
+      if (nextStart < job.targets.length) {
+        prepareShareBatch(job.targets, nextStart);
+      } else {
+        setShareJob(null);
+        if (selectMode) { setSelectedIds(new Set()); setSelectMode(false); }
+        setMessage("Photos sent to your phone.");
+        setTimeout(() => setMessage(""), 3000);
+      }
+    });
+  }
+
+  async function downloadReadyBatchInstead() {
+    if (!shareJob) return;
+    const job = shareJob;
+    await saveFilesSequentially(job.files);
+    const nextStart = job.start + SHARE_BATCH;
+    if (nextStart < job.targets.length) prepareShareBatch(job.targets, nextStart);
+    else setShareJob(null);
+  }
+
+  function closeSavePanel() {
+    setShareJob(null);
+    setSaveError(null);
+  }
 
   // Video state
   const [videos, setVideos] = useState<Video[]>(initialVideos);
@@ -1307,6 +1427,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                   Select
                 </button>
                 <button
+                  onClick={() => savePhotos(photos)}
+                  disabled={saveLocked}
+                  title="Full-size originals. On a phone they open in the share sheet (10 at a time) — Save image, Instagram, Facebook."
+                  className="text-sm text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
+                >
+                  Download all
+                </button>
+                <button
                   onClick={() => setConfirmDeleteAll(true)}
                   className="text-sm text-danger-600 hover:text-danger-700 border border-hairline-strong hover:border-danger-300 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
                 >
@@ -1356,6 +1484,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                         </button>
                       )}
                     </div>
+                    <button
+                      onClick={() => savePhotos(photos.filter((p) => selectedIds.has(p.id)))}
+                      disabled={saveLocked}
+                      className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
+                    >
+                      {`Download ${selectedIds.size}`}
+                    </button>
                     <button
                       onClick={() => setConfirmDeleteSelected(true)}
                       disabled={deleting}
@@ -1585,6 +1720,15 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                         >
                           {photo.is_visible ? "Hide" : "Show"}
                         </button>
+                        <button
+                          onClick={() => savePhotos([photo])}
+                          disabled={saveLocked}
+                          title="Download the full-size photo"
+                          aria-label="Download this photo"
+                          className="flex-1 text-[10px] font-medium text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 rounded py-1 transition-colors duration-fast ease-quiet"
+                        >
+                          ↓ Save
+                        </button>
                         {confirmDeleteId === photo.id ? (
                           <>
                             <button onClick={() => setConfirmDeleteId(null)}
@@ -1719,6 +1863,57 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>
         <DeleteListingButton listingId={listing.id} vesselName={listing.vessel_name} brokerId={listing.broker_id} />
       </div>
+      {/* Save / share panel — pinned to the bottom of the screen so it's in
+          reach wherever the page is scrolled, and above the lightbox. */}
+      {mounted && (saveBusy || shareJob || saveError) && createPortal(
+        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 10000, padding: "12px 16px calc(12px + env(safe-area-inset-bottom))" }}>
+          <div className="mx-auto max-w-md bg-white border border-hairline rounded-card shadow-elev-2 p-4">
+            {saveBusy ? (
+              <p className="text-sm text-ink-700">
+                {saveBusy.zipping
+                  ? "Making the zip…"
+                  : `Getting full-size photos… ${saveBusy.done} of ${saveBusy.total}`}
+              </p>
+            ) : shareJob ? (
+              <>
+                <p className="text-sm text-ink-900 font-medium">
+                  {shareJob.targets.length > SHARE_BATCH
+                    ? `Photos ${shareJob.start + 1}–${Math.min(shareJob.start + SHARE_BATCH, shareJob.targets.length)} of ${shareJob.targets.length} ready`
+                    : `${shareJob.files.length} photo${shareJob.files.length !== 1 ? "s" : ""} ready`}
+                </p>
+                <p className="text-xs text-ink-500 mt-1">
+                  Tap below, then choose Save image / Save to Photos, or share straight to Instagram or Facebook.
+                  {shareJob.targets.length > SHARE_BATCH ? ` Your phone takes ${SHARE_BATCH} at a time; the next ${SHARE_BATCH} get ready after each.` : ""}
+                  {shareJob.failed > 0 ? ` ${shareJob.failed} couldn't be fetched and are left out.` : ""}
+                </p>
+                {saveError && <p className="text-xs text-danger-600 mt-2">{saveError}</p>}
+                <div className="flex flex-wrap gap-2 mt-3">
+                  <button
+                    onClick={shareReadyBatch}
+                    className="flex-1 bg-ink-950 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-ctl"
+                  >
+                    {`Save / share ${shareJob.files.length} photo${shareJob.files.length !== 1 ? "s" : ""}`}
+                  </button>
+                  <button
+                    onClick={downloadReadyBatchInstead}
+                    className="text-sm text-ink-600 border border-hairline-strong px-3 py-2.5 rounded-ctl"
+                  >
+                    Download instead
+                  </button>
+                  <button onClick={closeSavePanel} className="text-sm text-ink-400 px-2 py-2.5">Cancel</button>
+                </div>
+              </>
+            ) : (
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-sm text-danger-600">{saveError}</p>
+                <button onClick={closeSavePanel} className="text-sm text-ink-500 shrink-0">Close</button>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+
       {/* Lightbox */}
       {mounted && lightboxIndex !== null && createPortal(
         <div
@@ -1729,8 +1924,17 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <span style={{ color: "#9ca3af", fontSize: 14 }}>
               {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
             </span>
-            <button onClick={() => setLightboxIndex(null)}
-              style={{ color: "#fff", background: "none", border: "none", fontSize: 28, cursor: "pointer", lineHeight: 1 }}>×</button>
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              {photos[lightboxIndex] && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); const p = photos[lightboxIndex]; if (p) savePhotos([p]); }}
+                  disabled={saveLocked}
+                  style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6, fontSize: 14, padding: "8px 12px", cursor: "pointer", opacity: saveLocked ? 0.5 : 1 }}
+                >↓ Save</button>
+              )}
+              <button onClick={() => setLightboxIndex(null)}
+                style={{ color: "#fff", background: "none", border: "none", fontSize: 28, cursor: "pointer", lineHeight: 1 }}>×</button>
+            </div>
           </div>
           <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 48px" }}
             onClick={(e) => e.stopPropagation()}>
