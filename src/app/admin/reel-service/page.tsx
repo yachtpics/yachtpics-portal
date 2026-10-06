@@ -1,6 +1,7 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isPeriod, periodET } from "@/lib/reelService";
+import { parseShotInfo } from "@/lib/reelClips";
 import ReelServiceBoard, { type BoardJob, type BoardSub, type BoardVideo } from "./ReelServiceBoard";
 
 export const dynamic = "force-dynamic";
@@ -44,9 +45,22 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
   // video") and "Measure videos" work from these, live.
   const listingIds = boardJobs.map((j) => j.listing_id).filter((x, i, a) => a.indexOf(x) === i);
   let boardVideos: BoardVideo[] = [];
+  let shotsColumn = false;
   if (listingIds.length) {
     const { data: vids } = await admin.from("videos").select("id, listing_id, duration_sec, title").in("listing_id", listingIds);
-    boardVideos = (vids ?? []) as BoardVideo[];
+    boardVideos = ((vids ?? []) as BoardVideo[]).map((v) => ({ ...v, shots: null }));
+    // Detected edit points (videos.shot_cuts) — a separate read, so the page
+    // still works if that column hasn't been added yet (shotsKnown false).
+    const { data: shotRows, error: shotErr } = await admin.from("videos").select("id, shot_cuts").in("listing_id", listingIds);
+    if (!shotErr && shotRows) {
+      shotsColumn = true;
+      const count: Record<string, number | null> = {};
+      (shotRows as { id: string; shot_cuts: unknown }[]).forEach((r) => {
+        const info = parseShotInfo(r.shot_cuts);
+        count[r.id] = info ? info.shots.length : null;
+      });
+      boardVideos = boardVideos.map((v) => ({ ...v, shots: count[v.id] ?? null }));
+    }
   }
 
   return (
@@ -61,7 +75,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
           Couldn&rsquo;t read the Reel Service tables ({subErr.message}). The migration <code>20261004_reel_service.sql</code> may not be applied yet.
         </p>
       )}
-      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} />
+      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} shotsColumn={shotsColumn} />
     </div>
   );
 }

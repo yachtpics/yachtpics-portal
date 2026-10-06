@@ -337,6 +337,13 @@ export type ReelAutoConfig = {
    * of this length (seconds) — whatever the look would have dealt there.
    */
   clipJoin?: number;
+  /**
+   * Video-led: video clips fill the 9:16 frame (cropped, centred across and a
+   * little above centre down) instead of following the Framing choice. Only on
+   * full-bleed looks (scrim); Cinematic keeps its letterbox window. Photos
+   * keep their own framing.
+   */
+  clipFill?: boolean;
 };
 export type ReelAutoProgress = { phase: "loading" | "depth" | "rendering"; pct: number };
 export type { StyleKey as ReelStyleKey };
@@ -1188,11 +1195,16 @@ export default function ReelMaker({
         ? fit === "fill"
         : backdrop === "letterbox" || (fit === "fill" && backdrop !== "inset");
       const clipScale = budget?.longEdgeScale ?? 1;
-      const clipBox = {
-        w: Math.round(W * clipScale),
-        h: Math.round((clipsInMarquee ? W / 1.5 : H) * clipScale),
-        cover: clipCover,
-      };
+      // Reel Service video-led renders: clips arrive cropped to exactly the
+      // 9:16 frame and are drawn edge to edge (see drawPhoto).
+      const clipFillFrame = !!auto?.clipFill && !clipsInMarquee && backdrop === "scrim";
+      const clipBox = clipFillFrame
+        ? { w: Math.round(W * clipScale), h: Math.round(H * clipScale), cover: true, exact: true }
+        : {
+            w: Math.round(W * clipScale),
+            h: Math.round((clipsInMarquee ? W / 1.5 : H) * clipScale),
+            cover: clipCover,
+          };
       let clipTrouble = 0;
       for (let i = 0; i < selectedPhotos.length; i++) {
         // Bail cleanly: leaving the phase as "loading" would keep the page in
@@ -1626,6 +1638,20 @@ export default function ReelMaker({
         if (depth && !isClipAt(i) && bitmaps[i]) {
           const moved = depth.frame(i, bitmaps[i], drift);
           if (moved) { bmp = moved; k = 1; }
+        }
+
+        // Reel Service video-led: a video clip fills the whole frame. Its
+        // frames already come cropped to 9:16 (a fallback still is cropped
+        // here the same way). The photographs either side keep their own
+        // framing; a crossfade between the two is a plain blend of two
+        // full-frame pictures.
+        if (clipFillFrame && isClipAt(i)) {
+          const base = Math.max(W / bmp.width, H / bmp.height);
+          const dw = bmp.width * base, dh = bmp.height * base;
+          ctx.drawImage(bmp, (W - dw) / 2, (H - dh) * 0.4, dw, dh);
+          photoRect = { x: 0, y: 0, w: W, h: H };
+          ctx.restore();
+          return;
         }
 
         // An inset look always shows the complete photograph — cropping a

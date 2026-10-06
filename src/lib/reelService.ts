@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { orderPhotos } from "@/lib/photoOrder";
 import { isExterior, REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
+import { parseShotInfo } from "@/lib/reelClips";
 
 /**
  * Reel Service
@@ -38,10 +39,12 @@ export const REEL_SERVICE_LOOKS: StyleKey[] = ["underway", "marquee", "cinematic
 
 /**
  * Looks for VIDEO-LED reels (Oct 4, Charlie: "more video than photos";
- * Oct 6: no Energy — too abrupt). Single-frame looks with soft joins that play
- * clips full frame. Classic is the fallback only (last in every preference).
+ * Oct 6: no Energy — too abrupt; no Cinematic — its letterbox keeps video
+ * out of the full frame. Cinematic stays for photo-led reels). Full-bleed,
+ * soft-join looks whose video fills the 9:16 frame — exactly four, so a
+ * listing's four reels a month each get one.
  */
-export const VIDEO_LED_LOOKS: StyleKey[] = ["cinematic", "walkthrough", "underway", "editorial", "classic"];
+export const VIDEO_LED_LOOKS: StyleKey[] = ["editorial", "walkthrough", "underway", "classic"];
 
 /** Stack and Stack Underway play no clips (ReelMaker leaves them out). */
 export function lookPlaysClips(look: StyleKey): boolean {
@@ -62,10 +65,10 @@ const MIN_ANGLE_PHOTOS = 8;
  * One cut from a listing video. `inFrac` is where it starts as a fraction of
  * the video; `inSec` the same in seconds when the video's length was known at
  * planning time (null otherwise — the renderer measures the video and uses
- * inFrac). `durSec` is 4–6 s on video-led reels (2–4 on reels planned
- * before Oct 6).
+ * inFrac). `durSec` is whole seconds: 4–6 on video-led reels (3 when cut down
+ * to fit a short shot; 2–4 on reels planned before Oct 6).
  */
-export type ReelServiceSegment = { videoId: string; inFrac: number; inSec: number | null; durSec: 2 | 3 | 4 | 5 | 6 };
+export type ReelServiceSegment = { videoId: string; inFrac: number; inSec: number | null; durSec: number };
 
 /**
  * Everything ReelMaker needs to render a job. `order` is the play order:
@@ -129,6 +132,8 @@ type PhotoRow = { id: string; category: string | null; display_order: number | n
 export type VideoRow = {
   id: string; display_order: number | null; duration_sec?: number | null;
   title?: string | null; filename?: string | null; description?: string | null;
+  /** The video's shots ([start, end] s) when detected (videos.shot_cuts); null/absent = unknown. */
+  shots?: [number, number][] | null;
 };
 type ListingRow = {
   id: string; broker_id: string; vessel_name: string | null; vessel_type: string | null; year: number | null;
@@ -247,10 +252,10 @@ const LOOK_PREFERENCE: Record<ReelServiceAngle, StyleKey[]> = {
 };
 
 const VIDEO_LOOK_PREFERENCE: Record<ReelServiceAngle, StyleKey[]> = {
-  full_tour: ["cinematic", "walkthrough", "underway", "editorial", "classic"],
-  underway_exterior: ["underway", "cinematic", "editorial", "walkthrough", "classic"],
-  inside: ["walkthrough", "cinematic", "editorial", "underway", "classic"],
-  details: ["editorial", "cinematic", "underway", "walkthrough", "classic"],
+  full_tour: ["walkthrough", "editorial", "underway", "classic"],
+  underway_exterior: ["underway", "editorial", "walkthrough", "classic"],
+  inside: ["walkthrough", "editorial", "classic", "underway"],
+  details: ["editorial", "classic", "underway", "walkthrough"],
 };
 
 export function chooseLook(
@@ -288,8 +293,8 @@ export const MAX_SEGMENTS = 7;
 const SEG_MARGIN = 1.0;
 /** Two segments of the same video played back to back must be this far apart (fraction of the video), or get a photo between them. */
 export const MIN_ADJACENT_GAP = 0.15;
-const SEG_PATTERN: ReelServiceSegment["durSec"][] = [5, 4, 6, 5, 4, 6, 5];
-const HOOK_SEC: ReelServiceSegment["durSec"] = 5;
+const SEG_PATTERN = [5, 4, 6, 5, 4, 6, 5];
+const HOOK_SEC = 5;
 /** Clips in a PHOTO-led reel, by angle. */
 const PHOTO_LED_SEGMENTS: Record<ReelServiceAngle, number> = { underway_exterior: 3, full_tour: 2, inside: 2, details: 2 };
 /** Video-led timing (Oct 6): photo beats 2–2.5 s; a slow smooth crossfade into, out of and between segments. */
@@ -349,31 +354,54 @@ export function usedRanges(segments: ReelServiceSegment[], videos: VideoRow[]): 
   });
 }
 
-/** [a,b] minus the given intervals (all seconds), keeping pieces at least `min` long. */
-function freeIntervals(a: number, b: number, taken: [number, number][], min: number): [number, number][] {
-  const sorted = taken.filter((t) => t[1] > a && t[0] < b).sort((x, y) => x[0] - y[0]);
+/** Seconds kept clear of every edit point in an edited video (Oct 6). */
+export const SHOT_EDGE_MARGIN = 0.3;
+/** A shot shorter than this (after the margins) is never used. */
+export const MIN_SHOT_SEC = 3;
+/** Shortest a segment may be cut to fit a shot. */
+const MIN_SEGMENT_SEC = 3;
+
+/**
+ * The usable stretches of [a,b] (seconds): inside one shot each (with
+ * SHOT_EDGE_MARGIN clear of every edit) when the video's shots are known,
+ * minus `taken`, keeping pieces at least `min` long. A segment placed in one
+ * stretch therefore never crosses an edit.
+ */
+function freeIntervals(a: number, b: number, taken: [number, number][], min: number, shots?: [number, number][] | null): [number, number][] {
+  const bases: [number, number][] = shots && shots.length
+    ? shots
+        .map((sh) => [Math.max(a, sh[0] + SHOT_EDGE_MARGIN), Math.min(b, sh[1] - SHOT_EDGE_MARGIN)] as [number, number])
+        .filter((x) => x[1] - x[0] >= MIN_SHOT_SEC)
+    : [[a, b]];
+  const sorted = taken.slice().sort((x, y) => x[0] - y[0]);
   const out: [number, number][] = [];
-  let cur = a;
-  sorted.forEach((t) => {
-    if (t[0] > cur) out.push([cur, Math.min(t[0], b)]);
-    cur = Math.max(cur, t[1]);
+  bases.forEach((base) => {
+    let cur = base[0];
+    sorted.forEach((t) => {
+      if (t[1] <= base[0] || t[0] >= base[1]) return;
+      if (t[0] > cur) out.push([cur, Math.min(t[0], base[1])]);
+      cur = Math.max(cur, t[1]);
+    });
+    if (cur < base[1]) out.push([cur, base[1]]);
   });
-  if (cur < b) out.push([cur, b]);
   return out.filter((x) => x[1] - x[0] >= min);
 }
 
 /**
  * Lay segments of the given lengths into a video's free stretches (seconds).
  * The free stretches are laid end to end and cut into equal slices, one
- * segment per slice, at an offset set by `seed`; a segment never straddles a
- * used range and never overlaps the one before. Null when they don't fit.
+ * segment per slice, at an offset set by `seed`. Each segment — plus `tail`,
+ * the time it keeps playing through its crossfade out — sits wholly inside
+ * one stretch (so inside one shot), never overlapping the one before. A
+ * segment longer than the stretch it lands in is shortened to fit (not below
+ * MIN_SEGMENT_SEC). Null when they don't fit.
  */
-function placeInFree(free: [number, number][], lens: number[], seed: number): number[] | null {
+function placeInFree(free: [number, number][], lens: number[], seed: number, tail = 0): { start: number; len: number }[] | null {
   const total = free.reduce((a, f) => a + (f[1] - f[0]), 0);
-  const need = lens.reduce((a, l) => a + l + SEG_MARGIN, 0);
+  const need = lens.reduce((a, l) => a + Math.min(l, MIN_SEGMENT_SEC) + tail, 0);
   if (lens.length === 0 || total < need) return null;
   const slice = total / lens.length;
-  // Virtual (end-to-end) position → real time.
+  // Virtual (end-to-end) position → a stretch and a real time.
   const toReal = (virt: number): { f: number; t: number } => {
     let acc = 0;
     for (let f = 0; f < free.length; f++) {
@@ -383,24 +411,28 @@ function placeInFree(free: [number, number][], lens: number[], seed: number): nu
     }
     return { f: free.length - 1, t: free[free.length - 1][1] };
   };
-  const starts: number[] = [];
+  const out: { start: number; len: number }[] = [];
   let lastEnd = -Infinity;
   for (let i = 0; i < lens.length; i++) {
-    const len = lens[i];
-    const slack = Math.max(0, slice - len - SEG_MARGIN);
+    const want = lens[i];
+    const slack = Math.max(0, slice - want - tail - SEG_MARGIN);
     const at = toReal(i * slice + frac01(seed, i) * slack);
-    let placed: number | null = null;
+    let placed: { start: number; len: number } | null = null;
     for (let f = at.f; f < free.length && placed === null; f++) {
-      let st = f === at.f ? at.t : free[f][0];
-      st = Math.max(st, free[f][0], lastEnd + SEG_MARGIN);
-      if (st + len > free[f][1]) st = free[f][1] - len;
-      if (st >= free[f][0] && st >= lastEnd + SEG_MARGIN - 1e-6) placed = st;
+      const lo = Math.max(free[f][0], lastEnd + 0.3);
+      const room = free[f][1] - lo;
+      if (room < MIN_SEGMENT_SEC + tail) continue;
+      // Whole seconds (3–6): a shortened segment is still a clean length.
+      const len = Math.min(want, Math.floor(room - tail));
+      let st = f === at.f ? Math.max(lo, at.t) : lo;
+      if (st + len + tail > free[f][1]) st = free[f][1] - len - tail;
+      placed = { start: st, len };
     }
     if (placed === null) return null;
-    starts.push(placed);
-    lastEnd = placed + len;
+    out.push(placed);
+    lastEnd = placed.start + placed.len + tail;
   }
-  return starts;
+  return out;
 }
 
 /**
@@ -427,6 +459,7 @@ export function chooseSegments(
   seed: number,
   maxCount = MAX_SEGMENTS,
   used: UsedRange[] = [],
+  tail = 0,
 ): ReelServiceSegment[] {
   const pool = videos
     .map((v) => ({ v, dur: durOf(v) ?? ASSUMED_VIDEO_SEC, known: durOf(v) !== null }))
@@ -464,7 +497,7 @@ export function chooseSegments(
     const wide = attempts[a][0], avoidUsed = attempts[a][1];
     const frees = cand.map((x) => {
       const w = windowFor(x, wide);
-      return freeIntervals(w[0], w[1], takenFor(x, avoidUsed), 4 + SEG_MARGIN);
+      return freeIntervals(w[0], w[1], takenFor(x, avoidUsed), MIN_SEGMENT_SEC + tail, x.v.shots);
     });
     const freeLen = frees.map((f) => f.reduce((acc, x) => acc + (x[1] - x[0]), 0));
     const sum = freeLen.reduce((x, y) => x + y, 0);
@@ -499,26 +532,27 @@ export function chooseSegments(
     let ok = true;
     cand.forEach((x, vi) => {
       if (!ok || perVideo[vi].length === 0) return;
-      let starts = placeInFree(frees[vi], perVideo[vi], seed + vi * 3);
+      let starts = placeInFree(frees[vi], perVideo[vi], seed + vi * 3, tail);
       if (!avoidUsed && used.length > 0) {
         // Overlap can't be avoided any more: of a dozen placements, take the
         // one that overlaps this month's other reels least.
         const usedHere = takenFor(x, true);
-        const overlap = (st: number[]) => st.reduce((acc, a0, i) => {
-          const a1 = a0 + perVideo[vi][i];
+        const overlap = (st: { start: number; len: number }[]) => st.reduce((acc, p0) => {
+          const a0 = p0.start, a1 = p0.start + p0.len + tail;
           return acc + usedHere.reduce((o, u) => o + Math.max(0, Math.min(a1, u[1]) - Math.max(a0, u[0])), 0);
         }, 0);
         for (let k = 1; k < 12; k++) {
-          const alt = placeInFree(frees[vi], perVideo[vi], seed + vi * 3 + k * 17);
+          const alt = placeInFree(frees[vi], perVideo[vi], seed + vi * 3 + k * 17, tail);
           if (alt && (!starts || overlap(alt) < overlap(starts))) starts = alt;
         }
       }
       if (!starts) { ok = false; return; }
-      starts.forEach((st, i) => out.push({
+      starts.forEach((p0) => out.push({
         videoId: x.v.id,
-        inFrac: Math.round((st / x.dur) * 10000) / 10000,
-        inSec: x.known ? Math.round(st * 10) / 10 : null,
-        durSec: perVideo[vi][i] as ReelServiceSegment["durSec"],
+        inFrac: Math.round((p0.start / x.dur) * 100000) / 100000,
+        // Hundredths: rounding to tenths could nudge a segment into the 0.3 s it keeps clear of an edit.
+        inSec: x.known ? Math.round(p0.start * 100) / 100 : null,
+        durSec: p0.len as ReelServiceSegment["durSec"],
       }));
     });
     if (!ok || out.length === 0) continue;
@@ -678,6 +712,27 @@ type ListingPack = { listing: ListingRow; ordered: PhotoRow[]; videos: VideoRow[
 
 export const VIDEO_SELECT = "id, listing_id, display_order, duration_sec, title, filename, description";
 
+/**
+ * Add each video's detected shots (videos.shot_cuts, Oct 6). A separate read,
+ * so that before that column exists — or if it can't be read — planning goes
+ * on exactly as before, just without shot boundaries.
+ */
+async function attachShots(admin: SupabaseClient, videos: VideoRow[]): Promise<VideoRow[]> {
+  if (videos.length === 0) return videos;
+  try {
+    const { data, error } = await admin.from("videos").select("id, shot_cuts").in("id", videos.map((v) => v.id));
+    if (error || !data) return videos;
+    const byId: Record<string, [number, number][] | null> = {};
+    (data as { id: string; shot_cuts: unknown }[]).forEach((r) => {
+      const info = parseShotInfo(r.shot_cuts);
+      byId[r.id] = info ? info.shots : null;
+    });
+    return videos.map((v) => ({ ...v, shots: byId[v.id] ?? null }));
+  } catch {
+    return videos;
+  }
+}
+
 async function loadListingPacks(admin: SupabaseClient, brokerId: string): Promise<ListingPack[]> {
   const { data: listings } = await admin.from("listings")
     .select("id, broker_id, vessel_name, vessel_type, year, make, model, length_ft, location, hero_photo_id, photo_order_manual, created_at")
@@ -689,12 +744,13 @@ async function loadListingPacks(admin: SupabaseClient, brokerId: string): Promis
     admin.from("photos").select("id, listing_id, category, display_order").in("listing_id", ids).eq("is_visible", true),
     admin.from("videos").select(VIDEO_SELECT).in("listing_id", ids).order("display_order"),
   ]);
+  const allVideos = await attachShots(admin, (videos ?? []) as VideoRow[]);
   const out: ListingPack[] = [];
   rows.forEach((l) => {
     const ph = ((photos ?? []) as (PhotoRow & { listing_id: string })[]).filter((p) => p.listing_id === l.id);
     if (ph.length < MIN_LISTING_PHOTOS) return;
     const ordered = orderPhotos(ph, { manual: l.photo_order_manual === true, heroId: l.hero_photo_id });
-    const vids = ((videos ?? []) as (VideoRow & { listing_id: string })[]).filter((v) => v.listing_id === l.id);
+    const vids = (allVideos as (VideoRow & { listing_id: string })[]).filter((v) => v.listing_id === l.id);
     out.push({ listing: l, ordered, videos: vids });
   });
   return out;
@@ -744,7 +800,7 @@ function buildMedia(
     // can (see chooseSegments). `reelsThisMonth` is kept for the board's note.
     void reelsThisMonth;
     const target = Math.min(30 + (variant % 3) * 2, Math.max(16, f.effectiveSec * 0.85));
-    const segments = chooseSegments(videos, angle, target, seed, MAX_SEGMENTS, used);
+    const segments = chooseSegments(videos, angle, target, seed, MAX_SEGMENTS, used, VIDEO_LED_CLIP_JOIN);
     const videoSec = segments.reduce((a, x) => a + x.durSec, 0);
     if (segments.length >= 3) {
       const must = closeJoins(segments);
@@ -851,10 +907,10 @@ function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: str
     look = opts.forceLook;
   } else {
     const pick = (avoid: StyleKey[]) => chooseLook(angle, { avoid, preferClips, videoLed: videoLedPossible });
-    // Video-led: Classic is the fallback only (avoided in every tier but the
-    // last), and last month's looks in general aren't avoided — with four
-    // reels and four video-led looks that would push everything onto Classic.
-    const fallbackOnly: StyleKey[] = videoLedPossible ? ["classic"] : [];
+    // Video-led: last month's looks in general aren't avoided — with four
+    // reels and exactly four video-led looks (Editorial, Walkthrough,
+    // Underway, Classic) every look is used every month anyway.
+    const fallbackOnly: StyleKey[] = [];
     const tiers: { avoid: StyleKey[]; needClips: boolean }[] = videoLedPossible
       ? [
           { avoid: uniq([...looksThisMonth, ...lastSameAngle, ...fallbackOnly]), needClips: true },
@@ -1092,7 +1148,7 @@ export async function setReelServiceJobLook(admin: SupabaseClient, jobId: string
     admin.from("videos").select(VIDEO_SELECT).eq("listing_id", job.listing_id).order("display_order"),
     admin.from("reel_service_jobs").select("id, settings").eq("listing_id", job.listing_id).eq("period", job.period).neq("id", job.id),
   ]);
-  const videos = (vids ?? []) as VideoRow[];
+  const videos = await attachShots(admin, (vids ?? []) as VideoRow[]);
   if (settings.videoLed && !lookIsVideoLed(look)) {
     return { ok: false, error: `${REEL_STYLES[look].name} isn\u2019t used for video-led reels. Pick ${VIDEO_LED_LOOKS.map((k) => REEL_STYLES[k].name).join(", ")}.` };
   }

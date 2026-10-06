@@ -4,11 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REEL_STYLES, STYLE_ORDER, type StyleKey } from "@/lib/reelStyles";
 import { ANGLE_LABEL, VIDEO_LED_LOOKS, VIDEO_LED_MIN_FOOTAGE, footageOf, periodLabel, type ReelServiceAngle, type ReelServiceSettings } from "@/lib/reelService";
-import { probeClip } from "@/lib/reelClips";
+import { detectShots, probeClip, rememberShots, type ShotInfo } from "@/lib/reelClips";
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
 
 /** A listing video, for the footage badge and "Measure videos". */
-export type BoardVideo = { id: string; listing_id: string; duration_sec: number | null; title: string | null };
+/** `shots`: how many shots were detected (videos.shot_cuts); null = not yet (or the column isn't there). */
+export type BoardVideo = { id: string; listing_id: string; duration_sec: number | null; title: string | null; shots?: number | null };
 
 export type BoardSub = { brokerId: string; name: string; enabled: boolean; reelsPerListing: number; note: string | null };
 export type BoardJob = {
@@ -60,7 +61,7 @@ function byListing(list: BoardJob[]): { listingId: string; boat: string; jobs: B
 /** Planned, failed, or stuck "rendering" from a closed tab: these can be made. */
 const renderable = (s: string) => s === "planned" || s === "failed" || s === "rendering";
 
-export default function ReelServiceBoard({ period, subs, jobs, videos }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[] }) {
+export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColumn = false }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[]; shotsColumn?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
@@ -157,22 +158,27 @@ export default function ReelServiceBoard({ period, subs, jobs, videos }: { perio
   const allRenderable = jobs.filter((j) => renderable(j.status)).map((j) => j.id);
   const allReady = jobs.filter((j) => j.status === "ready").map((j) => j.id);
   const allNextRound = nextRound(jobs);
-  const unmeasured = videos.filter((v) => !(v.duration_sec && v.duration_sec > 0));
+  // Needs measuring: no length yet, or (when it can be stored) no shots yet.
+  const unmeasured = videos.filter((v) => !(v.duration_sec && v.duration_sec > 0) || (shotsColumn && (v.shots === null || v.shots === undefined)));
 
   /**
-   * Measure the listing videos whose length isn't known (in this browser,
-   * reading only the file's header), save the lengths, then re-plan those
-   * listings' not-yet-made reels so their segments use the real footage.
+   * Measure the listing videos in this browser: the length (from the file's
+   * header) and — when videos.shot_cuts exists to keep it — the edit points
+   * (decodes the video once at low resolution; about a minute for a 4–5
+   * minute 4K walkthrough). Save both, then re-plan those listings'
+   * not-yet-made reels so their segments sit inside single shots.
    */
   async function measureVideos() {
     if (unmeasured.length === 0) return;
     setBusy("measure");
     setMsg("");
     const durations: Record<string, number> = {};
+    const shots: Record<string, ShotInfo> = {};
     const failed: string[] = [];
     for (let i = 0; i < unmeasured.length; i++) {
       const v = unmeasured[i];
-      setMsg(`Measuring video ${i + 1} of ${unmeasured.length}…`);
+      const label = `video ${i + 1} of ${unmeasured.length}`;
+      setMsg(`Measuring ${label}…`);
       try {
         const res = await fetch("/api/videos/signed-urls", {
           method: "POST",
@@ -181,19 +187,30 @@ export default function ReelServiceBoard({ period, subs, jobs, videos }: { perio
         });
         const d = await res.json().catch(() => ({}));
         if (!res.ok || typeof d?.url !== "string") throw new Error(d?.error ?? "no link");
-        const probe = await probeClip({ url: d.url as string }, 0);
-        if (probe.durationSec) durations[v.id] = Math.round(probe.durationSec * 10) / 10;
-        else failed.push(v.title ?? v.id);
+        const src = { url: d.url as string };
+        if (shotsColumn && (v.shots === null || v.shots === undefined)) {
+          const info = await detectShots(src, (pct) => setMsg(`Finding the edits in ${label}… ${pct}%`));
+          shots[v.id] = info;
+          rememberShots(v.id, info);
+          if (info.durationSec) durations[v.id] = info.durationSec;
+        } else {
+          const probe = await probeClip(src, 0);
+          if (probe.durationSec) durations[v.id] = Math.round(probe.durationSec * 10) / 10;
+          else failed.push(v.title ?? v.id);
+        }
       } catch {
         failed.push(v.title ?? v.id);
       }
     }
     setBusy("");
-    if (Object.keys(durations).length) {
-      await call("measure", "/api/admin/reel-service", { action: "durations", durations });
-      const listingIds = unmeasured.filter((v) => durations[v.id]).map((v) => v.listing_id).filter((x, i, a) => a.indexOf(x) === i);
+    const done = Object.keys(durations).concat(Object.keys(shots)).filter((x, i, a) => a.indexOf(x) === i);
+    if (done.length) {
+      if (Object.keys(durations).length) await call("measure", "/api/admin/reel-service", { action: "durations", durations });
+      if (Object.keys(shots).length) await call("measure", "/api/admin/reel-service", { action: "shots", shots });
+      const listingIds = unmeasured.filter((v) => done.indexOf(v.id) >= 0).map((v) => v.listing_id).filter((x, i, a) => a.indexOf(x) === i);
       const r = await call("measure", "/api/admin/reel-service", { action: "replan_unmade", period, listingIds });
-      setMsg(`Measured ${Object.keys(durations).length} video${Object.keys(durations).length === 1 ? "" : "s"}; re-planned ${r?.created ?? 0} unmade reel${r?.created === 1 ? "" : "s"}.${failed.length ? ` Couldn’t read: ${failed.join(", ")}.` : ""}`);
+      const nShots = Object.keys(shots).map((k) => `${shots[k].shots.length} shots`).join(", ");
+      setMsg(`Measured ${done.length} video${done.length === 1 ? "" : "s"}${nShots ? ` (${nShots})` : ""}; re-planned ${r?.created ?? 0} unmade reel${r?.created === 1 ? "" : "s"}.${failed.length ? ` Couldn’t read: ${failed.join(", ")}.` : ""}`);
     } else {
       setMsg(`Couldn’t read: ${failed.join(", ")}.`);
     }
@@ -218,7 +235,7 @@ export default function ReelServiceBoard({ period, subs, jobs, videos }: { perio
           <button onClick={() => void measureVideos()} disabled={!!busy || rendering}
             title="Read the length of each listing video (header only), then re-plan the reels not yet made so their segments use the real footage."
             className="text-sm font-medium px-4 py-2 rounded-ctl border border-warn-300 bg-warn-50 text-warn-800 disabled:opacity-40">
-            {busy === "measure" ? "Measuring…" : `Measure videos (${unmeasured.length})`}
+            {busy === "measure" ? "Measuring…" : `Measure videos & find edits (${unmeasured.length})`}
           </button>
         )}
         <button onClick={() => make(allRenderable)} disabled={allRenderable.length === 0 || !!busy}
@@ -297,6 +314,12 @@ export default function ReelServiceBoard({ period, subs, jobs, videos }: { perio
                   <p className="text-sm font-semibold text-ink-900 flex items-center gap-2 flex-wrap">
                     {g.boat}
                     <FootageBadge videos={videos.filter((v) => v.listing_id === g.listingId)} />
+                    {videos.filter((v) => v.listing_id === g.listingId).map((v) => (
+                      <span key={v.id} className="text-[11px] font-normal text-ink-500">
+                        {v.title ?? "Video"}{v.duration_sec ? ` · ${Math.round(v.duration_sec)} s` : ""}
+                        {" · "}{typeof v.shots === "number" ? `${v.shots} shot${v.shots === 1 ? "" : "s"} detected` : shotsColumn ? "edits not found yet" : "edits found at render time"}
+                      </span>
+                    ))}
                   </p>
                   <p className="text-xs text-ink-500 tabular-nums flex items-center gap-3 flex-wrap">
                     <button

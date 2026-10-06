@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { isPeriod, periodET, planReelServiceMonth, replanListingMonth, replanUnmade } from "@/lib/reelService";
 import { deliverReelServiceJobs } from "@/lib/reelServiceEmail";
+import { parseShotInfo } from "@/lib/reelClips";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -13,6 +14,7 @@ export const maxDuration = 60;
  *   { action: "deliver", jobIds }                                        → mark delivered + email
  *   { action: "durations", durations: { videoId: seconds } }             → record measured video lengths
  *   { action: "replan_unmade", period, listingIds }                      → re-plan those listings' planned/failed jobs
+ *   { action: "shots", shots: { videoId: ShotInfo } }                    → store detected edit points (videos.shot_cuts)
  *   { action: "replan_listing", period, listingId }                      → re-plan ALL of a listing's reels that month (delivered too)
  */
 export async function POST(req: NextRequest) {
@@ -73,6 +75,23 @@ export async function POST(req: NextRequest) {
       if (!error) saved++;
     }
     return NextResponse.json({ ok: true, saved });
+  }
+
+  if (action === "shots") {
+    // Edit points found in the admin's browser (Reel Service). If the
+    // videos.shot_cuts column isn't there yet, nothing is stored and the
+    // renderer keeps detecting per session.
+    const src = body?.shots && typeof body.shots === "object" ? body.shots as Record<string, unknown> : {};
+    let saved = 0;
+    let missing = false;
+    for (const id of Object.keys(src).slice(0, 100)) {
+      const info = parseShotInfo(src[id]);
+      if (!/^[0-9a-f-]{36}$/i.test(id) || !info || info.shots.length > 2000) continue;
+      const { error } = await admin.from("videos").update({ shot_cuts: info }).eq("id", id);
+      if (error) { missing = /shot_cuts/.test(error.message); if (missing) break; continue; }
+      saved++;
+    }
+    return NextResponse.json({ ok: true, saved, columnMissing: missing });
   }
 
   if (action === "replan_unmade") {

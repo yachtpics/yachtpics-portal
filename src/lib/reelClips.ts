@@ -251,7 +251,7 @@ export function createClipInputPool(): ClipInputPool {
  */
 export async function openClipReader(
   clip: { open: () => Promise<ClipSource>; inSec: number; lengthSec: number; tailSec?: number },
-  box: { w: number; h: number; cover: boolean },
+  box: { w: number; h: number; cover: boolean; exact?: boolean },
   shared?: { pool: ClipInputPool; key: string },
 ): Promise<ClipReader> {
   let input: Input;
@@ -294,6 +294,22 @@ export async function openClipReader(
   let poster: ImageBitmap;
   try {
     start = first + Math.max(0, clip.inSec);
+    if (box.exact) {
+      // Reel Service video-led (Oct 6): frames come back already cropped to
+      // the box (the 9:16 frame) — centred across, a little above centre
+      // down — so they fill it, and no pixel outside it is ever kept.
+      const aspect = box.w / box.h;
+      let cw = vw, ch = vh, cx = 0, cy = 0;
+      if (vw / vh > aspect) { cw = vh * aspect; cx = (vw - cw) / 2; }
+      else { ch = vw / aspect; cy = (vh - ch) * 0.4; }
+      sink = new mb.CanvasSink(track, {
+        width: Math.max(2, Math.round(box.w)),
+        height: Math.max(2, Math.round(box.h)),
+        fit: "fill",
+        crop: { left: Math.round(cx), top: Math.round(cy), width: Math.round(cw), height: Math.round(ch) },
+        poolSize: 4,
+      });
+    } else {
     const fitScale = box.cover
       ? Math.max(box.w / vw, box.h / vh)
       : Math.min(box.w / vw, box.h / vh);
@@ -306,6 +322,7 @@ export async function openClipReader(
       // for the one being written. Constant memory for the life of the clip.
       poolSize: 4,
     });
+    }
     const f0 = await sink.getCanvas(start);
     if (!f0) throw new ClipError("codec");
     poster = await createImageBitmap(f0.canvas);
@@ -378,3 +395,196 @@ export function detectPhone(): { mobile: boolean; mem: number } {
   const mem = nav.deviceMemory ?? (mobile ? 4 : 8);
   return { mobile, mem };
 }
+
+// ── Shot detection (Reel Service, Oct 6) ─────────────────────────────────────
+
+/**
+ * The shots of an edited video: [start, end] seconds of each continuous shot,
+ * in order. Gaps between shots are the edits themselves (a hard cut is a
+ * zero-length gap; a fade through black leaves out the dark stretch).
+ * Stored on `videos.shot_cuts` as `{ v: 1, fps, durationSec, shots }`.
+ */
+export type ShotInfo = { v: 1; fps: number; durationSec: number; shots: [number, number][] };
+
+/** Samples per second for the coarse pass; each cut is then refined at ~30 fps. */
+export const SHOT_SAMPLE_FPS = 5;
+/** A step this different (0–1) is a cut, if it also stands well above its neighbourhood. */
+export const SHOT_CUT_THRESHOLD = 0.3;
+/** …at least this many times the local median step (camera moves are smooth; cuts are not). */
+export const SHOT_CUT_LOCAL_RATIO = 3;
+/** Frames this dark (mean luma 0–1) are a fade through black: not part of any shot. */
+const SHOT_BLACK_LUMA = 0.06;
+
+type Sig = { hist: Float32Array; grid: Float32Array; luma: number };
+
+/** A frame's signature: a 32-bin luma histogram and a 16×9 grid of mean luma. */
+function signature(c: HTMLCanvasElement | OffscreenCanvas): Sig | null {
+  const ctx = (c as HTMLCanvasElement).getContext("2d") as CanvasRenderingContext2D | null;
+  if (!ctx) return null;
+  const w = c.width, h = c.height;
+  const data = ctx.getImageData(0, 0, w, h).data;
+  const hist = new Float32Array(32);
+  const grid = new Float32Array(16 * 9);
+  const cnt = new Float32Array(16 * 9);
+  let sum = 0;
+  for (let y = 0; y < h; y++) {
+    const gy = Math.min(8, Math.floor((y * 9) / h));
+    for (let x = 0; x < w; x++) {
+      const o = (y * w + x) * 4;
+      const l = (data[o] * 0.299 + data[o + 1] * 0.587 + data[o + 2] * 0.114) / 255;
+      hist[Math.min(31, Math.floor(l * 32))]++;
+      const g = gy * 16 + Math.min(15, Math.floor((x * 16) / w));
+      grid[g] += l;
+      cnt[g]++;
+      sum += l;
+    }
+  }
+  const n = w * h || 1;
+  for (let i = 0; i < 32; i++) hist[i] /= n;
+  for (let i = 0; i < grid.length; i++) grid[i] = cnt[i] ? grid[i] / cnt[i] : 0;
+  return { hist, grid, luma: sum / n };
+}
+
+/**
+ * How different two frames are, 0–1: half the histogram distance (global
+ * tone/colour of the shot) and half the grid distance (where things are —
+ * catches a cut between two similarly lit rooms), the grid scaled up because
+ * its raw differences are small.
+ */
+function frameDistance(a: Sig, b: Sig): number {
+  let dh = 0;
+  for (let i = 0; i < 32; i++) dh += Math.abs(a.hist[i] - b.hist[i]);
+  dh /= 2;
+  let dg = 0;
+  for (let i = 0; i < a.grid.length; i++) dg += Math.abs(a.grid[i] - b.grid[i]);
+  dg /= a.grid.length;
+  return 0.5 * dh + 0.5 * Math.min(1, dg * 4);
+}
+
+const median = (xs: number[]) => {
+  if (xs.length === 0) return 0;
+  const s = xs.slice().sort((x, y) => x - y);
+  return s[Math.floor(s.length / 2)];
+};
+
+/**
+ * Find the edit points in a video, in the browser (Oct 6).
+ *
+ * 1. Decode the whole video at SHOT_SAMPLE_FPS (5 frames a second), each frame
+ *    scaled to 160 px wide, and take each frame's signature.
+ * 2. A step between consecutive samples is a CUT when its distance is over
+ *    SHOT_CUT_THRESHOLD (0.3) AND at least SHOT_CUT_LOCAL_RATIO (3×) the median
+ *    step of the samples around it (±2 s) — a pan or a walk moves every step a
+ *    little; a cut moves one step a lot.
+ * 3. Each cut is then pinned to the frame (≈1/30 s) by decoding the 0.2 s
+ *    between the two samples and taking the biggest jump.
+ * 4. Near-black samples (mean luma under 6%) are a fade through black and
+ *    belong to no shot. (Cross-dissolves longer than ~0.4 s may be missed —
+ *    the 0.3 s margin the planner keeps from each edit is the cushion.)
+ *
+ * Reads every frame of the file once (the browser's hardware decoder; a
+ * 4–5 minute 4K walkthrough is a few hundred MB of download and roughly a
+ * minute here). Results are stored per video, so it's done once.
+ */
+export async function detectShots(
+  src: ClipSource,
+  onProgress?: (pct: number) => void,
+): Promise<ShotInfo> {
+  const overUrl = "url" in src;
+  const mb = await import("mediabunny");
+  const input = makeInput(mb, src);
+  try {
+    const track = await openTrack(input, overUrl);
+    const first = await input.getFirstTimestamp([track]);
+    const end = (await input.getDurationFromMetadata([track])) ?? (await input.computeDuration([track]));
+    const dur = Math.max(0, end - first);
+    const vw = await track.getDisplayWidth();
+    const vh = await track.getDisplayHeight();
+    const w = 160, h = Math.max(2, Math.round((160 * vh) / Math.max(1, vw)));
+    const sink = new mb.CanvasSink(track, { width: w, height: h, fit: "fill", poolSize: 2 });
+
+    const step = 1 / SHOT_SAMPLE_FPS;
+    const times: number[] = [];
+    for (let t = 0; t < dur; t += step) times.push(t);
+    const sigs: (Sig | null)[] = [];
+    let k = 0;
+    for await (const wc of sink.canvasesAtTimestamps(times.map((t) => first + t))) {
+      sigs.push(wc ? signature(wc.canvas) : null);
+      k++;
+      if (onProgress && k % 25 === 0) onProgress(Math.round((k / times.length) * 90));
+    }
+
+    // Steps between samples.
+    const d: number[] = [];
+    for (let i = 1; i < sigs.length; i++) {
+      const a = sigs[i - 1], b = sigs[i];
+      d.push(a && b ? frameDistance(a, b) : 0);
+    }
+    const win = Math.round(2 * SHOT_SAMPLE_FPS);
+    const cutAfter: number[] = []; // cut between sample i and i+1
+    for (let i = 0; i < d.length; i++) {
+      const around: number[] = [];
+      for (let j = Math.max(0, i - win); j <= Math.min(d.length - 1, i + win); j++) if (j !== i) around.push(d[j]);
+      if (d[i] > SHOT_CUT_THRESHOLD && d[i] >= SHOT_CUT_LOCAL_RATIO * median(around) + 0.02) cutAfter.push(i);
+    }
+
+    // Pin each cut to the frame.
+    const cutsSec: number[] = [];
+    for (let c = 0; c < cutAfter.length; c++) {
+      const t0 = times[cutAfter[c]], t1 = times[cutAfter[c] + 1];
+      const fine: number[] = [];
+      for (let t = t0; t <= t1 + 1e-6; t += 1 / 30) fine.push(t);
+      const fs: (Sig | null)[] = [];
+      for await (const wc of sink.canvasesAtTimestamps(fine.map((t) => first + t))) fs.push(wc ? signature(wc.canvas) : null);
+      let best = 1, bestD = -1;
+      for (let i = 1; i < fs.length; i++) {
+        const a = fs[i - 1], b = fs[i];
+        const dd = a && b ? frameDistance(a, b) : 0;
+        if (dd > bestD) { bestD = dd; best = i; }
+      }
+      cutsSec.push(fine[Math.min(best, fine.length - 1)] ?? t1);
+    }
+    onProgress?.(98);
+
+    // Shots: between cuts, without near-black stretches.
+    const bounds = [0, ...cutsSec, dur];
+    const shots: [number, number][] = [];
+    for (let b = 0; b + 1 < bounds.length; b++) {
+      const s0 = bounds[b], s1 = bounds[b + 1];
+      // Trim fades through black at either end of the shot; split on black inside.
+      let runStart: number | null = null;
+      for (let i = 0; i < times.length; i++) {
+        const t = times[i];
+        if (t < s0 || t >= s1) continue;
+        const dark = !!sigs[i] && (sigs[i] as Sig).luma < SHOT_BLACK_LUMA;
+        if (!dark && runStart === null) runStart = t;
+        if (dark && runStart !== null) { shots.push([runStart, t]); runStart = null; }
+      }
+      if (runStart !== null) shots.push([runStart, s1]);
+    }
+    const clean = shots
+      .map((x) => [Math.round(x[0] * 100) / 100, Math.round(x[1] * 100) / 100] as [number, number])
+      .filter((x) => x[1] - x[0] > 0.2);
+    onProgress?.(100);
+    return { v: 1, fps: SHOT_SAMPLE_FPS, durationSec: Math.round(dur * 10) / 10, shots: clean };
+  } catch (err) {
+    throw classify(err, overUrl);
+  } finally {
+    input.dispose();
+  }
+}
+
+/** A stored value that looks like a ShotInfo (the column is free-form jsonb). */
+export function parseShotInfo(v: unknown): ShotInfo | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as { v?: unknown; shots?: unknown; durationSec?: unknown; fps?: unknown };
+  if (o.v !== 1 || !Array.isArray(o.shots)) return null;
+  const shots = (o.shots as unknown[]).filter((x): x is [number, number] =>
+    Array.isArray(x) && x.length === 2 && typeof x[0] === "number" && typeof x[1] === "number" && x[1] > x[0]);
+  return { v: 1, fps: Number(o.fps) || SHOT_SAMPLE_FPS, durationSec: Number(o.durationSec) || 0, shots };
+}
+
+/** Shots found this session, by video id — so a video is analysed at most once per page load. */
+const SHOT_CACHE: Record<string, ShotInfo> = {};
+export function rememberShots(videoId: string, info: ShotInfo): void { SHOT_CACHE[videoId] = info; }
+export function rememberedShots(videoId: string): ShotInfo | null { return SHOT_CACHE[videoId] ?? null; }
