@@ -244,6 +244,8 @@ export type ReelPhoto = {
     fileKey?: string;
     inSec: number;
     lengthSec: ClipLength;
+    /** Reel Service only: seconds decoded past the clip's turn, so it keeps moving through its crossfade out. */
+    tailSec?: number;
   };
 };
 
@@ -426,7 +428,7 @@ export default function ReelMaker({
         filename: v.title,
         category: null,
         loadBitmap: () => loadBitmap(previewUrl),
-        clip: { open: v.open, durationSec: null, videoId: v.id, inSec: it.inSec, lengthSec: it.lengthSec },
+        clip: { open: v.open, durationSec: null, videoId: v.id, inSec: it.inSec, lengthSec: it.lengthSec, tailSec: auto.clipJoin ?? 0 },
       });
       ids.push(id);
     });
@@ -977,19 +979,24 @@ export default function ReelMaker({
       seed,
       fixedHolds: clipLens,
     });
-    // Reel Service video-led renders: soft joins around video — a smooth
-    // crossfade of auto.clipJoin into, out of and between clips.
+    // Reel Service video-led renders (auto.clipJoin): EVERY join — into and
+    // out of video, between photo beats, into the end card — is a smooth
+    // crossfade of clipJoin seconds. A crossfade plays at the start of the
+    // incoming unit, so a photo beat or the end card would lose that much of
+    // its hold to the fade: their slots are lengthened by the join, so they
+    // stay fully on screen for their whole planned hold (photo beat 2–2.5 s)
+    // and then fade out over the next unit's first clipJoin seconds. Clips
+    // keep their own length (they keep moving through their fade out — see
+    // tailSec).
     const clipJoin = auto?.clipJoin;
     if (!clipJoin) return single;
     const isClipUnit = (u: (typeof single.units)[number]) => u.kind === "photo" && !!selectedPhotos[u.index]?.clip;
-    const transitions = single.transitions.map((tr, k) => {
-      const a = single.units[k], b = single.units[k + 1];
-      if (!a || !b || (!isClipUnit(a) && !isClipUnit(b))) return tr;
-      return { type: "dissolve" as const, dur: clipJoin, dir: tr.dir, timing: "smooth" as const };
-    });
-    const flashes: number[] = [];
-    transitions.forEach((tr, k) => { if (tr.type === "flash") flashes.push(single.starts[k + 1]); });
-    return { ...single, transitions, flashes };
+    const transitions = single.transitions.map((tr) => ({ type: "dissolve" as const, dur: clipJoin, dir: tr.dir, timing: "smooth" as const }));
+    const units = single.units.map((u, k) => (k > 0 && !isClipUnit(u) ? { ...u, hold: u.hold + clipJoin } : u));
+    const starts: number[] = [];
+    let tt = 0;
+    units.forEach((u) => { starts.push(tt); tt += u.hold; });
+    return { units, starts, transitions, total: tt, flashes: [] as number[] };
     // `s` carries the reel's hold — derived from the length's time budget and
     // the photo count — so the total redraws when Length or the selection changes.
   }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin]);
@@ -2614,9 +2621,9 @@ export default function ReelMaker({
        * carried out by a transition — holds its last frame. A second and a
        * half after its turn it's released: decoder, cache and canvases.
        */
-      const clipSpans: { i: number; start: number; len: number }[] = [];
+      const clipSpans: { i: number; start: number; len: number; tail?: number }[] = [];
       units.forEach((u, k) => {
-        if (u.kind === "photo" && clipReaders[u.index]) clipSpans.push({ i: u.index, start: starts[k], len: u.hold });
+        if (u.kind === "photo" && clipReaders[u.index]) clipSpans.push({ i: u.index, start: starts[k], len: u.hold, tail: selectedPhotos[u.index]?.clip?.tailSec ?? 0 });
         if (u.kind === "marquee") {
           u.bottom.forEach((i, slot) => {
             if (clipReaders[i]) clipSpans.push({ i, start: starts[k] + u.bottomStarts[slot], len: u.bottomLens[slot] });
@@ -2655,6 +2662,9 @@ export default function ReelMaker({
         return found;
       };
       const joinFor = (k: number, tr: Transition): Transition => {
+        // Reel Service video-led: every join is the planned smooth crossfade —
+        // no dips or soft wipes from Underway's varied joins.
+        if (auto?.clipJoin) return tr;
         if (st.joins !== "varied") return tr;
         const ua = units[k - 1], ub = units[k];
         if (st.stackDepth === "main") {
@@ -2677,8 +2687,9 @@ export default function ReelMaker({
           const sp = clipSpans[c];
           const r = clipReaders[sp.i];
           if (!r) continue;
-          if (t >= sp.start - 1e-6 && t <= sp.start + sp.len + 1e-6) await r.advance(t - sp.start);
-          else if (t > sp.start + sp.len + CLIP_RELEASE_AFTER) r.release();
+          // `tail` (Reel Service only): keep it moving through its crossfade out.
+          if (t >= sp.start - 1e-6 && t <= sp.start + sp.len + (sp.tail ?? 0) + 1e-6) await r.advance(t - sp.start);
+          else if (t > sp.start + sp.len + Math.max(CLIP_RELEASE_AFTER, (sp.tail ?? 0) + 0.5)) r.release();
         }
         ctx.globalAlpha = 1;
         ctx.fillStyle = st.ground;

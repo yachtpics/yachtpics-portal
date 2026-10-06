@@ -280,8 +280,12 @@ const EDGE = 0.05;
  * but they read as choppy.
  */
 export const MAX_SEGMENTS = 7;
-/** Seconds kept clear between a segment and anything already used. */
-const SEG_MARGIN = 0.6;
+/**
+ * Seconds kept clear after a segment, before the next one or anything already
+ * used: a video-led segment keeps playing for VIDEO_LED_CLIP_JOIN (0.75 s)
+ * into its crossfade out, plus a little air.
+ */
+const SEG_MARGIN = 1.0;
 /** Two segments of the same video played back to back must be this far apart (fraction of the video), or get a photo between them. */
 export const MIN_ADJACENT_GAP = 0.15;
 const SEG_PATTERN: ReelServiceSegment["durSec"][] = [5, 4, 6, 5, 4, 6, 5];
@@ -289,7 +293,7 @@ const HOOK_SEC: ReelServiceSegment["durSec"] = 5;
 /** Clips in a PHOTO-led reel, by angle. */
 const PHOTO_LED_SEGMENTS: Record<ReelServiceAngle, number> = { underway_exterior: 3, full_tour: 2, inside: 2, details: 2 };
 /** Video-led timing (Oct 6): photo beats 2–2.5 s; a slow smooth crossfade into, out of and between segments. */
-export const VIDEO_LED_PHOTO_HOLDS = [2.25, 2, 2.5];
+export const VIDEO_LED_PHOTO_HOLDS = [2.25, 2.25, 2.5];
 export const VIDEO_LED_CLIP_JOIN = 0.75;
 
 const EXTERIOR_WORDS = /(running|underway|aerial|drone|exterior|profile|cruis|sea ?trial|outside|on the water|helicopter)/i;
@@ -340,7 +344,8 @@ export function usedRanges(segments: ReelServiceSegment[], videos: VideoRow[]): 
   return segments.map((x) => {
     const v = videos.find((y) => y.id === x.videoId);
     const dur = (v && durOf(v)) || ASSUMED_VIDEO_SEC;
-    return { videoId: x.videoId, from: x.inFrac, to: x.inFrac + x.durSec / dur };
+    // + the 0.75 s it keeps playing through its crossfade out.
+    return { videoId: x.videoId, from: x.inFrac, to: x.inFrac + (x.durSec + VIDEO_LED_CLIP_JOIN) / dur };
   });
 }
 
@@ -753,7 +758,8 @@ function buildMedia(
         order: videoLedOrder(photoIds, segments.length, must),
         length: "full",
         estVideoSec: videoSec,
-        estPhotoSec: Math.round(photoIds.length * hold * 10) / 10,
+        // Each beat's slot = its hold fully on screen + the crossfade into it.
+        estPhotoSec: Math.round(photoIds.length * (hold + VIDEO_LED_CLIP_JOIN) * 10) / 10,
         photoHoldSec: hold,
         clipJoinSec: VIDEO_LED_CLIP_JOIN,
       };

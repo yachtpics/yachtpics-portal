@@ -250,7 +250,7 @@ export function createClipInputPool(): ClipInputPool {
  * its own, as it always did.
  */
 export async function openClipReader(
-  clip: { open: () => Promise<ClipSource>; inSec: number; lengthSec: number },
+  clip: { open: () => Promise<ClipSource>; inSec: number; lengthSec: number; tailSec?: number },
   box: { w: number; h: number; cover: boolean },
   shared?: { pool: ClipInputPool; key: string },
 ): Promise<ClipReader> {
@@ -314,7 +314,11 @@ export async function openClipReader(
     throw classify(err, overUrl);
   }
 
-  const end = start + clip.lengthSec;
+  // `tailSec` (Reel Service video-led renders only): keep decoding a little
+  // past the clip's turn, so it is still moving while it crossfades out
+  // instead of holding its last frame. 0 for every broker reel.
+  const playSec = clip.lengthSec + Math.max(0, clip.tailSec ?? 0);
+  const end = start + playSec;
   let iter: AsyncGenerator<WrappedCanvas, void, unknown> | null = null;
   let current: WrappedCanvas | null = null;
   let pending: WrappedCanvas | null = null;
@@ -328,7 +332,7 @@ export async function openClipReader(
     frame() { return released ? null : current ? current.canvas : null; },
     async advance(local: number) {
       if (failed || released) return;
-      const ts = start + Math.max(0, Math.min(local, clip.lengthSec - 0.001));
+      const ts = start + Math.max(0, Math.min(local, playSec - 0.001));
       try {
         if (!iter) {
           iter = sink.canvases(start, end);

@@ -105,18 +105,21 @@ export default function ReelServiceRenderer({
         // Walk each video's segments in time order so a later one never overlaps an earlier one.
         const byTime = segs.map((x, i) => ({ x, i })).sort((a, b) => (a.x.videoId === b.x.videoId ? a.x.inFrac - b.x.inFrac : a.x.videoId < b.x.videoId ? -1 : 1));
         let dropped = 0;
+        // Video-led: each segment keeps playing through its crossfade out, so
+        // it needs that much more footage after it.
+        const tail = st.videoLed && st.clipJoinSec ? st.clipJoinSec : 0;
         byTime.forEach(({ x, i }) => {
           const d = durations[x.videoId];
           if (d === undefined || d === null) { if (d === null) dropped++; return; }
           const len = (x.durSec ?? 3) as ClipLength;
           const lo = Math.max(d * 0.03, lastEnd[x.videoId] ?? 0);
-          const hi = d * 0.97 - len;
+          const hi = d * 0.97 - len - tail;
           // The planner's seconds when it knew the length; otherwise its fraction.
           const planned = typeof x.inSec === "number" ? x.inSec : Math.min(1, Math.max(0, Number(x.inFrac) || 0)) * d;
           let start = Math.max(lo, planned);
           if (start > hi) { dropped++; return; }
           start = Math.round(start * 10) / 10;
-          lastEnd[x.videoId] = start + len + 0.2;
+          lastEnd[x.videoId] = start + len + tail + 0.2;
           resolved[i] = { videoId: x.videoId, inSec: start, lengthSec: len };
         });
         if (dropped) notes.push(`${dropped} segment${dropped === 1 ? "" : "s"} left out (video too short or unreadable).`);
