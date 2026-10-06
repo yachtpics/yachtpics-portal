@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { isPeriod, periodET, planReelServiceMonth, replanUnmade } from "@/lib/reelService";
+import { isPeriod, periodET, planReelServiceMonth, replanListingMonth, replanUnmade } from "@/lib/reelService";
 import { deliverReelServiceJobs } from "@/lib/reelServiceEmail";
 
 export const runtime = "nodejs";
@@ -13,6 +13,7 @@ export const maxDuration = 60;
  *   { action: "deliver", jobIds }                                        → mark delivered + email
  *   { action: "durations", durations: { videoId: seconds } }             → record measured video lengths
  *   { action: "replan_unmade", period, listingIds }                      → re-plan those listings' planned/failed jobs
+ *   { action: "replan_listing", period, listingId }                      → re-plan ALL of a listing's reels that month (delivered too)
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
@@ -83,6 +84,14 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Re-planning failed." }, { status: 500 });
     }
+  }
+
+  if (action === "replan_listing") {
+    const period = isPeriod(body?.period) ? body.period : periodET();
+    const listingId = typeof body?.listingId === "string" ? body.listingId : "";
+    if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    const r = await replanListingMonth(admin, period, listingId);
+    return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.error }, { status: 400 });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

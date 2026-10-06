@@ -111,7 +111,9 @@ export default function ReelServiceRenderer({
           const len = (x.durSec ?? 3) as ClipLength;
           const lo = Math.max(d * 0.03, lastEnd[x.videoId] ?? 0);
           const hi = d * 0.97 - len;
-          let start = Math.max(lo, Math.min(1, Math.max(0, Number(x.inFrac) || 0)) * d);
+          // The planner's seconds when it knew the length; otherwise its fraction.
+          const planned = typeof x.inSec === "number" ? x.inSec : Math.min(1, Math.max(0, Number(x.inFrac) || 0)) * d;
+          let start = Math.max(lo, planned);
           if (start > hi) { dropped++; return; }
           start = Math.round(start * 10) / 10;
           lastEnd[x.videoId] = start + len + 0.2;
@@ -141,6 +143,8 @@ export default function ReelServiceRenderer({
             showPrice: st.showPrice !== false,
             showLocation: st.showLocation !== false,
             videoFirst: st.videoLed === true,
+            ...(st.videoLed && st.photoHoldSec ? { photoHold: st.photoHoldSec } : {}),
+            ...(st.videoLed && st.clipJoinSec ? { clipJoin: st.clipJoinSec } : {}),
           },
           notes,
         });

@@ -37,11 +37,11 @@ export const ANGLE_LABEL: Record<ReelServiceAngle, string> = {
 export const REEL_SERVICE_LOOKS: StyleKey[] = ["underway", "marquee", "cinematic", "walkthrough", "energy", "stack", "stack_underway"];
 
 /**
- * Looks for VIDEO-LED reels (Oct 4, Charlie: "more video than photos"). Only
- * single-frame looks that play clips full frame: never Stack / Stack Underway
- * (no clips) nor the Marquee pair (clips only in the bottom band).
+ * Looks for VIDEO-LED reels (Oct 4, Charlie: "more video than photos";
+ * Oct 6: no Energy — too abrupt). Single-frame looks with soft joins that play
+ * clips full frame. Classic is the fallback only (last in every preference).
  */
-export const VIDEO_LED_LOOKS: StyleKey[] = ["underway", "cinematic", "walkthrough", "energy", "editorial", "classic"];
+export const VIDEO_LED_LOOKS: StyleKey[] = ["cinematic", "walkthrough", "underway", "editorial", "classic"];
 
 /** Stack and Stack Underway play no clips (ReelMaker leaves them out). */
 export function lookPlaysClips(look: StyleKey): boolean {
@@ -50,7 +50,7 @@ export function lookPlaysClips(look: StyleKey): boolean {
 
 /** Whether a look can carry a video-led reel (clips full frame). */
 export function lookIsVideoLed(look: StyleKey): boolean {
-  return VIDEO_LED_LOOKS.indexOf(look) >= 0 || (lookPlaysClips(look) && REEL_STYLES[look]?.layout !== "marquee");
+  return VIDEO_LED_LOOKS.indexOf(look) >= 0;
 }
 
 /** A listing needs at least this many visible photos to be planned at all. */
@@ -62,9 +62,10 @@ const MIN_ANGLE_PHOTOS = 8;
  * One cut from a listing video. `inFrac` is where it starts as a fraction of
  * the video; `inSec` the same in seconds when the video's length was known at
  * planning time (null otherwise — the renderer measures the video and uses
- * inFrac). `durSec` is 2–4 s.
+ * inFrac). `durSec` is 4–6 s on video-led reels (2–4 on reels planned
+ * before Oct 6).
  */
-export type ReelServiceSegment = { videoId: string; inFrac: number; inSec: number | null; durSec: 2 | 3 | 4 };
+export type ReelServiceSegment = { videoId: string; inFrac: number; inSec: number | null; durSec: 2 | 3 | 4 | 5 | 6 };
 
 /**
  * Everything ReelMaker needs to render a job. `order` is the play order:
@@ -92,6 +93,10 @@ export type ReelServiceSettings = {
   /** Estimates for the board. */
   estVideoSec: number;
   estPhotoSec: number;
+  /** Video-led: every photo beat's hold, seconds (2–2.5). Null: the look's own. */
+  photoHoldSec?: number | null;
+  /** Video-led: crossfade into, out of and between segments, seconds. Null: the look's own. */
+  clipJoinSec?: number | null;
 };
 
 export type ReelServiceJobStatus = "planned" | "rendering" | "ready" | "delivered" | "failed";
@@ -242,10 +247,10 @@ const LOOK_PREFERENCE: Record<ReelServiceAngle, StyleKey[]> = {
 };
 
 const VIDEO_LOOK_PREFERENCE: Record<ReelServiceAngle, StyleKey[]> = {
-  full_tour: ["cinematic", "underway", "walkthrough", "editorial", "energy", "classic"],
-  underway_exterior: ["underway", "energy", "cinematic", "editorial", "walkthrough", "classic"],
-  inside: ["walkthrough", "cinematic", "editorial", "underway", "classic", "energy"],
-  details: ["energy", "editorial", "cinematic", "classic", "underway", "walkthrough"],
+  full_tour: ["cinematic", "walkthrough", "underway", "editorial", "classic"],
+  underway_exterior: ["underway", "cinematic", "editorial", "walkthrough", "classic"],
+  inside: ["walkthrough", "cinematic", "editorial", "underway", "classic"],
+  details: ["editorial", "cinematic", "underway", "walkthrough", "classic"],
 };
 
 export function chooseLook(
@@ -269,19 +274,29 @@ export const VIDEO_LED_MIN_FOOTAGE = 20;
 const ASSUMED_VIDEO_SEC = 90;
 /** Skip the first and last 5% of every video (slates, fades, the drone taking off). */
 const EDGE = 0.05;
-/** Segments per reel, at most (ReelMaker shares one source per video, so this is cheap). */
-export const MAX_SEGMENTS = 14;
-/** Room each segment needs in its slice of the video (its length + a gap). */
-const SEG_ROOM = 4.5;
-const SEG_PATTERN: (2 | 3 | 4)[] = [3, 2, 3, 4, 2, 3, 3, 2, 4, 3, 2, 3, 4, 2];
-/** Clips in a PHOTO-led reel, by angle (as before). */
-const PHOTO_LED_SEGMENTS: Record<ReelServiceAngle, number> = { underway_exterior: 4, full_tour: 3, inside: 2, details: 2 };
+/**
+ * Segments per video-led reel (Oct 6, Charlie: fewer, longer — 6–7 of 4–6 s,
+ * hook 5 s). ReelMaker shares one source per video, so more would be cheap,
+ * but they read as choppy.
+ */
+export const MAX_SEGMENTS = 7;
+/** Seconds kept clear between a segment and anything already used. */
+const SEG_MARGIN = 0.6;
+/** Two segments of the same video played back to back must be this far apart (fraction of the video), or get a photo between them. */
+export const MIN_ADJACENT_GAP = 0.15;
+const SEG_PATTERN: ReelServiceSegment["durSec"][] = [5, 4, 6, 5, 4, 6, 5];
+const HOOK_SEC: ReelServiceSegment["durSec"] = 5;
+/** Clips in a PHOTO-led reel, by angle. */
+const PHOTO_LED_SEGMENTS: Record<ReelServiceAngle, number> = { underway_exterior: 3, full_tour: 2, inside: 2, details: 2 };
+/** Video-led timing (Oct 6): photo beats 2–2.5 s; a slow smooth crossfade into, out of and between segments. */
+export const VIDEO_LED_PHOTO_HOLDS = [2.25, 2, 2.5];
+export const VIDEO_LED_CLIP_JOIN = 0.75;
 
 const EXTERIOR_WORDS = /(running|underway|aerial|drone|exterior|profile|cruis|sea ?trial|outside|on the water|helicopter)/i;
 const INTERIOR_WORDS = /(interior|inside|walk ?-?through|salon|saloon|cabin|stateroom|galley)/i;
 
 const videoText = (v: VideoRow) => `${v.title ?? ""} ${v.filename ?? ""} ${v.description ?? ""}`;
-const durOf = (v: VideoRow) => (v.duration_sec && v.duration_sec > 0 ? Number(v.duration_sec) : null);
+const durOf = (v: VideoRow) => (v.duration_sec && Number(v.duration_sec) > 0 ? Number(v.duration_sec) : null);
 
 /** Measured footage on a listing: usable seconds (edges trimmed) and how many videos are unmeasured. */
 export function footageOf(videos: VideoRow[]): { measuredSec: number | null; usableSec: number; unmeasured: number; effectiveSec: number } {
@@ -306,7 +321,7 @@ export function footageOf(videos: VideoRow[]): { measuredSec: number | null; usa
 /** Where in a video an angle looks when the videos aren't titled (walkthroughs usually start outside). */
 const ANGLE_WINDOW: Record<ReelServiceAngle, [number, number]> = {
   full_tour: [EDGE, 1 - EDGE],
-  underway_exterior: [EDGE, 0.5],
+  underway_exterior: [EDGE, 0.55],
   inside: [0.35, 1 - EDGE],
   details: [EDGE, 1 - EDGE],
 };
@@ -317,99 +332,235 @@ const frac01 = (seed: number, i: number) => {
   return x - Math.floor(x);
 };
 
+/** A stretch of a video already used by another reel (fractions of the video). */
+export type UsedRange = { videoId: string; from: number; to: number };
+
+/** The ranges a set of segments covers, as fractions of their videos. */
+export function usedRanges(segments: ReelServiceSegment[], videos: VideoRow[]): UsedRange[] {
+  return segments.map((x) => {
+    const v = videos.find((y) => y.id === x.videoId);
+    const dur = (v && durOf(v)) || ASSUMED_VIDEO_SEC;
+    return { videoId: x.videoId, from: x.inFrac, to: x.inFrac + x.durSec / dur };
+  });
+}
+
+/** [a,b] minus the given intervals (all seconds), keeping pieces at least `min` long. */
+function freeIntervals(a: number, b: number, taken: [number, number][], min: number): [number, number][] {
+  const sorted = taken.filter((t) => t[1] > a && t[0] < b).sort((x, y) => x[0] - y[0]);
+  const out: [number, number][] = [];
+  let cur = a;
+  sorted.forEach((t) => {
+    if (t[0] > cur) out.push([cur, Math.min(t[0], b)]);
+    cur = Math.max(cur, t[1]);
+  });
+  if (cur < b) out.push([cur, b]);
+  return out.filter((x) => x[1] - x[0] >= min);
+}
+
 /**
- * Cut `targetSec` of segments (2–4 s each, up to MAX_SEGMENTS) out of a
- * listing's videos for one reel.
+ * Lay segments of the given lengths into a video's free stretches (seconds).
+ * The free stretches are laid end to end and cut into equal slices, one
+ * segment per slice, at an offset set by `seed`; a segment never straddles a
+ * used range and never overlaps the one before. Null when they don't fit.
+ */
+function placeInFree(free: [number, number][], lens: number[], seed: number): number[] | null {
+  const total = free.reduce((a, f) => a + (f[1] - f[0]), 0);
+  const need = lens.reduce((a, l) => a + l + SEG_MARGIN, 0);
+  if (lens.length === 0 || total < need) return null;
+  const slice = total / lens.length;
+  // Virtual (end-to-end) position → real time.
+  const toReal = (virt: number): { f: number; t: number } => {
+    let acc = 0;
+    for (let f = 0; f < free.length; f++) {
+      const flen = free[f][1] - free[f][0];
+      if (virt < acc + flen || f === free.length - 1) return { f, t: free[f][0] + Math.max(0, virt - acc) };
+      acc += flen;
+    }
+    return { f: free.length - 1, t: free[free.length - 1][1] };
+  };
+  const starts: number[] = [];
+  let lastEnd = -Infinity;
+  for (let i = 0; i < lens.length; i++) {
+    const len = lens[i];
+    const slack = Math.max(0, slice - len - SEG_MARGIN);
+    const at = toReal(i * slice + frac01(seed, i) * slack);
+    let placed: number | null = null;
+    for (let f = at.f; f < free.length && placed === null; f++) {
+      let st = f === at.f ? at.t : free[f][0];
+      st = Math.max(st, free[f][0], lastEnd + SEG_MARGIN);
+      if (st + len > free[f][1]) st = free[f][1] - len;
+      if (st >= free[f][0] && st >= lastEnd + SEG_MARGIN - 1e-6) placed = st;
+    }
+    if (placed === null) return null;
+    starts.push(placed);
+    lastEnd = placed + len;
+  }
+  return starts;
+}
+
+/**
+ * Cut `targetSec` of segments (4–6 s each, hook 5 s, up to `maxCount`) out of
+ * a listing's videos for one reel.
  *
  * - Every video's first and last 5% are skipped; an angle can narrow that to
- *   the part of an untitled walkthrough it suits (first half for Underway &
- *   exterior, later part for Inside), widened again if it's too short.
- * - Titled videos steer the angle: "running/aerial/drone…" for Underway &
- *   exterior, "interior/walkthrough…" for Inside, when they have enough.
- * - Segments are shared out between videos by usable length; within a video
- *   its window is cut into equal slices, one segment per slice, placed at an
- *   offset set by `seed` — so segments never overlap within a reel, and a
- *   different seed (another reel of the month) lands on different moments.
- * - Returned in play order: chronological within a video, videos taken in
- *   turn; the first is the hook (a 4 s segment, from the preferred video).
+ *   the part of an untitled walkthrough it suits (first ~half for Underway &
+ *   exterior, from 35% on for Inside), widened again if it's too short.
+ * - Titled videos steer the angle ("running/aerial/drone…" for Underway &
+ *   exterior, "interior/walkthrough…" for Inside) when they hold enough.
+ * - `used` — what this listing's other reels this month already took — is cut
+ *   out first, so a month's reels don't reuse footage. Only when there isn't
+ *   room are the used ranges ignored (overlap only where unavoidable).
+ * - Segments are shared between videos by free length; inside a video the
+ *   free footage is cut into equal slices, one segment per slice, at an offset
+ *   set by `seed` — never overlapping within a reel.
+ * - Returned in play order (see orderSegments).
  */
-export function chooseSegments(videos: VideoRow[], angle: ReelServiceAngle, targetSec: number, seed: number, maxCount = MAX_SEGMENTS): ReelServiceSegment[] {
+export function chooseSegments(
+  videos: VideoRow[],
+  angle: ReelServiceAngle,
+  targetSec: number,
+  seed: number,
+  maxCount = MAX_SEGMENTS,
+  used: UsedRange[] = [],
+): ReelServiceSegment[] {
   const pool = videos
     .map((v) => ({ v, dur: durOf(v) ?? ASSUMED_VIDEO_SEC, known: durOf(v) !== null }))
-    .filter((x) => x.dur >= 6);
+    .filter((x) => x.dur >= 8);
   if (pool.length === 0 || targetSec <= 0 || maxCount <= 0) return [];
 
   const re = angle === "underway_exterior" ? EXTERIOR_WORDS : angle === "inside" ? INTERIOR_WORDS : null;
   const preferred = re ? pool.filter((x) => re.test(videoText(x.v))) : [];
-  const usable = (x: { dur: number }) => x.dur * (1 - 2 * EDGE);
-  const prefUsable = preferred.reduce((a, x) => a + usable(x), 0);
-  const titled = preferred.length > 0 && prefUsable >= targetSec * 1.2;
+  const prefUsable = preferred.reduce((a, x) => a + x.dur * (1 - 2 * EDGE), 0);
+  const titled = preferred.length > 0 && prefUsable >= targetSec * 1.5;
   const cand = titled ? preferred : pool;
 
-  // Each video's window.
-  let windows = cand.map((x) => (titled ? [EDGE, 1 - EDGE] : ANGLE_WINDOW[angle]) as [number, number]);
-  const cap = (w: [number, number], dur: number) => Math.floor(((w[1] - w[0]) * dur) / SEG_ROOM);
   // Lengths, rotated by the seed so reels differ in rhythm too.
-  const lens: (2 | 3 | 4)[] = [];
+  const lens: number[] = [];
   let total = 0;
   for (let i = 0; i < maxCount && total < targetSec; i++) {
-    const l = i === 0 ? 4 : SEG_PATTERN[(i + seed) % SEG_PATTERN.length];
+    const l = i === 0 ? HOOK_SEC : SEG_PATTERN[(i + seed) % SEG_PATTERN.length];
     lens.push(l);
     total += l;
   }
-  let capacity = cand.reduce((a, x, i) => a + cap(windows[i], x.dur), 0);
-  if (capacity < lens.length) {
-    windows = cand.map(() => [EDGE, 1 - EDGE] as [number, number]);
-    capacity = cand.reduce((a, x, i) => a + cap(windows[i], x.dur), 0);
-  }
-  while (lens.length > capacity) lens.pop();
-  if (lens.length === 0) return [];
 
-  // Share the segments out by usable length (largest remainder), within capacity.
-  const weights = cand.map((x, i) => (windows[i][1] - windows[i][0]) * x.dur);
-  const wsum = weights.reduce((a, b) => a + b, 0) || 1;
-  const counts = weights.map((w, i) => Math.min(cap(windows[i], cand[i].dur), Math.floor((w / wsum) * lens.length)));
-  let left = lens.length - counts.reduce((a, b) => a + b, 0);
-  const order = weights.map((w, i) => ({ i, r: (w / wsum) * lens.length - Math.floor((w / wsum) * lens.length) })).sort((a, b) => b.r - a.r);
-  for (let pass = 0; left > 0 && pass < 4; pass++) {
-    for (let k = 0; k < order.length && left > 0; k++) {
-      const i = order[k].i;
-      if (counts[i] < cap(windows[i], cand[i].dur)) { counts[i]++; left--; }
-    }
-  }
+  const windowFor = (x: { dur: number }, wide: boolean): [number, number] => {
+    const w = wide || titled ? [EDGE, 1 - EDGE] : ANGLE_WINDOW[angle];
+    return [w[0] * x.dur, w[1] * x.dur];
+  };
+  const takenFor = (x: { v: VideoRow; dur: number }, avoidUsed: boolean): [number, number][] =>
+    avoidUsed
+      ? used.filter((u) => u.videoId === x.v.id).map((u) => [u.from * x.dur - SEG_MARGIN, u.to * x.dur + SEG_MARGIN] as [number, number])
+      : [];
 
-  // Play order: videos in turn (the preferred/first video leads), each chronological.
-  const playVideo: number[] = [];
-  const remaining = counts.slice();
-  while (playVideo.length < lens.length - Math.max(0, left)) {
-    let moved = false;
-    for (let i = 0; i < remaining.length; i++) {
-      if (remaining[i] > 0) { playVideo.push(i); remaining[i]--; moved = true; }
-    }
-    if (!moved) break;
-  }
-  // Lengths in play order; each video's own lengths, in its chronological order.
-  const perVideoLens: (2 | 3 | 4)[][] = cand.map(() => []);
-  playVideo.forEach((vi, n) => perVideoLens[vi].push(lens[n]));
-  const placed: ReelServiceSegment[][] = cand.map((x, vi) => {
-    const L = perVideoLens[vi];
-    const k = L.length;
-    if (k === 0) return [];
-    const [a, b] = windows[vi];
-    const w0 = a * x.dur, slice = ((b - a) * x.dur) / k;
-    return L.map((len, i) => {
-      const slack = Math.max(0, slice - len - 0.4);
-      const start = w0 + i * slice + frac01(seed + vi * 3, i) * slack;
-      return {
-        videoId: x.v.id,
-        inFrac: Math.round((start / x.dur) * 10000) / 10000,
-        inSec: x.known ? Math.round(start * 10) / 10 : null,
-        durSec: len,
-      };
+  // Angle window avoiding used → whole video avoiding used → angle window
+  // ignoring used → whole video ignoring used. The first that fits wins.
+  const attempts: [boolean, boolean][] = [[false, true], [true, true], [false, false], [true, false]];
+  for (let a = 0; a < attempts.length; a++) {
+    const wide = attempts[a][0], avoidUsed = attempts[a][1];
+    const frees = cand.map((x) => {
+      const w = windowFor(x, wide);
+      return freeIntervals(w[0], w[1], takenFor(x, avoidUsed), 4 + SEG_MARGIN);
     });
-  });
-  const cursor = cand.map(() => 0);
-  return playVideo.map((vi) => placed[vi][cursor[vi]++]).filter(Boolean);
+    const freeLen = frees.map((f) => f.reduce((acc, x) => acc + (x[1] - x[0]), 0));
+    const sum = freeLen.reduce((x, y) => x + y, 0);
+    if (sum <= 0) continue;
+    // Spread over the free footage, not packed: each segment gets ~3x its
+    // length of room if the footage allows, else ~2.2x, else 1.5x; segments
+    // are dropped only when even that doesn't fit.
+    const fit = (factor: number) => {
+      const out = lens.slice();
+      while (out.length > 0 && out.reduce((x, y) => x + y * factor, 0) > sum) out.pop();
+      return out;
+    };
+    let L = fit(3);
+    if (L.length < lens.length) { const l2 = fit(2.2); L = l2.length < lens.length ? fit(1.5) : l2; }
+    if (L.length < Math.min(3, lens.length)) continue;
+    // Share out by free length (largest remainder).
+    const counts = freeLen.map((f) => Math.floor((f / sum) * L.length));
+    let left = L.length - counts.reduce((x, y) => x + y, 0);
+    const byRem = freeLen
+      .map((f, i) => ({ i, r: (f / sum) * L.length - Math.floor((f / sum) * L.length) }))
+      .sort((x, y) => y.r - x.r);
+    for (let k = 0; left > 0 && byRem.length; k = (k + 1) % byRem.length) { counts[byRem[k].i]++; left--; }
+    // Hand out the lengths in turn; the hook goes to the first (preferred) video.
+    const perVideo: number[][] = cand.map(() => []);
+    let li = 0;
+    for (let round = 0; li < L.length && round <= L.length; round++) {
+      for (let vi = 0; vi < cand.length && li < L.length; vi++) {
+        if (perVideo[vi].length < counts[vi]) perVideo[vi].push(L[li++]);
+      }
+    }
+    const out: ReelServiceSegment[] = [];
+    let ok = true;
+    cand.forEach((x, vi) => {
+      if (!ok || perVideo[vi].length === 0) return;
+      let starts = placeInFree(frees[vi], perVideo[vi], seed + vi * 3);
+      if (!avoidUsed && used.length > 0) {
+        // Overlap can't be avoided any more: of a dozen placements, take the
+        // one that overlaps this month's other reels least.
+        const usedHere = takenFor(x, true);
+        const overlap = (st: number[]) => st.reduce((acc, a0, i) => {
+          const a1 = a0 + perVideo[vi][i];
+          return acc + usedHere.reduce((o, u) => o + Math.max(0, Math.min(a1, u[1]) - Math.max(a0, u[0])), 0);
+        }, 0);
+        for (let k = 1; k < 12; k++) {
+          const alt = placeInFree(frees[vi], perVideo[vi], seed + vi * 3 + k * 17);
+          if (alt && (!starts || overlap(alt) < overlap(starts))) starts = alt;
+        }
+      }
+      if (!starts) { ok = false; return; }
+      starts.forEach((st, i) => out.push({
+        videoId: x.v.id,
+        inFrac: Math.round((st / x.dur) * 10000) / 10000,
+        inSec: x.known ? Math.round(st * 10) / 10 : null,
+        durSec: perVideo[vi][i] as ReelServiceSegment["durSec"],
+      }));
+    });
+    if (!ok || out.length === 0) continue;
+    return orderSegments(out, seed, angle);
+  }
+  return [];
+}
+
+/**
+ * Play order. The hook comes first (see below); then each time the earliest
+ * remaining
+ * segment at least MIN_ADJACENT_GAP of its video away from the previous one
+ * (a segment of another video always qualifies). When none qualifies the
+ * farthest is taken, and that join gets a photo between (videoLedOrder).
+ */
+export function orderSegments(segs: ReelServiceSegment[], seed: number, angle: ReelServiceAngle): ReelServiceSegment[] {
+  const rest = segs.slice().sort((a, b) => (a.videoId === b.videoId ? a.inFrac - b.inFrac : a.videoId < b.videoId ? -1 : 1));
+  if (rest.length <= 1) return rest;
+  const gap = (a: ReelServiceSegment, b: ReelServiceSegment) => (a.videoId === b.videoId ? Math.abs(a.inFrac - b.inFrac) : 1);
+  // The hook is a 5 s+ segment: the earliest for Full tour and Underway &
+  // exterior (walkthroughs open outside, often running), a seed-chosen one of
+  // the first three otherwise.
+  const hooks = rest.map((x, i) => ({ x, i })).filter((h) => h.x.durSec >= HOOK_SEC);
+  const pool = hooks.length ? hooks : rest.map((x, i) => ({ x, i }));
+  const early = angle === "underway_exterior" || angle === "full_tour";
+  const hookAt = pool[early ? 0 : Math.floor(frac01(seed, 7) * Math.min(pool.length, 3))].i;
+  const out = [rest.splice(hookAt, 1)[0]];
+  while (rest.length) {
+    const prev = out[out.length - 1];
+    let k = rest.findIndex((x) => gap(prev, x) >= MIN_ADJACENT_GAP);
+    if (k < 0) {
+      k = 0;
+      rest.forEach((x, i) => { if (gap(prev, x) > gap(prev, rest[k])) k = i; });
+    }
+    out.push(rest.splice(k, 1)[0]);
+  }
+  return out;
+}
+
+/** Joins (i = between segment i and i+1) where two segments of one video are too close in time to sit back to back. */
+export function closeJoins(segs: ReelServiceSegment[]): number[] {
+  const out: number[] = [];
+  for (let i = 0; i + 1 < segs.length; i++) {
+    const a = segs[i], b = segs[i + 1];
+    if (a.videoId === b.videoId && Math.abs(a.inFrac - b.inFrac) < MIN_ADJACENT_GAP) out.push(i);
+  }
+  return out;
 }
 
 /**
@@ -430,21 +581,29 @@ export function interleave(photoIds: string[], clipCount: number): string[] {
 }
 
 /**
- * Video-led order: open on the first segment (the hook — the title is drawn
- * over it), then mostly video with a photo beat every two or three segments,
- * spread evenly; no photo before the second segment.
+ * Video-led order: open on the hook (the title is drawn over it), mostly
+ * video, photo beats between segments. Photos go first where two segments of
+ * the same video are too close in time to sit back to back (`mustSplit`),
+ * then evenly into the remaining joins.
  */
-export function videoLedOrder(photoIds: string[], segCount: number): string[] {
+export function videoLedOrder(photoIds: string[], segCount: number, mustSplit: number[] = []): string[] {
+  const joins: number[] = [];
+  mustSplit.forEach((j) => { if (j >= 0 && j < segCount - 1 && joins.indexOf(j) < 0 && joins.length < photoIds.length) joins.push(j); });
+  const spare = photoIds.length - joins.length;
+  const free: number[] = [];
+  for (let j = 0; j < segCount - 1; j++) if (joins.indexOf(j) < 0) free.push(j);
+  for (let k = 0; k < spare && free.length; k++) {
+    const idx = Math.min(free.length - 1, Math.max(0, Math.round(((k + 1) * (free.length + 1)) / (spare + 1)) - 1));
+    joins.push(free.splice(idx, 1)[0]);
+  }
+  joins.sort((a, b) => a - b);
   const out: string[] = [];
-  const np = photoIds.length;
-  // Photo j goes after segment pos[j] (1-based count of segments before it).
-  const pos = photoIds.map((_, j) => Math.max(2, Math.round(((j + 1) * segCount) / (np + 1))));
   let pj = 0;
   for (let i = 0; i < segCount; i++) {
     out.push(`clip:${i}`);
-    while (pj < np && pos[pj] <= i + 1) out.push(photoIds[pj++]);
+    if (joins.indexOf(i) >= 0 && pj < photoIds.length) out.push(photoIds[pj++]);
   }
-  while (pj < np) out.push(photoIds[pj++]);
+  while (pj < photoIds.length) out.push(photoIds[pj++]);
   return out;
 }
 
@@ -540,16 +699,19 @@ type PlanContext = {
   /** All jobs on the listings being planned, every period. */
   history: JobRow[];
   period: string;
+  /** Reels this listing gets this month — so each reel takes a fair share of short footage. */
+  perListing?: number;
 };
 
-/** Photo beats in a video-led reel: about one per seven seconds of video, 3–5. */
-function photoBeats(videoSec: number): number {
-  return Math.max(3, Math.min(5, Math.round(videoSec / 7)));
+/** Photo beats in a video-led reel: 3, or as many as the too-close joins need (at most 4). */
+function photoBeats(segCount: number, mustSplit: number): number {
+  return Math.min(Math.max(1, segCount - 1), Math.max(3, Math.min(4, mustSplit)));
 }
 
 /**
  * The segments, order and estimates for a job, given its angle, look and
- * photos. Shared by the planner and "Change look".
+ * photos. Shared by the planner and "Change look". `used` = footage this
+ * listing's other reels this month already took.
  */
 function buildMedia(
   videos: VideoRow[],
@@ -558,7 +720,9 @@ function buildMedia(
   picked: string[],
   seed: number,
   variant: number,
-): Pick<ReelServiceSettings, "order" | "photoIds" | "segments" | "length" | "videoLed" | "footageSec" | "unmeasuredVideos" | "needsMoreVideo" | "estVideoSec" | "estPhotoSec"> {
+  used: UsedRange[] = [],
+  reelsThisMonth = 4,
+): Pick<ReelServiceSettings, "order" | "photoIds" | "segments" | "length" | "videoLed" | "footageSec" | "unmeasuredVideos" | "needsMoreVideo" | "estVideoSec" | "estPhotoSec" | "photoHoldSec" | "clipJoinSec"> {
   const f = footageOf(videos);
   const enough = videos.length > 0 && f.effectiveSec >= VIDEO_LED_MIN_FOOTAGE;
   const videoLed = enough && lookIsVideoLed(look);
@@ -568,28 +732,36 @@ function buildMedia(
     needsMoreVideo: !enough,
   };
   if (videoLed) {
-    // ~28–32 s of video (never more than ~90% of what there is), which with
-    // the photo beats and the end card lands at ~40–48 s, ≥60% video.
-    const target = Math.min(28 + (variant % 3) * 2, Math.max(16, f.effectiveSec * 0.9));
-    const segments = chooseSegments(videos, angle, target, seed);
+    // 6–7 segments of 4–6 s: ~30–34 s of video (never more than ~85% of what
+    // there is); with 3–4 photo beats of 2–2.5 s and the end card, ~40–45 s.
+    // On footage too short for a month of separate reels the reel length
+    // wins (30–45 s) and later reels overlap earlier ones as little as they
+    // can (see chooseSegments). `reelsThisMonth` is kept for the board's note.
+    void reelsThisMonth;
+    const target = Math.min(30 + (variant % 3) * 2, Math.max(16, f.effectiveSec * 0.85));
+    const segments = chooseSegments(videos, angle, target, seed, MAX_SEGMENTS, used);
     const videoSec = segments.reduce((a, x) => a + x.durSec, 0);
     if (segments.length >= 3) {
-      const photoIds = spreadIds(picked, photoBeats(videoSec), variant);
+      const must = closeJoins(segments);
+      const photoIds = spreadIds(picked, photoBeats(segments.length, must.length), variant);
+      const hold = VIDEO_LED_PHOTO_HOLDS[variant % VIDEO_LED_PHOTO_HOLDS.length];
       return {
         ...base,
         videoLed: true,
         segments,
         photoIds,
-        order: videoLedOrder(photoIds, segments.length),
+        order: videoLedOrder(photoIds, segments.length, must),
         length: "full",
         estVideoSec: videoSec,
-        estPhotoSec: Math.round(photoIds.length * 1.5 * 10) / 10,
+        estPhotoSec: Math.round(photoIds.length * hold * 10) / 10,
+        photoHoldSec: hold,
+        clipJoinSec: VIDEO_LED_CLIP_JOIN,
       };
     }
   }
   // Photo-led (as before): the angle's photos, a few clips threaded through.
   const segments = lookPlaysClips(look) && videos.length > 0
-    ? chooseSegments(videos, angle, PHOTO_LED_SEGMENTS[angle] * 3, seed, PHOTO_LED_SEGMENTS[angle])
+    ? chooseSegments(videos, angle, PHOTO_LED_SEGMENTS[angle] * 5, seed, PHOTO_LED_SEGMENTS[angle], used)
     : [];
   const videoSec = segments.reduce((a, x) => a + x.durSec, 0);
   return {
@@ -602,6 +774,8 @@ function buildMedia(
     length: picked.length <= 10 && segments.length === 0 ? "short" : "full",
     estVideoSec: videoSec,
     estPhotoSec: Math.round((4.2 + Math.max(0, picked.length - 1) * 1.7) * 10) / 10,
+    photoHoldSec: null,
+    clipJoinSec: null,
   };
 }
 
@@ -612,7 +786,13 @@ function spreadIds(ids: string[], n: number, variant: number): string[] {
 }
 
 /** Build one job's plan for a listing, given what's already planned. */
-function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: string; forceLook?: StyleKey; bump?: number } = {}) {
+/** A number for a reel's place in time: its month and slot (and a re-plan bump), so every reel's segment seed differs. */
+function segmentSeed(period: string, slot: number, bump: number): number {
+  const [y, m] = period.split("-").map(Number);
+  return ((y * 12 + m) % 97) * 7 + slot * 13 + bump * 5;
+}
+
+function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: string; forceLook?: StyleKey; bump?: number; slot?: number } = {}) {
   const { listing, ordered, videos } = pack;
   const others = ctx.history.filter((j) => j.id !== opts.excludeJobId);
   const onListingEver = others.filter((j) => j.listing_id === listing.id);
@@ -665,12 +845,22 @@ function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: str
     look = opts.forceLook;
   } else {
     const pick = (avoid: StyleKey[]) => chooseLook(angle, { avoid, preferClips, videoLed: videoLedPossible });
-    const tiers: { avoid: StyleKey[]; needClips: boolean }[] = [
-      { avoid: uniq([...looksThisMonth, ...lastSameAngle, ...lastAll]), needClips: preferClips },
-      { avoid: uniq([...looksThisMonth, ...lastSameAngle]), needClips: preferClips },
-      { avoid: uniq([...looksThisMonth, ...lastSameAngle]), needClips: false },
-      { avoid: looksThisMonth, needClips: false },
-    ];
+    // Video-led: Classic is the fallback only (avoided in every tier but the
+    // last), and last month's looks in general aren't avoided — with four
+    // reels and four video-led looks that would push everything onto Classic.
+    const fallbackOnly: StyleKey[] = videoLedPossible ? ["classic"] : [];
+    const tiers: { avoid: StyleKey[]; needClips: boolean }[] = videoLedPossible
+      ? [
+          { avoid: uniq([...looksThisMonth, ...lastSameAngle, ...fallbackOnly]), needClips: true },
+          { avoid: uniq([...looksThisMonth, ...fallbackOnly]), needClips: true },
+          { avoid: looksThisMonth, needClips: true },
+        ]
+      : [
+          { avoid: uniq([...looksThisMonth, ...lastSameAngle, ...lastAll]), needClips: preferClips },
+          { avoid: uniq([...looksThisMonth, ...lastSameAngle]), needClips: preferClips },
+          { avoid: uniq([...looksThisMonth, ...lastSameAngle]), needClips: false },
+          { avoid: looksThisMonth, needClips: false },
+        ];
     look = chooseLook(angle, { avoid: [], preferClips, skip: looksThisMonth, videoLed: videoLedPossible });
     for (let t = 0; t < tiers.length; t++) {
       const k = pick(tiers[t].avoid);
@@ -680,8 +870,14 @@ function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: str
 
   // Segments: a different seed for every reel of the listing (its running
   // count), so the month's reels land on different moments of the footage.
-  const seed = onListingEver.length + (opts.bump ?? 0) * 5;
-  const media = buildMedia(videos, angle, look, picked.map((p) => p.id), seed, variant);
+  // Segments: seeded by month + slot, and kept off the footage this
+  // listing's other reels this month already use.
+  const seed = segmentSeed(ctx.period, opts.slot ?? onListingThisMonth.length + 1, opts.bump ?? 0);
+  const used = usedRanges(
+    onListingThisMonth.reduce((acc: ReelServiceSegment[], j) => acc.concat(j.settings?.segments ?? []), []),
+    videos,
+  );
+  const media = buildMedia(videos, angle, look, picked.map((p) => p.id), seed, variant, used, ctx.perListing ?? 4);
   const settings: ReelServiceSettings = {
     ...media,
     fit: "whole",
@@ -724,7 +920,7 @@ export async function planReelServiceMonth(
     const { data: hist } = await admin.from("reel_service_jobs")
       .select("id, broker_id, listing_id, period, slot, angle, look, status, settings")
       .in("listing_id", packs.map((p) => p.listing.id));
-    const ctx: PlanContext = { history: ((hist ?? []) as JobRow[]).slice(), period };
+    const ctx: PlanContext = { history: ((hist ?? []) as JobRow[]).slice(), period, perListing };
 
     for (const pack of packs) {
       result.listings++;
@@ -735,7 +931,7 @@ export async function planReelServiceMonth(
         let slot = 1;
         while (taken.indexOf(slot) >= 0) slot++;
         taken.push(slot);
-        const plan = planOne(pack, ctx);
+        const plan = planOne(pack, ctx, { slot });
         const row = {
           broker_id: sub.broker_id,
           listing_id: pack.listing.id,
@@ -782,8 +978,11 @@ export async function replanUnmade(admin: SupabaseClient, period: string, listin
 }
 
 /**
- * Re-plan one job: a different angle/photo variant and (unless `look` is
- * given) a fresh look. Delivered jobs are left alone.
+ * Re-plan one job: a different angle/photo variant, fresh footage (kept off
+ * the listing's other reels this month) and, unless `look` is given, a fresh
+ * look. Admin testing (Oct 6): a DELIVERED job may be re-planned too — it goes
+ * back to 'planned' (off the broker's Your Reels page until it is made and
+ * delivered again). A job that is rendering right now is left alone.
  */
 export async function replanReelServiceJob(
   admin: SupabaseClient,
@@ -793,15 +992,19 @@ export async function replanReelServiceJob(
   const { data: job } = await admin.from("reel_service_jobs")
     .select("id, broker_id, listing_id, period, slot, angle, look, status, settings").eq("id", jobId).maybeSingle();
   if (!job) return { ok: false, error: "Job not found." };
-  if (job.status === "delivered") return { ok: false, error: "Already delivered." };
+  if (job.status === "rendering") return { ok: false, error: "It\u2019s rendering \u2014 wait for it to finish (or fail), then re-plan." };
   const { data: hist } = await admin.from("reel_service_jobs")
     .select("id, broker_id, listing_id, period, slot, angle, look, status, settings").eq("listing_id", job.listing_id);
   const packs = await loadListingPacks(admin, job.broker_id);
   const pack = packs.find((p) => p.listing.id === job.listing_id);
   if (!pack) return { ok: false, error: "This listing is no longer active or has too few photos to plan." };
-  const ctx: PlanContext = { history: (hist ?? []) as JobRow[], period: job.period };
+  const ctx: PlanContext = {
+    history: (hist ?? []) as JobRow[],
+    period: job.period,
+    perListing: ((hist ?? []) as JobRow[]).filter((j) => j.period === job.period).length,
+  };
   const bump = 1 + Math.floor(Math.random() * 5);
-  let plan = planOne(pack, ctx, { excludeJobId: job.id, forceLook: opts.look, bump });
+  let plan = planOne(pack, ctx, { excludeJobId: job.id, forceLook: opts.look, bump, slot: job.slot });
   // A re-plan should change the look too, unless one was asked for.
   if (!opts.look && plan.look === job.look) {
     const taken = ((hist ?? []) as JobRow[])
@@ -810,7 +1013,7 @@ export async function replanReelServiceJob(
       .concat([job.look as StyleKey]);
     const videoLed = pack.videos.length > 0 && footageOf(pack.videos).effectiveSec >= VIDEO_LED_MIN_FOOTAGE;
     const other = chooseLook(plan.angle as ReelServiceAngle, { avoid: taken, preferClips: pack.videos.length > 0, skip: [job.look as StyleKey], videoLed });
-    plan = planOne(pack, ctx, { excludeJobId: job.id, forceLook: other, bump });
+    plan = planOne(pack, ctx, { excludeJobId: job.id, forceLook: other, bump, slot: job.slot });
   }
   const { error } = await admin.from("reel_service_jobs").update({
     angle: plan.angle,
@@ -819,31 +1022,82 @@ export async function replanReelServiceJob(
     caption: plan.caption,
     status: "planned",
     error: null,
+    delivered_at: null,
   }).eq("id", job.id);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
 
 /**
- * Change only the look. The media is rebuilt for it (a video-led reel needs a
- * clip-playing, full-frame look; a look without clips gets none), keeping the
- * job's angle, photos and segment seed.
+ * Re-plan EVERY reel of one listing for a month, in slot order, as if the
+ * month were being planned from scratch (slot 1 is the launch Full tour if
+ * the listing has no reels in other months; four angles, four looks, no shared
+ * footage). Delivered ones included — they go back to 'planned'. Reels that
+ * are rendering right now are skipped. For testing and for a listing whose
+ * plan went wrong.
+ */
+export async function replanListingMonth(
+  admin: SupabaseClient,
+  period: string,
+  listingId: string,
+): Promise<{ ok: true; replanned: number; skipped: number } | { ok: false; error: string }> {
+  const { data: rows } = await admin.from("reel_service_jobs")
+    .select("id, broker_id, listing_id, period, slot, angle, look, status, settings").eq("listing_id", listingId);
+  const all = (rows ?? []) as JobRow[];
+  const month = all.filter((j) => j.period === period).sort((a, b) => a.slot - b.slot);
+  if (month.length === 0) return { ok: false, error: "No reels planned for this listing this month." };
+  const packs = await loadListingPacks(admin, month[0].broker_id);
+  const pack = packs.find((p) => p.listing.id === listingId);
+  if (!pack) return { ok: false, error: "This listing is no longer active or has too few photos to plan." };
+  // Start from the other months only; add each re-planned reel as we go.
+  const ctx: PlanContext = { history: all.filter((j) => j.period !== period || j.status === "rendering"), period, perListing: month.length };
+  let replanned = 0, skipped = 0;
+  for (const job of month) {
+    if (job.status === "rendering") { skipped++; continue; }
+    const plan = planOne(pack, ctx, { slot: job.slot });
+    const { error } = await admin.from("reel_service_jobs").update({
+      angle: plan.angle,
+      look: plan.look,
+      settings: plan.settings,
+      caption: plan.caption,
+      status: "planned",
+      error: null,
+      delivered_at: null,
+    }).eq("id", job.id);
+    if (error) return { ok: false, error: error.message };
+    ctx.history.push({ ...job, angle: plan.angle, look: plan.look, settings: plan.settings, status: "planned" });
+    replanned++;
+  }
+  return { ok: true, replanned, skipped };
+}
+
+/**
+ * Change only the look. The media is rebuilt for it (a video-led reel needs
+ * one of VIDEO_LED_LOOKS; a look without clips gets none), keeping the job's
+ * angle and photos, and still kept off the listing's other reels' footage.
  */
 export async function setReelServiceJobLook(admin: SupabaseClient, jobId: string, look: StyleKey): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!REEL_STYLES[look]) return { ok: false, error: "Unknown look." };
-  const { data: job } = await admin.from("reel_service_jobs").select("id, listing_id, angle, status, settings").eq("id", jobId).maybeSingle();
+  const { data: job } = await admin.from("reel_service_jobs").select("id, listing_id, period, slot, angle, status, settings").eq("id", jobId).maybeSingle();
   if (!job) return { ok: false, error: "Job not found." };
-  if (job.status === "delivered") return { ok: false, error: "Already delivered." };
+  if (job.status === "delivered") return { ok: false, error: "Already delivered \u2014 Re-plan it first." };
   const settings = (job.settings ?? {}) as ReelServiceSettings;
-  const { data: vids } = await admin.from("videos").select(VIDEO_SELECT).eq("listing_id", job.listing_id).order("display_order");
+  const [{ data: vids }, { data: siblings }] = await Promise.all([
+    admin.from("videos").select(VIDEO_SELECT).eq("listing_id", job.listing_id).order("display_order"),
+    admin.from("reel_service_jobs").select("id, settings").eq("listing_id", job.listing_id).eq("period", job.period).neq("id", job.id),
+  ]);
   const videos = (vids ?? []) as VideoRow[];
   if (settings.videoLed && !lookIsVideoLed(look)) {
-    return { ok: false, error: `${REEL_STYLES[look].name} can\u2019t lead with video (it plays no clips full frame). Pick ${VIDEO_LED_LOOKS.map((k) => REEL_STYLES[k].name).join(", ")}.` };
+    return { ok: false, error: `${REEL_STYLES[look].name} isn\u2019t used for video-led reels. Pick ${VIDEO_LED_LOOKS.map((k) => REEL_STYLES[k].name).join(", ")}.` };
   }
+  const used = usedRanges(
+    ((siblings ?? []) as { settings: ReelServiceSettings | null }[]).reduce((acc: ReelServiceSegment[], j) => acc.concat(j.settings?.segments ?? []), []),
+    videos,
+  );
   // The full photo pick for the angle isn't stored for video-led jobs (only
   // the beats), so the photos stay as they are; segments are rebuilt.
-  const seed = (settings.variant ?? 0) * 7 + 3;
-  const media = buildMedia(videos, job.angle as ReelServiceAngle, look, settings.photoIds ?? [], seed, settings.variant ?? 0);
+  const seed = segmentSeed(job.period, job.slot, 0);
+  const media = buildMedia(videos, job.angle as ReelServiceAngle, look, settings.photoIds ?? [], seed, settings.variant ?? 0, used);
   const next: ReelServiceSettings = { ...settings, ...media };
   const { error } = await admin.from("reel_service_jobs").update({ look, settings: next, status: "planned", error: null }).eq("id", jobId);
   if (error) return { ok: false, error: error.message };

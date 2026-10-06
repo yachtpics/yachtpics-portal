@@ -25,7 +25,11 @@ import type { InputVideoTrack, WrappedCanvas, Input, CanvasSink } from "mediabun
 /** Where a clip's bytes come from: a signed URL (R2) or a local file. */
 export type ClipSource = { url: string } | { blob: Blob };
 
-export type ClipLength = 2 | 3 | 4;
+/**
+ * Seconds of a clip. The picker offers 2, 3 and 4 (CLIP_LENGTHS); 5 and 6 are
+ * only used by the admin Reel Service's video-led renders (Oct 6).
+ */
+export type ClipLength = 2 | 3 | 4 | 5 | 6;
 export const CLIP_LENGTHS: ClipLength[] = [2, 3, 4];
 export const CLIP_DEFAULT_LENGTH: ClipLength = 3;
 /** Clips per reel. A phone gets fewer — each clip holds a decoder open. */

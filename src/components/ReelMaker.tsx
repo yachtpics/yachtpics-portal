@@ -328,6 +328,13 @@ export type ReelAutoConfig = {
    * ahead of it. The interactive Reel Maker always keeps a photo first.
    */
   videoFirst?: boolean;
+  /** Video-led: every photo beat holds exactly this long (seconds). */
+  photoHold?: number;
+  /**
+   * Video-led: joins into, out of and between clips become a smooth crossfade
+   * of this length (seconds) — whatever the look would have dealt there.
+   */
+  clipJoin?: number;
 };
 export type ReelAutoProgress = { phase: "loading" | "depth" | "rendering"; pct: number };
 export type { StyleKey as ReelStyleKey };
@@ -958,9 +965,9 @@ export default function ReelMaker({
     // seen"), so the film version gets neither the flash burst nor the flash
     // cuts that Energy deals: same punch, no strobe.
     const isStack = look.layout === "stack";
-    return planSingles(n, {
+    const single = planSingles(n, {
       titleHold: s.titleHold * scale,
-      hold: s.hold * scale,
+      hold: auto?.photoHold ?? s.hold * scale,
       endHold,
       dissolve: fadeFor(format, styleKey),
       burst: look.hook === "burst" && !isStack,
@@ -970,9 +977,22 @@ export default function ReelMaker({
       seed,
       fixedHolds: clipLens,
     });
+    // Reel Service video-led renders: soft joins around video — a smooth
+    // crossfade of auto.clipJoin into, out of and between clips.
+    const clipJoin = auto?.clipJoin;
+    if (!clipJoin) return single;
+    const isClipUnit = (u: (typeof single.units)[number]) => u.kind === "photo" && !!selectedPhotos[u.index]?.clip;
+    const transitions = single.transitions.map((tr, k) => {
+      const a = single.units[k], b = single.units[k + 1];
+      if (!a || !b || (!isClipUnit(a) && !isClipUnit(b))) return tr;
+      return { type: "dissolve" as const, dur: clipJoin, dir: tr.dir, timing: "smooth" as const };
+    });
+    const flashes: number[] = [];
+    transitions.forEach((tr, k) => { if (tr.type === "flash") flashes.push(single.starts[k + 1]); });
+    return { ...single, transitions, flashes };
     // `s` carries the reel's hold — derived from the length's time budget and
     // the photo count — so the total redraws when Length or the selection changes.
-  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens]);
+  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   /**

@@ -298,7 +298,20 @@ export default function ReelServiceBoard({ period, subs, jobs, videos }: { perio
                     {g.boat}
                     <FootageBadge videos={videos.filter((v) => v.listing_id === g.listingId)} />
                   </p>
-                  <p className="text-xs text-ink-500 tabular-nums">
+                  <p className="text-xs text-ink-500 tabular-nums flex items-center gap-3 flex-wrap">
+                    <button
+                      onClick={() => {
+                        const delivered = g.jobs.filter((j) => j.status === "delivered").length;
+                        if (!window.confirm(`Re-plan all ${g.jobs.length} reels of ${g.boat} for ${periodLabel(period)}?${delivered ? ` ${delivered} delivered reel${delivered === 1 ? "" : "s"} will go back to planned (off the broker’s page until made and delivered again).` : ""}`)) return;
+                        void (async () => {
+                          const d = await call("replan", "/api/admin/reel-service", { action: "replan_listing", period, listingId: g.listingId });
+                          if (d) setMsg(`Re-planned ${d.replanned} reel${d.replanned === 1 ? "" : "s"} of ${g.boat}${d.skipped ? ` (${d.skipped} rendering, left alone)` : ""}.`);
+                        })();
+                      }}
+                      disabled={!!busy || rendering}
+                      className="font-semibold text-accent-700 hover:underline disabled:opacity-40">
+                      Re-plan all
+                    </button>
                     {g.jobs.filter((j) => j.status === "ready" || j.status === "delivered").length} of {g.jobs.length} made
                     {" · "}{g.jobs.filter((j) => j.status === "delivered").length} delivered
                   </p>
@@ -345,13 +358,15 @@ export default function ReelServiceBoard({ period, subs, jobs, videos }: { perio
                             {j.status === "ready" ? "Make again" : "Make"}
                           </button>
                         )}
-                        {j.status !== "delivered" && (
-                          <button onClick={() => void call("replan", `/api/admin/reel-service/jobs/${j.id}`, { action: "replan" })}
-                            disabled={isCurrent || waiting || !!busy}
-                            className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 disabled:opacity-40">
-                            Re-plan
-                          </button>
-                        )}
+                        <button
+                          onClick={() => {
+                            if (j.status === "delivered" && !window.confirm("This reel was delivered. Re-planning takes it off the broker’s Your Reels page until you make and deliver it again. Re-plan?")) return;
+                            void call("replan", `/api/admin/reel-service/jobs/${j.id}`, { action: "replan" });
+                          }}
+                          disabled={isCurrent || waiting || !!busy || j.status === "rendering"}
+                          className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 disabled:opacity-40">
+                          Re-plan
+                        </button>
                         {j.video_path && (
                           <button onClick={() => void preview(j.id)} className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700">
                             Preview
