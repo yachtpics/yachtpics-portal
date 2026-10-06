@@ -1,5 +1,15 @@
 # Where we are — October 6, 2026
 
+## Oct 6 (latest) — 6th music mood "Lift" — NOT PUSHED (parent will push), NOT BROWSER-TESTED
+
+- **What:** a new mood in `src/lib/reelMusic.ts` in the broad style of a second track Charlie likes — traits only (no melody, chords or hook copied). Bright, building, uplifting: **major key only** (seeded), **134–138 BPM** 4-on-the-floor. Picker label **"Lift"**; not the Auto default for any look.
+- **Arc (`composeLiftLayers`):** intro — the shared pad plus a plucky 8th-note arpeggio in the mids (root D4–C♯5, ~300–600 Hz) behind a closed low-pass (1.3 kHz), with a soft kick pulse; **riser over the 2–3 bars before the drop** — the pluck filter opens to 7 kHz, a noise sweep and a light clap roll (8ths → 16ths) build, delay opens up; **the drop lands exactly on a cut**: the cut nearest 45% of the reel (preferring 40–50%) is chosen and the beat grid is turned so it's a downbeat, with a chord change there onto the home chord. Drop — steady kick, off-beat open hats, claps on 2 and 4, a crash, wide detuned chord stabs, the pluck up front with 16th pickups and an occasional octave sparkle, and a moderate clean sine/triangle bass on the off-beats; **bass, chords and pad duck under every kick** (sidechain-style). End card — kick, a wide tonic chord and a pluck flourish, then the shared fade.
+- **Level:** K-weighted to −14 LUFS like Groove, with a **−1.6 dBFS sample ceiling for Lift only** so its true peak stays under −1 dBTP. 30 s sample (cuts at 4.5/9.3/14.1/18.6/23.4, end card 27 s; drop on 14.1 s): **−14.3 LUFS, true peak −1.13 dBTP** (sample peak −1.60); seed 2: −14.3 LUFS, −1.18 dBTP. Intro→drop RMS ×1.83 (seed 2 ×1.94); spectral centroid ~0.6 kHz → ~1.8 kHz. Note rate by construction: intro 8ths ≈ 4.5/s; drop ≈ 5.6/s plus the drums. Sample: `$HOME/lift_sample.wav` on the Cowork VM (seed 1, outside the repo).
+- **Existing moods bit-identical** (Calm, Cinematic, Elegant, Upbeat, Groove fingerprints unchanged).
+- **UI:** "Lift" chip in the Reel page Music picker and in the Reel Service board menu; the picker now shows a one-line description of the chosen mood (`MUSIC_BLURB`, e.g. "Lift — Bright, building, uplifting.") and the same text as a hover title on each chip.
+- **Help:** Reel — music step lists Lift; PDF rebuilt. (Brokerage help doesn't mention music — no change.)
+- **Not verified:** listening quality (review the sample), browser rendering.
+
 ## Oct 6 (later) — 5th music mood "Groove" — NOT PUSHED (parent will push), NOT BROWSER-TESTED
 
 - **What:** a new mood in `src/lib/reelMusic.ts`, "similar in feel" to a track Charlie likes — built from broad style traits only (no melody, chords or hook copied; nothing was transcribed). Modern melodic hip-hop / trap-lite, tasteful: **minor key only** (seeded), **106–110 BPM** (fitted to the cuts like the others; 120 on Stack looks), half-time bounce.

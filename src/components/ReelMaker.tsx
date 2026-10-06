@@ -28,7 +28,7 @@ import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MA
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
-import { composeReelMusic, isMusicChoice, moodForLook, musicCanCompose, nextMusicSeed, resolveMood, seedFromString, MUSIC_CHOICES, MUSIC_LABEL, MUSIC_SAMPLE_RATE, type ComposeOptions, type MusicChoice, type MusicMood } from "@/lib/reelMusic";
+import { composeReelMusic, isMusicChoice, moodForLook, musicCanCompose, nextMusicSeed, resolveMood, seedFromString, MUSIC_BLURB, MUSIC_CHOICES, MUSIC_LABEL, MUSIC_SAMPLE_RATE, type ComposeOptions, type MusicChoice, type MusicMood } from "@/lib/reelMusic";
 import {
   CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader, createClipInputPool,
   type ClipSource, type ClipLength, type ClipReader,
@@ -3458,7 +3458,8 @@ export default function ReelMaker({
           <p className="label-caps text-ink-500 mb-2">Music</p>
           <div className="flex flex-wrap gap-2">
             {MUSIC_CHOICES.map((m) => (
-              <button key={m} onClick={() => chooseMusic(m)} disabled={busy} className={chip(musicChoice === m)}>
+              <button key={m} onClick={() => chooseMusic(m)} disabled={busy} className={chip(musicChoice === m)}
+                title={m === "off" ? "Silent — add a sound in Instagram" : MUSIC_BLURB[m === "auto" ? moodForLook(styleKey) : m]}>
                 {m === "auto" ? `Auto \u00b7 ${MUSIC_LABEL[moodForLook(styleKey)]}` : MUSIC_LABEL[m]}
               </button>
             ))}
@@ -3481,7 +3482,11 @@ export default function ReelMaker({
                   Try another
                 </button>
               </div>
-              <p className="text-xs text-ink-400 mt-1.5">Original YachtPics music, made for this reel and timed to its cuts &mdash; free to post anywhere, no copyright claims.</p>
+              {(() => {
+                const shown = resolveMood(musicChoice, styleKey);
+                return shown ? <p className="text-xs text-ink-600 mt-1.5">{MUSIC_LABEL[shown]} &mdash; {MUSIC_BLURB[shown]}.</p> : null;
+              })()}
+              <p className="text-xs text-ink-400 mt-1">Original YachtPics music, made for this reel and timed to its cuts &mdash; free to post anywhere, no copyright claims.</p>
             </>
           )}
           {musicNote && <p className="text-xs text-ink-600 mt-1.5">{musicNote}</p>}
