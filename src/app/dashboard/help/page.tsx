@@ -24,6 +24,7 @@ const sections = [
       "Signing in later: use your email and password, or click 'Email me a sign-in link' on the login page and we'll send a one-click link — no password to remember.",
       "If a reset or sign-in link says it's expired, use the Resend button right on that screen to get a fresh one.",
       "After signing in you land on My Listings, with your newest boat spotlighted at the top.",
+      "Install the portal like an app: on an iPhone, open it in Safari, tap Share, then Add to Home Screen. On Android or a computer, use the Install prompt the portal shows. You get an icon that opens straight to your listings.",
     ],
   },
   {
@@ -43,12 +44,14 @@ const sections = [
       "Create a new listing and upload photos yourself, or listings appear automatically when YachtPics delivers. Click any listing to open it.",
       "Drag and drop photos to reorder them. Click a photo to open the full-screen lightbox.",
       "Click 'Sort to standard order' to rewrite the order into the standard walk-through — outside, up top, cockpit, engine room, then the interior. Drag from there to fine-tune.",
-      "Use categories (Profiles, Foredeck, Cockpit, Skylounge, Beach Club, Engine Room, staterooms and more) to organize photos — clients see these labels in the slideshow.",
+      "Use categories (Profiles, Foredeck, Cockpit, Skylounge, Beach Club, Engine Room — or Port and Starboard Engine Room — Electrical Panel, staterooms and more) to organize photos — clients see these labels in the slideshow.",
       "Toggle the eye icon on any photo to hide it. Hidden photos stay on your listing but are left out of both the client slideshow and client downloads.",
+      "On a phone, the download, hide and delete buttons sit in a small row under each photo, so nothing covers the picture. The ★ and the drag handle stay in the photo's top corners.",
+      "The first time you download, you'll be asked to accept the YachtPics Photo & Video License: use our photos and videos to advertise that boat, anywhere, for as long as it's listed — but don't pass the files on to other brokers or third parties. Photos you uploaded yourself aren't covered by it.",
       "Switch to Select mode to bulk-download, bulk-hide, bulk-delete, or bulk-assign categories to multiple photos at once.",
       "In Select mode, choose photos then pick a category from the dropdown and click Apply to update them all at once.",
       "When uploading photos from a mobile device, a prompt will appear if categories can't be detected automatically — just pick the category before uploading.",
-      "Flag a photo as a File Missing warning means the original file is gone — delete it and re-upload.",
+      "A File Missing warning on a photo means the original file is gone — delete it and re-upload.",
     ],
   },
   {
@@ -99,6 +102,8 @@ const sections = [
       "Photo downloads are always free — no subscription required, even after your trial ends.",
       "A paid plan unlocks the tools: uploading photos and videos, publishing slideshows, Send to Client, spec sheets, and social posts.",
       "All plans include a 30-day free trial. Cancel anytime from the Billing page.",
+      "Reels without a plan: each listing includes two reels. A reel counts once you take it off the page — download it, send it to your phone, save it to your camera roll, or add it to the listing. Making and previewing never count, and taking the same reel twice is still one. Subscribers make as many as they like.",
+      "Office plan: a brokerage admin can cover the whole brokerage with one plan, under Brokerage → Billing. While it's active every broker there is unlocked automatically — no plan of their own needed — and their assistants are included.",
     ],
   },
   {
@@ -106,11 +111,11 @@ const sections = [
     title: "Working with Assistants",
     steps: [
       "Assistants can manage listings, upload photos and videos, and send slideshows on your behalf.",
-      "To add an assistant, go to My Profile → Assistants, enter their email, and click Add.",
+      "To add an assistant, open Team in the sidebar, click Invite Assistant, enter their email and send. (My Profile → Assistants works too.)",
       "New assistants will receive an invite email and be linked to your account automatically.",
       "Assistants see all your listings but cannot access billing or change your account settings.",
       "Assistants get their own My Brokers page listing every broker they work for, so they can jump straight into the right boat.",
-      "To remove an assistant, go to My Profile → Assistants and click Remove next to their name.",
+      "To remove an assistant, open Team (or My Profile → Assistants) and click Remove next to their name.",
     ],
   },
   {
@@ -132,11 +137,13 @@ const sections = [
       "Flyer cover: next to the photos, switch between Fit (show all) and Fill (crop) to control how that cover sits on your spec sheet — Fit shows the whole photo, Fill fills the space edge-to-edge.",
       "Spec Sheet: open a listing and click Spec Sheet for a clean, branded, printable one-pager with the specs, your logo, and a QR code — ready to print or email.",
       "Social Post: click Social Post to turn any photo into a branded, post-ready image with a caption and hashtags written for you. Download and post to Instagram or Facebook.",
-      "Reel: click Reel to turn the listing's photos into a finished video — a vertical Reel for Instagram and Facebook, or a widescreen Film you can add to the listing and send to a buyer. It renders in your browser in under a minute; reels are silent so you can add trending audio when you post.",
-      "Reel — pick a look: six styles, each a complete treatment. Editorial (serif caps on a soft gradient, the brochure look), Cinematic (letterboxed and slow, nothing over the photograph), Gallery (warm off-white with the photo inset), Classic (warm tones, title case, set lower-left — suits sail and classics), Energy (hard cuts and a quick punch-in, opening on a flash burst of three photos — for centre consoles and sportfish), Stack (three bands filling the frame, trading on the beat, with full-frame breaks between — the fast-boat reel).",
+      "Reel: click Reel to turn the listing's photos into a finished video — a vertical Reel for Instagram and Facebook, or a widescreen Film you can add to the listing and send to a buyer. It renders in your browser in under a minute; reels are silent so you can add trending audio when you post. Without a plan, each listing includes two reels (see Billing & Subscription).",
+      "Reel — pick a look: each is a complete treatment. Editorial (serif caps on a soft gradient, the brochure look), Cinematic (letterboxed and slow, nothing over the photograph), Gallery (warm off-white with the photo inset), Classic (warm tones, title case, set lower-left — suits sail and classics), Energy (whips, wipes and zoom-throughs, a different cut every time — for center consoles and sportfish), Stack (three bands trading on the beat, with full-frame breaks — for go-fasts), Marquee (the hero on top, the details in the middle, the rest of the boat below, one photo at a time) and Marquee Still (the same, with the cover held still at the top). Stack and the two Marquee looks are for vertical reels; the widescreen Film offers the others.",
+      "Reel — Marquee top photos: on a Marquee look each photo you pick shows Top or Bottom. Tap a photo's badge to pin it to the top band (up to four; one on Marquee Still), or press Back to automatic.",
       "Reel — your colours: set an accent (the fine lines and lead-in) and a background (the bars, end card and page behind the photo) to match your brand, or press Match my logo to pull the colour straight out of your logo. It's remembered for every listing; 'Back to the look's colours' resets it.",
       "Reel — options: choose the photos and their order, put the price and location on or off, show the whole photo or fill the frame, and switch on room labels to name each space on screen.",
-      "Reel — length: pick Full (about 40 seconds, up to 18 photos) or Short (about 20 seconds, up to 10) — Full is the default, because reels between 30 and 60 seconds reach the furthest, and Short suits a quick teaser. Add a track when you post — reels with audio reach further than silent ones, and Instagram's own library is licensed for you.",
+      "Reel — length: pick Full (about 40 seconds, up to 27 photos), Long (about 55 seconds, up to 40) or Short (about 20 seconds, up to 12) — Full is the default, because reels between 30 and 60 seconds reach the furthest, and Short suits a quick teaser. Add a track when you post — reels with audio reach further than silent ones, and Instagram's own library is licensed for you.",
+      "Reel — video clips: if the listing has videos, tap one under Video clips, slide to where the clip should start, pick 2, 3 or 4 seconds, press Play clip to check it, then Add to reel. Up to three clips per reel (two when you make it on a phone). Clips play silent and take a place in the order like a photo. Stack builds from photographs only — pick another look to use clips.",
       "Reel — Write with AI: reads the photos you actually picked, in order, then writes a headline for the opening frame and a caption with hashtags to post alongside it. Both are yours to edit; the headline only goes on the film if you tick it.",
       "Reel — Send to my phone: once the reel is made, this puts a QR code on screen. Point your phone's camera at it, tap, and the reel saves to your camera roll ready to post with your own audio. The same link is emailed to you as a backup. The pickup link works for 24 hours; the reel you saved is yours to keep, and you can make it again from the listing any time.",
       "Label photos: when you upload photos the portal can't place from the file name, it labels them for you (Foredeck, Salon, Master Stateroom…) so they drop straight into the walk-through order. The Label photos button does the same for anything still marked Other.",
@@ -164,7 +171,8 @@ const sections = [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
       "A rotating strip of featured boats also appears on your dashboard — tap it to open the full showcase gallery.",
       "YachtPics curates which boats appear. If a client is after a certain type of boat, browse here and reach the listing broker directly using the phone and email on each card.",
-      "Keeping a boat quiet? Open the listing and check 'Keep this a pocket listing' to hide it from the showcase — even if we've featured it. Nothing else changes; your photos, downloads, and client sharing are unaffected.",
+      "yachtpics.com: selected boats we photograph for you also get their own page on yachtpics.com — full gallery, key specs, and buyers contact you directly. YachtPics chooses which boats appear; there's nothing to set up and no cost.",
+      "Keeping a boat quiet? Open the listing and check 'Keep this a pocket listing' to hide it from the showcase and take it off yachtpics.com — even if we've featured it. Nothing else changes; your photos, downloads, and client sharing are unaffected.",
     ],
   },
   {
@@ -175,6 +183,14 @@ const sections = [
       "Topics include photo order and curation, working with assistants, installing the portal as an app on your phone, magic-link sign-in, sharing across your office, and co-brokering.",
       "We email a new tip each week — every one lands on this page, so you can read ahead or catch up anytime.",
       "Each tip ends with a button that takes you straight to the part of the portal it's about.",
+    ],
+  },
+  {
+    num: "15",
+    title: "Industry News",
+    steps: [
+      "News (in the sidebar) gathers what the yachting trade press is reporting, every morning, kept short.",
+      "Every headline links straight to the publication that wrote it.",
     ],
   },
 ];
@@ -202,6 +218,8 @@ const quickRef = [
   ["Change how a reel looks", "My Listings → listing → Reel → Look"],
   ["Make a reel longer or shorter", "My Listings → listing → Reel → Length"],
   ["Name each room on screen in a reel", "My Listings → listing → Reel → Room labels"],
+  ["Add a video clip to a reel", "My Listings → listing → Reel → Video clips"],
+  ["Choose a Marquee reel's top photos", "My Listings → listing → Reel → Marquee → tap Top / Bottom"],
   ["Write a caption from the reel's photos", "My Listings → listing → Reel → Write with AI"],
   ["Get a reel onto your phone to post", "My Listings → listing → Reel → Send to my phone"],
   ["Label photos automatically", "My Listings → listing → Label photos"],
@@ -217,13 +235,16 @@ const quickRef = [
   ["Assistants: see all your brokers", "Sidebar → My Brokers"],
   ["Browse tips & tricks", "Sidebar → Tips"],
   ["Upload your logo", "My Profile → Company Logo"],
-  ["Add or remove an assistant", "My Profile → Assistants"],
+  ["Add or remove an assistant", "Sidebar → Team (or My Profile → Assistants)"],
   ["Start a free trial", "Billing → choose a plan → Start free trial"],
+  ["Cover your whole brokerage with one plan", "Sidebar → Brokerage → Billing (brokerage admins)"],
   ["View shoot history & invoices", "Shoots & Invoices"],
   ["Change your login email", "My Profile → Change Login Email"],
   ["Manage billing & download receipts", "Billing → Manage billing & invoices"],
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
-  ["Keep a boat out of the showcase", "My Listings → listing → 'Keep this a pocket listing'"],
+  ["Keep a boat out of the showcase and off yachtpics.com", "My Listings → listing → 'Keep this a pocket listing'"],
+  ["Install the portal on your phone", "Open it in your phone's browser → Add to Home Screen"],
+  ["Read the industry news", "Sidebar → News"],
   ["Sign out", "Sidebar → Sign out (bottom-left)"],
 ];
 
@@ -266,6 +287,57 @@ async function depthLooksOpenForViewer(): Promise<boolean> {
   }
 }
 
+/**
+ * "Your Reels" — Reel Service clients only. Shown to the same people who see
+ * the "Your Reels" sidebar item (src/app/dashboard/layout.tsx): a broker who is
+ * enrolled or has delivered reels, or an assistant of one. Kept outside
+ * `sections` / `quickRef` on purpose, so the PDF guide (scripts/
+ * build_user_guide.py reads those two arrays) never lists it for everyone.
+ */
+const REEL_SERVICE_SECTION = {
+  num: "16",
+  title: "Your Reels",
+  steps: [
+    "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you from your current listings, newest first. We email you when new ones are ready.",
+    "Watch any reel right on the page, then Download it — or on a phone, tap Save or share to send it straight to Instagram or your camera roll.",
+    "Each reel comes with a caption: tap Copy and paste it when you post. Reels are silent on purpose — add a trending track when you post.",
+    "Your assistants see Your Reels too, and get the same emails.",
+  ],
+};
+const REEL_SERVICE_QUICKREF = ["Watch and download reels made for you", "Sidebar → Your Reels"];
+
+/**
+ * Whether the viewer sees "Your Reels" — the same test as the dashboard
+ * layout. Any failure (e.g. the tables not there) hides the section.
+ */
+async function reelServiceForViewer(): Promise<boolean> {
+  try {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return false;
+    const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+    const role = me?.role ?? null;
+    if (role !== "broker" && role !== "assistant") return false;
+    const svc = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    let brokerIds: string[] = [user.id];
+    if (role === "assistant") {
+      const { data: links } = await svc.from("broker_assistants").select("broker_id").eq("assistant_id", user.id);
+      brokerIds = ((links ?? []) as { broker_id: string }[]).map((l) => l.broker_id);
+    }
+    if (brokerIds.length === 0) return false;
+    const [{ count: subs }, { count: delivered }] = await Promise.all([
+      svc.from("reel_service_subscriptions").select("broker_id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("enabled", true),
+      svc.from("reel_service_jobs").select("id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("status", "delivered"),
+    ]);
+    return (subs ?? 0) > 0 || (delivered ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 function sectionsNow(depthOpen: boolean) {
   if (!depthOpen) return sections;
   return sections.map((s) => {
@@ -278,7 +350,9 @@ function sectionsNow(depthOpen: boolean) {
 }
 
 export default async function HelpPage() {
-  const shown = sectionsNow(await depthLooksOpenForViewer());
+  const [depthOpen, reelService] = await Promise.all([depthLooksOpenForViewer(), reelServiceForViewer()]);
+  const shown = reelService ? sectionsNow(depthOpen).concat([REEL_SERVICE_SECTION]) : sectionsNow(depthOpen);
+  const quickRows = reelService ? quickRef.concat([REEL_SERVICE_QUICKREF]) : quickRef;
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
 
@@ -336,7 +410,7 @@ export default async function HelpPage() {
         </div>
         <table className="w-full text-sm">
           <tbody className="divide-y divide-hairline">
-            {quickRef.map(([task, where], i) => (
+            {quickRows.map(([task, where], i) => (
               <tr key={i} className="hover:bg-ink-50 transition-colors duration-fast">
                 <td className="px-6 py-3 text-ink-700 font-medium text-xs w-1/2">{task}</td>
                 <td className="px-6 py-3 text-ink-500 text-xs">{where}</td>

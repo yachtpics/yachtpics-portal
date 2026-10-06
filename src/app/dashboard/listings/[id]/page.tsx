@@ -1391,7 +1391,7 @@ export default function BrokerListingPage() {
         <span className="text-sm text-ink-700">
           <span className="font-medium text-ink-900">Keep this a pocket listing</span>
           <span className="block text-xs text-ink-500 mt-0.5">
-            Hide this boat from the portal-wide <span className="font-medium">Recently Photographed</span> showcase, even if YachtPics features it. Nothing else about your listing changes.
+            Hide this boat from the portal-wide <span className="font-medium">Recently Photographed</span> showcase and keep it off yachtpics.com, even if YachtPics features it. Nothing else about your listing changes.
           </span>
         </span>
       </label>

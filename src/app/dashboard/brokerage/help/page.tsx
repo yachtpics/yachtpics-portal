@@ -74,6 +74,16 @@ const sections = [
       "Brokers can download, send, and build slideshows from shared boats just like their own.",
     ],
   },
+  {
+    num: "08",
+    title: "The Office Plan",
+    steps: [
+      "One plan covers your whole brokerage location — your brokers and all of their assistants — instead of each broker paying for their own.",
+      "Billing lives under Brokerage → Billing. Start the Office plan there; the same page shows its status, the renewal date, and how many brokers it covers.",
+      "While it's active every broker in your brokerage is unlocked automatically — no plan of their own needed — and your shared inventory is included.",
+      "The plan covers a set number of brokers per location. If you go over, the page says so — reach out to YachtPics to add seats.",
+    ],
+  },
 ];
 
 const quickRef = [
@@ -87,6 +97,7 @@ const quickRef = [
   ["See a broker's boats", "My Listings (you see every broker's boats)"],
   ["Remove a duplicate or old boat", "Open the boat → Delete"],
   ["Change your password", "My Profile → Change Password"],
+  ["Start or manage the Office plan", "Brokerage → Billing"],
 ];
 
 export default async function BrokerageHelpPage() {

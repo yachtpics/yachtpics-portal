@@ -4,6 +4,39 @@
 > handoff note — what just shipped, what's waiting to be pushed, and which
 > threads are still open. Keep it current when you finish something notable.
 
+## Conventions
+
+- `docs/where-we-are.md` is the hand-off note — read it first, keep it updated
+  when you finish something.
+- Charlie uses **Windows PowerShell**: never use `&&` in instructions; give one
+  command per line. He's new to dev tooling, so give exact steps (which
+  folder, what to type, what he should see).
+- `tsconfig` has no `target` (ES5): no spreading a `Set`/`Map` and no
+  `for..of` over them — use `Array.from(...)`.
+- Every admin page calls `requireAdminPage()`; every `/api/admin` route calls
+  `requireAdmin()`.
+- Never create scratch files inside `src/`.
+
+## Help page rule — every change, not later
+
+Whenever a change adds or changes something a **broker or assistant** can see
+or do, update the Help page in the same change:
+
+- `src/app/dashboard/help/page.tsx` — the `sections` steps (short, plain how-to)
+  and the `quickRef` rows. Brokerage-admin features also belong in
+  `src/app/dashboard/brokerage/help/page.tsx`.
+- Then rebuild the PDF guide, which is generated from those two arrays:
+  `python3 scripts/build_user_guide.py` (writes
+  `public/YachtPics_Portal_User_Guide.pdf`; commit it with the change).
+- **Admin-only** features stay out of Help. Features **gated by date or plan**
+  are either described with the gate ("subscribers make as many as they
+  like") or kept out of `sections` and added per viewer at request time — see
+  `DEPTH_LOOKS_STEP` and `REEL_SERVICE_SECTION` in the Help page. Anything kept
+  outside `sections` never reaches the PDF.
+- Don't invent features or prices; check the code.
+- Say in the hand-off note (`docs/where-we-are.md`) what you changed in Help,
+  or why Help didn't need a change.
+
 ## Mission
 
 We are building the best media delivery system for yacht brokers. It has to be

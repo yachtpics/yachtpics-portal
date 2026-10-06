@@ -275,7 +275,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   },
 
   /**
-   * Cinematic — letterboxed, and the quietest of the six.
+   * Cinematic — letterboxed, and the quietest of the looks.
    *
    * On a reel the photograph never carries type — not the name, not a room
    * caption. It sits in a widescreen window with everything in the bar
@@ -287,7 +287,7 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
   cinematic: {
     key: "cinematic",
     name: "Cinematic",
-    blurb: "Letterboxed on reels, wide-tracked, slow. The quietest of the six.",
+    blurb: "Letterboxed on reels, wide-tracked, slow. The quietest of the looks.",
     ground: "#000000",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.72)",
