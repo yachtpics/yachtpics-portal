@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { REEL_STYLES, STYLE_ORDER, type StyleKey } from "@/lib/reelStyles";
-import { ANGLE_LABEL, VIDEO_LED_LOOKS, VIDEO_LED_MIN_FOOTAGE, footageOf, periodLabel, type ReelServiceAngle, type ReelServiceSettings } from "@/lib/reelService";
+import { ANGLE_LABEL, VIDEO_LED_LOOKS, VIDEO_LED_MIN_FOOTAGE, footageOf, jobMusic, periodLabel, type ReelServiceAngle, type ReelServiceSettings } from "@/lib/reelService";
+import { MUSIC_CHOICES, MUSIC_LABEL, moodForLook } from "@/lib/reelMusic";
 import { detectShots, probeClip, rememberShots, type ShotInfo } from "@/lib/reelClips";
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
 
@@ -373,6 +374,32 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
                         className="text-xs border border-hairline-strong rounded-ctl px-2 py-1.5 text-ink-800">
                         {lookOptions.map((k) => <option key={k} value={k}>{REEL_STYLES[k].name}</option>)}
                       </select>
+                      {/* Music: on (auto) by default; a change sends the reel back to planned. */}
+                      {(() => {
+                        const m = jobMusic(st, j.id);
+                        const locked = j.status === "delivered" || j.status === "rendering" || isCurrent || waiting || !!busy;
+                        const url = `/api/admin/reel-service/jobs/${j.id}`;
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <select value={m.mood} disabled={locked} title="Music"
+                              onChange={(e) => void call("music", url, { action: "music", mood: e.target.value })}
+                              className="text-xs border border-hairline-strong rounded-ctl px-2 py-1.5 text-ink-800">
+                              {MUSIC_CHOICES.map((k) => (
+                                <option key={k} value={k}>
+                                  {k === "off" ? "Music: off" : k === "auto" ? `Music: auto (${MUSIC_LABEL[moodForLook(look)].toLowerCase()})` : `Music: ${MUSIC_LABEL[k].toLowerCase()}`}
+                                </option>
+                              ))}
+                            </select>
+                            {m.mood !== "off" && (
+                              <button onClick={() => void call("music", url, { action: "music", reroll: true })} disabled={locked}
+                                title="Another track in the same mood"
+                                className="text-xs font-medium px-2 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 disabled:opacity-40">
+                                Re-roll
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
                       <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${STATUS_STYLE[j.status] ?? "bg-ink-100 text-ink-600"}`}>{j.status}</span>
                       <div className="flex gap-2 flex-wrap">
                         {j.status !== "delivered" && (

@@ -202,7 +202,7 @@ export const TIPS: Tip[] = [
     body: [
       "Open any listing and click Reel. The photos you already have — in the order you've set, your cover shot first — come back as a finished video: a vertical reel for Instagram and Facebook, or a widescreen film you can add to the listing and send to a buyer.",
       "Pick the look that suits the boat. Editorial is the brochure register, serif and restrained. Cinematic letterboxes the picture and slows everything down. Gallery is light and modern. Classic runs warm and suits sail. Energy is whips, wipes and zoom-throughs, built for center consoles and sportfish. Stack splits the frame into three bands that trade on the beat, with full-frame breaks between — the one for a go-fast. Marquee holds the hero across the top with the rest of the boat below, one photo at a time; Marquee Still keeps the cover still up top. Then choose your photos, decide whether the price shows, and make it.",
-      "When it's done, press Send to my phone: a QR code appears, you point your phone at it, and the reel drops into your camera roll. Reels come out silent on purpose — you add trending audio when you post, which Instagram rewards far more than any track we could supply.",
+      "When it's done, press Send to my phone: a QR code appears, you point your phone at it, and the reel drops into your camera roll. Reels come out silent unless you turn on Music — leave it off to add a trending sound when you post, or pick a mood for original YachtPics music that's free to post anywhere.",
     ],
     ctaLabel: "Make a reel",
     ctaPath: "/dashboard/listings",

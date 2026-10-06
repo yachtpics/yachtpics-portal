@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { replanReelServiceJob, setReelServiceJobLook } from "@/lib/reelService";
+import { replanReelServiceJob, setReelServiceJobLook, setReelServiceJobMusic } from "@/lib/reelService";
+import { isMusicChoice } from "@/lib/reelMusic";
 import { REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 import { REEL_SERVICE_PREFIX } from "@/lib/videoUploadTarget";
 
@@ -10,6 +11,7 @@ export const runtime = "nodejs";
  * POST /api/admin/reel-service/jobs/[id] — admin only.
  *   { action: "replan" }                 → new angle/photos/look (not if delivered)
  *   { action: "look", look }             → change only the look
+ *   { action: "music", mood?, reroll? }  → music mood (off/auto/calm/…) and/or a new track
  *   { action: "rendering" }              → the browser has started rendering it
  *   { action: "rendered", path }         → MP4 uploaded to R2 at `path`: status 'ready'
  *   { action: "failed", error }          → status 'failed' with the reason
@@ -31,6 +33,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const look = body?.look as StyleKey;
     if (typeof look !== "string" || !REEL_STYLES[look]) return NextResponse.json({ error: "Unknown look." }, { status: 400 });
     const r = await setReelServiceJobLook(admin, id, look);
+    return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.error }, { status: 400 });
+  }
+
+  if (action === "music") {
+    const mood = body?.mood;
+    if (mood !== undefined && !isMusicChoice(mood)) return NextResponse.json({ error: "Unknown music mood." }, { status: 400 });
+    const r = await setReelServiceJobMusic(admin, id, { mood, reroll: body?.reroll === true });
     return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.error }, { status: 400 });
   }
 

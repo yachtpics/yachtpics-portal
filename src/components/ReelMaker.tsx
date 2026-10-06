@@ -28,6 +28,7 @@ import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MA
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
+import { composeReelMusic, isMusicChoice, moodForLook, musicCanCompose, nextMusicSeed, resolveMood, seedFromString, MUSIC_CHOICES, MUSIC_LABEL, MUSIC_SAMPLE_RATE, type ComposeOptions, type MusicChoice, type MusicMood } from "@/lib/reelMusic";
 import {
   CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader, createClipInputPool,
   type ClipSource, type ClipLength, type ClipReader,
@@ -63,9 +64,12 @@ const DEPTH_FRAME_BUDGET_MS = 120;
  *
  * The whole thing renders in the broker's browser: frames are painted to a
  * canvas and encoded with WebCodecs (via mediabunny) straight to an MP4. No
- * server, no render service, no per-video cost. Reels are silent on purpose —
+ * server, no render service, no per-video cost. Reels are silent by default —
  * Instagram lets the broker add trending audio at post time, which also gets
- * the post more reach than any track we could license.
+ * the post more reach. Music (Oct 6) is the other option: original YachtPics
+ * music composed in the browser for this reel and timed to its cuts
+ * (src/lib/reelMusic.ts), baked into the MP4 as an AAC track — owned by us,
+ * so it can be posted anywhere without a copyright claim.
  */
 
 const serif = Cormorant_Garamond({
@@ -344,6 +348,11 @@ export type ReelAutoConfig = {
    * keep their own framing.
    */
   clipFill?: boolean;
+  /**
+   * Original music baked into the reel (Reel Service: on by default). Absent,
+   * or mood "off": silent, exactly as before.
+   */
+  music?: { mood: MusicChoice; seed: number } | null;
 };
 export type ReelAutoProgress = { phase: "loading" | "depth" | "rendering"; pct: number };
 export type { StyleKey as ReelStyleKey };
@@ -360,6 +369,9 @@ function newRenderId(): string {
   return `r-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Where the broker's Music choice is remembered (this browser only). */
+const MUSIC_STORE_KEY = "yp.reel.music";
+
 const BLANK_CARD: BrokerCard = { name: "", brokerage: null, phone: null, email: null, website: null, logoUrl: null };
 
 export default function ReelMaker({
@@ -375,7 +387,7 @@ export default function ReelMaker({
   /** Render once from these settings, with no controls (see ReelAutoConfig). */
   auto?: ReelAutoConfig;
   onAutoProgress?: (p: ReelAutoProgress) => void;
-  onAutoDone?: (r: { blob: Blob; seconds: number; clipNote: string }) => void;
+  onAutoDone?: (r: { blob: Blob; seconds: number; clipNote: string; musicNote?: string }) => void;
   onAutoError?: (message: string) => void;
   /**
    * The Studio: video files picked with its "Add photos & videos" button,
@@ -500,7 +512,7 @@ export default function ReelMaker({
   // (still phase "loading" — the status line just says what it is doing).
   const [depthReading, setDepthReading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; renderId: string } | null>(null);
+  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; renderId: string; music?: string | null } | null>(null);
   const [adding, setAdding] = useState(false);
 
   /**
@@ -518,6 +530,26 @@ export default function ReelMaker({
   const usedUp = !!allowance && !allowance.unlimited && allowance.remaining === 0;
   const [added, setAdded] = useState(false);
   const cancelRef = useRef(false);
+
+  // ── Music (Oct 6) ─────────────────────────────────────────────────────────
+  // Off by default for a broker's own reel (they add a trending sound in
+  // Instagram); the choice is remembered per browser. Auto mode takes it from
+  // the job. The seed starts from the listing, so the same boat gets the same
+  // track until "Try another".
+  const [musicChoice, setMusicChoice] = useState<MusicChoice>(() => (auto?.music && auto.music.mood !== "off" ? auto.music.mood : "off"));
+  const [musicSeed, setMusicSeed] = useState<number>(() => (auto?.music ? auto.music.seed >>> 0 : seedFromString(listingId ?? listing?.vessel_name ?? "yachtpics")));
+  const [musicNote, setMusicNote] = useState("");
+  const [previewing, setPreviewing] = useState<"" | "composing" | "playing">("");
+  const previewRef = useRef<{ ctx: AudioContext; src: AudioBufferSourceNode | null } | null>(null);
+  const previewTokenRef = useRef(0);
+  useEffect(() => {
+    if (auto) return;
+    try {
+      const v = window.localStorage.getItem(MUSIC_STORE_KEY);
+      if (isMusicChoice(v)) setMusicChoice(v);
+    } catch { /* private window / blocked storage: stays Off */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /**
    * A source that carries colours of its own — the listing broker's, or those
@@ -1008,6 +1040,95 @@ export default function ReelMaker({
     // the photo count — so the total redraws when Length or the selection changes.
   }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin]);
 
+  // ── Music ──────────────────────────────────────────────────────────────
+  /**
+   * What the composer needs for the reel as it stands: its running time,
+   * every cut (unit joins, Stack band swaps, Marquee bottom-band turns) and
+   * when the end card arrives. Null when music is Off.
+   */
+  function musicPlan(): { mood: MusicMood; opts: ComposeOptions } | null {
+    const mood = resolveMood(musicChoice, styleKey);
+    if (!mood) return null;
+    const { units, starts, total } = timeline;
+    const cuts: number[] = [];
+    let endAt: number | null = null;
+    for (let k = 0; k < units.length; k++) {
+      const u = units[k];
+      if (k > 0) cuts.push(starts[k]);
+      if (u.kind === "end") endAt = starts[k];
+      else if (u.kind === "stack") u.events.forEach((ev) => cuts.push(starts[k] + ev.at));
+      else if (u.kind === "marquee") u.bottomStarts.forEach((b, i) => { if (i > 0) cuts.push(starts[k] + b); });
+    }
+    const stackGrid = REEL_STYLES[styleKey].layout === "stack" && format === "reel";
+    return { mood, opts: { durationSec: total, cutTimesSec: cuts, mood, seed: musicSeed, endCardStartSec: endAt, bpm: stackGrid ? 120 : null } };
+  }
+
+  function stopPreview() {
+    previewTokenRef.current++;
+    const pv = previewRef.current;
+    previewRef.current = null;
+    if (pv) {
+      if (pv.src) { try { pv.src.onended = null; pv.src.stop(); } catch { /* not started */ } }
+      try { void pv.ctx.close(); } catch { /* already closed */ }
+    }
+    setPreviewing("");
+  }
+
+  /** Compose the track for the reel as it stands and play it here. */
+  async function previewMusic() {
+    stopPreview();
+    const plan = musicPlan();
+    if (!plan) return;
+    const w = window as unknown as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext };
+    const AC = w.AudioContext ?? w.webkitAudioContext;
+    if (!AC || !musicCanCompose()) { setMusicNote("This browser can\u2019t play the preview."); return; }
+    // Made inside the tap, so Safari lets it play once the track is ready.
+    const ctx = new AC();
+    try { void ctx.resume(); } catch { /* fine */ }
+    const token = ++previewTokenRef.current;
+    previewRef.current = { ctx, src: null };
+    setPreviewing("composing");
+    setMusicNote("");
+    try {
+      const buf = await composeReelMusic(plan.opts);
+      if (token !== previewTokenRef.current) return;
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.onended = () => { if (previewRef.current && previewRef.current.src === src) stopPreview(); };
+      previewRef.current = { ctx, src };
+      src.start();
+      setPreviewing("playing");
+    } catch {
+      if (token === previewTokenRef.current) { stopPreview(); setMusicNote("Couldn\u2019t make the preview."); }
+    }
+  }
+
+  useEffect(() => () => {
+    const pv = previewRef.current;
+    previewRef.current = null;
+    if (pv) {
+      if (pv.src) { try { pv.src.stop(); } catch { /* not started */ } }
+      try { void pv.ctx.close(); } catch { /* already closed */ }
+    }
+  }, []);
+
+  function chooseMusic(v: MusicChoice) {
+    stopPreview();
+    setMusicChoice(v);
+    setMusicNote("");
+    try { window.localStorage.setItem(MUSIC_STORE_KEY, v); } catch { /* not remembered: fine */ }
+    setResult(null);
+    setPhase("idle");
+  }
+
+  function tryAnotherMusic() {
+    stopPreview();
+    setMusicSeed((sd) => nextMusicSeed(sd));
+    setResult(null);
+    setPhase("idle");
+  }
+
   // ── Render ──────────────────────────────────────────────────────────────
   /**
    * Metrics. The Reel went out to the whole portal as a two-week open house,
@@ -1110,6 +1231,8 @@ export default function ReelMaker({
     setPhoneError("");
     setErrorMsg("");
     setClipNote("");
+    setMusicNote("");
+    stopPreview();
     setPhase("loading");
     setProgress(0);
 
@@ -1408,13 +1531,64 @@ export default function ReelMaker({
       const codec = await mb.getFirstEncodableVideoCodec(["avc"], { width: W, height: H });
       if (!codec) throw new Error("This browser can't encode video. Use Chrome, Edge, or Safari.");
 
-      const output = new mb.Output({
-        format: new mb.Mp4OutputFormat({ fastStart: "in-memory" }),
-        target: new mb.BufferTarget(),
-      });
-      const source = new mb.CanvasSource(canvas, { codec: "avc", quality: mb.QUALITY_HIGH, keyFrameInterval: 2 });
-      output.addVideoTrack(source, { frameRate: FPS });
-      await output.start();
+      // Music (only when chosen): composed now that the timeline is final —
+      // its length and every cut are known — and encoded as AAC-LC
+      // ('mp4a.40.2', what iPhone and Instagram expect in an MP4). A browser
+      // that can't encode AAC renders silent, with a note. With music Off
+      // none of this runs and the output is exactly what it always was.
+      let music: AudioBuffer | null = null;
+      let musicLabel: string | null = null;
+      const plan = musicPlan();
+      if (plan) {
+        let aacOk = false;
+        try {
+          aacOk = await mb.canEncodeAudio("aac", { numberOfChannels: 2, sampleRate: MUSIC_SAMPLE_RATE, quality: mb.QUALITY_HIGH });
+        } catch { aacOk = false; }
+        if (!aacOk || !musicCanCompose()) {
+          setMusicNote("This browser can\u2019t add music to a video, so this one is silent. Chrome or Edge on a computer can.");
+        } else {
+          try {
+            music = await composeReelMusic(plan.opts);
+            musicLabel = MUSIC_LABEL[plan.mood];
+          } catch (e) {
+            console.warn("Reel music failed; rendering silent.", e);
+            setMusicNote("The music couldn\u2019t be made, so this video is silent.");
+          }
+        }
+      }
+
+      const makeOutput = (withAudio: boolean) => {
+        const out = new mb.Output({
+          format: new mb.Mp4OutputFormat({ fastStart: "in-memory" }),
+          target: new mb.BufferTarget(),
+        });
+        const vsrc = new mb.CanvasSource(canvas, { codec: "avc", quality: mb.QUALITY_HIGH, keyFrameInterval: 2 });
+        out.addVideoTrack(vsrc, { frameRate: FPS });
+        const asrc = withAudio ? new mb.AudioBufferSource({ codec: "aac", quality: mb.QUALITY_HIGH }) : null;
+        if (asrc) out.addAudioTrack(asrc);
+        return { out, vsrc, asrc };
+      };
+      let made = makeOutput(!!music);
+      await made.out.start();
+      if (made.asrc && music) {
+        // The whole track goes in before the first frame: it is short, and an
+        // encoder failure here can still fall back to a silent video.
+        try {
+          await made.asrc.add(music);
+          made.asrc.close();
+        } catch (e) {
+          console.warn("Reel music couldn't be encoded; rendering silent.", e);
+          try { await made.out.cancel(); } catch { /* already gone */ }
+          made = makeOutput(false);
+          await made.out.start();
+          musicLabel = null;
+          setMusicNote("This browser couldn\u2019t add the music, so this video is silent.");
+        }
+      }
+      // Encoded (or dropped): let the samples go.
+      music = null;
+      const output = made.out;
+      const source = made.vsrc;
 
       setPhase("rendering");
       setProgress(0);
@@ -2764,7 +2938,7 @@ export default function ReelMaker({
       if (!buffer) throw new Error("The video came back empty.");
       const blob = new Blob([buffer], { type: "video/mp4" });
       const url = URL.createObjectURL(blob);
-      setResult({ url, blob, format, seconds: Math.round(total), renderId });
+      setResult({ url, blob, format, seconds: Math.round(total), renderId, music: musicLabel });
       setProgress(100);
       setPhase("done");
       // What was made, not what was selected: the look, the shape and the
@@ -3082,7 +3256,7 @@ export default function ReelMaker({
       onAutoProgress?.({ phase: phase === "rendering" ? "rendering" : depthReading ? "depth" : "loading", pct: progress });
     } else if (phase === "done" && result) {
       autoReportedRef.current = true;
-      onAutoDone?.({ blob: result.blob, seconds: result.seconds, clipNote });
+      onAutoDone?.({ blob: result.blob, seconds: result.seconds, clipNote, musicNote: result.music ? `music: ${result.music.toLowerCase()}` : musicNote });
     } else if (phase === "error") {
       autoReportedRef.current = true;
       onAutoError?.(errorMsg || "The render failed.");
@@ -3279,6 +3453,39 @@ export default function ReelMaker({
             <p className="text-xs text-ink-400 mt-1.5">Reels between 30 and 60 seconds reach the furthest. Short suits a quick teaser.</p>
           </div>
         )}
+        {/* Music — original YachtPics music, or Off to add a trending sound in Instagram. */}
+        <div>
+          <p className="label-caps text-ink-500 mb-2">Music</p>
+          <div className="flex flex-wrap gap-2">
+            {MUSIC_CHOICES.map((m) => (
+              <button key={m} onClick={() => chooseMusic(m)} disabled={busy} className={chip(musicChoice === m)}>
+                {m === "auto" ? `Auto \u00b7 ${MUSIC_LABEL[moodForLook(styleKey)]}` : MUSIC_LABEL[m]}
+              </button>
+            ))}
+          </div>
+          {musicChoice === "off" ? (
+            <p className="text-xs text-ink-400 mt-1.5">Leave off to add a trending sound when you post.</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap gap-2 mt-2">
+                {previewing ? (
+                  <button onClick={stopPreview} className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-ink-900 bg-ink-900 text-white">
+                    {previewing === "composing" ? "Composing\u2026 (stop)" : "\u25a0 Stop"}
+                  </button>
+                ) : (
+                  <button onClick={() => void previewMusic()} disabled={busy || photoCount === 0} className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-800 hover:border-ink-400 disabled:opacity-40">
+                    &#9654; Preview
+                  </button>
+                )}
+                <button onClick={tryAnotherMusic} disabled={busy} className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-ink-400 disabled:opacity-40">
+                  Try another
+                </button>
+              </div>
+              <p className="text-xs text-ink-400 mt-1.5">Original YachtPics music, made for this reel and timed to its cuts &mdash; free to post anywhere, no copyright claims.</p>
+            </>
+          )}
+          {musicNote && <p className="text-xs text-ink-600 mt-1.5">{musicNote}</p>}
+        </div>
         <div>
           <p className="label-caps text-ink-500 mb-2">Framing</p>
           {styleKey === "cinematic" && format === "reel" ? (
@@ -3612,7 +3819,7 @@ export default function ReelMaker({
           <div>
             <p className="text-sm font-semibold text-ink-900">{result ? "Your video is ready" : phase === "rendering" ? "Rendering…" : phase === "loading" ? (depthReading ? "Reading depth…" : "Loading photos…") : "Ready to make"}</p>
             <p className="text-xs text-ink-400 mt-0.5">
-              {result ? `${SPEC[result.format].label} · ${result.seconds}s · silent (add trending audio when you post)` : "Renders right here in your browser — usually under a minute."}
+              {result ? `${SPEC[result.format].label} · ${result.seconds}s · ${result.music ? `original YachtPics music (${result.music}) \u2014 free to post anywhere` : "silent (add trending audio when you post)"}` : "Renders right here in your browser — usually under a minute."}
             </p>
           </div>
           <div className="flex gap-2">

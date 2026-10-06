@@ -7,7 +7,7 @@ import { uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
 import { detectShots, parseShotInfo, probeClip, rememberShots, rememberedShots, type ClipLength, type ShotInfo } from "@/lib/reelClips";
 import { REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 import ReelMaker, { type ReelAutoConfig, type ReelAutoItem, type ReelAutoProgress, type ReelSource } from "@/components/ReelMaker";
-import type { ReelServiceSettings } from "@/lib/reelService";
+import { jobMusic, type ReelServiceSettings } from "@/lib/reelService";
 
 export type RenderJob = { id: string; listing_id: string; look: string; settings: ReelServiceSettings | null };
 export type RenderOutcome = { ok: true; note: string } | { ok: false; error: string };
@@ -212,6 +212,9 @@ export default function ReelServiceRenderer({
             clipFill: st.videoLed === true,
             ...(st.videoLed && st.photoHoldSec ? { photoHold: st.photoHoldSec } : {}),
             ...(st.videoLed && st.clipJoinSec ? { clipJoin: st.clipJoinSec } : {}),
+            // Music is ON by default for Reel Service (jobs planned before it
+            // existed play "auto"); "off" renders silent.
+            music: (() => { const m = jobMusic(st, job.id); return m.mood === "off" ? null : m; })(),
           },
           notes,
         });
@@ -222,7 +225,7 @@ export default function ReelServiceRenderer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function onDone(r: { blob: Blob; seconds: number; clipNote: string }) {
+  async function onDone(r: { blob: Blob; seconds: number; clipNote: string; musicNote?: string }) {
     try {
       onProgress("Uploading", 0);
       const file = new File([r.blob], `${job.id}.mp4`, { type: "video/mp4" });
@@ -233,7 +236,7 @@ export default function ReelServiceRenderer({
       });
       if (!up.ok) throw new Error(up.error);
       await postJob(job.id, { action: "rendered", path: up.path });
-      const notes = (prepared?.notes ?? []).concat(r.clipNote ? [r.clipNote] : []);
+      const notes = (prepared?.notes ?? []).concat(r.clipNote ? [r.clipNote] : []).concat(r.musicNote ? [r.musicNote] : []);
       finish({ ok: true, note: [`${r.seconds}s`, ...notes].join(" · ") });
     } catch (e) {
       await fail(e instanceof Error ? e.message : "Upload failed.");

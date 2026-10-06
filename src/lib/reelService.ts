@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { orderPhotos } from "@/lib/photoOrder";
 import { isExterior, REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 import { parseShotInfo } from "@/lib/reelClips";
+import { isMusicChoice, nextMusicSeed, seedFromString, type MusicChoice } from "@/lib/reelMusic";
 
 /**
  * Reel Service
@@ -100,7 +101,26 @@ export type ReelServiceSettings = {
   photoHoldSec?: number | null;
   /** Video-led: crossfade into, out of and between segments, seconds. Null: the look's own. */
   clipJoinSec?: number | null;
+  /**
+   * Original music baked into the reel (Oct 6). ON by default: a job without
+   * this field (planned before music existed) plays "auto" — the look's own
+   * mood. `seed` null/absent: derived from the job id. "off": silent.
+   */
+  music?: { mood: MusicChoice; seed?: number | null } | null;
 };
+
+/** The music a job renders with: its stored choice, or auto with a seed from its id. */
+export function jobMusic(settings: ReelServiceSettings | null | undefined, jobId: string): { mood: MusicChoice; seed: number } {
+  const m = settings?.music;
+  const mood: MusicChoice = m && isMusicChoice(m.mood) ? m.mood : "auto";
+  const seed = m && typeof m.seed === "number" && isFinite(m.seed) ? m.seed >>> 0 : seedFromString(jobId);
+  return { mood, seed };
+}
+
+/** A re-plan rebuilds the settings; the music choice made on the board survives it. */
+function keepMusic(next: ReelServiceSettings, prev: ReelServiceSettings | null | undefined): ReelServiceSettings {
+  return prev?.music ? { ...next, music: prev.music } : next;
+}
 
 export type ReelServiceJobStatus = "planned" | "rendering" | "ready" | "delivered" | "failed";
 
@@ -947,6 +967,7 @@ function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: str
     showLocation: true,
     variant,
     ...(launch ? { launch: true } : {}),
+    music: { mood: "auto" },
   };
   return { angle, look, settings, caption: reelServiceCaption(listing, angle, variant) };
 }
@@ -1080,7 +1101,7 @@ export async function replanReelServiceJob(
   const { error } = await admin.from("reel_service_jobs").update({
     angle: plan.angle,
     look: plan.look,
-    settings: plan.settings,
+    settings: keepMusic(plan.settings, job.settings as ReelServiceSettings | null),
     caption: plan.caption,
     status: "planned",
     error: null,
@@ -1120,7 +1141,7 @@ export async function replanListingMonth(
     const { error } = await admin.from("reel_service_jobs").update({
       angle: plan.angle,
       look: plan.look,
-      settings: plan.settings,
+      settings: keepMusic(plan.settings, job.settings),
       caption: plan.caption,
       status: "planned",
       error: null,
@@ -1162,6 +1183,30 @@ export async function setReelServiceJobLook(admin: SupabaseClient, jobId: string
   const media = buildMedia(videos, job.angle as ReelServiceAngle, look, settings.photoIds ?? [], seed, settings.variant ?? 0, used);
   const next: ReelServiceSettings = { ...settings, ...media };
   const { error } = await admin.from("reel_service_jobs").update({ look, settings: next, status: "planned", error: null }).eq("id", jobId);
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+/**
+ * Change a job's music: a mood ("off" for silent, "auto" for the look's own)
+ * and/or a new seed ("Try another"). Like a look change, the reel goes back
+ * to planned so it is made again with the new track. Not once delivered.
+ */
+export async function setReelServiceJobMusic(
+  admin: SupabaseClient,
+  jobId: string,
+  opts: { mood?: MusicChoice; reroll?: boolean },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const { data: job } = await admin.from("reel_service_jobs").select("id, status, settings").eq("id", jobId).maybeSingle();
+  if (!job) return { ok: false, error: "Job not found." };
+  if (job.status === "delivered") return { ok: false, error: "Already delivered \u2014 Re-plan it first." };
+  if (job.status === "rendering") return { ok: false, error: "It\u2019s rendering \u2014 wait for it to finish." };
+  const settings = (job.settings ?? {}) as ReelServiceSettings;
+  const cur = jobMusic(settings, job.id);
+  const mood = opts.mood && isMusicChoice(opts.mood) ? opts.mood : cur.mood;
+  const seed = opts.reroll ? nextMusicSeed(cur.seed) : cur.seed;
+  const next: ReelServiceSettings = { ...settings, music: { mood, seed } };
+  const { error } = await admin.from("reel_service_jobs").update({ settings: next, status: "planned", error: null }).eq("id", jobId);
   if (error) return { ok: false, error: error.message };
   return { ok: true };
 }
