@@ -1,5 +1,15 @@
 # Where we are — October 6, 2026
 
+## Oct 6 (later) — 5th music mood "Groove" — NOT PUSHED (parent will push), NOT BROWSER-TESTED
+
+- **What:** a new mood in `src/lib/reelMusic.ts`, "similar in feel" to a track Charlie likes — built from broad style traits only (no melody, chords or hook copied; nothing was transcribed). Modern melodic hip-hop / trap-lite, tasteful: **minor key only** (seeded), **106–110 BPM** (fitted to the cuts like the others; 120 on Stack looks), half-time bounce.
+- **Layers** (`composeGrooveLayers`): **808** — sine sub through soft tanh saturation (WaveShaper, 2× oversampled), locked to a seeded syncopated kick pattern (two patterns alternate per two-bar phrase), chord roots with the odd octave jump and ~35% short pitch glides; drops out for the last two beats before the end card, then slides down onto the tonic. **Drums** — short punchy kick, layered clap/snare (three-burst flam + body) on 2 and 4, closed hats on 16ths (8ths in the intro) with seeded 1/32 or 16th-triplet rolls in answer bars and a 1/32 roll into the end card. **Lead** — bright chopped pluck (saw + square through two formant-like band passes at ~820/1250 Hz, notes ~600–1300 Hz, short gated envelope, occasional 32nd stutters) playing a seeded one-bar syncopated motif on the minor pentatonic; the answer bar varies the tail and **slides up into a held note** (with light vibrato) at each phrase end; darker/quieter before the build; slides up into the tonic on the end card. **Pad** — the shared pad, darker (750 Hz) and quieter. No keys arpeggio / bells / standard bass in this mood.
+- **Level:** Groove is levelled by **K-weighted loudness (BS.1770) to −14 LUFS** (plain RMS over-counts the sub) with the same soft limiter (≤ −1 dBFS) and a slightly firmer compressor. Measured on a 30 s reel (Node): **−14.1 to −14.2 LUFS, peaks −1.5 to −2.2 dBFS, sub (<120 Hz) peaks ≈ −7 dBFS**, sub ≈ 60% of the energy. Sample: `$HOME/groove_sample.wav` on the Cowork VM (seed 1, outside the repo).
+- **Existing moods unchanged:** fingerprints of Calm/Cinematic/Elegant/Upbeat renders are bit-identical before and after.
+- **UI:** appears in the Reel page Music picker and the Reel Service board menu (both list every mood). **Not** the Auto default for any look.
+- **Help:** the Reel — music step lists Groove; PDF rebuilt.
+- **Not verified:** listening quality (review the sample WAV), browser rendering.
+
 ## Oct 6 — Original music in reels (composed in the browser, owned by YachtPics) — NOT PUSHED (parent will push), NOT BROWSER-TESTED, NOT LISTENED TO
 
 - **What it is:** an optional music track baked into the MP4, composed in the browser for that reel by a new procedural composer (`src/lib/reelMusic.ts`, Web Audio `OfflineAudioContext`, stereo 48 kHz). Nothing sampled or licensed — every sound is synthesized — so YachtPics owns it and brokers can post anywhere with no copyright claims. **Owner decision:** broker reels default to **Off** (post silent, add a trending sound in Instagram); Reel Service reels default to **on (Auto)**.

@@ -34,11 +34,11 @@
  */
 import type { StyleKey } from "@/lib/reelStyles";
 
-export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat";
+export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat" | "groove";
 export type MusicChoice = "off" | "auto" | MusicMood;
 
-export const MUSIC_MOODS: MusicMood[] = ["calm", "cinematic", "elegant", "upbeat"];
-export const MUSIC_CHOICES: MusicChoice[] = ["off", "auto", "calm", "cinematic", "elegant", "upbeat"];
+export const MUSIC_MOODS: MusicMood[] = ["calm", "cinematic", "elegant", "upbeat", "groove"];
+export const MUSIC_CHOICES: MusicChoice[] = ["off", "auto", "calm", "cinematic", "elegant", "upbeat", "groove"];
 export const MUSIC_LABEL: Record<MusicChoice, string> = {
   off: "Off",
   auto: "Auto",
@@ -46,9 +46,13 @@ export const MUSIC_LABEL: Record<MusicChoice, string> = {
   cinematic: "Cinematic",
   elegant: "Elegant",
   upbeat: "Upbeat",
+  groove: "Groove",
 };
 
-/** Each look's own mood — what "Auto" means. */
+/**
+ * Each look's own mood — what "Auto" means. Groove (Oct 6) is never a look's
+ * default: it's picked on purpose.
+ */
 const LOOK_MOOD: Record<StyleKey, MusicMood> = {
   walkthrough: "calm",
   classic: "calm",
@@ -149,7 +153,7 @@ type MoodParams = {
   reverbSec: number;
   reverbWet: number;
   delayWet: number;
-  rhythm: "none" | "pulse" | "soft" | "full";
+  rhythm: "none" | "pulse" | "soft" | "full" | "groove";
   minorChance: number;
   riser: number;
 };
@@ -159,6 +163,8 @@ const MOOD: Record<MusicMood, MoodParams> = {
   cinematic: { tempo: [76, 82],  harmonic: 2, keysStep: [2, 1],     keysDecay: 2.6, keysLevel: 0.19, padCut: 1100, padLevel: 0.058, reverbSec: 3.8, reverbWet: 0.5,  delayWet: 0.2,  rhythm: "pulse", minorChance: 0.4,  riser: 0.07 },
   elegant:   { tempo: [88, 96],  harmonic: 1, keysStep: [1, 0.5],   keysDecay: 1.5, keysLevel: 0.18, padCut: 1700, padLevel: 0.045, reverbSec: 2.6, reverbWet: 0.36, delayWet: 0.2,  rhythm: "soft",  minorChance: 0,    riser: 0.055 },
   upbeat:    { tempo: [98, 104], harmonic: 1, keysStep: [0.5, 0.5], keysDecay: 1.1, keysLevel: 0.16, padCut: 2000, padLevel: 0.04,  reverbSec: 1.9, reverbWet: 0.28, delayWet: 0.18, rhythm: "full",  minorChance: 0,    riser: 0.065 },
+  // Groove: modern melodic hip-hop, minor only — 808 sub, busy hats, a chopped lead (see composeGrooveLayers).
+  groove:    { tempo: [106, 110], harmonic: 2, keysStep: [1, 0.5],  keysDecay: 1.2, keysLevel: 0.16, padCut: 750,  padLevel: 0.03,  reverbSec: 2.2, reverbWet: 0.3,  delayWet: 0.22, rhythm: "groove", minorChance: 1,  riser: 0.05 },
 };
 
 type Chord = { root: number; pad: number[]; arp: number[] };
@@ -280,6 +286,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
   const dur = Math.max(2, opts.durationSec);
   const length = Math.max(1, Math.round(dur * SR));
   const p = MOOD[opts.mood];
+  const groove = opts.mood === "groove";
   const rand = mulberry32((opts.seed >>> 0) ^ seedFromString(opts.mood));
   const jitter = (amt: number) => (rand() - 0.5) * 2 * amt;
 
@@ -330,7 +337,6 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
   if (barLines.length > 2 && barLines[1] < 0.6 * bar) barLines.splice(1, 1);
   const segStarts: number[] = [];
   for (let i = 0; i < barLines.length; i += p.harmonic) segStarts.push(barLines[i]);
-  type Seg = { start: number; end: number; chord: Chord };
   const segs: Seg[] = segStarts.map((s, i) => ({ start: s, end: i + 1 < segStarts.length ? segStarts[i + 1] : E, chord: prog[i % prog.length] }));
   // The cadence: …IV (or VI) → V sus (or VII sus) → tonic on the end card.
   if (segs.length >= 3) { segs[segs.length - 1].chord = dominant; segs[segs.length - 2].chord = predominant; }
@@ -350,6 +356,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
     const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 28; hp.Q.value = 0.7;
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -18; comp.knee.value = 10; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.25;
+    if (groove) { comp.threshold.value = -20; comp.ratio.value = 4; comp.attack.value = 0.01; comp.release.value = 0.18; }
     const fade = c.createGain();
     master.connect(hp); hp.connect(comp); comp.connect(fade); fade.connect(c.destination);
     fade.gain.setValueAtTime(0, 0);
@@ -455,6 +462,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       if (stop > s0) { o.start(s0); o8.start(s0); o.stop(stop); o8.stop(stop); }
     };
     segs.forEach((sg) => {
+      if (groove) return; // Groove's low end is its 808 (below)
       const s0 = Math.max(sg.start, introEnd);
       if (sg.end <= s0) return;
       const midi = 33 + mod(tonicPc + sg.chord.root - 33, 12);
@@ -510,7 +518,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       return tones;
     };
     const keysFrom = introEnd;
-    {
+    if (!groove) {
       const sub = 0.5 * beat; // walk the eighth-note grid; each section plays a subset
       let t = grid.phase + Math.ceil((keysFrom - grid.phase) / sub - 1e-6) * sub;
       for (; t < E - 0.02; t += sub) {
@@ -532,12 +540,12 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       }
     }
     // The landing: a rolled tonic chord on the end card, left to ring.
-    {
+    if (!groove) {
       const tones = keyTones(tonic);
       tones.slice(0, 4).forEach((m, i) => keyNote(m, E + i * 0.07 + jitter(0.006), 0.9 - i * 0.08, Math.min(3.5, dur - E + 0.2), (i - 1.5) * 0.18));
     }
     // A soft bell on cuts that land on a beat (no more than one a bar).
-    {
+    if (!groove) {
       let last = -Infinity;
       cuts.forEach((ct) => {
         if (ct < introEnd || ct >= E - 0.2) return;
@@ -601,7 +609,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       body.connect(bg); bg.connect(rhythmBus);
       body.start(s0); body.stop(Math.min(dur, s0 + 0.1));
     };
-    if (p.rhythm !== "none") {
+    if (p.rhythm !== "none" && !groove) {
       const sub = 0.5 * beat;
       const from = p.rhythm === "full" ? introEnd : buildStart;
       let t = grid.phase + Math.ceil((from - grid.phase) / sub - 1e-6) * sub;
@@ -629,6 +637,13 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       }
     }
 
+    if (groove) {
+      composeGrooveLayers({
+        c, master, reverb, delayIn, noise, rand, jitter, dur, beat, bar, phase: grid.phase,
+        introEnd, buildStart, E, segs, tonicPc, tonicRoot: tonic.root, level: p.keysLevel,
+      });
+    }
+
     // ── Riser into the end card, and the landing underneath it ──
     {
       const t0 = Math.max(0, E - riserLen);
@@ -644,7 +659,8 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       src.connect(bp); bp.connect(g); g.connect(pn); pn.connect(master);
       const rs = c.createGain(); rs.gain.value = 0.8; g.connect(rs); rs.connect(reverb);
       src.start(t0); src.stop(Math.min(dur, E + 0.6));
-      // A soft low bloom under the tonic.
+      // A soft low bloom under the tonic (Groove lands on its 808 instead).
+      if (!groove) {
       const o = c.createOscillator(); o.type = "sine";
       o.frequency.setValueAtTime(62, E);
       o.frequency.exponentialRampToValueAtTime(44, E + 0.6);
@@ -654,6 +670,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       og.gain.exponentialRampToValueAtTime(0.0001, E + 1.4);
       o.connect(og); og.connect(master);
       o.start(E); o.stop(Math.min(dur, E + 1.5));
+      }
     }
 
     const rendered = await new Promise<AudioBuffer>((resolve, reject) => {
@@ -664,7 +681,9 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       } catch (err) { reject(err); }
     });
     c.oncomplete = null;
-    levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart));
+    // Groove's weight is in the sub, which plain RMS over-counts: it is levelled
+    // by K-weighted loudness (BS.1770) to -14 LUFS instead. Other moods: as before.
+    levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart), groove ? -14 : null);
     return rendered;
   } finally {
     // An OfflineAudioContext has no close(); dropping the reference lets every
@@ -678,7 +697,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
  * measurement) to an RMS of about -16 dBFS — about -14 LUFS for this mix
  * (measured) — then soft-limit so no sample passes -1 dBFS.
  */
-function levelMaster(buf: AudioBuffer, from: number, to: number) {
+function levelMaster(buf: AudioBuffer, from: number, to: number, lufsTarget: number | null = null) {
   const chans: Float32Array[] = [];
   for (let ch = 0; ch < buf.numberOfChannels; ch++) chans.push(buf.getChannelData(ch));
   const n = buf.length;
@@ -697,9 +716,17 @@ function levelMaster(buf: AudioBuffer, from: number, to: number) {
   if (cnt === 0 || peak < 1e-6) return;
   const rms = Math.sqrt(sum / cnt);
   if (rms < 1e-7) return;
-  const target = Math.pow(10, -16 / 20);
+  let wanted: number;
+  if (lufsTarget !== null) {
+    let ms = 0;
+    for (let ch = 0; ch < chans.length; ch++) ms += kWeightedMeanSquare(chans[ch], a, b);
+    const lufs = -0.691 + 10 * Math.log10(Math.max(1e-12, ms));
+    wanted = Math.pow(10, (lufsTarget - lufs) / 20);
+  } else {
+    wanted = Math.pow(10, -16 / 20) / rms;
+  }
   // Never push peaks more than ~4.5 dB into the limiter.
-  const gain = Math.min(target / rms, 1.5 / peak);
+  const gain = Math.min(wanted, 1.5 / peak);
   const ceil = Math.pow(10, -1 / 20); // -1 dBFS
   const knee = 0.72;
   const span = ceil - knee;
@@ -715,4 +742,305 @@ function levelMaster(buf: AudioBuffer, from: number, to: number) {
       d[i] = y;
     }
   }
+}
+
+/** Mean square of one channel through the BS.1770 K-weighting filters (48 kHz). */
+function kWeightedMeanSquare(x: Float32Array, from: number, to: number): number {
+  // Stage 1: high shelf. Stage 2: RLB high-pass.
+  const s1 = [1.53512485958697, -2.69169618940638, 1.19839281085285, -1.69065929318241, 0.73248077421585];
+  const s2 = [1, -2, 1, -1.99004745483398, 0.99007225036621];
+  let ax1 = 0, ax2 = 0, ay1 = 0, ay2 = 0, bx1 = 0, bx2 = 0, by1 = 0, by2 = 0, sum = 0, n = 0;
+  for (let i = 0; i < to; i++) {
+    const v = x[i];
+    const y1 = s1[0] * v + s1[1] * ax1 + s1[2] * ax2 - s1[3] * ay1 - s1[4] * ay2;
+    ax2 = ax1; ax1 = v; ay2 = ay1; ay1 = y1;
+    const y2 = s2[0] * y1 + s2[1] * bx1 + s2[2] * bx2 - s2[3] * by1 - s2[4] * by2;
+    bx2 = bx1; bx1 = y1; by2 = by1; by1 = y2;
+    if (i >= from) { sum += y2 * y2; n++; }
+  }
+  return n > 0 ? sum / n : 0;
+}
+
+type Seg = { start: number; end: number; chord: Chord };
+
+/**
+ * Groove (Oct 6): a 5th mood in the feel of modern melodic hip-hop — not
+ * modelled on any track. Minor key, ~108 BPM with a half-time bounce:
+ *   • 808: a sine sub through soft tanh saturation, locked to a seeded
+ *     syncopated kick pattern, roots of the chords with the odd octave and a
+ *     short pitch glide; it drops out for the last two beats before the end
+ *     card and lands on the tonic with a slide.
+ *   • Drums: punchy short kick, a layered clap/snare on 2 and 4, closed hats on
+ *     the 16ths with seeded 1/32 and triplet rolls (and a roll into the end card).
+ *   • Lead: a bright chopped pluck (saw + square through two formant-like band
+ *     passes, ~700–1200 Hz notes) playing a seeded syncopated one-bar motif on
+ *     the minor pentatonic, answered with a variation that slides up into a
+ *     held note at each phrase end; it slides into the tonic on the end card.
+ * The pad underneath comes from the shared code (darker and quieter here).
+ */
+function composeGrooveLayers(g: {
+  c: OfflineAudioContext; master: AudioNode; reverb: AudioNode; delayIn: AudioNode; noise: AudioBuffer;
+  rand: () => number; jitter: (amt: number) => number;
+  dur: number; beat: number; bar: number; phase: number;
+  introEnd: number; buildStart: number; E: number; segs: Seg[]; tonicPc: number; tonicRoot: number; level: number;
+}) {
+  const { c, master, reverb, delayIn, noise, rand, jitter, dur, beat, bar, phase, introEnd, buildStart, E, segs, tonicPc } = g;
+  const s16 = beat / 4;
+  const dropAt = Math.max(introEnd, E - 2 * beat);
+  const chordAt = (t: number): Chord => {
+    for (let i = segs.length - 1; i >= 0; i--) if (t >= segs[i].start - 1e-4) return segs[i].chord;
+    return segs[0].chord;
+  };
+  const barStarts: number[] = [];
+  for (let t = phase - Math.ceil(phase / bar) * bar; t < E - 1e-3; t += bar) barStarts.push(t);
+  const barIndex = (t: number) => Math.round((t - phase) / bar);
+
+  // ── Buses ──
+  const drumBus = c.createGain(); drumBus.gain.value = 0.65; drumBus.connect(master);
+  const drumSend = c.createGain(); drumSend.gain.value = 0.12; drumBus.connect(drumSend); drumSend.connect(reverb);
+  // The 808: notes → drive → soft saturation → low-pass → level. The sub sits
+  // well under full scale here; the compressor and limiter keep peaks down.
+  const subDrive = c.createGain(); subDrive.gain.value = 0.9;
+  const shaper = c.createWaveShaper();
+  {
+    const n = 1024, curve = new Float32Array(n), k = 2.2;
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(k * x) / Math.tanh(k); }
+    shaper.curve = curve; shaper.oversample = "2x";
+  }
+  const subLp = c.createBiquadFilter(); subLp.type = "lowpass"; subLp.frequency.value = 700; subLp.Q.value = 0.5;
+  const subOut = c.createGain(); subOut.gain.value = 0.15;
+  subDrive.connect(shaper); shaper.connect(subLp); subLp.connect(subOut); subOut.connect(master);
+  // Lead: low-pass opens at the build; reverb and the ping-pong delay.
+  const leadBus = c.createGain(); leadBus.gain.value = 1;
+  const leadLp = c.createBiquadFilter(); leadLp.type = "lowpass"; leadLp.Q.value = 0.6;
+  leadLp.frequency.setValueAtTime(1800, 0);
+  leadLp.frequency.setValueAtTime(1800, buildStart);
+  leadLp.frequency.exponentialRampToValueAtTime(5200, buildStart + bar * 0.5);
+  leadBus.connect(leadLp); leadLp.connect(master);
+  const leadVerb = c.createGain(); leadVerb.gain.value = 0.4; leadLp.connect(leadVerb); leadVerb.connect(reverb);
+  const leadDelay = c.createGain(); leadDelay.gain.value = 0.7; leadLp.connect(leadDelay); leadDelay.connect(delayIn);
+
+  // ── Voices ──
+  const note808 = (midi: number, t0: number, len: number, vel: number, glideFrom: number | null) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const o = c.createOscillator(); o.type = "sine";
+    if (glideFrom !== null) {
+      o.frequency.setValueAtTime(mtof(glideFrom), s0);
+      o.frequency.exponentialRampToValueAtTime(mtof(midi), s0 + 0.08);
+    } else {
+      o.frequency.setValueAtTime(mtof(midi), s0);
+    }
+    const gn = c.createGain();
+    const off = Math.min(dur, s0 + Math.max(0.08, len));
+    const settle = Math.min(off, s0 + 0.9);
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(vel, s0 + 0.006);
+    gn.gain.linearRampToValueAtTime(vel * 0.7, settle);
+    gn.gain.setValueAtTime(vel * 0.7, off);
+    gn.gain.linearRampToValueAtTime(0, off + 0.04);
+    o.connect(gn); gn.connect(subDrive);
+    o.start(s0); o.stop(Math.min(dur, off + 0.06));
+  };
+  const kick = (t0: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const o = c.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(165, s0);
+    o.frequency.exponentialRampToValueAtTime(55, s0 + 0.05);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.85 * vel, s0 + 0.003);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.18);
+    o.connect(gn); gn.connect(drumBus);
+    o.start(s0); o.stop(Math.min(dur, s0 + 0.2));
+  };
+  const clap = (t0: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 450;
+    const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.frequency.value = 1700; bp.Q.value = 1.1;
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 6500;
+    const gn = c.createGain();
+    // Three quick bursts then a short tail: the clap's flam.
+    gn.gain.setValueAtTime(0, s0);
+    [0, 0.011, 0.022].forEach((d) => {
+      gn.gain.setValueAtTime(0, s0 + d);
+      gn.gain.linearRampToValueAtTime(0.5 * vel, s0 + d + 0.002);
+      gn.gain.linearRampToValueAtTime(0.12 * vel, s0 + d + 0.01);
+    });
+    gn.gain.setValueAtTime(0.12 * vel, s0 + 0.032);
+    gn.gain.linearRampToValueAtTime(0.32 * vel, s0 + 0.034);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.2);
+    const src = c.createBufferSource(); src.buffer = noise;
+    src.connect(hp); hp.connect(bp); bp.connect(lp); lp.connect(gn); gn.connect(drumBus);
+    const send = c.createGain(); send.gain.value = 1.4; gn.connect(send); send.connect(reverb);
+    src.start(s0, rand() * 0.7); src.stop(Math.min(dur, s0 + 0.22));
+    const body = c.createOscillator(); body.type = "triangle"; body.frequency.value = 185;
+    const bg = c.createGain();
+    bg.gain.setValueAtTime(0, s0);
+    bg.gain.linearRampToValueAtTime(0.18 * vel, s0 + 0.003);
+    bg.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.09);
+    body.connect(bg); bg.connect(drumBus);
+    body.start(s0); body.stop(Math.min(dur, s0 + 0.1));
+  };
+  const hat = (t0: number, vel: number, pan: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const src = c.createBufferSource(); src.buffer = noise;
+    const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 7600;
+    const pk = c.createBiquadFilter(); pk.type = "peaking"; pk.frequency.value = 10500; pk.gain.value = 3;
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.16 * vel, s0 + 0.002);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.04);
+    const pn = makePan(c, pan);
+    src.connect(hp); hp.connect(pk); pk.connect(gn); gn.connect(pn); pn.connect(drumBus);
+    src.start(s0, rand() * 0.9); src.stop(Math.min(dur, s0 + 0.05));
+  };
+  const leadNote = (midi: number, t0: number, len: number, vel: number, glideFrom: number | null, glideTime = 0.12) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.03) return;
+    const f = mtof(midi);
+    const o1 = c.createOscillator(); o1.type = "sawtooth";
+    const o2 = c.createOscillator(); o2.type = "square"; o2.detune.value = 6;
+    [o1, o2].forEach((o) => {
+      if (glideFrom !== null) {
+        o.frequency.setValueAtTime(mtof(glideFrom), s0);
+        o.frequency.exponentialRampToValueAtTime(f, s0 + glideTime);
+      } else {
+        o.frequency.setValueAtTime(f, s0);
+      }
+    });
+    const mix = c.createGain(); mix.gain.value = 1;
+    const g2 = c.createGain(); g2.gain.value = 0.45;
+    o1.connect(mix); o2.connect(g2); g2.connect(mix);
+    // Formant-like colour: two resonant band passes plus a little of the body.
+    const f1 = c.createBiquadFilter(); f1.type = "bandpass"; f1.frequency.value = 820; f1.Q.value = 4;
+    const f2 = c.createBiquadFilter(); f2.type = "bandpass"; f2.frequency.value = 1250; f2.Q.value = 5;
+    const bodyLp = c.createBiquadFilter(); bodyLp.type = "lowpass"; bodyLp.frequency.value = 1500;
+    const bodyG = c.createGain(); bodyG.gain.value = 0.3;
+    const env = c.createGain();
+    mix.connect(f1); mix.connect(f2); mix.connect(bodyLp); bodyLp.connect(bodyG);
+    f1.connect(env); f2.connect(env); bodyG.connect(env);
+    const held = len > beat * 0.6;
+    if (held) {
+      // A held note: a touch of vibrato once it has arrived.
+      const lfo = c.createOscillator(); lfo.frequency.value = 5.2;
+      const lfoG = c.createGain(); lfoG.gain.value = 0;
+      lfoG.gain.setValueAtTime(0, s0 + glideTime);
+      lfoG.gain.linearRampToValueAtTime(14, s0 + glideTime + 0.35);
+      lfo.connect(lfoG); lfoG.connect(o1.detune); lfoG.connect(o2.detune);
+      lfo.start(s0); lfo.stop(Math.min(dur, s0 + len + 0.3));
+    }
+    const peak = g.level * vel;
+    const off = Math.min(dur, s0 + Math.max(0.05, len));
+    env.gain.setValueAtTime(0, s0);
+    env.gain.linearRampToValueAtTime(peak, s0 + 0.004);
+    env.gain.linearRampToValueAtTime(peak * (held ? 0.8 : 0.55), off);
+    env.gain.linearRampToValueAtTime(0, off + (held ? 0.18 : 0.03));
+    const pn = makePan(c, jitter(0.25));
+    env.connect(pn); pn.connect(leadBus);
+    const stop = Math.min(dur, off + 0.22);
+    o1.start(s0); o2.start(s0); o1.stop(stop); o2.stop(stop);
+  };
+
+  // ── Patterns (seeded) ──
+  const KICKS = [[0, 7, 10], [0, 3, 10], [0, 6, 9, 14], [0, 10, 11], [0, 7, 11], [0, 3, 8, 11]];
+  const kA = KICKS[Math.floor(rand() * KICKS.length)];
+  const kB = KICKS[Math.floor(rand() * KICKS.length)];
+  // The lead's motif: a one-bar rhythm on 16ths and a walk on the minor pentatonic.
+  const PENTA = [0, 3, 5, 7, 10];
+  const scale: number[] = [];
+  for (let m = 74; m <= 88; m++) if (PENTA.indexOf(mod(m - tonicPc, 12)) >= 0) scale.push(m);
+  const CAND = [0, 2, 3, 5, 6, 8, 10, 11, 13, 14];
+  const hits = CAND.filter(() => rand() < 0.5);
+  if (hits.length < 4) [0, 3, 6, 10].forEach((x) => { if (hits.indexOf(x) < 0) hits.push(x); });
+  hits.sort((a, b) => a - b);
+  const motif: { step: number; idx: number; len: number; stutter: boolean }[] = [];
+  let idx = Math.floor(scale.length / 2) - 1 + Math.floor(rand() * 3);
+  hits.slice(0, 6).forEach((st, i, arr) => {
+    idx = clamp(idx + Math.floor(rand() * 5) - 2, 1, scale.length - 2);
+    const room = (i + 1 < arr.length ? arr[i + 1] : 16) - st;
+    motif.push({ step: st, idx, len: Math.min(room, rand() < 0.3 ? 2 : 1), stutter: rand() < 0.2 });
+  });
+  const tonicLead = (() => { let best = scale[0]; scale.forEach((m) => { if (mod(m - tonicPc, 12) === 0 && Math.abs(m - 80) < Math.abs(best - 80)) best = m; }); return best; })();
+
+  // ── Lay it out bar by bar ──
+  let prev808: number | null = null;
+  const hatFrom = Math.max(0, introEnd - bar);
+  barStarts.forEach((b0) => {
+    const bi = barIndex(b0);
+    const second = mod(bi, 2) === 1; // the answer bar of a two-bar phrase
+    const inBuild = b0 >= buildStart - 1e-3;
+    const drums = b0 >= introEnd - 1e-3;
+    // Hats: 16ths (8ths in the intro), with a roll in the last beat of some answer bars.
+    const rollBeat = drums && second && rand() < 0.65 ? 3 : -1;
+    const rollKind = rand() < 0.5 ? 8 : 6; // 1/32 or 16th triplets
+    for (let st = 0; st < 16; st++) {
+      const t = b0 + st * s16;
+      if (t < hatFrom || t >= E - 0.02) continue;
+      const beatNo = Math.floor(st / 4);
+      const nearEnd = t >= E - beat - 1e-3; // the roll into the end card
+      if ((beatNo === rollBeat || nearEnd) && st % 4 === 0) {
+        const n = nearEnd ? 8 : rollKind;
+        for (let r = 0; r < n; r++) hat(t + (r * beat) / n, 0.45 + 0.5 * (r / n), 0.12);
+        st += 3;
+        continue;
+      }
+      if (!drums && st % 2 === 1) continue;
+      const accent = st % 4 === 0 ? 1 : st % 2 === 0 ? 0.7 : 0.5;
+      hat(t + jitter(0.003), accent * (drums ? 1 : 0.55) * (1 + jitter(0.12)), st % 2 === 0 ? 0.12 : -0.08);
+    }
+    if (!drums) return;
+    // Kick + 808, locked; clap on 2 and 4.
+    const pat = second ? kB : kA;
+    pat.forEach((st, k) => {
+      const t = b0 + st * s16;
+      if (t >= dropAt - 1e-3 || t < introEnd - 1e-3) return;
+      const nextSt = k + 1 < pat.length ? pat[k + 1] : 16;
+      const len = Math.min((nextSt - st) * s16, dropAt - t) - 0.03;
+      const ch = chordAt(t + 0.01);
+      let midi = 31 + mod(tonicPc + ch.root - 31, 12);
+      if (k > 0 && rand() < 0.22) midi += 12;
+      const glide = prev808 !== null && prev808 !== midi && rand() < 0.35 ? prev808 : null;
+      kick(t, k === 0 ? 1 : 0.8);
+      note808(midi, t, len, k === 0 ? 0.95 : 0.85, glide);
+      prev808 = midi;
+    });
+    [4, 12].forEach((st) => {
+      const t = b0 + st * s16;
+      if (t < dropAt - 1e-3) clap(t + jitter(0.003), 0.9 * (1 + jitter(0.08)));
+    });
+    // Lead: the motif (quieter and darker before the build), then its answer,
+    // which slides up into a held note at the phrase end.
+    const leadVel = inBuild ? 1 : 0.7;
+    motif.forEach((m, i) => {
+      const t = b0 + m.step * s16;
+      if (t >= E - beat * 0.5 || (!inBuild && second && i > 2)) return;
+      let pitchIdx = m.idx;
+      if (second && i >= motif.length - 2) pitchIdx = clamp(m.idx + (i === motif.length - 1 ? 1 : -1), 0, scale.length - 1);
+      const midi = scale[pitchIdx];
+      const len = m.len * s16 * 0.85;
+      if (m.stutter) {
+        leadNote(midi, t + jitter(0.004), s16 * 0.4, leadVel * 0.9, null);
+        leadNote(midi, t + s16 * 0.5, s16 * 0.4, leadVel * 0.75, null);
+      } else {
+        leadNote(midi, t + jitter(0.004), len, leadVel * (m.step % 4 === 0 ? 1 : 0.85), null);
+      }
+    });
+    if (second && inBuild) {
+      const t = b0 + 13 * s16;
+      if (t + 3 * s16 < E - beat * 0.5) {
+        const target = scale[clamp(motif[motif.length - 1].idx + 1, 1, scale.length - 1)];
+        leadNote(target, t, 3 * s16, 0.95, target - 3, 0.14);
+      }
+    }
+  });
+  // The landing: kick + 808 sliding down onto the tonic, the lead sliding up into it.
+  const tonicSub = 31 + mod(tonicPc + g.tonicRoot - 31, 12);
+  kick(E, 1);
+  note808(tonicSub, E, Math.min(2.6, dur - E - 0.05), 0.95, tonicSub + 7);
+  leadNote(tonicLead, E, Math.min(2.2, dur - E - 0.1), 0.9, tonicLead - 3, 0.16);
+  clap(E + 2 * beat, 0.6);
 }
