@@ -34,11 +34,11 @@
  */
 import type { StyleKey } from "@/lib/reelStyles";
 
-export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat" | "groove" | "lift";
+export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat" | "groove" | "lift" | "throttle";
 export type MusicChoice = "off" | "auto" | MusicMood;
 
-export const MUSIC_MOODS: MusicMood[] = ["calm", "cinematic", "elegant", "upbeat", "groove", "lift"];
-export const MUSIC_CHOICES: MusicChoice[] = ["off", "auto", "calm", "cinematic", "elegant", "upbeat", "groove", "lift"];
+export const MUSIC_MOODS: MusicMood[] = ["calm", "cinematic", "elegant", "upbeat", "groove", "lift", "throttle"];
+export const MUSIC_CHOICES: MusicChoice[] = ["off", "auto", "calm", "cinematic", "elegant", "upbeat", "groove", "lift", "throttle"];
 export const MUSIC_LABEL: Record<MusicChoice, string> = {
   off: "Off",
   auto: "Auto",
@@ -48,6 +48,7 @@ export const MUSIC_LABEL: Record<MusicChoice, string> = {
   upbeat: "Upbeat",
   groove: "Groove",
   lift: "Lift",
+  throttle: "Throttle",
 };
 
 /** One line on what each mood sounds like (shown under the picker). */
@@ -58,11 +59,12 @@ export const MUSIC_BLURB: Record<MusicMood, string> = {
   upbeat: "Bright, with a steady beat",
   groove: "Modern hip-hop beat with deep bass",
   lift: "Bright, building, uplifting",
+  throttle: "Fast, punchy, high-energy",
 };
 
 /**
- * Each look's own mood — what "Auto" means. Groove and Lift (Oct 6) are never
- * a look's default: they're picked on purpose.
+ * Each look's own mood — what "Auto" means. Groove, Lift (Oct 6) and Throttle
+ * (Oct 7) are never a look's default: they're picked on purpose.
  */
 const LOOK_MOOD: Record<StyleKey, MusicMood> = {
   walkthrough: "calm",
@@ -164,7 +166,7 @@ type MoodParams = {
   reverbSec: number;
   reverbWet: number;
   delayWet: number;
-  rhythm: "none" | "pulse" | "soft" | "full" | "groove" | "lift";
+  rhythm: "none" | "pulse" | "soft" | "full" | "groove" | "lift" | "throttle";
   minorChance: number;
   riser: number;
 };
@@ -178,6 +180,8 @@ const MOOD: Record<MusicMood, MoodParams> = {
   groove:    { tempo: [106, 110], harmonic: 2, keysStep: [1, 0.5],  keysDecay: 1.2, keysLevel: 0.16, padCut: 750,  padLevel: 0.03,  reverbSec: 2.2, reverbWet: 0.3,  delayWet: 0.22, rhythm: "groove", minorChance: 1,  riser: 0.05 },
   // Lift: bright 4-on-the-floor, major only — filtered pluck intro, riser, drop on a cut (see composeLiftLayers).
   lift:      { tempo: [134, 138], harmonic: 2, keysStep: [0.5, 0.5], keysDecay: 0.4, keysLevel: 0.15, padCut: 1200, padLevel: 0.032, reverbSec: 2.4, reverbWet: 0.32, delayWet: 0.2, rhythm: "lift", minorChance: 0, riser: 0.045 },
+  // Throttle: fast and relentless for go-fasts — minor or mixolydian (see composeThrottleLayers).
+  throttle:  { tempo: [148, 154], harmonic: 1, keysStep: [0.5, 0.5], keysDecay: 0.3, keysLevel: 0.12, padCut: 1500, padLevel: 0.018, reverbSec: 1.6, reverbWet: 0.22, delayWet: 0.12, rhythm: "throttle", minorChance: 0.5, riser: 0.05 },
 };
 
 type Chord = { root: number; pad: number[]; arp: number[] };
@@ -301,6 +305,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
   const p = MOOD[opts.mood];
   const groove = opts.mood === "groove";
   const lift = opts.mood === "lift";
+  const throttle = opts.mood === "throttle";
   const rand = mulberry32((opts.seed >>> 0) ^ seedFromString(opts.mood));
   const jitter = (amt: number) => (rand() - 0.5) * 2 * amt;
 
@@ -343,11 +348,14 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
   if (!isFinite(E) || E <= 1 || E > dur - 0.8) E = Math.max(dur * 0.85, dur - 3);
   // Land the end card on its beat when the beat is within a hair of it.
   if (Math.abs(nearestBeat(E) - E) < 0.04) E = nearestBeat(E);
-  const fadeSec = clamp(dur - E, 2, 3);
+  // Throttle ends on a big hit and a short tail, not a long fade.
+  const fadeSec = throttle ? Math.min(0.35, Math.max(0.1, dur - E)) : clamp(dur - E, 2, 3);
   const fadeStart = Math.max(0.1, dur - fadeSec);
   let introEnd = firstBar + (bar >= 2.6 ? 1 : 2) * bar;
   while (introEnd < 1.6) introEnd += bar;
   introEnd = Math.min(introEnd, E * 0.5);
+  // Throttle: at most a one-bar pickup, then straight in on the first bar line.
+  if (throttle) introEnd = Math.min(firstBar + bar, E * 0.5);
   const quarter = dur * 0.25;
   let anchor = quarter;
   let anchorD = dur * 0.12;
@@ -356,6 +364,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
   if (buildStart < introEnd) buildStart = introEnd;
   if (buildStart > E - bar) buildStart = Math.max(introEnd, E - bar);
   if (lift && liftDrop !== null) buildStart = clamp(liftDrop, introEnd, Math.max(introEnd, E - bar));
+  if (throttle) buildStart = introEnd;
 
   // Chord segments up to the end card: bar lines, grouped by harmonic rhythm.
   const barLines: number[] = [];
@@ -383,6 +392,8 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
   else if (segs.length === 2) segs[1].chord = dominant;
   if (segs.length > 0 && segs[0].chord === dominant) segs[0].chord = tonic;
   segs.push({ start: E, end: dur, chord: tonic });
+  // Throttle has its own harmony (minor or mixolydian, bVII → I into the end card).
+  if (throttle) assignThrottleChords(segs, minor, rand);
   const chordAt = (t: number): Chord => {
     for (let i = segs.length - 1; i >= 0; i--) if (t >= segs[i].start - 1e-4) return segs[i].chord;
     return segs[0].chord;
@@ -396,6 +407,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
     const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 28; hp.Q.value = 0.7;
     const comp = c.createDynamicsCompressor();
     comp.threshold.value = -18; comp.knee.value = 10; comp.ratio.value = 3; comp.attack.value = 0.02; comp.release.value = 0.25;
+    if (throttle) { comp.threshold.value = -20; comp.ratio.value = 4; comp.attack.value = 0.006; comp.release.value = 0.12; }
     if (lift) { comp.threshold.value = -19; comp.ratio.value = 3.5; comp.attack.value = 0.012; comp.release.value = 0.2; }
     if (groove) { comp.threshold.value = -20; comp.ratio.value = 4; comp.attack.value = 0.01; comp.release.value = 0.18; }
     const fade = c.createGain();
@@ -503,7 +515,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       if (stop > s0) { o.start(s0); o8.start(s0); o.stop(stop); o8.stop(stop); }
     };
     segs.forEach((sg) => {
-      if (groove || lift) return; // Groove's low end is its 808, Lift's its own ducked bass (below)
+      if (groove || lift || throttle) return; // Groove's low end is its 808; Lift and Throttle have their own ducked bass (below)
       const s0 = Math.max(sg.start, introEnd);
       if (sg.end <= s0) return;
       const midi = 33 + mod(tonicPc + sg.chord.root - 33, 12);
@@ -559,7 +571,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       return tones;
     };
     const keysFrom = introEnd;
-    if (!groove && !lift) {
+    if (!groove && !lift && !throttle) {
       const sub = 0.5 * beat; // walk the eighth-note grid; each section plays a subset
       let t = grid.phase + Math.ceil((keysFrom - grid.phase) / sub - 1e-6) * sub;
       for (; t < E - 0.02; t += sub) {
@@ -581,12 +593,12 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       }
     }
     // The landing: a rolled tonic chord on the end card, left to ring.
-    if (!groove && !lift) {
+    if (!groove && !lift && !throttle) {
       const tones = keyTones(tonic);
       tones.slice(0, 4).forEach((m, i) => keyNote(m, E + i * 0.07 + jitter(0.006), 0.9 - i * 0.08, Math.min(3.5, dur - E + 0.2), (i - 1.5) * 0.18));
     }
     // A soft bell on cuts that land on a beat (no more than one a bar).
-    if (!groove && !lift) {
+    if (!groove && !lift && !throttle) {
       let last = -Infinity;
       cuts.forEach((ct) => {
         if (ct < introEnd || ct >= E - 0.2) return;
@@ -650,7 +662,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       body.connect(bg); bg.connect(rhythmBus);
       body.start(s0); body.stop(Math.min(dur, s0 + 0.1));
     };
-    if (p.rhythm !== "none" && !groove && !lift) {
+    if (p.rhythm !== "none" && !groove && !lift && !throttle) {
       const sub = 0.5 * beat;
       const from = p.rhythm === "full" ? introEnd : buildStart;
       let t = grid.phase + Math.ceil((from - grid.phase) / sub - 1e-6) * sub;
@@ -692,8 +704,16 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       });
     }
 
+    if (throttle) {
+      composeThrottleLayers({
+        c, master, reverb, delayIn, noise, padOut, rand, jitter, dur, beat, bar, phase: grid.phase,
+        introEnd, E, segs, cuts, tonicPc, minor, level: p.keysLevel,
+      });
+    }
+
     // ── Riser into the end card, and the landing underneath it ──
-    {
+    // (Throttle swooshes into every cut, the end card included, on its own.)
+    if (!throttle) {
       const t0 = Math.max(0, E - riserLen);
       const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
       const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.6;
@@ -708,7 +728,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       const rs = c.createGain(); rs.gain.value = 0.8; g.connect(rs); rs.connect(reverb);
       src.start(t0); src.stop(Math.min(dur, E + 0.6));
       // A soft low bloom under the tonic (Groove lands on its 808 instead).
-      if (!groove && !lift) {
+      if (!groove && !lift && !throttle) {
       const o = c.createOscillator(); o.type = "sine";
       o.frequency.setValueAtTime(62, E);
       o.frequency.exponentialRampToValueAtTime(44, E + 0.6);
@@ -732,7 +752,7 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
     // Groove's weight is in the sub, which plain RMS over-counts: it is levelled
     // by K-weighted loudness (BS.1770) to -14 LUFS instead (Lift too, with a
     // lower sample ceiling so its true peak stays under -1 dBTP). Other moods: as before.
-    levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart), groove || lift ? -14 : null, lift ? -1.6 : -1);
+    levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart), groove || lift || throttle ? -14 : null, lift ? -1.6 : throttle ? THROTTLE_CEIL_DB : -1);
     return rendered;
   } finally {
     // An OfflineAudioContext has no close(); dropping the reference lets every
@@ -1342,4 +1362,411 @@ function composeLiftLayers(g: {
   const ft = arpTones(g.tonic);
   ft.slice(0, 3).forEach((m, i) => pluck(m + 12, E + i * s16, 0.8 - i * 0.12, 0.7));
   bassNote(36 + mod(tonicPc + g.tonic.root - 36, 12), E, Math.min(1.6, dur - E - 0.1), 0.8);
+}
+
+// ── Throttle (Oct 7) ───────────────────────────────────────────────────────
+
+/** Throttle's sample ceiling: dense and saturated, so a little lower to keep true peak ≤ -1 dBTP. */
+const THROTTLE_CEIL_DB = -1.8;
+
+const TH_MIXO: Record<string, Chord> = {
+  I:    { root: 0,  pad: [4, 7, 14], arp: [0, 4, 7, 12] },
+  bVII: { root: 10, pad: [4, 7, 14], arp: [0, 4, 7, 12] },
+  IV:   { root: 5,  pad: [4, 7, 14], arp: [0, 4, 7, 12] },
+  v:    { root: 7,  pad: [3, 7, 10], arp: [0, 3, 7, 10] },
+};
+const TH_MIN: Record<string, Chord> = {
+  i:    { root: 0,  pad: [3, 7, 14], arp: [0, 3, 7, 12] },
+  bVI:  { root: 8,  pad: [4, 7, 14], arp: [0, 4, 7, 12] },
+  bVII: { root: 10, pad: [4, 7, 14], arp: [0, 4, 7, 12] },
+  iv:   { root: 5,  pad: [3, 7, 10], arp: [0, 3, 7, 10] },
+};
+const TH_MIXO_PROGS = [["I", "bVII", "IV", "I"], ["I", "I", "bVII", "IV"], ["I", "v", "bVII", "IV"]];
+const TH_MIN_PROGS = [["i", "bVI", "bVII", "i"], ["i", "bVII", "bVI", "bVII"], ["i", "iv", "bVI", "bVII"]];
+
+/** Throttle's chords: a seeded rock progression, bVII before the end card, the tonic on it. */
+function assignThrottleChords(segs: Seg[], minor: boolean, rand: () => number) {
+  const table = minor ? TH_MIN : TH_MIXO;
+  const progs = minor ? TH_MIN_PROGS : TH_MIXO_PROGS;
+  const prog = progs[Math.floor(rand() * progs.length)].map((k) => table[k]);
+  const tonic = minor ? TH_MIN.i : TH_MIXO.I;
+  for (let i = 0; i < segs.length; i++) segs[i].chord = prog[i % prog.length];
+  if (segs.length >= 2) segs[segs.length - 2].chord = table.bVII;
+  segs[0].chord = tonic;
+  segs[segs.length - 1].chord = tonic;
+}
+
+/**
+ * Throttle (Oct 7): fast, punchy, high-energy — for center consoles and
+ * go-fasts. 148–154 BPM, relentless from the first bar (at most a one-bar
+ * pickup: a snare roll and a riser).
+ *   • Drums: kick on every beat, tight clap/snare on 2 and 4, fast closed
+ *     16th hats, an open hat on the off-beats.
+ *   • Bass (the engine): a rolling 16th saw bass (two detuned saws + a sub),
+ *     lightly saturated and filtered, with real harmonics in 100–400 Hz so a
+ *     phone speaker carries it; ducked hard under every kick.
+ *   • Short wide stab chords on the off-beats and a bold one-bar lead riff
+ *     on the pentatonic, repeating with variation.
+ *   • Every cut: a reverse-cymbal swoosh into it and an impact on it (crash +
+ *     sub drop, plus the kick when the cut sits on a beat). Every other cut
+ *     also gets a one-beat 16th snare fill or a quick filter-sweep riser.
+ *   • Reels over 35 s: a 1–2 bar half-time breakdown that slams back in on a cut.
+ *   • End card: a big final hit (kick, crash, sub drop, stab, bass) and a short tail.
+ */
+function composeThrottleLayers(g: {
+  c: OfflineAudioContext; master: AudioNode; reverb: AudioNode; delayIn: AudioNode; noise: AudioBuffer; padOut: GainNode;
+  rand: () => number; jitter: (amt: number) => number;
+  dur: number; beat: number; bar: number; phase: number;
+  introEnd: number; E: number; segs: Seg[]; cuts: number[]; tonicPc: number; minor: boolean; level: number;
+}) {
+  const { c, master, reverb, delayIn, noise, padOut, rand, jitter, dur, beat, bar, phase, introEnd, E, segs, tonicPc, minor } = g;
+  const s16 = beat / 4, s8 = beat / 2;
+  const chordAt = (t: number): Chord => {
+    for (let i = segs.length - 1; i >= 0; i--) if (t >= segs[i].start - 1e-4) return segs[i].chord;
+    return segs[0].chord;
+  };
+  const nearestBeat = (t: number) => phase + Math.round((t - phase) / beat) * beat;
+  const end = E; // the music proper stops at the end card's hit
+
+  // ── Cuts: impacts on every cut from the start of the groove, the end card last ──
+  const cutList = g.cuts.filter((ct) => ct > introEnd + 0.15 && ct < E - 0.2);
+  const impacts = cutList.concat([E]);
+  // Half-time breakdown (reels over 35 s): the 1–2 bars before the cut nearest 60%.
+  let bdFrom = Infinity, bdTo = -Infinity;
+  if (dur > 35 && cutList.length > 2) {
+    let best = -1, bestD = Infinity;
+    cutList.forEach((ct, i) => { const d = Math.abs(ct - dur * 0.6); if (i > 0 && d < bestD) { bestD = d; best = i; } });
+    if (best > 0) {
+      const ct = cutList[best];
+      const len = Math.min(rand() < 0.5 ? bar : 2 * bar, ct - cutList[best - 1] - 0.2);
+      if (len >= bar * 0.75) { bdFrom = ct - len; bdTo = ct; }
+    }
+  }
+  const inBreakdown = (t: number) => t >= bdFrom - 1e-3 && t < bdTo - 1e-3;
+
+  // ── Buses ──
+  const drumBus = c.createGain(); drumBus.gain.value = 0.65; drumBus.connect(master);
+  const drumSend = c.createGain(); drumSend.gain.value = 0.1; drumBus.connect(drumSend); drumSend.connect(reverb);
+  // Bass: notes → duck → drive → saturation → low-pass → level.
+  const bassDuck = c.createGain(); bassDuck.gain.value = 1;
+  const bassDrive = c.createGain(); bassDrive.gain.value = 1.6;
+  const shaper = c.createWaveShaper();
+  {
+    const n = 1024, curve = new Float32Array(n), k = 3;
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(k * x) / Math.tanh(k); }
+    shaper.curve = curve; shaper.oversample = "4x";
+  }
+  const bassLp = c.createBiquadFilter(); bassLp.type = "lowpass"; bassLp.frequency.value = 1300; bassLp.Q.value = 0.7;
+  const bassHs = c.createBiquadFilter(); bassHs.type = "highshelf"; bassHs.frequency.value = 2500; bassHs.gain.value = -6;
+  const bassOut = c.createGain(); bassOut.gain.value = 0.12;
+  bassDuck.connect(bassDrive); bassDrive.connect(shaper); shaper.connect(bassLp); bassLp.connect(bassHs); bassHs.connect(bassOut); bassOut.connect(master);
+  // Stabs and lead.
+  const stabDuck = c.createGain(); stabDuck.gain.value = 1;
+  const stabLp = c.createBiquadFilter(); stabLp.type = "lowpass"; stabLp.frequency.value = 3800; stabLp.Q.value = 0.6;
+  stabDuck.connect(stabLp); stabLp.connect(master);
+  const stabVerb = c.createGain(); stabVerb.gain.value = 0.3; stabLp.connect(stabVerb); stabVerb.connect(reverb);
+  const leadBus = c.createGain(); leadBus.gain.value = 1;
+  const leadLp = c.createBiquadFilter(); leadLp.type = "lowpass"; leadLp.frequency.value = 4200; leadLp.Q.value = 0.7;
+  leadBus.connect(leadLp); leadLp.connect(master);
+  const leadDelay = c.createGain(); leadDelay.gain.value = 0.35; leadLp.connect(leadDelay); leadDelay.connect(delayIn);
+  const leadVerb = c.createGain(); leadVerb.gain.value = 0.25; leadLp.connect(leadVerb); leadVerb.connect(reverb);
+
+  // ── Voices ──
+  const kick = (t0: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const o = c.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(180, s0);
+    o.frequency.exponentialRampToValueAtTime(50, s0 + 0.045);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.9 * vel, s0 + 0.002);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.2);
+    o.connect(gn); gn.connect(drumBus);
+    // A short filtered click for punch on small speakers.
+    const ck = c.createBufferSource(); ck.buffer = noise;
+    const cbp = c.createBiquadFilter(); cbp.type = "bandpass"; cbp.frequency.value = 2500; cbp.Q.value = 0.8;
+    const cg = c.createGain();
+    cg.gain.setValueAtTime(0, s0);
+    cg.gain.linearRampToValueAtTime(0.12 * vel, s0 + 0.001);
+    cg.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.015);
+    ck.connect(cbp); cbp.connect(cg); cg.connect(drumBus);
+    o.start(s0); o.stop(Math.min(dur, s0 + 0.22));
+    ck.start(s0, rand() * 0.8); ck.stop(Math.min(dur, s0 + 0.02));
+  };
+  const snare = (t0: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const src = c.createBufferSource(); src.buffer = noise;
+    const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 900;
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 7500;
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.42 * vel, s0 + 0.002);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.13);
+    src.connect(hp); hp.connect(lp); lp.connect(gn); gn.connect(drumBus);
+    const send = c.createGain(); send.gain.value = 0.9; gn.connect(send); send.connect(reverb);
+    src.start(s0, rand() * 0.8); src.stop(Math.min(dur, s0 + 0.15));
+    const body = c.createOscillator(); body.type = "triangle";
+    body.frequency.setValueAtTime(240, s0);
+    body.frequency.exponentialRampToValueAtTime(170, s0 + 0.05);
+    const bg = c.createGain();
+    bg.gain.setValueAtTime(0, s0);
+    bg.gain.linearRampToValueAtTime(0.3 * vel, s0 + 0.002);
+    bg.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.08);
+    body.connect(bg); bg.connect(drumBus);
+    body.start(s0); body.stop(Math.min(dur, s0 + 0.09));
+  };
+  const hat = (t0: number, vel: number, open: boolean) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const src = c.createBufferSource(); src.buffer = noise;
+    const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = open ? 6500 : 8000;
+    const gn = c.createGain();
+    const len = open ? 0.11 : 0.03;
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime((open ? 0.12 : 0.11) * vel, s0 + 0.002);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + len);
+    const pn = makePan(c, open ? -0.15 : 0.15);
+    src.connect(hp); hp.connect(gn); gn.connect(pn); pn.connect(drumBus);
+    src.start(s0, rand() * 0.9); src.stop(Math.min(dur, s0 + len + 0.01));
+  };
+  const crash = (t0: number, vel: number, len: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
+    const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 4200;
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.1 * vel, s0 + 0.004);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + len);
+    src.connect(hp); hp.connect(gn); gn.connect(master);
+    const send = c.createGain(); send.gain.value = 0.6; gn.connect(send); send.connect(reverb);
+    src.start(s0, rand() * 0.5); src.stop(Math.min(dur, s0 + len + 0.02));
+  };
+  const subDrop = (t0: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.05) return;
+    const o = c.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(95, s0);
+    o.frequency.exponentialRampToValueAtTime(34, s0 + 0.5);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.32 * vel, s0 + 0.004);
+    gn.gain.exponentialRampToValueAtTime(0.0001, s0 + 0.6);
+    o.connect(gn); gn.connect(master);
+    o.start(s0); o.stop(Math.min(dur, s0 + 0.62));
+  };
+  /** Reverse cymbal: filtered noise swelling up to exactly `at`. */
+  const swoosh = (at: number, len: number, vel: number) => {
+    const s0 = Math.max(0, at - len);
+    if (at - s0 < 0.08) return;
+    const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
+    const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 0.9;
+    bp.frequency.setValueAtTime(2500, s0);
+    bp.frequency.exponentialRampToValueAtTime(9000, at);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0.0001, s0);
+    gn.gain.exponentialRampToValueAtTime(0.09 * vel, at - 0.004);
+    gn.gain.linearRampToValueAtTime(0, at);
+    const pn = makePan(c, jitter(0.3));
+    src.connect(bp); bp.connect(gn); gn.connect(pn); pn.connect(master);
+    src.start(s0, rand() * 0.5); src.stop(Math.min(dur, at + 0.01));
+  };
+  /** A quick filter-sweep riser (noise + the bass filter opening) into `at`. */
+  const sweep = (at: number, len: number) => {
+    const s0 = Math.max(0, at - len);
+    if (at - s0 < 0.1) return;
+    const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
+    const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 3;
+    bp.frequency.setValueAtTime(600, s0);
+    bp.frequency.exponentialRampToValueAtTime(6000, at);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0.0001, s0);
+    gn.gain.exponentialRampToValueAtTime(0.07, at - 0.005);
+    gn.gain.linearRampToValueAtTime(0, at);
+    src.connect(bp); bp.connect(gn); gn.connect(master);
+    src.start(s0); src.stop(Math.min(dur, at + 0.01));
+  };
+  const bassNote = (midi: number, t0: number, len: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const f = mtof(midi);
+    const o1 = c.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = f; o1.detune.value = -7;
+    const o2 = c.createOscillator(); o2.type = "sawtooth"; o2.frequency.value = f; o2.detune.value = 7;
+    const sub = c.createOscillator(); sub.type = "sine"; sub.frequency.value = f / 2;
+    const subG = c.createGain(); subG.gain.value = 0.7;
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 3;
+    lp.frequency.setValueAtTime(1800, s0);
+    lp.frequency.exponentialRampToValueAtTime(420, s0 + Math.max(0.05, len));
+    const gn = c.createGain();
+    const off = Math.min(dur, s0 + Math.max(0.04, len));
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(0.5 * vel, s0 + 0.003);
+    gn.gain.linearRampToValueAtTime(0.4 * vel, off);
+    gn.gain.linearRampToValueAtTime(0, off + 0.015);
+    o1.connect(lp); o2.connect(lp); lp.connect(gn); sub.connect(subG); subG.connect(gn); gn.connect(bassDuck);
+    const stop = Math.min(dur, off + 0.03);
+    o1.start(s0); o2.start(s0); sub.start(s0); o1.stop(stop); o2.stop(stop); sub.stop(stop);
+  };
+  const stab = (ch: Chord, t0: number, vel: number, len = 0.11) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const rootPc = mod(tonicPc + ch.root, 12);
+    const tones = [0].concat(ch.pad).map((iv) => 60 + mod(rootPc + iv - 60, 12)).sort((a, b) => a - b);
+    tones.forEach((m, k) => {
+      const o = c.createOscillator(); o.type = k % 2 === 0 ? "sawtooth" : "square"; o.frequency.value = mtof(m); o.detune.value = (k % 2 === 0 ? -1 : 1) * 9;
+      const gn = c.createGain();
+      gn.gain.setValueAtTime(0, s0);
+      gn.gain.linearRampToValueAtTime(0.25 * vel, s0 + 0.003);
+      gn.gain.exponentialRampToValueAtTime(0.0001, s0 + len);
+      const pn = makePan(c, (k / Math.max(1, tones.length - 1) - 0.5) * 1.2);
+      o.connect(gn); gn.connect(pn); pn.connect(stabDuck);
+      o.start(s0); o.stop(Math.min(dur, s0 + len + 0.02));
+    });
+  };
+  const leadNote = (midi: number, t0: number, len: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const f = mtof(midi);
+    const o1 = c.createOscillator(); o1.type = "square"; o1.frequency.value = f; o1.detune.value = -5;
+    const o2 = c.createOscillator(); o2.type = "sawtooth"; o2.frequency.value = f; o2.detune.value = 5;
+    const g2 = c.createGain(); g2.gain.value = 0.6;
+    const gn = c.createGain();
+    const off = Math.min(dur, s0 + Math.max(0.04, len));
+    const peak = g.level * vel;
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(peak, s0 + 0.004);
+    gn.gain.linearRampToValueAtTime(peak * 0.7, off);
+    gn.gain.linearRampToValueAtTime(0, off + 0.04);
+    const pn = makePan(c, jitter(0.15));
+    o1.connect(gn); o2.connect(g2); g2.connect(gn); gn.connect(pn); pn.connect(leadBus);
+    const stop = Math.min(dur, off + 0.06);
+    o1.start(s0); o2.start(s0); o1.stop(stop); o2.stop(stop);
+  };
+  const duck = (param: AudioParam, t: number, depth: number, next: number) => {
+    param.setValueAtTime(1, t);
+    param.linearRampToValueAtTime(depth, t + 0.006);
+    param.linearRampToValueAtTime(1, Math.min(next - 0.002, t + Math.min(0.16, beat * 0.42)));
+  };
+
+  // ── Patterns (seeded) ──
+  const BASS_PATS = [[0, 1, 1, 1], [0, 0, 1, 1], [0, 1, 0, 1]]; // per beat, 16ths: 0 = rest (the kick's own 16th)
+  const bassPat = BASS_PATS[Math.floor(rand() * BASS_PATS.length)];
+  const STABS = [[2, 6, 10, 14], [2, 6, 11, 14], [2, 7, 10, 14], [3, 6, 10, 14]];
+  const stabPat = STABS[Math.floor(rand() * STABS.length)];
+  const scaleIv = minor ? [0, 3, 5, 7, 10] : [0, 2, 4, 7, 10];
+  const scale: number[] = [];
+  for (let m = 69; m <= 86; m++) if (scaleIv.indexOf(mod(m - tonicPc, 12)) >= 0) scale.push(m);
+  // The riff: 8 eighths, a seeded walk, a few doubled into 16ths.
+  const riff: { idx: number; on: boolean; dbl: boolean }[] = [];
+  {
+    let idx = Math.floor(scale.length / 2) - 2 + Math.floor(rand() * 3);
+    for (let k = 0; k < 8; k++) {
+      const on = k === 0 || rand() < 0.72;
+      if (on) idx = clamp(idx + Math.floor(rand() * 5) - 2, 0, scale.length - 1);
+      riff.push({ idx, on, dbl: on && rand() < 0.25 });
+    }
+  }
+
+  // ── Kicks (on every beat, plus impacts on cuts that sit on a beat) ──
+  const kicks: { t: number; vel: number }[] = [];
+  // A cut on (or within 100 ms of) a beat takes the kick; the end card's hit always does.
+  const impactKick = impacts.map((ct, i) => i === impacts.length - 1 || Math.abs(nearestBeat(ct) - ct) <= 0.1);
+  for (let t = phase + Math.ceil((introEnd - phase) / beat - 1e-6) * beat; t < end - 1e-3; t += beat) {
+    if (inBreakdown(t) && mod(Math.round((t - phase) / beat), 4) !== 0) continue;
+    if (impacts.some((ct, i) => impactKick[i] && Math.abs(ct - t) < 0.15)) continue;
+    kicks.push({ t, vel: 1 });
+  }
+  impacts.forEach((ct, i) => { if (impactKick[i]) kicks.push({ t: ct, vel: 1.1 }); });
+  kicks.sort((a, b) => a.t - b.t);
+  kicks.forEach((k, i) => {
+    const next = i + 1 < kicks.length ? kicks[i + 1].t : k.t + beat;
+    kick(k.t, k.vel);
+    duck(bassDuck.gain, k.t, 0.08, next);
+    duck(stabDuck.gain, k.t, 0.5, next);
+    duck(padOut.gain, k.t, 0.5, next);
+  });
+
+  // ── The groove, 16th by 16th ──
+  const fillCuts: number[] = [], sweepCuts: number[] = [];
+  // Every other cut gets a fill or a sweep — the two alternate (seeded start);
+  // the cut that ends a breakdown always gets the sweep.
+  const fillFirst = rand() < 0.5 ? 0 : 1;
+  cutList.forEach((ct, i) => {
+    if (ct === bdTo) sweepCuts.push(ct);
+    else if (i % 2 === 1) (mod(Math.floor(i / 2) + fillFirst, 2) === 0 ? fillCuts : sweepCuts).push(ct);
+  });
+  const inFill = (t: number) => fillCuts.some((ct) => t >= ct - beat - 1e-3 && t < ct - 1e-3);
+  const leadFrom = introEnd + bar;
+  for (let t = phase + Math.ceil((introEnd - phase) / s16 - 1e-6) * s16; t < end - 0.01; t += s16) {
+    const n16 = Math.round((t - phase) / s16);
+    const st = mod(n16, 16);          // 16th within the bar
+    const inBeat = mod(n16, 4);       // 16th within the beat
+    const barNo = Math.floor(n16 / 16);
+    const bd = inBreakdown(t);
+    const ch = chordAt(t + 0.005);
+    // Hats: closed on every 16th (8ths in a breakdown), open on the off-beat 8ths.
+    if (inBeat === 2) hat(t + jitter(0.002), bd ? 0.6 : 1, true);
+    else if (!bd || inBeat === 0) hat(t + jitter(0.002), (inBeat === 0 ? 0.85 : 0.55) * (1 + jitter(0.12)), false);
+    // Snare/clap on 2 and 4 (half time: on 3), unless a fill owns this beat.
+    if (!inFill(t)) {
+      if (!bd && (st === 4 || st === 12)) snare(t + jitter(0.002), 1);
+      else if (bd && st === 8) snare(t, 1);
+    }
+    if (bd) continue;
+    // Bass: rolling 16ths on the chord root (octave up on the last 16th of some beats).
+    if (bassPat[inBeat] === 1) {
+      let m = 36 + mod(tonicPc + ch.root - 36, 12);
+      if (inBeat === 3 && mod(barNo, 2) === 1 && rand() < 0.4) m += 12;
+      bassNote(m, t, s16 * 0.8, inBeat === 2 ? 1 : 0.85);
+    }
+    // Stabs on the off-beats.
+    if (stabPat.indexOf(st) >= 0) stab(ch, t, st === 14 ? 0.9 : 1);
+    // Lead riff: one bar of 8ths, repeated with variation.
+    if (t >= leadFrom - 1e-3 && mod(st, 2) === 0) {
+      const k = st / 2;
+      const r = riff[k];
+      if (r.on) {
+        let idx = r.idx;
+        if (mod(barNo, 4) === 3 && k >= 5) idx = clamp(idx + (k === 7 ? 2 : 1), 0, scale.length - 1); // the answer
+        else if (mod(barNo, 2) === 1 && k >= 6) idx = clamp(idx - 1, 0, scale.length - 1);
+        const m = scale[idx];
+        if (r.dbl) { leadNote(m, t, s16 * 0.7, 1); leadNote(m, t + s16, s16 * 0.7, 0.8); }
+        else leadNote(m, t, s8 * 0.75, k === 0 ? 1 : 0.9);
+      }
+    }
+  }
+
+  // ── Fills, sweeps, swooshes and impacts on the cuts ──
+  fillCuts.forEach((ct) => { for (let k = 0; k < 4; k++) snare(ct - beat + k * s16, 0.55 + 0.15 * k); });
+  sweepCuts.forEach((ct) => sweep(ct, Math.min(beat * 2, 0.9)));
+  let prevCut = introEnd;
+  impacts.forEach((ct, i) => {
+    swoosh(ct, clamp((ct - prevCut) * 0.4, 0.15, 0.6), i === impacts.length - 1 ? 1.2 : 1);
+    crash(ct, i === impacts.length - 1 ? 1.2 : 0.85, i === impacts.length - 1 ? 1.6 : 0.9);
+    subDrop(ct, i === impacts.length - 1 ? 1.2 : 0.85);
+    prevCut = ct;
+  });
+
+  // ── The pickup (at most a bar): a snare roll and a riser into the first downbeat ──
+  if (introEnd > 0.3) {
+    const from = Math.max(0, introEnd - bar);
+    for (let t = from; t < introEnd - 1e-3; ) {
+      const p = (t - from) / Math.max(0.1, introEnd - from);
+      snare(t, 0.35 + 0.55 * p);
+      t += p < 0.5 ? s8 : s16;
+    }
+    sweep(introEnd, Math.min(introEnd, bar));
+  }
+  // The first downbeat lands like a cut (its kick is the groove's first).
+  crash(introEnd, 0.9, 1); subDrop(introEnd, 0.9);
+
+  // ── The end card: one big hit and a short tail ──
+  const tonic = segs[segs.length - 1].chord;
+  stab(tonic, E, 1.3, 1.1);
+  bassNote(36 + mod(tonicPc + tonic.root - 36, 12), E, Math.min(1.0, dur - E - 0.05), 1.1);
+  let home = scale[0];
+  scale.forEach((m) => { if (mod(m - tonicPc, 12) === 0 && Math.abs(m - 78) < Math.abs(home - 78)) home = m; });
+  leadNote(home, E, Math.min(0.9, dur - E - 0.05), 0.9);
 }

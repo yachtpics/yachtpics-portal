@@ -1,5 +1,14 @@
 # Where we are — October 6, 2026
 
+## Oct 7 — 7th music mood "Throttle" — NOT PUSHED (parent will push), NOT BROWSER-TESTED
+
+- **What:** an original mood (no reference track) in `src/lib/reelMusic.ts` for center consoles and go-fasts — label **"Throttle"**, blurb "Fast, punchy, high-energy". The most energetic mood: **148–154 BPM** (fitted to the cuts), **minor or mixolydian** (seeded), relentless from the first bar (at most a one-bar pickup: snare roll + riser). Not the Auto default for any look.
+- **Layers (`composeThrottleLayers`):** kick on every beat (with a short filtered click so it punches on phones), tight snare/clap on 2 and 4, closed 16th hats, open hat on the off-beats; **rolling 16th saw bass** (two detuned saws + a sub an octave down, per-note filter envelope, tanh saturation 4× oversampled, high shelf cut) **ducked hard under every kick** — ~25% of its energy sits in 100–400 Hz so phones carry it; short wide stab chords on the off-beats (seeded pattern); a bold one-bar pentatonic lead riff on 8ths that repeats with variation (answers every 2nd/4th bar). Own harmony: rock progressions (mixolydian I–♭VII–IV…, minor i–♭VI–♭VII…), ♭VII before the end card, tonic on it.
+- **Cuts:** a reverse-cymbal swoosh into **every** cut and an impact **on** it (crash + sub drop, plus the kick when the cut is within 100 ms of a beat — otherwise the kick stays on its beat to avoid a flam); every other cut also gets a 1-beat 16th snare fill or a quick filter-sweep riser (alternating, seeded). Reels **over 35 s**: a 1–2 bar half-time breakdown before the cut nearest 60%, slamming back in on that cut. **End card:** one big hit (kick, crash, sub drop, long stab, bass and lead on the tonic) and a short tail — Throttle's fade is 0.35 s, not 2–3 s.
+- **Level:** K-weighted to −14 LUFS with a −1.8 dBFS sample ceiling (Throttle only). 30 s sample (cuts 3.0/6.4/9.6/13.1/16.4/19.9/23.2, end card 27.0): **150 BPM, −13.9 LUFS, true peak −1.55 dBTP**. A 40 s reel (seed 2) with a breakdown at 20.8–22.4 s: −13.8 LUFS, −1.67 dBTP. Stems (K-weighted, pre-level): bass −16.4, lead −18.5, drums −18.1, stabs −21.6, FX −25.5, pad −27.9 LUFS. Sample: `$HOME/throttle_sample.wav` on the Cowork VM (seed 1).
+- **Existing six moods bit-identical** (fingerprints unchanged). Picker and Reel Service board show it automatically; Help's Reel — music step lists it; PDF rebuilt.
+- **Not verified:** listening quality, browser rendering.
+
 ## Oct 6 (latest) — 6th music mood "Lift" — NOT PUSHED (parent will push), NOT BROWSER-TESTED
 
 - **What:** a new mood in `src/lib/reelMusic.ts` in the broad style of a second track Charlie likes — traits only (no melody, chords or hook copied). Bright, building, uplifting: **major key only** (seeded), **134–138 BPM** 4-on-the-floor. Picker label **"Lift"**; not the Auto default for any look.
