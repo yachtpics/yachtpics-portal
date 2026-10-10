@@ -1,5 +1,13 @@
 # Where we are — October 6, 2026
 
+## Oct 10 — Help and reel tip: Walkthrough and Underway are for everyone now — NOT PUSHED (parent will push), NOT BROWSER-TESTED
+
+- The depth looks opened to every broker on **Fri Oct 9, 9am ET** (release gate unchanged in `src/lib/depthLooksRelease.ts`; the Reel page still uses it).
+- **Help (`src/app/dashboard/help/page.tsx`):** the Walkthrough/Underway line is now an ordinary step in `sections`, right after "Reel — pick a look", with no date wording, and the pick-a-look line now names Walkthrough and Underway in the list of looks. The per-viewer gate on the Help page is gone (`DEPTH_LOOKS_STEP`, `depthLooksOpenForViewer`, `sectionsNow` and the `depthLooksRelease` / `getEffectiveAccessStatus` imports removed); the page stays `force-dynamic` for the per-viewer "Your Reels" section. Stack Underway stays out (admin-only; Help never covered it).
+- **Reel tip (`src/lib/portalTips.ts`):** the looks paragraph now includes Walkthrough and Underway.
+- **PDF rebuilt** (`python3 scripts/build_user_guide.py`) — the guide now includes the Walkthrough/Underway step (it never did before, since gated lines lived outside `sections`).
+- Note: `CLAUDE.md`'s Help-page rule still cites `DEPTH_LOOKS_STEP` as an example of a gated line; that constant no longer exists (`REEL_SERVICE_SECTION` is the remaining example).
+
 ## Oct 7 (later) — Coastal revised (mallet lead, more bass) + 8th mood "Coastal Drive" — NOT PUSHED (parent will push), NOT BROWSER-TESTED
 
 - **Coastal, after Charlie heard the first sample:** the singing saw/triangle lead is replaced by a **bright, plucky mallet / marimba-style lead** (additive partials 1×, 4×, 9.2× with the upper ones dying fast, a light FM shimmer on the attack, 3 ms attack, 0.45–1.6 s decay scaled to the note, a touch more stereo delay) — same seeded motif logic (A, A′, B, A″). **Bass** now sine + clean 2nd and 3rd harmonics (sines; ~100–250 Hz so phones carry it), low-pass opened to 900 Hz, sidechain still gentle; **bass stem vs the mix went from −4.7 dB to −0.6 dB (+4.1 dB)** — pre-level K-weighted bass −18.2 → −11.4 LUFS against a mix of −13.5 → −10.8; the final level pass still lands the track at −14 LUFS. Lead stem ≈ −19 LUFS (pre-level).

@@ -1,16 +1,10 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
-import {
-  depthLooksOpen,
-  depthLooksOpenFor,
-  isDepthLooksSubscriber,
-  DEPTH_LOOKS_SUBSCRIBER_OPEN_AT,
-} from "@/lib/depthLooksRelease";
 
-// Rendered on every request: the depth looks' line appears on its release
-// day without a rebuild.
+// Rendered on every request: "Your Reels" is shown per viewer (Reel Service
+// clients only). Walkthrough and Underway opened to everyone on Oct 9, so
+// their line is now an ordinary step in `sections`.
 export const dynamic = "force-dynamic";
 
 const sections = [
@@ -138,7 +132,8 @@ const sections = [
       "Spec Sheet: open a listing and click Spec Sheet for a clean, branded, printable one-pager with the specs, your logo, and a QR code — ready to print or email.",
       "Social Post: click Social Post to turn any photo into a branded, post-ready image with a caption and hashtags written for you. Download and post to Instagram or Facebook.",
       "Reel: click Reel to turn the listing's photos into a finished video — a vertical Reel for Instagram and Facebook, or a widescreen Film you can add to the listing and send to a buyer. It renders in your browser in under a minute. Reels are silent unless you turn on Music, so you can add a trending sound when you post. Without a plan, each listing includes two reels (see Billing & Subscription).",
-      "Reel — pick a look: each is a complete treatment. Editorial (serif caps on a soft gradient, the brochure look), Cinematic (letterboxed and slow, nothing over the photograph), Gallery (warm off-white with the photo inset), Classic (warm tones, title case, set lower-left — suits sail and classics), Energy (whips, wipes and zoom-throughs, a different cut every time — for center consoles and sportfish), Stack (three bands trading on the beat, with full-frame breaks — for go-fasts), Marquee (the hero on top, the details in the middle, the rest of the boat below, one photo at a time) and Marquee Still (the same, with the cover held still at the top). Stack and the two Marquee looks are for vertical reels; the widescreen Film offers the others.",
+      "Reel — pick a look: each is a complete treatment. Editorial (serif caps on a soft gradient, the brochure look), Cinematic (letterboxed and slow, nothing over the photograph), Walkthrough and Underway (the camera moves through each photograph — see below), Gallery (warm off-white with the photo inset), Classic (warm tones, title case, set lower-left — suits sail and classics), Energy (whips, wipes and zoom-throughs, a different cut every time — for center consoles and sportfish), Stack (three bands trading on the beat, with full-frame breaks — for go-fasts), Marquee (the hero on top, the details in the middle, the rest of the boat below, one photo at a time) and Marquee Still (the same, with the cover held still at the top). Stack and the two Marquee looks are for vertical reels; the widescreen Film offers the others.",
+      "Reel — Walkthrough and Underway: two looks where the camera moves through each photograph instead of zooming in, so the foreground passes and the room opens up. Walkthrough is the quiet one, made for the listing film; Underway adds wipes and dips between spaces, made for social. Every frame is the real boat — nothing is generated or filled in. Allow a couple of minutes: it reads the depth of each photograph before it renders.",
       "Reel — Marquee top photos: on a Marquee look each photo you pick shows Top or Bottom. Tap a photo's badge to pin it to the top band (up to four; one on Marquee Still), or press Back to automatic.",
       "Reel — your colours: set an accent (the fine lines and lead-in) and a background (the bars, end card and page behind the photo) to match your brand, or press Match my logo to pull the colour straight out of your logo. It's remembered for every listing; 'Back to the look's colours' resets it.",
       "Reel — options: choose the photos and their order, put the price and location on or off, show the whole photo or fill the frame, and switch on room labels to name each space on screen.",
@@ -251,45 +246,6 @@ const quickRef = [
 ];
 
 /**
- * The depth looks' line under Marketing Tools, after the list of looks. Only
- * shown once they are open to this viewer (depthLooksOpenFor — admins always,
- * subscribers from Mon Oct 5, everyone from Fri Oct 9) — worked out on each
- * request, never at module load, so it appears on the day without a rebuild.
- */
-const DEPTH_LOOKS_STEP =
-  "Reel — Walkthrough and Underway: two looks where the camera moves through each photograph instead of zooming in, so the foreground passes and the room opens up. Walkthrough is the quiet one, made for the listing film; Underway adds wipes and dips between spaces, made for social. Every frame is the real boat — nothing is generated or filled in. Allow a couple of minutes: it reads the depth of each photograph before it renders.";
-
-/**
- * Whether the depth looks are open to the person viewing the help page. Only
- * asks the database inside the subscriber-only window (Oct 5 → Oct 9) — before
- * it nobody but an admin sees them, after it everyone does. Any failure reads
- * as "not open yet" for this viewer; the line then appears on Oct 9.
- */
-async function depthLooksOpenForViewer(): Promise<boolean> {
-  const now = new Date();
-  if (depthLooksOpen(now)) return true;
-  const subscriberWindow = now.getTime() >= Date.parse(DEPTH_LOOKS_SUBSCRIBER_OPEN_AT);
-  try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return false;
-    const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
-    const isAdmin = me?.role === "admin";
-    if (isAdmin || !subscriberWindow) return depthLooksOpenFor({ isAdmin, isSubscriber: false }, now);
-    // Same answer as the reel page: the broker's own plan or office plan,
-    // via getEffectiveAccessStatus (service role so RLS never blocks).
-    const service = createServiceClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
-    const { status } = await getEffectiveAccessStatus(service, user.id);
-    return depthLooksOpenFor({ isAdmin, isSubscriber: isDepthLooksSubscriber(status) }, now);
-  } catch {
-    return false;
-  }
-}
-
-/**
  * "Your Reels" — Reel Service clients only. Shown to the same people who see
  * the "Your Reels" sidebar item (src/app/dashboard/layout.tsx): a broker who is
  * enrolled or has delivered reels, or an assistant of one. Kept outside
@@ -340,20 +296,9 @@ async function reelServiceForViewer(): Promise<boolean> {
   }
 }
 
-function sectionsNow(depthOpen: boolean) {
-  if (!depthOpen) return sections;
-  return sections.map((s) => {
-    const at = s.steps.findIndex((step) => step.startsWith("Reel — pick a look"));
-    if (at < 0) return s;
-    const steps = s.steps.slice();
-    steps.splice(at + 1, 0, DEPTH_LOOKS_STEP);
-    return { ...s, steps };
-  });
-}
-
 export default async function HelpPage() {
-  const [depthOpen, reelService] = await Promise.all([depthLooksOpenForViewer(), reelServiceForViewer()]);
-  const shown = reelService ? sectionsNow(depthOpen).concat([REEL_SERVICE_SECTION]) : sectionsNow(depthOpen);
+  const reelService = await reelServiceForViewer();
+  const shown = reelService ? sections.concat([REEL_SERVICE_SECTION]) : sections;
   const quickRows = reelService ? quickRef.concat([REEL_SERVICE_QUICKREF]) : quickRef;
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
