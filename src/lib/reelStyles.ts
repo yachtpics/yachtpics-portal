@@ -676,7 +676,7 @@ export function dominantColor(bmp: ImageBitmap): string | null {
  */
 const EXTERIOR = new Set([
   "profiles", "profiles running", "aerial", "bow", "foredeck", "stern",
-  "port", "starboard", "swim platform", "tower", "sun deck", "beach club",
+  "port", "starboard", "swim platform", "tower", "hard top", "sun deck", "beach club",
   "cockpit", "aft deck", "flybridge", "enclosed flybridge",
   "enclosed flybridge aft deck", "command deck", "seating",
 ]);

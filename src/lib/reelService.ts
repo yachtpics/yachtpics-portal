@@ -173,7 +173,7 @@ const INSIDE = new Set([
 const DETAILS = new Set([
   "helm", "console", "navigation station", "pilothouse", "cockpit", "seating", "engine room", "port engine room",
   "starboard engine room", "engines", "engine", "generator room", "mechanical room", "electrical room",
-  "electrical panel", "lazarette", "command deck", "flybridge", "enclosed flybridge", "tower", "swim platform", "beach club",
+  "electrical panel", "lazarette", "command deck", "flybridge", "enclosed flybridge", "tower", "hard top", "swim platform", "beach club",
 ]);
 const isInside = (c: string | null) => {
   const k = lc(c);

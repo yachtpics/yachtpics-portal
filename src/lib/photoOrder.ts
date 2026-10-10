@@ -19,6 +19,8 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   // a buyer scrolling wants the boat from the air right after the profiles.
   "Aerial",
   "Tower",
+  // Hard tops on center consoles and express boats sit with the tower shots.
+  "Hard Top",
   "Flybridge",
   "Enclosed Flybridge",
   "Enclosed Flybridge Aft Deck",

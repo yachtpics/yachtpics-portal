@@ -43,6 +43,7 @@ export const PHOTO_CATEGORIES = [
   "Generator Room",
   "Guest Stateroom",
   "Guest Stateroom Head",
+  "Hard Top",
   "Head",
   "Helm",
   "Laundry",

@@ -23,6 +23,7 @@ const ALIASES: Record<string, string> = {
   bilge:       "Engine Room",
   swim:        "Swim Platform",
   platform:    "Swim Platform",
+  hardtop:     "Hard Top",
   wheel:       "Helm",
   steering:    "Helm",
   // Unambiguous in a yacht context: a "running" or "underway" shot is the boat
