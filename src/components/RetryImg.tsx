@@ -16,12 +16,17 @@
 import { forwardRef, useEffect, useRef, useState } from "react";
 
 type RetryImgProps = React.ImgHTMLAttributes<HTMLImageElement> & {
-  /** How many times to re-request before giving up. Waits 600ms, 1.2s, 2.4s. */
+  /** How many times to re-request before giving up. Backoff doubles from
+   *  ~700ms with random jitter, so a page full of failed thumbnails doesn't
+   *  retry in one synchronised burst and trip the same 429 again. */
   retries?: number;
+  /** Used once every retry has failed (e.g. the full-size original), so the
+   *  slot shows the photo instead of a broken icon and its filename. */
+  fallbackSrc?: string;
 };
 
 const RetryImg = forwardRef<HTMLImageElement, RetryImgProps>(function RetryImg(
-  { retries = 3, src, alt = "", onError, onLoad, ...rest },
+  { retries = 6, src, fallbackSrc, alt = "", onError, onLoad, ...rest },
   ref,
 ) {
   const [attempt, setAttempt] = useState(0);
@@ -41,8 +46,10 @@ const RetryImg = forwardRef<HTMLImageElement, RetryImgProps>(function RetryImg(
   useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   // Signed URLs already carry a query string, so in practice this appends.
-  const url =
-    src && attempt > 0 ? `${src}${src.includes("?") ? "&" : "?"}r=${attempt}` : src;
+  const exhausted = attempt > retries;
+  const url = exhausted && fallbackSrc
+    ? fallbackSrc
+    : src && attempt > 0 ? `${src}${src.includes("?") ? "&" : "?"}r=${attempt}` : src;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element
@@ -56,7 +63,11 @@ const RetryImg = forwardRef<HTMLImageElement, RetryImgProps>(function RetryImg(
         if (src && attempt < retries) {
           const next = attempt + 1;
           if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(() => setAttempt(next), 600 * 2 ** attempt);
+          const wait = Math.min(700 * 2 ** attempt, 12000) * (0.6 + Math.random() * 0.8);
+          timer.current = setTimeout(() => setAttempt(next), wait);
+        } else if (src && fallbackSrc && attempt === retries) {
+          // Out of retries: switch to the fallback once.
+          setAttempt(retries + 1);
         }
         onError?.(e);
       }}

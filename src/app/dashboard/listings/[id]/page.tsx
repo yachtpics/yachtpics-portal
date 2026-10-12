@@ -2429,6 +2429,7 @@ function SortablePhotoCard({
               {thumbUrl && (
               <RetryImg
                 src={thumbUrl}
+                fallbackSrc={photo.url}
                 alt={photo.filename ?? ""}
                 loading={index < 4 ? "eager" : "lazy"}
                 decoding="async"
