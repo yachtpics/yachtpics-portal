@@ -133,7 +133,11 @@ export type OrderablePhoto = {
   id: string;
   category?: string | null;
   display_order?: number | null;
+  filename?: string | null;
 };
+
+// Numeric-aware, so "engine_room_2" sorts before "engine_room_10".
+const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
 
 /**
  * Order a boat's photos.
@@ -143,11 +147,16 @@ export type OrderablePhoto = {
  * category order, keeping the existing display_order *within* each category so
  * any partial hand-sorting still counts for something.
  *
+ * `byFilename` = the "Sort to standard order" button: within each category,
+ * order by filename (numeric-aware) instead of the existing display_order, so a
+ * re-uploaded "engine_room_01" lands first in Engine Room rather than staying
+ * at the end where it was uploaded.
+ *
  * The hero (starred) photo always opens the show — it's a deliberate pick.
  */
 export function orderPhotos<T extends OrderablePhoto>(
   photos: T[],
-  opts: { manual: boolean; heroId?: string | null }
+  opts: { manual: boolean; heroId?: string | null; byFilename?: boolean }
 ): T[] {
   const out = [...photos];
 
@@ -158,6 +167,10 @@ export function orderPhotos<T extends OrderablePhoto>(
       const ra = categoryRank(a.category);
       const rb = categoryRank(b.category);
       if (ra !== rb) return ra - rb;
+      if (opts.byFilename) {
+        const n = byName.compare(a.filename ?? "", b.filename ?? "");
+        if (n !== 0) return n;
+      }
       return (a.display_order ?? 0) - (b.display_order ?? 0);
     });
   }

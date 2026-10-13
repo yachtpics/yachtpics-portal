@@ -1103,7 +1103,7 @@ export default function BrokerListingPage() {
     if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced. You can still drag afterwards.")) return;
     setSortingPhotos(true);
     try {
-      const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null });
+      const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
       setPhotos(sorted);
       await Promise.all(
         sorted.map((photo, idx) =>

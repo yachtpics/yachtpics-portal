@@ -17,7 +17,13 @@ import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
 import ListingEngagement from "@/components/ListingEngagement";
 import SortableVideoList from "@/components/SortableVideoList";
-import { arrayMove } from "@dnd-kit/sortable";
+import {
+  DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import RetryImg from "@/components/RetryImg";
 import {
   SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
   sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
@@ -199,6 +205,17 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(listing.hero_photo_id ?? null);
   const [sorting, setSorting] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
+  // Drag-to-reorder (same order rules as the broker page): a mouse drag starts
+  // after 8px of movement, so a click is still a click; on a phone a short
+  // press-and-hold picks the photo up, so an ordinary swipe still scrolls.
+  // (Mouse + Touch rather than one Pointer sensor, so a scroll on a phone
+  // can never turn into a drag.)
+  const photoSensors = useSensors(
+    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
+  );
+  // The click that ends a drag must not also open the lightbox.
+  const lastDragAt = useRef(0);
   const [mounted, setMounted] = useState(false);
   const [customEdit, setCustomEdit] = useState<{ photoId: string; value: string } | null>(null);
   // Custom categories — seeded from every listing in the DB at page load,
@@ -498,13 +515,32 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (sorting || photos.length === 0) return;
     if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced.")) return;
     setSorting(true);
-    const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null });
+    const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
     await Promise.all(sorted.map((p, i) => supabase.from("photos").update({ display_order: i }).eq("id", p.id)));
     setPhotos(sorted.map((p, i) => ({ ...p, display_order: i })));
     await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
     setSorting(false);
     setMessage("Sorted to standard order.");
     setTimeout(() => setMessage(""), 2500);
+  }
+
+  // Drop: write display_order for every photo in the new order and mark the
+  // listing hand-sorted — exactly what the broker page does.
+  async function handlePhotoDragEnd(event: DragEndEvent) {
+    lastDragAt.current = Date.now();
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = photos.findIndex((p) => p.id === active.id);
+    const newIndex = photos.findIndex((p) => p.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    const next = arrayMove(photos, oldIndex, newIndex).map((p, i) => ({ ...p, display_order: i }));
+    setPhotos(next);
+    const results = await Promise.all(next.map((p, i) => supabase.from("photos").update({ display_order: i }).eq("id", p.id)));
+    const { error: listErr } = await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
+    if (listErr || results.some((r) => r.error)) {
+      setMessage("Couldn\u2019t save the new order \u2014 refresh and try again.");
+      setTimeout(() => setMessage(""), 4000);
+    }
   }
 
   // All photo deletions go through the delete API rather than raw storage
@@ -1503,6 +1539,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               </>
             )}
             {photos.length > 1 && !selectMode && (
+              <span className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</span>
+            )}
+            {photos.length > 1 && !selectMode && (
               <button
                 onClick={sortToStandardOrder}
                 disabled={sorting}
@@ -1603,30 +1642,45 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <p className="text-ink-400 text-sm">Drag photos here or click to upload</p>
           </div>
         ) : (
+          <DndContext
+            sensors={photoSensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handlePhotoDragEnd}
+            onDragCancel={() => { lastDragAt.current = Date.now(); }}
+          >
+          <SortableContext items={photos.map((p) => p.id)} strategy={rectSortingStrategy}>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 items-start">
             {photos.map((photo, idx) => {
               const isSelected = selectedIds.has(photo.id);
               return (
-                <div
+                <SortableTile
                   key={photo.id}
+                  id={photo.id}
+                  disabled={selectMode || customEdit?.photoId === photo.id}
                   className={`rounded-lg overflow-hidden border-2 bg-white transition-colors duration-fast ease-quiet ${
                     isSelected ? "border-accent-500 shadow-elev-2" :
                     photo.is_visible ? "border-transparent" : "border-ink-200 opacity-60"
                   }`}
                 >
-                  {/* Thumbnail — click to enlarge or select */}
+                  {(dragHandle) => (<>
+                  {/* Thumbnail — click to enlarge or select; drag to reorder
+                      (the photo itself is the handle, so the controls below
+                      it never start a drag). */}
                   <div
-                    className="relative cursor-pointer"
-                    onClick={() => selectMode
-                      ? setSelectedIds((prev) => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next; })
-                      : setLightboxIndex(idx)
-                    }
+                    {...dragHandle}
+                    className="relative cursor-pointer select-none touch-manipulation [-webkit-touch-callout:none]"
+                    title={selectMode ? undefined : "Click to enlarge \u00b7 drag to reorder"}
+                    onClick={() => {
+                      if (Date.now() - lastDragAt.current < 300) return;
+                      if (selectMode) setSelectedIds((prev) => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next; });
+                      else setLightboxIndex(idx);
+                    }}
                   >
                     {/* Only ever the resized url — never the original. Falling back
                         to photo.url would make the browser pull every full-size
                         file (~2 MB each) on first paint. */}
                     {photo.url ? (
-                      <OrientedThumbnail url={thumbs[photo.id] ?? null} filename={photo.filename} />
+                      <OrientedThumbnail url={thumbs[photo.id] ?? null} fallbackUrl={photo.url} filename={photo.filename} />
                     ) : (
                       <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
                     )}
@@ -1749,10 +1803,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                       </div>
                     )}
                   </div>
-                </div>
+                  </>)}
+                </SortableTile>
               );
             })}
           </div>
+          </SortableContext>
+          </DndContext>
         )}
       </div>
 
@@ -1970,7 +2027,36 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   );
 }
 
-function OrientedThumbnail({ url, filename }: { url: string | null; filename: string | null }) {
+/**
+ * One sortable photo card. The card moves; only the element that receives
+ * `dragHandle` (the thumbnail) starts a drag.
+ */
+function SortableTile({ id, disabled, className, children }: {
+  id: string;
+  disabled: boolean;
+  className: string;
+  children: (dragHandle: Record<string, unknown>) => React.ReactNode;
+}) {
+  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    position: "relative",
+    ...(isDragging ? { opacity: 0.6, zIndex: 10 } : {}),
+  };
+  return (
+    <div ref={setNodeRef} style={style} className={className}>
+      {children((listeners ?? {}) as Record<string, unknown>)}
+    </div>
+  );
+}
+
+/**
+ * A grid thumbnail. Through RetryImg, so a resize that Supabase answers with a
+ * 429 is retried with backoff and, if it still fails, falls back to the
+ * full-size original (`fallbackUrl`) instead of sitting broken.
+ */
+function OrientedThumbnail({ url, fallbackUrl, filename }: { url: string | null; fallbackUrl: string | null; filename: string | null }) {
   const [isVertical, setIsVertical] = useState(false);
   const ref = useRef<HTMLImageElement>(null);
 
@@ -1985,18 +2071,19 @@ function OrientedThumbnail({ url, filename }: { url: string | null; filename: st
   }, [url]);
 
   return (
-    // eslint-disable-next-line @next/next/no-img-element
-    <img
+    <RetryImg
       ref={ref}
       src={url ?? undefined}
+      fallbackSrc={fallbackUrl ?? undefined}
       alt={filename ?? ""}
       loading="lazy"
       decoding="async"
+      draggable={false}
       onLoad={(e) => {
         const img = e.currentTarget;
         setIsVertical(img.naturalHeight > img.naturalWidth);
       }}
-      className={`w-full object-cover ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
+      className={`w-full object-cover pointer-events-none ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
     />
   );
 }
