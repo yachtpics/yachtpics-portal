@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
@@ -295,18 +295,21 @@ export default function BrokerListingPage() {
   // added on the end rather than spent while the rest was already in flight.
   // This only needs the listing id, which comes straight from the URL, so
   // there is nothing for it to wait on.
-  useEffect(() => {
-    let cancelled = false;
+  // Also re-run after an upload: a photo added after page load has no signed
+  // thumbnail until the list is fetched again.
+  const refreshThumbs = useCallback(() => {
     fetch("/api/thumbs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ listingId: id, width: 400 }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (!cancelled && d?.urls) setThumbs(d.urls); })
+      // Keep URLs already on screen (re-signing them would make every
+      // thumbnail reload); only photos new since the last fetch get one.
+      .then((d) => { if (d?.urls) setThumbs((prev) => ({ ...d.urls, ...prev })); })
       .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
-    return () => { cancelled = true; };
   }, [id]);
+  useEffect(() => { refreshThumbs(); }, [refreshThumbs]);
 
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
@@ -586,6 +589,7 @@ export default function BrokerListingPage() {
     }
 
     setUploading(false);
+    refreshThumbs();
     setMessage(`${fileArr.length} photo${fileArr.length !== 1 ? "s" : ""} uploaded.`);
     setTimeout(() => setMessage(""), 3000);
 

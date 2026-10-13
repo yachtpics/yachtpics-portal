@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import CoBrokerManager from "./CoBrokerManager";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
@@ -150,16 +150,21 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
-  useEffect(() => {
+  // Re-run after an upload too: thumbnails are signed per listing, so a photo
+  // added after page load has no thumb until this is fetched again.
+  const refreshThumbs = useCallback(() => {
     fetch("/api/thumbs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ listingId: listing.id, width: 400 }),
     })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => { if (d?.urls) setThumbs(d.urls); })
+      // Keep URLs already on screen (re-signing them would make every
+      // thumbnail reload); only photos new since the last fetch get one.
+      .then((d) => { if (d?.urls) setThumbs((prev) => ({ ...d.urls, ...prev })); })
       .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
   }, [listing.id]);
+  useEffect(() => { refreshThumbs(); }, [refreshThumbs]);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(listing.status);
@@ -447,6 +452,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
     }
     setUploading(false);
+    refreshThumbs();
     setMessage(`${fileArr.length} photo${fileArr.length !== 1 ? "s" : ""} uploaded.`);
     setTimeout(() => setMessage(""), 3000);
   }
@@ -2073,7 +2079,7 @@ function OrientedThumbnail({ url, fallbackUrl, filename }: { url: string | null;
   return (
     <RetryImg
       ref={ref}
-      src={url ?? undefined}
+      src={url ?? fallbackUrl ?? undefined}
       fallbackSrc={fallbackUrl ?? undefined}
       alt={filename ?? ""}
       loading="lazy"
