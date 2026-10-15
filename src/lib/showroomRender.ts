@@ -33,20 +33,46 @@ import { composeReelMusic, MUSIC_SAMPLE_RATE, musicCanCompose, type MusicMood } 
 import { REEL_STYLES, rgba } from "@/lib/reelStyles";
 import { fillTrackedCentered, trackedWidth, wrapTracked } from "@/lib/canvasText";
 
-export const SHOWROOM_W = 1920;
-export const SHOWROOM_H = 1080;
+export type ShowroomResolution = "1080" | "4k";
+
+/**
+ * Per-resolution settings. Everything drawn scales with the frame height
+ * (sc = H / 1080), so 4K is the 1080p picture at twice the detail.
+ *   • bitrate — slow photo motion compresses well; these are targets for a
+ *     variable-bitrate encoder, so real files usually come in smaller.
+ *   • photoEdge — longest side photos are decoded at: cover + the 6% Ken
+ *     Burns zoom needs ≈ 1.06 × frame width (2035 px at 1080p, 4070 at 4K).
+ *   • lookahead / pool — how many photos are decoded ahead, and at once. A
+ *     4K photo bitmap is ~50 MB (plus the original while it decodes), so 4K
+ *     keeps two ahead and decodes one at a time.
+ *   • warnSec — the page asks before starting a loop longer than this.
+ */
+export const SHOWROOM_SIZES: Record<ShowroomResolution, {
+  w: number; h: number; bitrate: number; photoEdge: number; lookahead: number; pool: number; warnSec: number; label: string;
+}> = {
+  "1080": { w: 1920, h: 1080, bitrate: 12_000_000, photoEdge: 2400, lookahead: 3, pool: 2, warnSec: 15 * 60, label: "1080p" },
+  "4k": { w: 3840, h: 2160, bitrate: 35_000_000, photoEdge: 4400, lookahead: 2, pool: 1, warnSec: 8 * 60, label: "4K" },
+};
+/** Largest file a FAT32 USB stick can hold (4 GiB − 1 byte). */
+export const FAT32_MAX_BYTES = 4 * 1024 ** 3 - 1;
+const AUDIO_BITRATE_EST = 192_000;
+
+/** Upper estimate of the MP4's size (the encoder is variable-bitrate; most loops come in under this). */
+export function estimateShowroomBytes(seconds: number, res: ShowroomResolution, music: boolean): number {
+  return Math.round((seconds * (SHOWROOM_SIZES[res].bitrate + (music ? AUDIO_BITRATE_EST : 0))) / 8 * 1.01);
+}
+
+/** "850 MB" / "3.4 GB". */
+export function formatBytes(n: number): string {
+  return n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
+}
 export const SHOWROOM_FPS = 30;
 /** Photo-to-photo crossfade, and card in/out. */
 export const SHOWROOM_XFADE = 1;
 /** Boat-to-boat transition (dip through black, or a crossfade). */
 export const SHOWROOM_BOAT_GAP = 1.5;
 export const SHOWROOM_CARD_SEC = 5;
-/** Over this the page asks before starting. */
-export const SHOWROOM_WARN_SEC = 15 * 60;
-const VIDEO_BITRATE = 8_000_000;
 const MUSIC_XFADE = 1;
-const LOOKAHEAD = 3;
-const POOL = 2;
 const OPFS_NAME = "showroom-render.mp4";
 
 export type LogoCorner = "br" | "bl" | "tr" | "tl";
@@ -126,7 +152,7 @@ export function formatRunTime(sec: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}` : `${m}:${String(r).padStart(2, "0")}`;
 }
 
-/** Load a logo (PNG, JPEG, WebP, SVG — URL or uploaded file) as a bitmap ≤ 1400 px. */
+/** Load a logo (PNG, JPEG, WebP, SVG — URL or uploaded file) as a bitmap ≤ 2400 px (big enough for a 4K card). */
 export async function loadLogoBitmap(src: string | Blob): Promise<ImageBitmap> {
   const url = typeof src === "string" ? src : URL.createObjectURL(src);
   try {
@@ -135,7 +161,7 @@ export async function loadLogoBitmap(src: string | Blob): Promise<ImageBitmap> {
     img.decoding = "async";
     await new Promise<void>((res, rej) => { img.onload = () => res(); img.onerror = () => rej(new Error("The logo couldn’t be loaded.")); img.src = url; });
     const w0 = img.naturalWidth || 1200, h0 = img.naturalHeight || 600;
-    const k = Math.min(1, 1400 / Math.max(w0, h0)) || 1;
+    const k = Math.min(1, 2400 / Math.max(w0, h0)) || 1;
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.round(w0 * k)); c.height = Math.max(1, Math.round(h0 * k));
     c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
@@ -177,6 +203,7 @@ export async function fetchBitmap(url: string, maxEdge = 2400): Promise<ImageBit
 
 export type ShowroomRenderOptions = {
   canvas: HTMLCanvasElement;
+  resolution: ShowroomResolution;
   slides: ShowroomSlide[];
   /** Photo count per boat, in play order (sums to slides.length). */
   boats: number[];
@@ -241,7 +268,9 @@ export function drawShowroomCard(
 }
 
 export async function renderShowroom(o: ShowroomRenderOptions): Promise<ShowroomResult> {
-  const W = SHOWROOM_W, H = SHOWROOM_H, FPS = SHOWROOM_FPS;
+  const spec = SHOWROOM_SIZES[o.resolution];
+  const W = spec.w, H = spec.h, FPS = SHOWROOM_FPS;
+  const LOOKAHEAD = spec.lookahead, POOL = spec.pool;
   if (!o.slides.length) throw new Error("Pick at least one photo.");
   const notes: string[] = [];
   const { items, total } = showroomTimeline(o.boats, o.holdSec, o.transition);
@@ -261,8 +290,13 @@ export async function renderShowroom(o: ShowroomRenderOptions): Promise<Showroom
   } catch { /* older browser: fall through */ }
 
   const mb = await import("mediabunny");
-  const codec = await mb.getFirstEncodableVideoCodec(["avc"], { width: W, height: H });
-  if (!codec) throw new Error("This browser can’t encode H.264 video. Use Chrome or Edge on a computer.");
+  // mediabunny picks the H.264 level from the frame size and bitrate (5.1 at 4K).
+  const codec = await mb.getFirstEncodableVideoCodec(["avc"], { width: W, height: H, bitrate: spec.bitrate });
+  if (!codec) {
+    throw new Error(o.resolution === "4k"
+      ? "This computer can’t make 4K video — use 1080p."
+      : "This browser can’t encode H.264 video. Use Chrome or Edge on a computer.");
+  }
 
   let music = o.music;
   if (music) {
@@ -285,13 +319,21 @@ export async function renderShowroom(o: ShowroomRenderOptions): Promise<Showroom
       }
     }
   } catch { opfs = null; fsw = null; }
-  if (!opfs && total > 600) notes.push("Built in memory (this browser has no private file storage); a very long loop may run out of memory.");
+  if (!opfs) {
+    // Without private file storage the whole MP4 is held in memory, and a
+    // browser can't hold much more than ~2 GB in one piece.
+    if (estimateShowroomBytes(total, o.resolution, !!music) > 1.6e9) {
+      try { await fsw?.abort(); } catch { /* none */ }
+      throw new Error("This browser can’t hold a video this big in memory. Use Chrome or Edge, pick fewer photos, or use 1080p.");
+    }
+    if (total > 600) notes.push("Built in memory (this browser has no private file storage); a very long loop may run out of memory.");
+  }
 
   const target = fsw
     ? new mb.StreamTarget(fsw as unknown as WritableStream<import("mediabunny").StreamTargetChunk>, { chunked: true })
     : new mb.BufferTarget();
   const output = new mb.Output({ format: new mb.Mp4OutputFormat({ fastStart: fsw ? "reserve" : "in-memory" }), target });
-  const source = new mb.CanvasSource(canvas, { codec: "avc", bitrate: VIDEO_BITRATE, keyFrameInterval: 2 });
+  const source = new mb.CanvasSource(canvas, { codec: "avc", bitrate: spec.bitrate, keyFrameInterval: 2 });
   output.addVideoTrack(source, { frameRate: FPS, maximumPacketCount: Math.ceil(totalFrames * 1.34) + 60 });
   const audio = music ? new mb.AudioBufferSource({ codec: "aac", quality: mb.QUALITY_HIGH }) : null;
   if (audio) output.addAudioTrack(audio, { maximumPacketCount: Math.ceil((total * MUSIC_SAMPLE_RATE) / 1024 * 1.34) + 200 });
@@ -367,7 +409,7 @@ export async function renderShowroom(o: ShowroomRenderOptions): Promise<Showroom
     const k = Math.max(bd.width / bmp.width, bd.height / bmp.height) * 1.1;
     const dw = bmp.width * k, dh = bmp.height * k;
     if (typeof b.filter === "string") {
-      b.filter = "blur(9px) saturate(0.9)";
+      b.filter = `blur(${(9 * H) / 1080}px) saturate(0.9)`;
       b.drawImage(bmp, (bd.width - dw) / 2, (bd.height - dh) / 2, dw, dh);
       b.filter = "none";
     }

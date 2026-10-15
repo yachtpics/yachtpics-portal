@@ -15,8 +15,8 @@ import {
   pickShowroomPhotos, showroomSpecLine, SHOWROOM_PICK_DEFAULT, SHOWROOM_PICK_MAX, SHOWROOM_PICK_MIN, type ShowroomPhoto,
 } from "@/lib/showroomPick";
 import {
-  fetchBitmap, formatRunTime, loadLogoBitmap, renderShowroom, showroomTimeline, SHOWROOM_WARN_SEC,
-  type BoatTransition, type LogoCorner, type ShowroomSlide,
+  estimateShowroomBytes, FAT32_MAX_BYTES, fetchBitmap, formatBytes, formatRunTime, loadLogoBitmap, renderShowroom,
+  showroomTimeline, SHOWROOM_SIZES, type BoatTransition, type LogoCorner, type ShowroomResolution, type ShowroomSlide,
 } from "@/lib/showroomRender";
 
 // The reel title face (ReelMaker's Cormorant Garamond).
@@ -76,6 +76,7 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
   const [thumbsBig, setThumbsBig] = useState<Record<string, string>>({});
   const [holdSec, setHoldSec] = useState(5);
+  const [resolution, setResolution] = useState<ShowroomResolution>("1080");
   const [transition, setTransition] = useState<BoatTransition>("dip");
   const [corner, setCorner] = useState<LogoCorner>("br");
   const [tagline, setTagline] = useState("");
@@ -209,11 +210,18 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
   const photoCount = inPlay.reduce((n, b) => n + b.picked.length, 0);
   const estimate = photoCount ? showroomTimeline(inPlay.map((b) => b.picked.length), holdSec, transition).total : 0;
   const logoSrc = uploadedPreview ?? autoLogo;
+  const spec = SHOWROOM_SIZES[resolution];
+  const estBytes = estimateShowroomBytes(estimate, resolution, music !== "off");
+  const tooBigForUsb = estBytes > FAT32_MAX_BYTES;
+  const longLoop = estimate > spec.warnSec;
 
   async function render() {
     if (!photoCount || !canvasRef.current) return;
-    if (estimate > SHOWROOM_WARN_SEC && !window.confirm(
-      `This loop runs ${formatRunTime(estimate)} — over 15 minutes. It will take a long time to render and make a large file. Start anyway?`)) return;
+    if ((longLoop || tooBigForUsb) && !window.confirm([
+      longLoop ? `This loop runs ${formatRunTime(estimate)} — over ${spec.warnSec / 60} minutes at ${spec.label}. It will take a long time to render.` : "",
+      tooBigForUsb ? `The file could be up to ${formatBytes(estBytes)}. Many USB sticks (FAT32) can’t hold a file over 4 GB.` : "",
+      "Start anyway?",
+    ].filter(Boolean).join("\n\n"))) return;
     cancelRef.current = false;
     setPhase("rendering"); setPct(0); setStage("Preparing"); setRenderError("");
     if (result) { URL.revokeObjectURL(result.url); setResult(null); }
@@ -227,6 +235,8 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
       logo = null;
     }
     const slides: ShowroomSlide[] = [];
+    const is4k = resolution === "4k";
+    const photoEdge = spec.photoEdge;
     inPlay.forEach((b, bi) => {
       const byId: Record<string, ShowroomPhoto> = {};
       b.photos.forEach((p) => { byId[p.id] = p; });
@@ -237,14 +247,18 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
           boat: bi,
           title: j === 0 ? { name: b.name, line: showroomSpecLine(b) } : undefined,
           load: async () => {
-            // As ReelMaker does: a 2400 px rendition first (a fraction of the
-            // download), the original (signed for an hour) if that fails.
-            const { data: t } = await supabase.storage.from("listing-photos")
-              .createSignedUrl(p.storage_path, 3600, { transform: { width: 2400, height: 2400, resize: "contain", quality: 85 } });
-            if (t?.signedUrl) { try { return await fetchBitmap(t.signedUrl); } catch { /* fall through */ } }
+            // 1080p, as ReelMaker does: a 2400 px rendition first (a fraction
+            // of the download), the original if that fails. 4K: Supabase
+            // transforms stop at 2500 px, so always the original (signed for
+            // an hour), decoded down to 4400 px.
+            if (!is4k) {
+              const { data: t } = await supabase.storage.from("listing-photos")
+                .createSignedUrl(p.storage_path, 3600, { transform: { width: 2400, height: 2400, resize: "contain", quality: 85 } });
+              if (t?.signedUrl) { try { return await fetchBitmap(t.signedUrl, photoEdge); } catch { /* fall through */ } }
+            }
             const { data: orig } = await supabase.storage.from("listing-photos").createSignedUrl(p.storage_path, 3600);
             if (!orig?.signedUrl) throw new Error("No link for a photo.");
-            return fetchBitmap(orig.signedUrl);
+            return fetchBitmap(orig.signedUrl, photoEdge);
           },
         });
       });
@@ -254,6 +268,7 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
     try {
       const out = await renderShowroom({
         canvas: canvasRef.current,
+        resolution,
         slides,
         boats: inPlay.map((b) => b.picked.length),
         holdSec,
@@ -267,7 +282,7 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
         cancelled: () => cancelRef.current,
         onProgress: (p) => { setPct(p.pct); setStage(p.phase === "rendering" ? "Rendering" : p.phase === "finishing" ? "Finishing" : "Preparing"); },
       });
-      const filename = `${slug(fileBase)}-Showroom-${today()}.mp4`;
+      const filename = `${slug(fileBase)}-Showroom-${today()}${is4k ? "-4K" : ""}.mp4`;
       setResult({ url: URL.createObjectURL(out.file), filename, seconds: out.seconds, notes: notes.concat(out.notes) });
       setPhase("done");
     } catch (e) {
@@ -334,6 +349,26 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
 
           {/* 3. Look, logo, music */}
           <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 grid sm:grid-cols-2 gap-5">
+            <div className="text-xs text-ink-600 flex flex-col gap-1.5 sm:col-span-2">
+              <span className="label-caps text-ink-500">Resolution</span>
+              <div className="flex flex-wrap items-center gap-2">
+                {(["1080", "4k"] as ShowroomResolution[]).map((r) => (
+                  <button key={r} type="button" disabled={busy} onClick={() => { setResolution(r); stale(); }} className={chip(resolution === r)}>
+                    {r === "4k" ? "4K (3840×2160)" : "1080p (1920×1080)"}
+                  </button>
+                ))}
+                {photoCount > 0 && (
+                  <span className={tooBigForUsb ? "text-danger-700 font-medium" : "text-ink-500"}>
+                    File up to about {formatBytes(estBytes)}{tooBigForUsb ? " — over 4 GB: many USB sticks (FAT32) can’t hold it" : ""}
+                  </span>
+                )}
+              </div>
+              <span className="text-ink-400">
+                {resolution === "4k"
+                  ? "For a 4K monitor. Takes roughly 3–4× longer to render than 1080p and makes a file about 3× bigger; needs a recent computer that can encode 4K."
+                  : "Right for most office TVs and monitors. Choose 4K only for a 4K screen."}
+              </span>
+            </div>
             <div className="text-xs text-ink-600 flex flex-col gap-1.5">
               <span className="label-caps text-ink-500">Seconds per photo</span>
               <div className="flex flex-wrap gap-2">
@@ -411,8 +446,9 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
                   {photoCount ? `${inPlay.length} boat${inPlay.length === 1 ? "" : "s"} · ${photoCount} photos · ${formatRunTime(estimate)}` : "No boats ticked"}
                 </p>
                 <p className="text-xs text-ink-400 mt-0.5">
-                  1920&times;1080 MP4, made in this browser (Chrome or Edge) &mdash; keep this tab open and in front until it finishes.
-                  {estimate > SHOWROOM_WARN_SEC ? " Over 15 minutes — consider fewer photos." : ""}
+                  {spec.w}&times;{spec.h} MP4{photoCount ? `, up to about ${formatBytes(estBytes)}` : ""}, made in this browser (Chrome or Edge) &mdash; keep this tab open and in front until it finishes.
+                  {longLoop ? ` Over ${spec.warnSec / 60} minutes at ${spec.label} — consider fewer photos.` : ""}
+                  {tooBigForUsb ? " Over 4 GB — too big for many USB sticks." : ""}
                 </p>
               </div>
               <div className="flex gap-2">
