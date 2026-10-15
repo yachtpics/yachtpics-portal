@@ -24,6 +24,7 @@ import {
   Trash2,
   Wand2,
   Repeat,
+  MonitorPlay,
   type LucideIcon,
 } from "lucide-react";
 
@@ -52,6 +53,7 @@ const navItems: NavItem[] = [
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
   { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
+  { label: "Showroom Loop", href: "/admin/showroom", icon: MonitorPlay, short: "Showroom" },
   { label: "Reel Service", href: "/admin/reel-service", icon: Repeat, short: "Service" },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
