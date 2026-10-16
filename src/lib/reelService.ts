@@ -171,7 +171,7 @@ const INSIDE = new Set([
   "laundry", "port passageway", "starboard passageway",
 ]);
 const DETAILS = new Set([
-  "helm", "console", "navigation station", "pilothouse", "cockpit", "seating", "engine room", "port engine room",
+  "helm", "console", "navigation station", "electronics", "pilothouse", "cockpit", "seating", "engine room", "port engine room",
   "starboard engine room", "engines", "engine", "generator room", "mechanical room", "electrical room",
   "electrical panel", "lazarette", "command deck", "flybridge", "enclosed flybridge", "tower", "hard top", "swim platform", "beach club",
 ]);

@@ -68,6 +68,8 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Helm",
   "Console",
   "Navigation Station",
+  // Helm electronics (displays, radar, autopilot) sit with the helm shots.
+  "Electronics",
   "Companionway",
   "Lower Companionway",
   "Lower Foyer",
