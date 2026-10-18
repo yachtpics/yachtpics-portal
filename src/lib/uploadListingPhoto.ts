@@ -83,3 +83,67 @@ export async function uploadListingPhoto(opts: {
   }
   return { ok: true, row: row as ListingPhotoRow };
 }
+
+export type ReplacedPhoto = {
+  id: string;
+  storage_path: string;
+  filename: string | null;
+  /** Fresh 400px thumbnail for the NEW file (new path = no stale cache). */
+  thumbUrl: string | null;
+  /** Fresh signed full-size link for the new file (1 hour). */
+  originalUrl: string | null;
+};
+
+/**
+ * Swap the file behind an existing photo, keeping everything else about it —
+ * its id, place in the order, category and cover-photo status.
+ *
+ * The new file goes to a NEW storage path (never overwritten in place: the CDN
+ * and thumbnail caches would keep showing the old picture), then the server
+ * route repoints the photos row and removes the old file. If the server
+ * refuses, the just-uploaded file is removed again so nothing is orphaned.
+ *
+ * The file goes straight to storage from the browser (originals are often
+ * larger than a server route will accept); only the swap goes through
+ * `/api/listings/[id]/photos/[photoId]/replace`, which re-checks access.
+ */
+export async function replaceListingPhoto(opts: {
+  supabase: SupabaseClient;
+  file: File;
+  /** First folder of the storage path: the listing's broker (admin page) or
+   *  the signed-in uploader (broker page) — same as a normal upload there. */
+  ownerFolder: string;
+  listingId: string;
+  photoId: string;
+  onStage?: (stage: "uploading" | "saving") => void;
+}): Promise<{ ok: true; photo: ReplacedPhoto } | { ok: false; error: string }> {
+  const { supabase, file, ownerFolder, listingId, photoId, onStage } = opts;
+  if (!file.type.startsWith("image/")) return { ok: false, error: "That file isn't a photo." };
+  const ext = (file.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+  const path = `${ownerFolder}/${listingId}/${Date.now()}-r${Math.random().toString(36).slice(2, 8)}.${ext}`;
+
+  onStage?.("uploading");
+  const { error: uploadError } = await supabase.storage
+    .from("listing-photos")
+    .upload(path, file, { upsert: false, contentType: file.type || undefined });
+  if (uploadError) return { ok: false, error: uploadError.message };
+
+  onStage?.("saving");
+  let res: Response;
+  try {
+    res = await fetch(`/api/listings/${listingId}/photos/${photoId}/replace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPath: path, filename: file.name }),
+    });
+  } catch (e) {
+    await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
+    return { ok: false, error: e instanceof Error ? e.message : "Network error" };
+  }
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data?.photo) {
+    await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
+    return { ok: false, error: data?.error ?? `The server answered ${res.status}` };
+  }
+  return { ok: true, photo: data.photo as ReplacedPhoto };
+}

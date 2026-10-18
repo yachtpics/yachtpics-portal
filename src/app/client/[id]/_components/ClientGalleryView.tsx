@@ -1,8 +1,11 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import RetryImg from "@/components/RetryImg";
+import { photoAlt } from "@/lib/publicPhotoUrls";
 
-type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null };
+// url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
+type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null; thumbUrl?: string | null };
 type Video = { id: string; filename: string | null; url: string | null };
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -42,6 +45,19 @@ export default function ClientGalleryView({
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [dlError, setDlError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  // Phones get the native share sheet (Messages, WhatsApp, Mail…); desktops
+  // keep "copy". Decided after mount so server and client render the same.
+  const [useShareSheet, setUseShareSheet] = useState(false);
+  useEffect(() => {
+    try {
+      setUseShareSheet(
+        typeof navigator !== "undefined" &&
+        typeof navigator.share === "function" &&
+        window.matchMedia("(pointer: coarse)").matches
+      );
+    } catch { /* leave as copy */ }
+  }, []);
   const [sendOpen, setSendOpen] = useState(false);
   const [sendEmail, setSendEmail] = useState("");
   const [sendMessage, setSendMessage] = useState("");
@@ -69,12 +85,27 @@ export default function ClientGalleryView({
     }).catch(() => {});
   }
 
-  function copyLink() {
+  async function copyLink() {
     if (!slideshowUrl) return;
-    navigator.clipboard.writeText(slideshowUrl).then(() => {
+    setCopyFailed(false);
+    if (useShareSheet) {
+      try {
+        await navigator.share({ title, url: slideshowUrl });
+        return;
+      } catch (err) {
+        // They closed the sheet — that's not a failure, and not a copy either.
+        if (err instanceof Error && err.name === "AbortError") return;
+        /* share unavailable after all — fall back to copying */
+      }
+    }
+    try {
+      await navigator.clipboard.writeText(slideshowUrl);
+      // Only claim "copied" once the clipboard has actually taken it.
       setCopied(true);
       setTimeout(() => setCopied(false), 1800);
-    }).catch(() => {});
+    } catch {
+      setCopyFailed(true);
+    }
   }
 
   async function sendSlideshow() {
@@ -320,7 +351,7 @@ export default function ClientGalleryView({
               ▶ Play slideshow
             </a>
             <button onClick={copyLink} className="text-sm font-medium px-4 py-2 min-h-[44px] rounded-ctl border border-hairline-strong bg-white text-ink-700 hover:border-ink-400 hover:text-ink-900 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
-              {copied ? "Link copied ✓" : "Copy slideshow link to share"}
+              {copied ? "Link copied ✓" : useShareSheet ? "Share slideshow link" : "Copy slideshow link to share"}
             </button>
             <button onClick={() => setSendOpen((o) => !o)} className="text-sm font-medium px-4 py-2 min-h-[44px] rounded-ctl border border-hairline-strong bg-white text-ink-700 hover:border-ink-400 hover:text-ink-900 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500">
               ✉ Email slideshow
@@ -328,6 +359,12 @@ export default function ClientGalleryView({
           </>
         )}
       </div>
+      {copyFailed && slideshowUrl && (
+        <p className="mt-2 text-sm text-ink-600">
+          Couldn&apos;t copy automatically — here&apos;s the link:{" "}
+          <span className="select-all break-all text-ink-900">{slideshowUrl}</span>
+        </p>
+      )}
 
       {slideshowUrl && sendOpen && (
         <div className="mt-3 max-w-md bg-white border border-hairline rounded-card shadow-elev-1 p-4 space-y-2">
@@ -412,9 +449,15 @@ export default function ClientGalleryView({
                 onDrop={() => onPhotoDrop(i)}
                 className={`group relative aspect-[4/3] rounded-[2px] overflow-hidden bg-white shadow-print transition-opacity duration-base ease-quiet ${slideshowUrl ? "cursor-move" : ""} ${dragIndex === i ? "ring-2 ring-accent-500" : ""} ${photo.is_visible === false ? "opacity-50" : ""}`}
               >
-                {photo.url && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={photo.url} alt={photo.category ?? "Photo"} loading="lazy" decoding="async" className="absolute inset-0 w-full h-full object-contain pointer-events-none" />
+                {(photo.thumbUrl ?? photo.url) && (
+                  <RetryImg
+                    src={(photo.thumbUrl ?? photo.url)!}
+                    fallbackSrc={photo.thumbUrl ? photo.url ?? undefined : undefined}
+                    alt={photoAlt(photo.category, title)}
+                    loading="lazy"
+                    decoding="async"
+                    className="absolute inset-0 w-full h-full object-contain pointer-events-none"
+                  />
                 )}
 
                 {slideshowUrl && (

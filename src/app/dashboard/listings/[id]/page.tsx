@@ -31,12 +31,38 @@ import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import RetryImg from "@/components/RetryImg";
 import { reorderPhotos } from "@/lib/reorderPhotos";
+import { replaceListingPhoto, runPool } from "@/lib/uploadListingPhoto";
 import SortableVideoList from "@/components/SortableVideoList";
 
 // The QR card sits well down the page and only shows once a slideshow is
 // published, so its encoder library (qrcode) is loaded on demand rather than
 // shipped with the page's first bundle.
 const ListingQRCode = dynamic(() => import("@/components/ListingQRCode"), { ssr: false });
+
+/** Download sizes offered to brokers. Resized ones are Supabase transforms
+ *  signed by /api/listings/[id]/photos/download-urls (long edge capped). */
+type DownloadSize = "full" | "web" | "social";
+const DOWNLOAD_SIZES: { value: DownloadSize; label: string; short: string; suffix: string }[] = [
+  { value: "full", label: "Full resolution", short: "Full resolution", suffix: "" },
+  { value: "web", label: "Web & MLS (2048px)", short: "Web & MLS", suffix: "2048px" },
+  { value: "social", label: "Social (1080px)", short: "Social", suffix: "1080px" },
+];
+// Resized downloads are made on the fly by Supabase, which answers 429 to a
+// burst — so a zip of them fetches a few at a time. Originals can go wider.
+const RESIZED_FETCH_CONCURRENCY = 6;
+const ORIGINAL_FETCH_CONCURRENCY = 8;
+
+/** fetch → blob, retrying a 429 / 5xx twice with a short back-off. */
+async function fetchBlobWithRetry(url: string): Promise<Blob> {
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(url);
+    if (res.ok) return res.blob();
+    if (attempt >= 2 || !(res.status === 429 || res.status >= 500)) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+    await new Promise((r) => setTimeout(r, 800 * (attempt + 1) + Math.random() * 400));
+  }
+}
 
 interface Photo {
   id: string;
@@ -132,6 +158,32 @@ export default function BrokerListingPage() {
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [message, setMessage] = useState("");
+  // Colour of the banner above. Most messages are confirmations (green);
+  // flash(..., "error") shows a failure in red.
+  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
+  function flash(text: string, tone: "success" | "error" = "success", ms = 4000) {
+    setMessageTone(tone);
+    setMessage(text);
+    if (ms > 0) setTimeout(() => setMessage((cur) => (cur === text ? "" : cur)), ms);
+  }
+  // Download size for every download button on the page (remembered per browser).
+  const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("full");
+  function setDownloadSize(v: DownloadSize) {
+    setDownloadSizeState(v);
+    try { localStorage.setItem("yp_download_size", v); } catch { /* private mode */ }
+  }
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem("yp_download_size");
+      if (v === "full" || v === "web" || v === "social") setDownloadSizeState(v);
+    } catch { /* private mode */ }
+  }, []);
+  // Replace photo: which tiles are mid-replace (and at what stage), and which
+  // just failed (the tile says so for a few seconds).
+  const [replacing, setReplacing] = useState<Record<string, "uploading" | "saving">>({});
+  const [replaceFailed, setReplaceFailed] = useState<Record<string, string>>({});
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replaceTargetRef = useRef<string | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
@@ -731,68 +783,105 @@ export default function BrokerListingPage() {
     setTimeout(() => setMessage(""), 3000);
   }
 
+  /**
+   * Fresh download links for these photos at the chosen size, signed by the
+   * server at download time (re-checks access; never reuses page-load links,
+   * which expire). Full resolution are the originals; the others are resized
+   * by Supabase when fetched.
+   */
+  async function signForDownload(targets: Photo[], size: DownloadSize): Promise<Record<string, string>> {
+    if (targets.length === 0) return {};
+    try {
+      const res = await fetch(`/api/listings/${id}/photos/download-urls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds: targets.map((t) => t.id), size }),
+      });
+      if (!res.ok) return {};
+      const d = await res.json().catch(() => null);
+      return (d?.urls ?? {}) as Record<string, string>;
+    } catch {
+      return {};
+    }
+  }
+
   async function downloadPhotos(targets: Photo[]) {
     if (targets.length === 0) return;
     setDownloading(true);
     setDownloadProgress(0);
 
-    const folderName = listing?.vessel_name ?? "photos";
+    const size = downloadSize;
+    const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
+    const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+    const vessel = listing?.vessel_name ? cleanName(listing.vessel_name) : "";
+    const extOf = (p: Photo) => (p.filename?.split(".").pop() ?? "jpg").toLowerCase();
 
-    // Sign fresh links now, at download time — never reuse ones from page
-    // load, which expire after an hour.
-    const fresh = await signOriginals(targets, 3600);
+    const fresh = await signForDownload(targets, size);
 
     // Single photo — direct download, no ZIP needed
-    if (targets.length === 1 && fresh[targets[0].id]) {
-      const response = await fetch(fresh[targets[0].id]);
-      const blob = await response.blob();
-      const ext = targets[0].filename?.split(".").pop() ?? "jpg";
-      // "Sea Dream – Salon.jpg": the vessel name keeps a loose download
-      // identifiable in a Downloads folder full of "Salon.jpg"s.
-      const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-      const vessel = listing?.vessel_name ? cleanName(listing.vessel_name) : "";
-      const label = cleanName(targets[0].category ?? "Photo") || "Photo";
-      const filename = `${vessel ? `${vessel} – ` : ""}${label}.${ext}`;
-      triggerDownload(blob, filename);
-      // Log download silently (fire-and-forget)
-      fetch(`/api/listings/${id}/log-download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoCount: 1 }),
-      }).catch(() => {});
+    if (targets.length === 1) {
+      const photo = targets[0];
+      try {
+        const url = fresh[photo.id];
+        if (!url) throw new Error("no link");
+        const blob = await fetchBlobWithRetry(url);
+        // "Sea Dream – Salon.jpg": the vessel name keeps a loose download
+        // identifiable in a Downloads folder full of "Salon.jpg"s. Resized
+        // copies say their size so they can't be mistaken for the original.
+        const label = cleanName(photo.category ?? "Photo") || "Photo";
+        const filename = `${vessel ? `${vessel} – ` : ""}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${extOf(photo)}`;
+        triggerDownload(blob, filename);
+        // Log download silently (fire-and-forget)
+        fetch(`/api/listings/${id}/log-download`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ photoCount: 1 }),
+        }).catch(() => {});
+        clearSelection();
+      } catch {
+        flash("That photo couldn't be downloaded. Please try again in a moment.", "error", 6000);
+      }
       setDownloading(false);
       setDownloadProgress(0);
-      clearSelection();
       return;
     }
 
-    // Multiple photos — ZIP
-    // Fetch in parallel batches of 8; use STORE (no compression) since JPEGs
-    // are already compressed — this makes zip generation 5-10x faster.
+    // Multiple photos — ZIP, all inside a "{Vessel}/" folder, named
+    // "{nn} {Category}.jpg" so they sort in listing order.
+    // STORE (no compression): JPEGs are already compressed, so this makes zip
+    // generation 5-10x faster.
     const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
-    const BATCH = 8;
+    const folder = vessel || "Photos";
+    const pad = Math.max(2, String(targets.length).length);
     let fetched = 0;
+    let added = 0;
 
-    for (let b = 0; b < targets.length; b += BATCH) {
-      const batch = targets.slice(b, b + BATCH);
-      await Promise.all(
-        batch.map(async (photo, bi) => {
-          const globalIndex = b + bi;
-          const url = fresh[photo.id];
-          if (!url) return;
-          try {
-            const response = await fetch(url);
-            const blob = await response.blob();
-            const ext = photo.filename?.split(".").pop() ?? "jpg";
-            const filename = `${String(globalIndex + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
-            zip.file(filename, blob);
-          } catch { /* skip failed photo */ }
-          fetched++;
-          // Fetch phase = 0–85% of progress
-          setDownloadProgress(Math.round((fetched / targets.length) * 85));
-        })
-      );
+    await runPool(
+      targets,
+      size === "full" ? ORIGINAL_FETCH_CONCURRENCY : RESIZED_FETCH_CONCURRENCY,
+      async (photo, index) => {
+        const url = fresh[photo.id];
+        try {
+          if (url) {
+            const blob = await fetchBlobWithRetry(url);
+            const label = cleanName(photo.category ?? "Photo") || "Photo";
+            zip.file(`${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${extOf(photo)}`, blob);
+            added++;
+          }
+        } catch { /* counted below */ }
+        fetched++;
+        // Fetch phase = 0–85% of progress
+        setDownloadProgress(Math.round((fetched / targets.length) * 85));
+      }
+    );
+    const failedCount = targets.length - added;
+
+    if (added === 0) {
+      setDownloading(false);
+      setDownloadProgress(0);
+      flash("None of those photos could be downloaded. Please try again in a moment.", "error", 8000);
+      return;
     }
 
     // Zip generation phase = 85–100%
@@ -801,14 +890,24 @@ export default function BrokerListingPage() {
       { type: "blob", compression: "STORE" },
       (meta) => setDownloadProgress(88 + Math.round(meta.percent * 0.12))
     );
-    const zipName = `${folderName}-photos.zip`;
+    const zipName = `${listing?.vessel_name ? cleanName(listing.vessel_name) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
 
-    const logZip = () => {
+    const finish = () => {
       fetch(`/api/listings/${id}/log-download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoCount: targets.length }),
+        body: JSON.stringify({ photoCount: added }),
       }).catch(() => {});
+      setDownloading(false);
+      setDownloadProgress(0);
+      clearSelection();
+      if (failedCount > 0) {
+        flash(
+          `${failedCount} photo${failedCount !== 1 ? "s" : ""} couldn't be added to the zip — download ${failedCount !== 1 ? "them" : "it"} again on ${failedCount !== 1 ? "their" : "its"} own.`,
+          "error",
+          10000
+        );
+      }
     };
 
     if ("showSaveFilePicker" in window) {
@@ -820,10 +919,7 @@ export default function BrokerListingPage() {
         const writable = await handle.createWritable();
         await writable.write(zipBlob);
         await writable.close();
-        logZip();
-        setDownloading(false);
-        setDownloadProgress(0);
-        clearSelection();
+        finish();
         return;
       } catch (err) {
         // The broker closed the Save dialog: that's a "no", not a cue to
@@ -838,10 +934,62 @@ export default function BrokerListingPage() {
     }
 
     triggerDownload(zipBlob, zipName);
-    logZip();
-    setDownloading(false);
-    setDownloadProgress(0);
-    clearSelection();
+    finish();
+  }
+
+  /** Open the file picker to replace one photo's file. */
+  function startReplace(photoId: string) {
+    if (replacing[photoId]) return;
+    replaceTargetRef.current = photoId;
+    if (replaceInputRef.current) {
+      replaceInputRef.current.value = "";
+      replaceInputRef.current.click();
+    }
+  }
+
+  /**
+   * Replace a photo's file, keeping its id — so its category, place in the
+   * order and cover-photo status all stay. New file, new storage path, then
+   * the server repoints the row and removes the old file; the tile swaps to
+   * the new thumbnail (new path = no stale cached image).
+   */
+  async function replacePhoto(photoId: string, file: File) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user;
+    if (!user) return;
+    setReplaceFailed((prev) => { const next = { ...prev }; delete next[photoId]; return next; });
+    setReplacing((prev) => ({ ...prev, [photoId]: "uploading" }));
+    const r = await replaceListingPhoto({
+      supabase,
+      file,
+      ownerFolder: user.id,
+      listingId: id,
+      photoId,
+      onStage: (stage) => setReplacing((prev) => ({ ...prev, [photoId]: stage })),
+    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+    setReplacing((prev) => { const next = { ...prev }; delete next[photoId]; return next; });
+
+    if (!r.ok) {
+      setReplaceFailed((prev) => ({ ...prev, [photoId]: r.error }));
+      setTimeout(() => setReplaceFailed((prev) => { const next = { ...prev }; delete next[photoId]; return next; }), 8000);
+      flash(`Couldn't replace that photo: ${r.error}`, "error", 8000);
+      return;
+    }
+    const np = r.photo;
+    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, storage_path: np.storage_path, filename: np.filename } : p)));
+    setThumbs((prev) => {
+      const next = { ...prev };
+      if (np.thumbUrl) next[photoId] = np.thumbUrl; else delete next[photoId];
+      return next;
+    });
+    setOriginals((prev) => {
+      const next = { ...prev };
+      if (np.originalUrl) next[photoId] = np.originalUrl; else delete next[photoId];
+      return next;
+    });
+    setMissingIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
+    if (!np.thumbUrl) refreshThumbs();
+    flash("Photo replaced — same spot, category and cover setting.");
   }
 
   function triggerDownload(blob: Blob, filename: string) {
@@ -1352,6 +1500,16 @@ export default function BrokerListingPage() {
               >
                 Select
               </button>
+              <select
+                value={downloadSize}
+                onChange={(e) => setDownloadSize(e.target.value as DownloadSize)}
+                disabled={downloading}
+                title="Size for every photo download on this page"
+                aria-label="Download size"
+                className="text-sm border border-hairline-strong rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent-500 bg-white text-ink-700 disabled:opacity-50"
+              >
+                {DOWNLOAD_SIZES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
               <button
                 onClick={() => requireDownloadLicense(() => downloadPhotos(visiblePhotos))}
                 disabled={downloading}
@@ -1410,6 +1568,16 @@ export default function BrokerListingPage() {
                       </button>
                     )}
                   </div>
+                  <select
+                    value={downloadSize}
+                    onChange={(e) => setDownloadSize(e.target.value as DownloadSize)}
+                    disabled={downloading}
+                    title="Size for every photo download on this page"
+                    aria-label="Download size"
+                    className="text-sm border border-hairline-strong rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent-500 bg-white text-ink-700 disabled:opacity-50"
+                  >
+                    {DOWNLOAD_SIZES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
                   <button
                     onClick={() => requireDownloadLicense(() => downloadPhotos(selectedPhotos))}
                     disabled={downloading}
@@ -1443,6 +1611,18 @@ export default function BrokerListingPage() {
           )}
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+        <input
+          ref={replaceInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            const target = replaceTargetRef.current;
+            replaceTargetRef.current = null;
+            if (file && target) replacePhoto(target, file);
+          }}
+        />
       </div>
 
       {/* Readiness — what's done, what would make the listing land better */}
@@ -1466,7 +1646,16 @@ export default function BrokerListingPage() {
       )}
 
       {message && (
-        <div className="mb-5 px-4 py-3 rounded-lg text-sm bg-success-50 border border-success-200 text-success-700">{message}</div>
+        <div
+          role={messageTone === "error" ? "alert" : "status"}
+          className={`mb-5 px-4 py-3 rounded-lg text-sm ${
+            messageTone === "error"
+              ? "bg-danger-50 border border-danger-200 text-danger-700"
+              : "bg-success-50 border border-success-200 text-success-700"
+          }`}
+        >
+          {message}
+        </div>
       )}
 
       {/* Pocket-listing veto — keep this boat out of the Recently Photographed showcase */}
@@ -1629,6 +1818,11 @@ export default function BrokerListingPage() {
                 onUpdateCategory={(cat) => updateCategory(photo.id, cat)}
                 onSaveCategory={saveCustomCategory}
                 onDelete={() => deletePhoto(photo.id, photo.storage_path)}
+                canReplace={hasAccess(accessStatus)}
+                replaceStage={replacing[photo.id] ?? null}
+                replaceError={replaceFailed[photo.id] ?? null}
+                onReplace={() => requireRights(() => startReplace(photo.id))}
+                downloadTitle={downloadSize === "full" ? "Download photo" : `Download photo (${DOWNLOAD_SIZES.find((o) => o.value === downloadSize)?.label})`}
               />
             );
           })}
@@ -2429,6 +2623,7 @@ function relativeTime(date: Date): string {
 function SortablePhotoCard({
   photo, thumbUrl, originalUrl, fileMissing, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
   onSetHero, onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
+  canReplace, replaceStage, replaceError, onReplace, downloadTitle,
 }: {
   photo: { id: string; filename: string | null; category: string | null; is_visible: boolean };
   /** Light resized version for the grid. */
@@ -2452,6 +2647,15 @@ function SortablePhotoCard({
   onUpdateCategory: (cat: string) => void;
   onSaveCategory: (cat: string) => void;
   onDelete: () => void;
+  /** Show the Replace button (needs upload access). */
+  canReplace: boolean;
+  /** Mid-replace stage for this tile, if any. */
+  replaceStage: "uploading" | "saving" | null;
+  /** Why the last replace failed (shown on the tile for a few seconds). */
+  replaceError: string | null;
+  onReplace: () => void;
+  /** Tooltip for the download button — names the chosen size. */
+  downloadTitle: string;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -2551,7 +2755,7 @@ function SortablePhotoCard({
               <span className="text-2xl">⚠️</span>
               <div className="text-center px-3">
                 <p className="text-warn-700 text-xs font-semibold">File missing</p>
-                <p className="text-warn-700 text-[10px] mt-0.5">Delete and re-upload</p>
+                <p className="text-warn-700 text-[10px] mt-0.5">{canReplace ? "Use Replace to upload it again" : "Delete and re-upload"}</p>
               </div>
             </div>
           )}
@@ -2559,6 +2763,19 @@ function SortablePhotoCard({
             <span className="pointer-events-none absolute left-1.5 bottom-1.5 label-caps-inverse rounded-sm bg-ink-950/70 px-1.5 py-0.5">
               Hidden
             </span>
+          )}
+          {replaceStage && (
+            <div role="status" className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white/80">
+              <span aria-hidden className="h-5 w-5 rounded-full border-2 border-accent-500 border-t-transparent animate-spin" />
+              <span className="text-xs font-medium text-ink-800">
+                {replaceStage === "uploading" ? "Uploading new photo…" : "Swapping it in…"}
+              </span>
+            </div>
+          )}
+          {!replaceStage && replaceError && (
+            <div role="alert" className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-danger-600/90 px-2 py-1 text-[11px] font-medium text-white">
+              Replace failed — {replaceError}
+            </div>
           )}
         </div>
 
@@ -2619,11 +2836,22 @@ function SortablePhotoCard({
               </>
             ) : (
               <>
+                {canReplace && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onReplace(); }}
+                    disabled={!!replaceStage}
+                    title="Replace with a new file — keeps its place, category and cover setting"
+                    aria-label="Replace photo"
+                    className={`${ctl} disabled:opacity-40`}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                  </button>
+                )}
                 <button
                   onClick={(e) => { e.stopPropagation(); onDownload(); }}
                   disabled={downloading}
-                  title="Download photo"
-                  aria-label="Download photo"
+                  title={downloadTitle}
+                  aria-label={downloadTitle}
                   className={`${ctl} disabled:opacity-40`}
                 >
                   <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
@@ -2693,11 +2921,22 @@ function SortablePhotoCard({
             </>
           ) : (
             <>
+              {canReplace && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); onReplace(); }}
+                  disabled={!!replaceStage}
+                  title="Replace with a new file"
+                  aria-label="Replace photo"
+                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-ink-900 active:bg-ink-100 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 disabled:opacity-40"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+                </button>
+              )}
               <button
                 onClick={(e) => { e.stopPropagation(); onDownload(); }}
                 disabled={downloading}
-                title="Download photo"
-                aria-label="Download photo"
+                title={downloadTitle}
+                aria-label={downloadTitle}
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-ink-900 active:bg-ink-100 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 disabled:opacity-40`}
               >
                 <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>

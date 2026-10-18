@@ -1,9 +1,24 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import RetryImg from "@/components/RetryImg";
+import { useSelfRefreshingUrls } from "@/lib/useSelfRefreshingUrls";
+import { photoAlt } from "@/lib/publicPhotoUrls";
+
+type GalleryPhoto = {
+  id: string;
+  /** Main-slide size (2000px box). */
+  url: string;
+  /** Filmstrip / grid size (600px box). */
+  thumbUrl?: string | null;
+  /** Full-size original — only present while downloads are open. */
+  downloadUrl?: string | null;
+  category: string | null;
+};
+type GalleryVideo = { id?: string; url: string; filename: string | null; posterUrl?: string | null };
 
 type Slide =
-  | { type: "photo"; url: string; category: string | null }
+  | { type: "photo"; url: string; thumbUrl?: string | null; downloadUrl?: string | null; category: string | null }
   | { type: "video"; url: string; filename: string | null; posterUrl?: string | null };
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -28,11 +43,15 @@ function FadePhoto({
   alt,
   eager = false,
   className = "",
+  retries = 4,
+  onError,
 }: {
   src: string;
   alt: string;
   eager?: boolean;
   className?: string;
+  retries?: number;
+  onError?: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -54,14 +73,17 @@ function FadePhoto({
 
   return (
     <>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      {/* Resized on first request by Supabase, which can 429 under load —
+          RetryImg re-requests with backoff; onError lets old links re-sign. */}
+      <RetryImg
         ref={imgRef}
         src={src}
         alt={alt}
+        retries={retries}
         loading={eager ? "eager" : "lazy"}
         decoding="async"
         onLoad={() => setLoaded(true)}
+        onError={() => onError?.()}
         className={`${className} transition-opacity duration-[1200ms] ease-quiet ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </>
@@ -71,24 +93,50 @@ function FadePhoto({
 export default function GallerySlideshow({
   slug,
   title,
-  photos,
-  videos,
+  photos: initialPhotos,
+  videos: initialVideos,
   downloadsEnabled = false,
   downloadsClosedNote = null,
   contact = null,
 }: {
   slug: string;
   title: string;
-  photos: { url: string; category: string | null }[];
-  videos: { url: string; filename: string | null; posterUrl?: string | null }[];
+  photos: GalleryPhoto[];
+  videos: GalleryVideo[];
   downloadsEnabled?: boolean;
   /** Shown quietly under the header once the download window has closed. */
   downloadsClosedNote?: string | null;
   contact?: { name: string; email: string | null; phone: string | null } | null;
 }) {
+  // Display links live two hours; keep them fresh for a tab left open past
+  // that (the route re-checks the gallery is still published).
+  const initialUrls = useMemo(() => {
+    const photoMap: Record<string, { thumb: string | null; full: string | null }> = {};
+    initialPhotos.forEach((p) => { photoMap[p.id] = { thumb: p.thumbUrl ?? null, full: p.url }; });
+    const videoMap: Record<string, { url: string | null; posterUrl: string | null }> = {};
+    initialVideos.forEach((v) => { if (v.id) videoMap[v.id] = { url: v.url, posterUrl: v.posterUrl ?? null }; });
+    return { photos: photoMap, videos: videoMap };
+  }, [initialPhotos, initialVideos]);
+  const { data: liveUrls, onMediaError } = useSelfRefreshingUrls(initialUrls, `/api/g/${slug}/urls`);
+  const photos = useMemo<GalleryPhoto[]>(
+    () => initialPhotos.map((p) => {
+      const u = liveUrls.photos?.[p.id];
+      return u ? { ...p, url: u.full ?? p.url, thumbUrl: u.thumb ?? p.thumbUrl ?? null } : p;
+    }),
+    [initialPhotos, liveUrls]
+  );
+  const videos = useMemo<GalleryVideo[]>(
+    () => initialVideos.map((v) => {
+      const u = v.id ? liveUrls.videos?.[v.id] : undefined;
+      return u ? { ...v, url: u.url ?? v.url, posterUrl: u.posterUrl ?? v.posterUrl ?? null } : v;
+    }),
+    [initialVideos, liveUrls]
+  );
+  const altFor = (category: string | null) => photoAlt(category, title);
+
   const slides = useMemo<Slide[]>(
     () => [
-      ...photos.map((p) => ({ type: "photo" as const, url: p.url, category: p.category })),
+      ...photos.map((p) => ({ type: "photo" as const, url: p.url, thumbUrl: p.thumbUrl ?? null, downloadUrl: p.downloadUrl ?? null, category: p.category })),
       ...videos.map((v) => ({ type: "video" as const, url: v.url, filename: v.filename, posterUrl: v.posterUrl ?? null })),
     ],
     [photos, videos]
@@ -142,9 +190,12 @@ export default function GallerySlideshow({
     try {
       // Re-sign first — the URL rendered into this page may already be dead.
       const fresh = await freshUrls();
+      // Photos fall back to the original signed with the page, never the
+      // resized display copy — a download should be the real file.
       const url = s.type === "video"
         ? (fresh?.videos?.[index - photos.length] ?? s.url)
-        : (fresh?.photos?.[index] ?? s.url);
+        : (fresh?.photos?.[index] ?? s.downloadUrl);
+      if (!url) throw new Error("no link");
       const blob = await fetchFile(url);
       const name =
         s.type === "video"
@@ -172,7 +223,9 @@ export default function GallerySlideshow({
       const fresh = await freshUrls();
 
       if (photos.length === 1) {
-        const blob = await fetchFile(fresh?.photos?.[0] ?? photos[0].url);
+        const only = fresh?.photos?.[0] ?? photos[0].downloadUrl;
+        if (!only) throw new Error("no link");
+        const blob = await fetchFile(only);
         triggerDownload(blob, `${photos[0].category ?? "photo"}.jpg`);
         logDownload(1, "single");
         setDownloadingAll(false);
@@ -188,13 +241,15 @@ export default function GallerySlideshow({
         await Promise.all(
           batch.map(async (p, j) => {
             const n = i + j + 1;
-            const url = fresh?.photos?.[i + j] ?? p.url;
+            const url = fresh?.photos?.[i + j] ?? p.downloadUrl;
             try {
+              if (!url) throw new Error("no link");
               const blob = await fetchFile(url);
               zip.file(`${String(n).padStart(3, "0")}-${p.category ?? "photo"}.jpg`, blob);
             } catch {
               // One retry — most failures here are transient.
               try {
+                if (!url) throw new Error("no link");
                 const blob = await fetchFile(url);
                 zip.file(`${String(n).padStart(3, "0")}-${p.category ?? "photo"}.jpg`, blob);
               } catch {
@@ -313,10 +368,12 @@ export default function GallerySlideshow({
       if (s && s.type === "photo" && s.url) {
         const img = new window.Image();
         img.decoding = "async";
+        // A neighbour failing on old links re-signs before the viewer gets there.
+        img.onerror = () => onMediaError();
         img.src = s.url;
       }
     });
-  }, [current, slides]);
+  }, [current, slides, onMediaError]);
 
   if (slides.length === 0) {
     return (
@@ -455,8 +512,10 @@ export default function GallerySlideshow({
               >
                 <FadePhoto
                   src={slide.url}
-                  alt={slide.category ?? ""}
+                  alt={altFor(slide.category)}
                   eager
+                  retries={3}
+                  onError={onMediaError}
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                 />
               </div>
@@ -468,6 +527,7 @@ export default function GallerySlideshow({
                 controls
                 playsInline
                 preload="metadata"
+                onError={onMediaError}
                 className="absolute inset-0 h-full w-full"
                 style={{
                   zIndex: 1,
@@ -540,8 +600,14 @@ export default function GallerySlideshow({
                 }`}
               >
                 {s.type === "photo" ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={s.url} alt="" loading="lazy" decoding="async" className="w-[70px] h-11 object-cover" />
+                  <RetryImg
+                    src={s.thumbUrl ?? s.url}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={onMediaError}
+                    className="w-[70px] h-11 object-cover"
+                  />
                 ) : (
                   videoTile("w-[70px] h-11")
                 )}
@@ -563,9 +629,11 @@ export default function GallerySlideshow({
               >
                 {s.type === "photo" ? (
                   <FadePhoto
-                    src={s.url}
-                    alt={s.category ?? `Photo ${i + 1}`}
+                    src={s.thumbUrl ?? s.url}
+                    alt={altFor(s.category)}
                     eager={i < 4}
+                    retries={6}
+                    onError={onMediaError}
                     className="absolute inset-0 h-full w-full object-contain"
                   />
                 ) : (

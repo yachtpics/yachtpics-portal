@@ -1,9 +1,89 @@
+import type { Metadata } from "next";
+import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import DownloadPageClient from "./_components/DownloadPageClient";
 import { signVideoUrl, withVideoPosters } from "@/lib/videoUrls";
+import { OG_TRANSFORM, signOneTransformed, signTransformed, THUMB_TRANSFORM } from "@/lib/publicPhotoUrls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const NEUTRAL_METADATA: Metadata = {
+  title: "YachtPics Portal",
+  description: "Yacht photography presented by YachtPics.",
+};
+const OG_TTL = 60 * 60 * 24 * 7;
+
+function service() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+}
+
+/** The link row for a token (page + link preview share one lookup per request). */
+const getLink = cache(async (token: string) => {
+  const { data } = await service()
+    .from("download_links")
+    .select("id, listing_id, revoked, expires_at, scope")
+    .eq("token", token)
+    .maybeSingle();
+  return data as { id: string; listing_id: string; revoked: boolean | null; expires_at: string | null; scope?: string | null } | null;
+});
+
+/**
+ * Rich link preview: vessel name (+ year/length/make), what's inside, and the
+ * first photo as the card. A missing, revoked or expired link gets a neutral
+ * title and no image.
+ */
+export async function generateMetadata({ params }: { params: { token: string } }): Promise<Metadata> {
+  try {
+    const link = await getLink(params.token);
+    if (!link || link.revoked || (link.expires_at && new Date(link.expires_at).getTime() < Date.now())) {
+      return NEUTRAL_METADATA;
+    }
+    const supabase = service();
+    const scope = link.scope ?? "both";
+    const wantsPhotos = scope === "photos" || scope === "both";
+    const [{ data: listing }, firstPhoto] = await Promise.all([
+      supabase.from("listings").select("vessel_name, year, length_ft, make, model").eq("id", link.listing_id).maybeSingle(),
+      wantsPhotos
+        ? supabase
+            .from("photos")
+            .select("storage_path")
+            .eq("listing_id", link.listing_id)
+            .order("display_order")
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => data)
+        : Promise.resolve(null),
+    ]);
+    const name = (listing?.vessel_name ?? "").trim();
+    const extras = [listing?.year, listing?.length_ft ? `${listing.length_ft}′` : null, listing?.make].filter(Boolean).join(" ");
+    const title = name && extras ? `${name} — ${extras}` : name || extras || "Yacht media";
+    const what = scope === "photos" ? "Photos" : scope === "videos" ? "Videos" : "Photos and video";
+    const description = `${what} to download, from YachtPics.`;
+    const image = firstPhoto?.storage_path
+      ? await signOneTransformed(supabase, firstPhoto.storage_path, OG_TRANSFORM, OG_TTL)
+      : null;
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        type: "website",
+        siteName: "YachtPics Portal",
+        ...(image ? { images: [{ url: image, width: OG_TRANSFORM.width, height: OG_TRANSFORM.height, alt: title }] } : {}),
+      },
+      twitter: {
+        card: image ? "summary_large_image" : "summary",
+        title,
+        description,
+        ...(image ? { images: [image] } : {}),
+      },
+    };
+  } catch {
+    return NEUTRAL_METADATA;
+  }
+}
 
 function InvalidState({ title, body }: { title: string; body: string }) {
   return (
@@ -26,16 +106,9 @@ function InvalidState({ title, body }: { title: string; body: string }) {
 }
 
 export default async function PublicDownloadPage({ params }: { params: { token: string } }) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+  const supabase = service();
 
-  const { data: link } = await supabase
-    .from("download_links")
-    .select("id, listing_id, revoked, expires_at, scope")
-    .eq("token", params.token)
-    .single();
+  const link = await getLink(params.token);
 
   if (!link) {
     return (
@@ -82,16 +155,21 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
         .order("display_order")
     : { data: [] };
 
+  // Originals for downloading, plus a 600px copy for the preview tiles (the
+  // grid used to pull every full-size original just to show a thumbnail).
   const paths = (photos ?? []).map((p) => p.storage_path);
-  const { data: signed } =
+  const [{ data: signed }, thumbMap] = await Promise.all([
     paths.length > 0
-      ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 60 * 60 * 6)
-      : { data: [] };
+      ? supabase.storage.from("listing-photos").createSignedUrls(paths, 60 * 60 * 6)
+      : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+    signTransformed(supabase, paths, THUMB_TRANSFORM, 60 * 60 * 6),
+  ]);
   const urlMap = new Map((signed ?? []).map((d) => [d.path, d.signedUrl]));
 
   const photosWithUrls = (photos ?? []).map((p) => ({
     id: p.id,
     url: urlMap.get(p.storage_path) ?? null,
+    thumbUrl: thumbMap.get(p.storage_path) ?? null,
     filename: p.filename,
     category: p.category,
   }));

@@ -1,10 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import RetryImg from "@/components/RetryImg";
+import { photoAlt } from "@/lib/publicPhotoUrls";
 
 type Photo = {
   id: string;
+  /** Full-size original — what gets downloaded. */
   url: string | null;
+  /** 600px preview for the tile. */
+  thumbUrl?: string | null;
   filename: string | null;
   category: string | null;
 };
@@ -212,10 +217,10 @@ export default function DownloadPageClient({
                 key={photo.id}
                 className="group relative aspect-[4/3] rounded-[2px] overflow-hidden bg-white shadow-print"
               >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={photo.url!}
-                  alt={photo.category ?? "Photo"}
+                <RetryImg
+                  src={photo.thumbUrl ?? photo.url!}
+                  fallbackSrc={photo.thumbUrl ? photo.url ?? undefined : undefined}
+                  alt={photoAlt(photo.category, vesselName)}
                   loading="lazy"
                   decoding="async"
                   className="absolute inset-0 w-full h-full object-contain"

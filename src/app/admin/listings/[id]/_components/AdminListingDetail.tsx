@@ -25,7 +25,7 @@ import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@d
 import { CSS } from "@dnd-kit/utilities";
 import RetryImg from "@/components/RetryImg";
 import { reorderPhotos } from "@/lib/reorderPhotos";
-import { runPool, uploadListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
+import { runPool, uploadListingPhoto, replaceListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
 import {
   SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
   sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
@@ -223,6 +223,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setMessageKind(kind);
   }
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Replace photo — which tiles are mid-replace (and at what stage).
+  const [replacing, setReplacing] = useState<Record<string, "uploading" | "saving">>({});
+  const replaceInputRef = useRef<HTMLInputElement>(null);
+  const replaceTargetRef = useRef<string | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
   // Held until confirmed — deleting media is permanent, so nothing irreversible
@@ -652,6 +656,52 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     } catch (e) {
       return e instanceof Error ? e.message : String(e);
     }
+  }
+
+  function startReplace(photoId: string) {
+    if (replacing[photoId]) return;
+    replaceTargetRef.current = photoId;
+    if (replaceInputRef.current) {
+      replaceInputRef.current.value = "";
+      replaceInputRef.current.click();
+    }
+  }
+
+  // Swap the file behind a photo but keep the photo — its id, so its place in
+  // the order, area/category, visibility and cover status all stay. New file
+  // goes to a new storage path (no stale CDN/thumbnail cache), the server
+  // repoints the row and removes the old file.
+  async function replacePhoto(photoId: string, file: File) {
+    setReplacing((prev) => ({ ...prev, [photoId]: "uploading" }));
+    setMessage("Replacing photo — uploading the new file…");
+    const r = await replaceListingPhoto({
+      supabase,
+      file,
+      ownerFolder: listing.broker_id,
+      listingId: listing.id,
+      photoId,
+      onStage: (stage) => {
+        setReplacing((prev) => ({ ...prev, [photoId]: stage }));
+        if (stage === "saving") setMessage("Replacing photo — swapping it in…");
+      },
+    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+    setReplacing((prev) => { const next = { ...prev }; delete next[photoId]; return next; });
+    if (!r.ok) {
+      setMessage(`Couldn't replace that photo: ${r.error}`, "error");
+      return;
+    }
+    const np = r.photo;
+    setPhotos((prev) => prev.map((p) => (p.id === photoId
+      ? { ...p, storage_path: np.storage_path, filename: np.filename, url: np.originalUrl ?? p.url }
+      : p)));
+    setThumbs((prev) => {
+      const next = { ...prev };
+      if (np.thumbUrl) next[photoId] = np.thumbUrl; else delete next[photoId];
+      return next;
+    });
+    if (!np.thumbUrl) refreshThumbs();
+    setMessage(`Photo replaced with ${np.filename ?? "the new file"} — same spot, area and cover setting.`);
+    setTimeout(() => setMessage(""), 4000);
   }
 
   // Photos only leave the screen once the server confirms they're gone.
@@ -1697,6 +1747,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             </button>
           </div>
           <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+          <input
+            ref={replaceInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              const target = replaceTargetRef.current;
+              replaceTargetRef.current = null;
+              if (file && target) replacePhoto(target, file);
+            }}
+          />
         </div>
 
         {/* Deleting media is permanent — the file leaves storage entirely, so
@@ -1845,6 +1907,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                     ) : (
                       <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
                     )}
+                    {replacing[photo.id] && (
+                      <div role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80">
+                        <span aria-hidden className="h-5 w-5 rounded-full border-2 border-accent-500 border-t-transparent animate-spin" />
+                        <span className="text-xs font-medium text-ink-800">
+                          {replacing[photo.id] === "uploading" ? "Uploading…" : "Swapping in…"}
+                        </span>
+                      </div>
+                    )}
                     {selectMode && (
                       <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
                         isSelected ? "bg-accent-500 border-accent-500" : "bg-white/80 border-ink-300"
@@ -1943,6 +2013,15 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                           className="flex-1 text-[10px] font-medium text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 rounded py-1 transition-colors duration-fast ease-quiet"
                         >
                           ↓ Save
+                        </button>
+                        <button
+                          onClick={() => startReplace(photo.id)}
+                          disabled={!!replacing[photo.id]}
+                          title="Replace with a new file — keeps its place, area and cover setting"
+                          aria-label="Replace this photo"
+                          className="flex-1 text-[10px] font-medium text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 rounded py-1 transition-colors duration-fast ease-quiet"
+                        >
+                          {replacing[photo.id] ? "…" : "Replace"}
                         </button>
                         {confirmDeleteId === photo.id ? (
                           <>

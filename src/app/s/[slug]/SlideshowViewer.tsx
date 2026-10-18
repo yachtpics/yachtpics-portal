@@ -1,10 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import RetryImg from "@/components/RetryImg";
+import { useSelfRefreshingUrls } from "@/lib/useSelfRefreshingUrls";
+import { photoAlt } from "@/lib/publicPhotoUrls";
 
 interface Photo {
   id: string;
+  /** Main-slide size (2000px box). */
   url: string | null;
+  /** Filmstrip / grid size (600px box). */
+  thumbUrl?: string | null;
   category: string | null;
   filename: string | null;
 }
@@ -17,7 +23,7 @@ interface Video {
 }
 
 type Slide =
-  | { type: "photo"; id: string; url: string | null; category: string | null; filename: string | null }
+  | { type: "photo"; id: string; url: string | null; thumbUrl?: string | null; category: string | null; filename: string | null }
   | { type: "video"; id: string; url: string | null; filename: string | null; posterUrl?: string | null };
 
 interface Listing {
@@ -103,6 +109,9 @@ function saveFavorites(slug: string, favs: Set<string>) {
  *
  * These are time-limited signed Supabase URLs, so they intentionally stay
  * raw <img> (never next/image — the optimizer would cache expiring URLs).
+ * They're resized by Supabase on first request, which can answer 429 when a
+ * lot render at once — RetryImg re-requests with backoff; onError also lets
+ * the viewer re-sign links that have expired.
  */
 function FadePhoto({
   src,
@@ -110,14 +119,18 @@ function FadePhoto({
   eager = false,
   className = "",
   fadeMs = 160,
+  retries = 4,
   onLoad,
+  onError,
 }: {
   src: string;
   alt: string;
   eager?: boolean;
   className?: string;
   fadeMs?: number;
+  retries?: number;
   onLoad?: (e: React.SyntheticEvent<HTMLImageElement>) => void;
+  onError?: () => void;
 }) {
   const [loaded, setLoaded] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
@@ -139,17 +152,18 @@ function FadePhoto({
 
   return (
     <>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
+      <RetryImg
         ref={imgRef}
         src={src}
         alt={alt}
+        retries={retries}
         loading={eager ? "eager" : "lazy"}
         decoding="async"
         onLoad={(e) => {
           setLoaded(true);
           onLoad?.(e);
         }}
+        onError={() => onError?.()}
         style={{
           opacity: loaded ? 1 : 0,
           transition: `opacity ${fadeMs}ms cubic-bezier(0.25, 0, 0.15, 1)`,
@@ -160,7 +174,35 @@ function FadePhoto({
   );
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos, videos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl = null }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null }: Props) {
+  // Signed links live two hours. Keep them fresh for a tab left open (or
+  // restored) past that — see useSelfRefreshingUrls. The route re-runs the
+  // page's own access checks.
+  const initialUrls = useMemo(() => {
+    const photoMap: Record<string, { thumb: string | null; full: string | null }> = {};
+    initialPhotos.forEach((p) => { photoMap[p.id] = { thumb: p.thumbUrl ?? null, full: p.url }; });
+    const videoMap: Record<string, { url: string | null; posterUrl: string | null }> = {};
+    initialVideos.forEach((v) => { videoMap[v.id] = { url: v.url, posterUrl: v.posterUrl ?? null }; });
+    return { photos: photoMap, videos: videoMap, deckPlanUrl: initialDeckPlanUrl };
+  }, [initialPhotos, initialVideos, initialDeckPlanUrl]);
+  const { data: liveUrls, onMediaError } = useSelfRefreshingUrls(initialUrls, `/api/s/${slug}/urls`);
+  const photos = useMemo<Photo[]>(
+    () => initialPhotos.map((p) => {
+      const u = liveUrls.photos?.[p.id];
+      return u ? { ...p, url: u.full ?? p.url, thumbUrl: u.thumb ?? p.thumbUrl ?? null } : p;
+    }),
+    [initialPhotos, liveUrls]
+  );
+  const videos = useMemo<Video[]>(
+    () => initialVideos.map((v) => {
+      const u = liveUrls.videos?.[v.id];
+      return u ? { ...v, url: u.url ?? v.url, posterUrl: u.posterUrl ?? v.posterUrl ?? null } : v;
+    }),
+    [initialVideos, liveUrls]
+  );
+  const deckPlanUrl = liveUrls.deckPlanUrl ?? initialDeckPlanUrl;
+  const altFor = (category: string | null) => photoAlt(category, listing.vessel_name);
+
   // Videos first, then photos — unified slide array
   const slides = useMemo<Slide[]>(() => [
     ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
@@ -355,10 +397,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       if (s && s.type === "photo" && s.url) {
         const img = new window.Image();
         img.decoding = "async";
+        // A neighbour failing on old links re-signs before the viewer gets there.
+        img.onerror = () => onMediaError();
         img.src = s.url;
       }
     });
-  }, [current, slides]);
+  }, [current, slides, onMediaError]);
 
   useEffect(() => {
     const first = slides[0];
@@ -529,9 +573,11 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 >
                   <FadePhoto
                     src={currentSlide.url}
-                    alt={currentSlide.category ?? ""}
+                    alt={altFor(currentSlide.category)}
                     eager
                     fadeMs={1200}
+                    retries={3}
+                    onError={onMediaError}
                     className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                   />
                 </div>
@@ -543,6 +589,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   controls
                   playsInline
                   preload="metadata"
+                  onError={onMediaError}
                   onPlay={() => track({ kind: "video_play", videoId: currentSlide.id })}
                   className="absolute inset-0 h-full w-full"
                   style={{
@@ -623,9 +670,15 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     : "opacity-50 hover:opacity-100"
                 }`}
               >
-                {slide.type === "photo" && slide.url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={slide.url} alt="" loading="lazy" decoding="async" className="w-[70px] h-11 object-cover" />
+                {slide.type === "photo" && (slide.thumbUrl ?? slide.url) ? (
+                  <RetryImg
+                    src={(slide.thumbUrl ?? slide.url)!}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={onMediaError}
+                    className="w-[70px] h-11 object-cover"
+                  />
                 ) : (
                   <div className="w-[70px] h-11 bg-ink-900 flex items-center justify-center">
                     <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
@@ -651,6 +704,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     controls
                     playsInline
                     preload="metadata"
+                    onError={onMediaError}
                     onPlay={() => track({ kind: "video_play", videoId: video.id })}
                     className="w-full max-h-[480px]"
                   />
@@ -672,11 +726,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   verticalIds.has(photo.id) ? "aspect-[3/4]" : "aspect-[4/3]"
                 }`}
               >
-                {photo.url && (
+                {(photo.thumbUrl ?? photo.url) && (
                   <FadePhoto
-                    src={photo.url}
-                    alt={photo.category ?? `Photo ${i + 1}`}
+                    src={(photo.thumbUrl ?? photo.url)!}
+                    alt={altFor(photo.category)}
                     eager={i < 3}
+                    retries={6}
+                    onError={onMediaError}
                     onLoad={(e) => handleImgLoad(e, photo.id)}
                     className="absolute inset-0 h-full w-full object-contain"
                   />
