@@ -3,7 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import GallerySlideshow from "./_components/GallerySlideshow";
 import { serviceClient } from "@/lib/publicSlideshow";
-import { GALLERY_TTL, getGalleryBySlug, loadGalleryMedia, type PublicGallery } from "@/lib/publicGallery";
+import {
+  getGalleryBySlug,
+  getGalleryRows,
+  signGalleryExtras,
+  signGalleryFirstPaint,
+  type PublicGallery,
+} from "@/lib/publicGallery";
 import { OG_TRANSFORM, signOneTransformed } from "@/lib/publicPhotoUrls";
 
 type GalleryContact = { name: string; email: string | null; phone: string | null };
@@ -69,36 +75,18 @@ async function galleryContact(supabase: SupabaseClient, gallery: PublicGallery):
   return contact;
 }
 
-/** Full-size originals for the visible photos, keyed by storage path (download fallback). */
-async function signGalleryOriginals(supabase: SupabaseClient, galleryId: string): Promise<Map<string, string | null>> {
-  const { data: photos } = await supabase
-    .from("photos")
-    .select("storage_path")
-    .eq("gallery_id", galleryId)
-    .eq("is_visible", true);
-  const paths = (photos ?? []).map((p) => p.storage_path as string);
-  if (paths.length === 0) return new Map();
-  const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrls(paths, GALLERY_TTL);
-  return new Map((signed ?? []).map((d) => [d.path ?? "", d.signedUrl]));
-}
-
 /** Rich link preview: gallery title, who it's from, first photo as the card. */
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   try {
     const gallery = await getGalleryBySlug(params.slug);
     if (!gallery || !gallery.slideshow_published) return NEUTRAL_METADATA;
     const supabase = serviceClient();
-    const [contact, { data: first }] = await Promise.all([
+    // getGalleryRows is cached — the page reuses this read.
+    const [contact, rows] = await Promise.all([
       galleryContact(supabase, gallery),
-      supabase
-        .from("photos")
-        .select("storage_path")
-        .eq("gallery_id", gallery.id)
-        .eq("is_visible", true)
-        .order("display_order")
-        .limit(1)
-        .maybeSingle(),
+      getGalleryRows(gallery.id),
     ]);
+    const first = rows.photos[0];
     const image = first?.storage_path
       ? await signOneTransformed(supabase, first.storage_path, OG_TRANSFORM, OG_TTL)
       : null;
@@ -145,29 +133,30 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
   const isExpired = gallery.expires_at != null && new Date(gallery.expires_at) <= new Date();
   const downloadsEnabled = !isExpired && gallery.downloads_enabled === true;
 
-  // Display sizes for the slideshow (thumb for tiles, full for the main
-  // slide). Originals are signed only when downloads are open — they're the
-  // fallback if re-signing at download time fails.
-  const [media, originals] = await Promise.all([
-    loadGalleryMedia(supabase, gallery.id),
-    downloadsEnabled ? signGalleryOriginals(supabase, gallery.id) : Promise.resolve(new Map<string, string | null>()),
+  // ONE light signing step: the opening photo at slide size + the first dozen
+  // tiles, plus one batch for video stills and — only while downloads are
+  // open — the photo originals (the fallback if re-signing at download time
+  // fails). The viewer fetches the rest of the display links in chunks from
+  // /api/g/[slug]/urls as it needs them.
+  const rows = await getGalleryRows(gallery.id);
+  const [firstPaint, { extras, originals }] = await Promise.all([
+    signGalleryFirstPaint(supabase, rows.photos),
+    signGalleryExtras(supabase, rows.videos, downloadsEnabled ? rows.photos : []),
   ]);
-  const photoSlides = media.photos
-    .map((p) => ({
-      id: p.id,
-      url: media.urls.photos[p.id]?.full ?? null,
-      thumbUrl: media.urls.photos[p.id]?.thumb ?? null,
-      downloadUrl: originals.get(p.storage_path) ?? null,
-      category: p.category,
-    }))
-    .filter((s): s is { id: string; url: string; thumbUrl: string | null; downloadUrl: string | null; category: string | null } => !!s.url);
+  const photoSlides = rows.photos.map((p) => ({
+    id: p.id,
+    url: firstPaint[p.id]?.full ?? null,
+    thumbUrl: firstPaint[p.id]?.thumb ?? null,
+    downloadUrl: originals.get(p.id) ?? null,
+    category: p.category,
+  }));
 
-  const videoSlides = media.videos
+  const videoSlides = rows.videos
     .map((v) => ({
       id: v.id,
-      url: media.urls.videos[v.id]?.url ?? null,
+      url: extras.videos[v.id]?.url ?? null,
       filename: v.filename ?? null,
-      posterUrl: media.urls.videos[v.id]?.posterUrl ?? null,
+      posterUrl: extras.videos[v.id]?.posterUrl ?? null,
     }))
     .filter((s): s is { id: string; url: string; filename: string | null; posterUrl: string | null } => !!s.url);
 

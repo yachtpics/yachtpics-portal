@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import RetryImg from "@/components/RetryImg";
-import { useSelfRefreshingUrls } from "@/lib/useSelfRefreshingUrls";
+import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
 import { photoAlt } from "@/lib/publicPhotoUrls";
 
 interface Photo {
@@ -175,23 +175,33 @@ function FadePhoto({
 }
 
 export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null }: Props) {
-  // Signed links live two hours. Keep them fresh for a tab left open (or
-  // restored) past that — see useSelfRefreshingUrls. The route re-runs the
-  // page's own access checks.
-  const initialUrls = useMemo(() => {
-    const photoMap: Record<string, { thumb: string | null; full: string | null }> = {};
-    initialPhotos.forEach((p) => { photoMap[p.id] = { thumb: p.thumbUrl ?? null, full: p.url }; });
+  // The page signs only the opening photo + first dozen tiles. The rest of
+  // the display links arrive in chunks from /api/s/[slug]/urls as they're
+  // about to be needed, and everything is re-signed when a tab returns after
+  // the two-hour links have gone stale — see useProgressivePhotoUrls.
+  const initialPhotoUrls = useMemo(() => {
+    const map: ClientPhotoUrls = {};
+    initialPhotos.forEach((p) => {
+      if (p.url || p.thumbUrl) map[p.id] = { thumb: p.thumbUrl ?? null, full: p.url };
+    });
+    return map;
+  }, [initialPhotos]);
+  const initialExtras = useMemo(() => {
     const videoMap: Record<string, { url: string | null; posterUrl: string | null }> = {};
     initialVideos.forEach((v) => { videoMap[v.id] = { url: v.url, posterUrl: v.posterUrl ?? null }; });
-    return { photos: photoMap, videos: videoMap, deckPlanUrl: initialDeckPlanUrl };
-  }, [initialPhotos, initialVideos, initialDeckPlanUrl]);
-  const { data: liveUrls, onMediaError } = useSelfRefreshingUrls(initialUrls, `/api/s/${slug}/urls`);
+    return { videos: videoMap, deckPlanUrl: initialDeckPlanUrl };
+  }, [initialVideos, initialDeckPlanUrl]);
+  const { photos: livePhotos, extras: liveUrls, want, onMediaError } = useProgressivePhotoUrls({
+    endpoint: `/api/s/${slug}/urls`,
+    initialPhotos: initialPhotoUrls,
+    initialExtras,
+  });
   const photos = useMemo<Photo[]>(
     () => initialPhotos.map((p) => {
-      const u = liveUrls.photos?.[p.id];
-      return u ? { ...p, url: u.full ?? p.url, thumbUrl: u.thumb ?? p.thumbUrl ?? null } : p;
+      const u = livePhotos[p.id];
+      return { ...p, url: u?.full ?? null, thumbUrl: u?.thumb ?? null };
     }),
-    [initialPhotos, liveUrls]
+    [initialPhotos, livePhotos]
   );
   const videos = useMemo<Video[]>(
     () => initialVideos.map((v) => {
@@ -390,6 +400,24 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     return () => window.removeEventListener("keydown", handleKey);
   }, [view, prev, next]);
 
+  // Ask for slide-size links just ahead of the viewer (3 back, 8 ahead), so
+  // paging never waits and the route sees one call per few slides.
+  useEffect(() => {
+    const ids: string[] = [];
+    for (let i = Math.max(0, current - 3); i <= Math.min(slides.length - 1, current + 8); i++) {
+      const s = slides[i];
+      if (s && s.type === "photo") ids.push(s.id);
+    }
+    if (ids.length) want(ids, "full");
+  }, [current, slides, want]);
+
+  // Tile links for the filmstrip / grid once either is opened: chunks of 60,
+  // in show order, one after another (the first dozen came with the page).
+  const allPhotoIds = useMemo(() => initialPhotos.map((p) => p.id), [initialPhotos]);
+  useEffect(() => {
+    if (view === "grid" || showThumbs) want(allPhotoIds, "thumb");
+  }, [view, showThumbs, allPhotoIds, want]);
+
   // Warm the neighbouring photographs so paging feels instant.
   useEffect(() => {
     [current - 1, current + 1].forEach((i) => {
@@ -536,7 +564,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 It fades OUT as the incoming fades in — a true crossfade — so a
                 wider outgoing shot doesn't leave its edges hanging when the
                 incoming is a different shape (e.g. horizontal → vertical). */}
-            {outgoingSlide?.type === "photo" && outgoingSlide.url && (
+            {outgoingSlide?.type === "photo" && (outgoingSlide.url ?? outgoingSlide.thumbUrl) && (
               <div
                 key={`out-${outgoing}`}
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
@@ -555,7 +583,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={outgoingSlide.url}
+                  src={(outgoingSlide.url ?? outgoingSlide.thumbUrl)!}
                   alt=""
                   decoding="sync"
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
@@ -564,7 +592,9 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
 
             {/* Current slide */}
-            {currentSlide.url && (
+            {/* A photo whose slide-size link is still on its way shows its tile
+                copy meanwhile (when we have one); FadePhoto swaps in place. */}
+            {(currentSlide.type === "photo" ? (currentSlide.url ?? currentSlide.thumbUrl) : currentSlide.url) && (
               currentSlide.type === "photo" ? (
                 <div
                   key={`in-${current}`}
@@ -572,7 +602,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   style={{ zIndex: 1 }}
                 >
                   <FadePhoto
-                    src={currentSlide.url}
+                    src={(currentSlide.url ?? currentSlide.thumbUrl)!}
                     alt={altFor(currentSlide.category)}
                     eager
                     fadeMs={1200}
@@ -584,7 +614,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               ) : (
                 <video
                   key={`video-${current}`}
-                  src={currentSlide.url}
+                  src={currentSlide.url ?? undefined}
                   poster={currentSlide.posterUrl ?? undefined}
                   controls
                   playsInline
@@ -670,7 +700,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     : "opacity-50 hover:opacity-100"
                 }`}
               >
-                {slide.type === "photo" && (slide.thumbUrl ?? slide.url) ? (
+                {slide.type === "photo" && !(slide.thumbUrl ?? slide.url) ? (
+                  // Link still on its way — a quiet paper square, not a broken image.
+                  <div className="w-[70px] h-11 bg-ink-100" />
+                ) : slide.type === "photo" ? (
                   <RetryImg
                     src={(slide.thumbUrl ?? slide.url)!}
                     alt=""

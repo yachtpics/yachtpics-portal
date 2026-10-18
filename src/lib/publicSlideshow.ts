@@ -4,8 +4,8 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
-import { withVideoPosters, withVideoUrls } from "@/lib/videoUrls";
-import { signPhotoSizes, type PhotoSizes } from "@/lib/publicPhotoUrls";
+import { withVideoUrls } from "@/lib/videoUrls";
+import { signIdsAtSize, type PhotoSize } from "@/lib/publicPhotoUrls";
 
 /**
  * Shared by the buyer slideshow page (/s/[slug]), its link preview
@@ -103,69 +103,117 @@ export type SlideshowVideoRow = {
   thumbnail_path: string | null;
 };
 
-/** What the viewer needs to (re)paint: signed links keyed by id. */
-export type SlideshowUrls = {
-  photos: Record<string, PhotoSizes>;
+/** Signed display links the viewer holds, keyed by photo id. Either size may be missing until asked for. */
+export type PhotoUrlMap = Record<string, { thumb?: string | null; full?: string | null }>;
+
+export type SlideshowExtras = {
   videos: Record<string, { url: string | null; posterUrl: string | null }>;
   deckPlanUrl: string | null;
 };
 
+/** How many grid/filmstrip tiles the server signs for first paint. */
+export const FIRST_PAINT_TILES = 12;
+
 /**
- * Load the visible photos (in show order) and slideshow videos, and sign
- * everything at once: photos at two sizes, videos + their stills, deck plan.
+ * Visible photos (in show order) + slideshow videos. DB only — no signing.
+ * Cached per request so generateMetadata, the page and nothing else re-read.
  */
-export async function loadSlideshowMedia(supabase: SupabaseClient, listing: SlideshowListing): Promise<{
+export const getSlideshowRows = cache(async (listingId: string, manual: boolean, heroId: string | null): Promise<{
   photos: SlideshowPhotoRow[];
   videos: SlideshowVideoRow[];
-  urls: SlideshowUrls;
-}> {
+}> => {
+  const supabase = serviceClient();
   const [{ data: photos }, { data: rawVideos }] = await Promise.all([
     supabase
       .from("photos")
       .select("id, storage_path, category, filename, display_order")
-      .eq("listing_id", listing.id)
+      .eq("listing_id", listingId)
       .eq("is_visible", true)
       .order("display_order"),
     supabase
       .from("videos")
       .select("id, storage_path, storage_host, filename, thumbnail_path")
-      .eq("listing_id", listing.id)
+      .eq("listing_id", listingId)
       .eq("in_slideshow", true)
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at"),
   ]);
-
-  const photoRows = (photos ?? []) as SlideshowPhotoRow[];
-  const videoRows = (rawVideos ?? []) as SlideshowVideoRow[];
-
-  const [sizes, signedVideos, videoPosters, deckPlanUrl] = await Promise.all([
-    signPhotoSizes(supabase, photoRows.map((p) => p.storage_path), SLIDESHOW_TTL),
-    withVideoUrls(supabase, videoRows, { expiresIn: SLIDESHOW_TTL }),
-    withVideoPosters(supabase, videoRows, { expiresIn: SLIDESHOW_TTL }),
-    // The deck plan is a diagram people zoom into — kept at original size.
-    listing.deck_plan_path
-      ? supabase.storage
-          .from("listing-photos")
-          .createSignedUrl(listing.deck_plan_path, SLIDESHOW_TTL)
-          .then(({ data }) => data?.signedUrl ?? null)
-      : Promise.resolve(null as string | null),
-  ]);
-
   // Default to the canonical walk-the-boat order UNLESS the listing was
   // hand-arranged (photo_order_manual), in which case that order is kept.
-  const ordered = orderPhotos(photoRows, {
-    manual: listing.photo_order_manual === true,
-    heroId: listing.hero_photo_id,
-  });
+  const ordered = orderPhotos((photos ?? []) as SlideshowPhotoRow[], { manual, heroId });
+  return { photos: ordered, videos: (rawVideos ?? []) as SlideshowVideoRow[] };
+});
 
-  const urls: SlideshowUrls = { photos: {}, videos: {}, deckPlanUrl };
-  for (const p of ordered) urls.photos[p.id] = sizes.get(p.storage_path) ?? { thumb: null, full: null };
-  signedVideos.forEach((v, i) => {
-    urls.videos[v.id] = { url: v.url, posterUrl: videoPosters[i]?.posterUrl ?? null };
-  });
-
-  return { photos: ordered, videos: videoRows, urls };
+export function slideshowRows(listing: SlideshowListing) {
+  return getSlideshowRows(listing.id, listing.photo_order_manual === true, listing.hero_photo_id);
 }
+
+/**
+ * Videos (+ their stills) and the deck plan. Video links come from their own
+ * store (one batch call for Supabase; R2 signs locally); stills and the deck
+ * plan share ONE createSignedUrls batch on listing-photos.
+ */
+export async function signSlideshowExtras(
+  supabase: SupabaseClient,
+  listing: SlideshowListing,
+  videos: SlideshowVideoRow[]
+): Promise<SlideshowExtras> {
+  const originals = [
+    ...videos.map((v) => v.thumbnail_path).filter((p): p is string => !!p),
+    ...(listing.deck_plan_path ? [listing.deck_plan_path] : []),
+  ];
+  const [signedVideos, batch] = await Promise.all([
+    withVideoUrls(supabase, videos, { expiresIn: SLIDESHOW_TTL }),
+    originals.length > 0
+      ? supabase.storage.from("listing-photos").createSignedUrls(originals, SLIDESHOW_TTL).then(({ data }) => data ?? [])
+      : Promise.resolve([] as { path: string | null; signedUrl: string }[]),
+  ]);
+  const byPath = new Map(batch.map((d) => [d.path ?? "", d.signedUrl] as const));
+  const out: SlideshowExtras = {
+    videos: {},
+    deckPlanUrl: listing.deck_plan_path ? byPath.get(listing.deck_plan_path) ?? null : null,
+  };
+  signedVideos.forEach((v) => {
+    out.videos[v.id] = { url: v.url, posterUrl: v.thumbnail_path ? byPath.get(v.thumbnail_path) ?? null : null };
+  });
+  return out;
+}
+
+/**
+ * First paint only: the opening photo at slide size + the first dozen tiles.
+ * ≤ 13 signing calls, in parallel. Everything else the viewer asks for in
+ * chunks through /api/s/[slug]/urls.
+ */
+export async function signFirstPaint(
+  supabase: SupabaseClient,
+  photos: { id: string; storage_path: string }[],
+  ttl: number
+): Promise<PhotoUrlMap> {
+  const [full, thumbs] = await Promise.all([
+    signIdsAtSize(supabase, photos.slice(0, 1), "full", ttl),
+    signIdsAtSize(supabase, photos.slice(0, FIRST_PAINT_TILES), "thumb", ttl),
+  ]);
+  const map: PhotoUrlMap = {};
+  for (const p of photos.slice(0, FIRST_PAINT_TILES)) {
+    map[p.id] = { thumb: thumbs[p.id] ?? null, ...(full[p.id] ? { full: full[p.id] } : {}) };
+  }
+  return map;
+}
+
+export type { PhotoSize };
+
+/** Broker profile + brokerage card. Cached per request (page + link preview). */
+export const getBrokerCard = cache(async (brokerId: string) => {
+  const supabase = serviceClient();
+  const [{ data: profile }, { data: brokerDetails }] = await Promise.all([
+    supabase.from("profiles").select("first_name, last_name, phone").eq("id", brokerId).maybeSingle(),
+    supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url").eq("id", brokerId).maybeSingle(),
+  ]);
+  return {
+    profile: profile as { first_name: string | null; last_name: string | null; phone: string | null } | null,
+    brokerDetails: brokerDetails as { brokerage_name: string | null; brokerage_website: string | null; logo_url: string | null } | null,
+  };
+});
 
 /** "Sea Dream — 2019 65′ Viking" (whatever parts exist). */
 export function vesselHeadline(l: { vessel_name: string | null; year: number | null; length_ft: number | null; make: string | null; model?: string | null }): string {

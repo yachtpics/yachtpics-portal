@@ -14,10 +14,12 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  *
  * Originals are still signed, but ONLY where a page actually downloads files.
  *
- * Supabase only accepts a transform when signing one URL at a time, so this is
- * one call per photo per size — run in parallel, in waves, like /api/thumbs.
- * Signing is cheap; it's the image *render* that Supabase rate-limits (~200 at
- * once), which is why every tile using these is lazy-loaded and retries.
+ * Supabase only accepts a transform when signing one URL at a time — one
+ * network round trip per photo per size. So a page render signs only what
+ * first paint needs (≤ ~13–24 calls, in parallel); the slideshow/gallery
+ * viewers fetch the rest in chunks via their /urls routes (signIdsAtSize,
+ * 20 at a time). Supabase also rate-limits the image *render* (~200 at once),
+ * which is why every tile using these is lazy-loaded and retries.
  */
 
 export type ImageTransform = {
@@ -35,32 +37,35 @@ export const OG_TRANSFORM: ImageTransform = { width: 1200, height: 630, resize: 
 export type PhotoSizes = { thumb: string | null; full: string | null };
 
 const BUCKET = "listing-photos";
-// Sign calls per wave. A 227-photo listing × 2 sizes is ~5 waves.
-const WAVE = 100;
 
-/** Sign each path with one transform. Returns path → url (missing paths are left out). */
+/**
+ * Resized links for the FIRST `limit` paths only (default 24); path → url.
+ * Used by /d and /client for their grid tiles — paths past the limit get no
+ * entry, and those pages fall back to the original for that tile (their
+ * pre-Oct-18 behaviour). Signing every photo here, one Supabase call each,
+ * made big listings take seconds to render.
+ */
 export async function signTransformed(
   supabase: SupabaseClient,
   paths: string[],
   transform: ImageTransform,
-  ttlSeconds: number
+  ttlSeconds: number,
+  limit = 24
 ): Promise<Map<string, string>> {
   const out = new Map<string, string>();
-  const unique = Array.from(new Set(paths.filter(Boolean)));
-  for (let i = 0; i < unique.length; i += WAVE) {
-    await Promise.all(
-      unique.slice(i, i + WAVE).map(async (path) => {
-        try {
-          const { data } = await supabase.storage
-            .from(BUCKET)
-            .createSignedUrl(path, ttlSeconds, { transform });
-          if (data?.signedUrl) out.set(path, data.signedUrl);
-        } catch {
-          /* leave it unsigned rather than failing the page */
-        }
-      })
-    );
-  }
+  const unique = Array.from(new Set(paths.filter(Boolean))).slice(0, limit);
+  await Promise.all(
+    unique.map(async (path) => {
+      try {
+        const { data } = await supabase.storage
+          .from(BUCKET)
+          .createSignedUrl(path, ttlSeconds, { transform });
+        if (data?.signedUrl) out.set(path, data.signedUrl);
+      } catch {
+        /* leave it unsigned — the page falls back to the original */
+      }
+    })
+  );
   return out;
 }
 
@@ -79,39 +84,41 @@ export async function signOneTransformed(
   }
 }
 
+export type PhotoSize = "thumb" | "full";
+
 /**
- * Thumb + full for every path, signed together. Keyed by storage path.
+ * Sign `items` (id + path) at ONE size with at most `concurrency` signing
+ * calls in flight. Returns id → url. Used for the first-paint handful on the
+ * server and for the viewer's on-demand chunks (≤ 60 ids) in the /urls routes.
  *
- * Interleaved so the two sizes share waves rather than running one after the other.
+ * Never sign a whole listing with this on a page render: each call is a
+ * network round trip to Supabase, and a 257-photo boat × 2 sizes took the
+ * buyer slideshow from 0.5 s to 15 s (Oct 18).
  */
-export async function signPhotoSizes(
+export async function signIdsAtSize(
   supabase: SupabaseClient,
-  paths: string[],
-  ttlSeconds: number
-): Promise<Map<string, PhotoSizes>> {
-  const unique = Array.from(new Set(paths.filter(Boolean)));
-  const jobs: { path: string; kind: "thumb" | "full" }[] = [];
-  for (const path of unique) {
-    jobs.push({ path, kind: "full" }, { path, kind: "thumb" });
-  }
-  const out = new Map<string, PhotoSizes>();
-  for (const path of unique) out.set(path, { thumb: null, full: null });
-  for (let i = 0; i < jobs.length; i += WAVE) {
-    await Promise.all(
-      jobs.slice(i, i + WAVE).map(async ({ path, kind }) => {
-        try {
-          const { data } = await supabase.storage
-            .from(BUCKET)
-            .createSignedUrl(path, ttlSeconds, {
-              transform: kind === "full" ? FULL_TRANSFORM : THUMB_TRANSFORM,
-            });
-          if (data?.signedUrl) out.get(path)![kind] = data.signedUrl;
-        } catch {
-          /* leave it unsigned */
-        }
-      })
-    );
-  }
+  items: { id: string; storage_path: string }[],
+  size: PhotoSize,
+  ttlSeconds: number,
+  concurrency = 20
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const transform = size === "full" ? FULL_TRANSFORM : THUMB_TRANSFORM;
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      try {
+        const { data } = await supabase.storage
+          .from(BUCKET)
+          .createSignedUrl(item.storage_path, ttlSeconds, { transform });
+        if (data?.signedUrl) out[item.id] = data.signedUrl;
+      } catch {
+        /* leave it unsigned; the viewer asks again later */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
   return out;
 }
 

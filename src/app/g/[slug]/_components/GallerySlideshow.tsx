@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
-import { useSelfRefreshingUrls } from "@/lib/useSelfRefreshingUrls";
+import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
 import { photoAlt } from "@/lib/publicPhotoUrls";
 
 type GalleryPhoto = {
   id: string;
-  /** Main-slide size (2000px box). */
-  url: string;
+  /** Main-slide size (2000px box) — null until the viewer has asked for it. */
+  url: string | null;
   /** Filmstrip / grid size (600px box). */
   thumbUrl?: string | null;
   /** Full-size original — only present while downloads are open. */
@@ -18,7 +18,7 @@ type GalleryPhoto = {
 type GalleryVideo = { id?: string; url: string; filename: string | null; posterUrl?: string | null };
 
 type Slide =
-  | { type: "photo"; url: string; thumbUrl?: string | null; downloadUrl?: string | null; category: string | null }
+  | { type: "photo"; id: string; url: string | null; thumbUrl?: string | null; downloadUrl?: string | null; category: string | null }
   | { type: "video"; url: string; filename: string | null; posterUrl?: string | null };
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -108,22 +108,32 @@ export default function GallerySlideshow({
   downloadsClosedNote?: string | null;
   contact?: { name: string; email: string | null; phone: string | null } | null;
 }) {
-  // Display links live two hours; keep them fresh for a tab left open past
-  // that (the route re-checks the gallery is still published).
-  const initialUrls = useMemo(() => {
-    const photoMap: Record<string, { thumb: string | null; full: string | null }> = {};
-    initialPhotos.forEach((p) => { photoMap[p.id] = { thumb: p.thumbUrl ?? null, full: p.url }; });
+  // The page signs only the opening photo + first dozen tiles; the rest
+  // arrive in chunks from /api/g/[slug]/urls just ahead of need, and all of
+  // it is re-signed when a tab returns after the two-hour links went stale.
+  const initialPhotoUrls = useMemo(() => {
+    const map: ClientPhotoUrls = {};
+    initialPhotos.forEach((p) => {
+      if (p.url || p.thumbUrl) map[p.id] = { thumb: p.thumbUrl ?? null, full: p.url };
+    });
+    return map;
+  }, [initialPhotos]);
+  const initialExtras = useMemo(() => {
     const videoMap: Record<string, { url: string | null; posterUrl: string | null }> = {};
     initialVideos.forEach((v) => { if (v.id) videoMap[v.id] = { url: v.url, posterUrl: v.posterUrl ?? null }; });
-    return { photos: photoMap, videos: videoMap };
-  }, [initialPhotos, initialVideos]);
-  const { data: liveUrls, onMediaError } = useSelfRefreshingUrls(initialUrls, `/api/g/${slug}/urls`);
+    return { videos: videoMap };
+  }, [initialVideos]);
+  const { photos: livePhotos, extras: liveUrls, want, onMediaError } = useProgressivePhotoUrls({
+    endpoint: `/api/g/${slug}/urls`,
+    initialPhotos: initialPhotoUrls,
+    initialExtras,
+  });
   const photos = useMemo<GalleryPhoto[]>(
     () => initialPhotos.map((p) => {
-      const u = liveUrls.photos?.[p.id];
-      return u ? { ...p, url: u.full ?? p.url, thumbUrl: u.thumb ?? p.thumbUrl ?? null } : p;
+      const u = livePhotos[p.id];
+      return { ...p, url: u?.full ?? null, thumbUrl: u?.thumb ?? null };
     }),
-    [initialPhotos, liveUrls]
+    [initialPhotos, livePhotos]
   );
   const videos = useMemo<GalleryVideo[]>(
     () => initialVideos.map((v) => {
@@ -136,7 +146,7 @@ export default function GallerySlideshow({
 
   const slides = useMemo<Slide[]>(
     () => [
-      ...photos.map((p) => ({ type: "photo" as const, url: p.url, thumbUrl: p.thumbUrl ?? null, downloadUrl: p.downloadUrl ?? null, category: p.category })),
+      ...photos.map((p) => ({ type: "photo" as const, id: p.id, url: p.url, thumbUrl: p.thumbUrl ?? null, downloadUrl: p.downloadUrl ?? null, category: p.category })),
       ...videos.map((v) => ({ type: "video" as const, url: v.url, filename: v.filename, posterUrl: v.posterUrl ?? null })),
     ],
     [photos, videos]
@@ -184,7 +194,7 @@ export default function GallerySlideshow({
 
   // Download the single item currently on screen (works for photos and videos).
   const downloadCurrentSlide = useCallback(async (s: Slide, index: number) => {
-    if (!s.url || downloadingOne) return;
+    if ((s.type === "video" && !s.url) || downloadingOne) return;
     setDownloadingOne(true);
     setDlError("");
     try {
@@ -360,6 +370,24 @@ export default function GallerySlideshow({
     return () => clearInterval(t);
   }, [playing, next, slides.length, view]);
 
+  // Ask for slide-size links just ahead of the viewer (3 back, 8 ahead; the
+  // gallery loops, so wrap around).
+  useEffect(() => {
+    if (!slides.length) return;
+    const ids: string[] = [];
+    for (let k = -3; k <= 8; k++) {
+      const s = slides[(current + k + slides.length) % slides.length];
+      if (s && s.type === "photo" && !ids.includes(s.id)) ids.push(s.id);
+    }
+    if (ids.length) want(ids, "full");
+  }, [current, slides, want]);
+
+  // Tile links once the filmstrip or grid is opened: chunks of 60, in order.
+  const allPhotoIds = useMemo(() => initialPhotos.map((p) => p.id), [initialPhotos]);
+  useEffect(() => {
+    if (view === "grid" || showThumbs) want(allPhotoIds, "thumb");
+  }, [view, showThumbs, allPhotoIds, want]);
+
   // Warm the neighbouring photographs so paging feels instant.
   useEffect(() => {
     [current - 1, current + 1].forEach((i) => {
@@ -480,7 +508,7 @@ export default function GallerySlideshow({
             }}
           >
             {/* Outgoing photo (stays underneath while the new one fades in) */}
-            {outSlide?.type === "photo" && (
+            {outSlide?.type === "photo" && (outSlide.url ?? outSlide.thumbUrl) && (
               <div
                 key={`out-${outgoing}`}
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
@@ -495,7 +523,7 @@ export default function GallerySlideshow({
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={outSlide.url}
+                  src={(outSlide.url ?? outSlide.thumbUrl)!}
                   alt=""
                   decoding="sync"
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
@@ -510,14 +538,17 @@ export default function GallerySlideshow({
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
                 style={{ zIndex: 1 }}
               >
+                {/* Until the slide-size link arrives, show the tile copy if we have one. */}
+                {(slide.url ?? slide.thumbUrl) && (
                 <FadePhoto
-                  src={slide.url}
+                  src={(slide.url ?? slide.thumbUrl)!}
                   alt={altFor(slide.category)}
                   eager
                   retries={3}
                   onError={onMediaError}
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                 />
+                )}
               </div>
             ) : (
               <video
@@ -571,7 +602,7 @@ export default function GallerySlideshow({
                 </svg>
               </button>
             )}
-            {downloadsEnabled && slide.url && (
+            {downloadsEnabled && (slide.type === "photo" || slide.url) && (
               <button
                 onClick={() => downloadCurrentSlide(slide, current)}
                 disabled={downloadingOne}
@@ -599,9 +630,12 @@ export default function GallerySlideshow({
                   i === current ? "opacity-100 ring-1 ring-accent-500" : "opacity-50 hover:opacity-100"
                 }`}
               >
-                {s.type === "photo" ? (
+                {s.type === "photo" && !(s.thumbUrl ?? s.url) ? (
+                  // Link still on its way — a quiet paper square, not a broken image.
+                  <div className="w-[70px] h-11 bg-ink-100" />
+                ) : s.type === "photo" ? (
                   <RetryImg
-                    src={s.thumbUrl ?? s.url}
+                    src={(s.thumbUrl ?? s.url)!}
                     alt=""
                     loading="lazy"
                     decoding="async"
@@ -627,9 +661,9 @@ export default function GallerySlideshow({
                 aria-label={`Open slide ${i + 1}`}
                 className="aspect-[4/3] relative overflow-hidden rounded-[2px] bg-white shadow-print focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
               >
-                {s.type === "photo" ? (
+                {s.type === "photo" ? ((s.thumbUrl ?? s.url) &&
                   <FadePhoto
-                    src={s.thumbUrl ?? s.url}
+                    src={(s.thumbUrl ?? s.url)!}
                     alt={altFor(s.category)}
                     eager={i < 4}
                     retries={6}

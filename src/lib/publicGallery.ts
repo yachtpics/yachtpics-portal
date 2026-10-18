@@ -1,8 +1,8 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient } from "@/lib/publicSlideshow";
-import { withVideoPosters, withVideoUrls } from "@/lib/videoUrls";
-import { signPhotoSizes, type PhotoSizes } from "@/lib/publicPhotoUrls";
+import { withVideoUrls } from "@/lib/videoUrls";
+import { signIdsAtSize } from "@/lib/publicPhotoUrls";
 
 /**
  * Shared by the public gallery page (/g/[slug]), its link preview and its
@@ -36,11 +36,6 @@ export const getGalleryBySlug = cache(async (slug: string): Promise<PublicGaller
   return (data as PublicGallery | null) ?? null;
 });
 
-export type GalleryUrls = {
-  photos: Record<string, PhotoSizes>;
-  videos: Record<string, { url: string | null; posterUrl: string | null }>;
-};
-
 export type GalleryPhotoRow = { id: string; storage_path: string; category: string | null; display_order: number | null };
 export type GalleryVideoRow = {
   id: string;
@@ -50,12 +45,19 @@ export type GalleryVideoRow = {
   thumbnail_path: string | null;
 };
 
-/** Visible photos (display order) + videos, with display-size links. */
-export async function loadGalleryMedia(supabase: SupabaseClient, galleryId: string): Promise<{
+export type GalleryExtras = {
+  videos: Record<string, { url: string | null; posterUrl: string | null }>;
+};
+
+/** How many grid/filmstrip tiles the server signs for first paint. */
+export const GALLERY_FIRST_PAINT_TILES = 12;
+
+/** Visible photos (display order) + videos. DB only. Cached per request (page + link preview). */
+export const getGalleryRows = cache(async (galleryId: string): Promise<{
   photos: GalleryPhotoRow[];
   videos: GalleryVideoRow[];
-  urls: GalleryUrls;
-}> {
+}> => {
+  const supabase = serviceClient();
   const [{ data: photos }, { data: videos }] = await Promise.all([
     supabase
       .from("photos")
@@ -70,19 +72,54 @@ export async function loadGalleryMedia(supabase: SupabaseClient, galleryId: stri
       .order("display_order", { ascending: true, nullsFirst: false })
       .order("created_at"),
   ]);
-  const photoRows = (photos ?? []) as GalleryPhotoRow[];
-  const videoRows = (videos ?? []) as GalleryVideoRow[];
+  return { photos: (photos ?? []) as GalleryPhotoRow[], videos: (videos ?? []) as GalleryVideoRow[] };
+});
 
-  const [sizes, videoUrls, videoPosters] = await Promise.all([
-    signPhotoSizes(supabase, photoRows.map((p) => p.storage_path), GALLERY_TTL),
-    withVideoUrls(supabase, videoRows, { expiresIn: GALLERY_TTL }),
-    withVideoPosters(supabase, videoRows, { expiresIn: GALLERY_TTL }),
+/**
+ * Video links + their stills, and (only when asked — downloads open) the
+ * photo originals as the download fallback. Stills and originals share ONE
+ * createSignedUrls batch on listing-photos.
+ */
+export async function signGalleryExtras(
+  supabase: SupabaseClient,
+  videos: GalleryVideoRow[],
+  originalsFor: GalleryPhotoRow[] = []
+): Promise<{ extras: GalleryExtras; originals: Map<string, string> }> {
+  const paths = [
+    ...videos.map((v) => v.thumbnail_path).filter((p): p is string => !!p),
+    ...originalsFor.map((p) => p.storage_path),
+  ];
+  const [videoUrls, batch] = await Promise.all([
+    withVideoUrls(supabase, videos, { expiresIn: GALLERY_TTL }),
+    paths.length > 0
+      ? supabase.storage.from("listing-photos").createSignedUrls(paths, GALLERY_TTL).then(({ data }) => data ?? [])
+      : Promise.resolve([] as { path: string | null; signedUrl: string }[]),
   ]);
-
-  const urls: GalleryUrls = { photos: {}, videos: {} };
-  for (const p of photoRows) urls.photos[p.id] = sizes.get(p.storage_path) ?? { thumb: null, full: null };
-  videoUrls.forEach((v, i) => {
-    urls.videos[v.id] = { url: v.url, posterUrl: videoPosters[i]?.posterUrl ?? null };
+  const byPath = new Map(batch.map((d) => [d.path ?? "", d.signedUrl] as const));
+  const extras: GalleryExtras = { videos: {} };
+  videoUrls.forEach((v) => {
+    extras.videos[v.id] = { url: v.url, posterUrl: v.thumbnail_path ? byPath.get(v.thumbnail_path) ?? null : null };
   });
-  return { photos: photoRows, videos: videoRows, urls };
+  const originals = new Map<string, string>();
+  for (const p of originalsFor) {
+    const u = byPath.get(p.storage_path);
+    if (u) originals.set(p.id, u);
+  }
+  return { extras, originals };
+}
+
+/** First paint: opening photo at slide size + the first dozen tiles (≤ 13 calls, parallel). */
+export async function signGalleryFirstPaint(
+  supabase: SupabaseClient,
+  photos: GalleryPhotoRow[]
+): Promise<Record<string, { thumb: string | null; full?: string }>> {
+  const [full, thumbs] = await Promise.all([
+    signIdsAtSize(supabase, photos.slice(0, 1), "full", GALLERY_TTL),
+    signIdsAtSize(supabase, photos.slice(0, GALLERY_FIRST_PAINT_TILES), "thumb", GALLERY_TTL),
+  ]);
+  const map: Record<string, { thumb: string | null; full?: string }> = {};
+  for (const p of photos.slice(0, GALLERY_FIRST_PAINT_TILES)) {
+    map[p.id] = { thumb: thumbs[p.id] ?? null, ...(full[p.id] ? { full: full[p.id] } : {}) };
+  }
+  return map;
 }

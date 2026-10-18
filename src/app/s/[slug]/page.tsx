@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
-import { orderPhotos } from "@/lib/photoOrder";
 import {
   canViewSlideshow,
+  getBrokerCard,
   getPublishedSlideshow,
-  loadSlideshowMedia,
   ownerHasAccess,
   serviceClient,
+  signFirstPaint,
+  signSlideshowExtras,
+  slideshowRows,
+  SLIDESHOW_TTL,
   vesselHeadline,
 } from "@/lib/publicSlideshow";
 import { OG_TRANSFORM, signOneTransformed } from "@/lib/publicPhotoUrls";
@@ -34,20 +37,12 @@ export async function generateMetadata({ params }: { params: { slug: string } })
     const listing = await getPublishedSlideshow(params.slug);
     if (!listing || !(await ownerHasAccess(listing.broker_id))) return NEUTRAL_METADATA;
     const supabase = serviceClient();
-    const [{ data: photos }, { data: profile }, { data: brokerDetails }] = await Promise.all([
-      supabase
-        .from("photos")
-        .select("id, storage_path, category, filename, display_order")
-        .eq("listing_id", listing.id)
-        .eq("is_visible", true)
-        .order("display_order"),
-      supabase.from("profiles").select("first_name, last_name").eq("id", listing.broker_id).maybeSingle(),
-      supabase.from("broker_details").select("brokerage_name").eq("id", listing.broker_id).maybeSingle(),
+    // Same cached reads the page uses — one DB pass per request.
+    const [{ photos }, { profile, brokerDetails }] = await Promise.all([
+      slideshowRows(listing),
+      getBrokerCard(listing.broker_id),
     ]);
-    const hero = orderPhotos(photos ?? [], {
-      manual: listing.photo_order_manual === true,
-      heroId: listing.hero_photo_id,
-    })[0];
+    const hero = photos[0];
     const image = hero ? await signOneTransformed(supabase, hero.storage_path, OG_TRANSFORM, OG_TTL) : null;
 
     const title = vesselHeadline(listing);
@@ -129,38 +124,35 @@ export default async function PublicSlideshowPage({
     );
   }
 
-  // Broker card + every signed link at once. Photos come at two sizes (tile
-  // and main slide) — see src/lib/publicPhotoUrls.ts.
-  const [{ data: profile }, { data: brokerDetails }, media] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("first_name, last_name, phone")
-      .eq("id", listing.broker_id)
-      .single(),
-    supabase
-      .from("broker_details")
-      .select("brokerage_name, brokerage_website, logo_url")
-      .eq("id", listing.broker_id)
-      .maybeSingle(),
-    loadSlideshowMedia(supabase, listing),
+  // Broker card + photo/video rows (cached — shared with generateMetadata),
+  // then ONE light signing step: the opening photo at slide size, the first
+  // dozen tiles, and video/still/deck-plan links. The viewer fetches the rest
+  // of the display links in chunks from /api/s/[slug]/urls as it needs them.
+  const [{ profile, brokerDetails }, rows] = await Promise.all([
+    getBrokerCard(listing.broker_id),
+    slideshowRows(listing),
+  ]);
+  const [firstPaint, extras] = await Promise.all([
+    signFirstPaint(supabase, rows.photos, SLIDESHOW_TTL),
+    signSlideshowExtras(supabase, listing, rows.videos),
   ]);
 
-  const withUrls = media.photos.map((photo) => ({
+  const withUrls = rows.photos.map((photo) => ({
     id: photo.id,
     category: photo.category,
     filename: photo.filename,
-    url: media.urls.photos[photo.id]?.full ?? null,
-    thumbUrl: media.urls.photos[photo.id]?.thumb ?? null,
+    url: firstPaint[photo.id]?.full ?? null,
+    thumbUrl: firstPaint[photo.id]?.thumb ?? null,
   }));
 
   // Same shape the viewer always got, plus posterUrl (null when no still exists).
-  const videos = media.videos.map((v) => ({
+  const videos = rows.videos.map((v) => ({
     id: v.id,
     storage_path: v.storage_path,
     storage_host: v.storage_host,
     filename: v.filename,
-    url: media.urls.videos[v.id]?.url ?? null,
-    posterUrl: media.urls.videos[v.id]?.posterUrl ?? null,
+    url: extras.videos[v.id]?.url ?? null,
+    posterUrl: extras.videos[v.id]?.posterUrl ?? null,
   }));
 
   const broker = {
@@ -168,7 +160,7 @@ export default async function PublicSlideshowPage({
       [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") ||
       "Broker",
     brokerage: brokerDetails?.brokerage_name ?? null,
-    phone: (profile as { phone?: string | null } | null)?.phone ?? null,
+    phone: profile?.phone ?? null,
     website: brokerDetails?.brokerage_website ?? null,
     logoUrl: brokerDetails?.logo_url ?? null,
   };
@@ -185,7 +177,7 @@ export default async function PublicSlideshowPage({
       source={source}
       sendToken={sendToken}
       tourUrl={listing.tour_url ?? null}
-      deckPlanUrl={media.urls.deckPlanUrl}
+      deckPlanUrl={extras.deckPlanUrl}
     />
   );
 }
