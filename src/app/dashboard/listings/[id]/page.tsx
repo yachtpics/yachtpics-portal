@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 // JSZip is loaded on demand inside the download handler, not up front — it's a
@@ -50,7 +50,6 @@ interface Photo {
 export default function BrokerListingPage() {
   const supabase = createClient();
   const params = useParams();
-  const router = useRouter();
   const id = params.id as string;
 
   const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
@@ -112,6 +111,8 @@ export default function BrokerListingPage() {
   const pendingDownloadRef = useRef<(() => void) | null>(null);
   const pendingActionRef = useRef<(() => void) | null>(null);
   const [slideshowCopied, setSlideshowCopied] = useState(false);
+  const [sendError, setSendError] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
   const [photos, setPhotos] = useState<Photo[]>([]);
   // Resized thumbnails, keyed by photo id. Fetched once in the background; each
@@ -446,7 +447,9 @@ export default function BrokerListingPage() {
         .order("created_at", { ascending: false }),
     ]);
 
-    if (!l) { router.push("/dashboard/listings"); return; }
+    // Not found, removed, or not shared with this person: say so rather than
+    // silently bouncing back to the list.
+    if (!l) { setLoadFailed(true); setLoading(false); return; }
 
     setIsBrokerageAdmin(profileData?.is_brokerage_admin === true);
     // Admins (YachtPics) own the photos: never ask them to accept the broker download license.
@@ -744,7 +747,12 @@ export default function BrokerListingPage() {
       const response = await fetch(fresh[targets[0].id]);
       const blob = await response.blob();
       const ext = targets[0].filename?.split(".").pop() ?? "jpg";
-      const filename = `${targets[0].category ?? "photo"}.${ext}`;
+      // "Sea Dream – Salon.jpg": the vessel name keeps a loose download
+      // identifiable in a Downloads folder full of "Salon.jpg"s.
+      const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+      const vessel = listing?.vessel_name ? cleanName(listing.vessel_name) : "";
+      const label = cleanName(targets[0].category ?? "Photo") || "Photo";
+      const filename = `${vessel ? `${vessel} – ` : ""}${label}.${ext}`;
       triggerDownload(blob, filename);
       // Log download silently (fire-and-forget)
       fetch(`/api/listings/${id}/log-download`, {
@@ -817,7 +825,16 @@ export default function BrokerListingPage() {
         setDownloadProgress(0);
         clearSelection();
         return;
-      } catch { /* cancelled — fall through */ }
+      } catch (err) {
+        // The broker closed the Save dialog: that's a "no", not a cue to
+        // download anyway. Anything else (picker unsupported in this
+        // context, write failed) falls through to a normal download.
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setDownloading(false);
+          setDownloadProgress(0);
+          return;
+        }
+      }
     }
 
     triggerDownload(zipBlob, zipName);
@@ -1010,6 +1027,7 @@ export default function BrokerListingPage() {
   async function sendToClient() {
     if (!sendEmail) return;
     setSending(true);
+    setSendError("");
     try {
       const res = await fetch("/api/email/send-to-client", {
         method: "POST",
@@ -1024,9 +1042,16 @@ export default function BrokerListingPage() {
           videoIds: Array.from(sendVideoIds),
         }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({} as { error?: string }));
       if (!res.ok) {
-        alert(`Failed to send: ${data.error ?? res.statusText}`);
+        console.error("Send to client failed:", res.status, data.error);
+        setSendError(
+          res.status === 403 && data.error
+            ? data.error // the plan-ended message is written for brokers
+            : res.status === 401
+              ? "Your session has ended. Please sign in again, then resend."
+              : "The email couldn't be sent just now. Check the address and try again."
+        );
         setSending(false);
         return;
       }
@@ -1042,7 +1067,8 @@ export default function BrokerListingPage() {
         setSendVideoIds(new Set());
       }, 2000);
     } catch (err) {
-      alert(`Error: ${String(err)}`);
+      console.error("Send to client request failed:", err);
+      setSendError("We couldn't reach the server. Check your connection and try again.");
     } finally {
       setSending(false);
     }
@@ -1114,12 +1140,17 @@ export default function BrokerListingPage() {
     }
   }
 
-  function copyLink() {
+  async function copyLink() {
     if (!listing?.slideshow_slug) return;
     const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
-    navigator.clipboard.writeText(url);
-    setSlideshowCopied(true);
-    setTimeout(() => setSlideshowCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(url);
+      setSlideshowCopied(true);
+      setTimeout(() => setSlideshowCopied(false), 2000);
+    } catch {
+      setMessage(`Couldn't copy automatically. The link is ${url}`);
+      setTimeout(() => setMessage(""), 6000);
+    }
   }
 
   const visiblePhotos = photos.filter(p => p.is_visible);
@@ -1168,7 +1199,18 @@ export default function BrokerListingPage() {
   // It used to be the word "Loading..." in a small box, which is easy to read as
   // nothing having happened.
   if (loading) return <ListingSkeleton />;
-  if (!listing) return null;
+  if (!listing) {
+    if (!loadFailed) return null;
+    return (
+      <div className="px-4 sm:px-6 py-16 max-w-md mx-auto text-center">
+        <h1 className="text-h2 text-ink-900">This listing isn&apos;t available</h1>
+        <p className="text-sm text-ink-500 mt-2">It may have been removed, or it hasn&apos;t been shared with your account.</p>
+        <Link href="/dashboard/listings" className="mt-6 inline-block text-sm font-medium text-accent-700 hover:text-accent-600 transition-colors duration-fast">
+          &larr; Back to My Listings
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1615,7 +1657,7 @@ export default function BrokerListingPage() {
                 <h2 className="text-base font-bold text-ink-900">Send to Client</h2>
                 <p className="text-xs text-ink-400 mt-0.5">{listing.vessel_name ?? "This listing"}</p>
               </div>
-              <button onClick={() => setSendModal(false)} className="text-ink-400 hover:text-ink-600 text-xl leading-none transition-colors">✕</button>
+              <button onClick={() => { setSendModal(false); setSendError(""); }} className="text-ink-400 hover:text-ink-600 text-xl leading-none transition-colors">✕</button>
             </div>
 
             <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
@@ -1750,6 +1792,9 @@ export default function BrokerListingPage() {
                 >
                   {sending ? "Sending…" : "Send Email"}
                 </button>
+              )}
+              {sendError && !sendSuccess && (
+                <p role="alert" className="mt-3 text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-ctl px-4 py-3">{sendError}</p>
               )}
               {!sendSlideshow && sendDocIds.size === 0 && sendVideoIds.size === 0 && !sendSuccess && (
                 <p className="text-xs text-center text-ink-400 mt-2">Select at least one item to include</p>
@@ -2107,7 +2152,7 @@ export default function BrokerListingPage() {
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
                 </svg>
-                {slideshowCopied ? "✓ Copied!" : "Copy Link"}
+                {slideshowCopied ? "✓ Copied" : "Copy Link"}
               </button>
             </div>
           </>

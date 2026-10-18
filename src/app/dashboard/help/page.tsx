@@ -18,6 +18,7 @@ const sections = [
       "Signing in later: use your email and password, or click 'Email me a sign-in link' on the login page and we'll send a one-click link — no password to remember.",
       "If a reset or sign-in link says it's expired, use the Resend button right on that screen to get a fresh one.",
       "After signing in you land on My Listings, with your newest boat spotlighted at the top.",
+      "On a phone, the tabs along the bottom take you to Home, Listings, Recently Photographed and your Profile. Everything else, such as Help, Tips, News and Billing, is under More.",
       "Install the portal like an app: on an iPhone, open it in Safari, tap Share, then Add to Home Screen. On Android or a computer, use the Install prompt the portal shows. You get an icon that opens straight to your listings.",
     ],
   },
@@ -82,26 +83,17 @@ const sections = [
   },
   {
     num: "07",
-    title: "Shoots & Invoices",
-    steps: [
-      "Every completed shoot is logged here automatically — no action needed.",
-      "Each row shows the date, vessel, invoice number, amount, and payment status.",
-      "Contact your YachtPics rep with the invoice number for any billing questions.",
-    ],
-  },
-  {
-    num: "08",
     title: "Billing & Subscription",
     steps: [
       "Photo downloads are always free — no subscription required, even after your trial ends.",
       "A paid plan unlocks the tools: uploading photos and videos, publishing slideshows, Send to Client, spec sheets, and social posts.",
-      "All plans include a 30-day free trial. Cancel anytime from the Billing page.",
+      "Your 30-day free trial starts the first time you sign in. Choose a plan any time during it and you won't be charged until the trial ends — the Billing page shows the date. In the last two days of the trial, choosing a plan starts billing straight away. Cancel anytime from the Billing page.",
       "Reels without a plan: each listing includes two reels. A reel counts once you take it off the page — download it, send it to your phone, save it to your camera roll, or add it to the listing. Making and previewing never count, and taking the same reel twice is still one. Subscribers make as many as they like.",
       "Office plan: a brokerage admin can cover the whole brokerage with one plan, under Brokerage → Billing. While it's active every broker there is unlocked automatically — no plan of their own needed — and their assistants are included.",
     ],
   },
   {
-    num: "09",
+    num: "08",
     title: "Working with Assistants",
     steps: [
       "Assistants can manage listings, upload photos and videos, and send slideshows on your behalf.",
@@ -113,7 +105,7 @@ const sections = [
     ],
   },
   {
-    num: "10",
+    num: "09",
     title: "Sharing Within Your Brokerage",
     steps: [
       "If you're a brokerage admin, every listing has a 'Share with brokerage' button near the top.",
@@ -124,7 +116,7 @@ const sections = [
     ],
   },
   {
-    num: "11",
+    num: "10",
     title: "Marketing Tools",
     steps: [
       "Cover photo: tap the ★ on a photo to make it the cover used on your spec sheet and social posts. If none is set, the first photo is used.",
@@ -149,7 +141,7 @@ const sections = [
     ],
   },
   {
-    num: "12",
+    num: "11",
     title: "Buyer Inquiries",
     steps: [
       "Your published slideshow has a Request Info button buyers can use to reach out.",
@@ -161,7 +153,7 @@ const sections = [
     ],
   },
   {
-    num: "13",
+    num: "12",
     title: "Recently Photographed",
     steps: [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
@@ -172,7 +164,7 @@ const sections = [
     ],
   },
   {
-    num: "14",
+    num: "13",
     title: "Tips & Tricks",
     steps: [
       "Tips (in the sidebar) is a browsable library of short how-tos for getting more out of the portal.",
@@ -182,7 +174,7 @@ const sections = [
     ],
   },
   {
-    num: "15",
+    num: "14",
     title: "Industry News",
     steps: [
       "News (in the sidebar) gathers what the yachting trade press is reporting, every morning, kept short.",
@@ -233,16 +225,16 @@ const quickRef = [
   ["Browse tips & tricks", "Sidebar → Tips"],
   ["Upload your logo", "My Profile → Company Logo"],
   ["Add or remove an assistant", "Sidebar → Team (or My Profile → Assistants)"],
-  ["Start a free trial", "Billing → choose a plan → Start free trial"],
+  ["Choose a plan", "Billing → choose a plan → Choose plan"],
   ["Cover your whole brokerage with one plan", "Sidebar → Brokerage → Billing (brokerage admins)"],
-  ["View shoot history & invoices", "Shoots & Invoices"],
   ["Change your login email", "My Profile → Change Login Email"],
   ["Manage billing & download receipts", "Billing → Manage billing & invoices"],
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
   ["Keep a boat out of the showcase and off yachtpics.com", "My Listings → listing → 'Keep this a pocket listing'"],
   ["Install the portal on your phone", "Open it in your phone's browser → Add to Home Screen"],
   ["Read the industry news", "Sidebar → News"],
-  ["Sign out", "Sidebar → Sign out (bottom-left)"],
+  ["Find Help, Tips, News or Billing on a phone", "Bottom tabs → More"],
+  ["Sign out", "Sidebar → Sign out (bottom-left); on a phone, top-right"],
 ];
 
 /**
@@ -253,7 +245,7 @@ const quickRef = [
  * build_user_guide.py reads those two arrays) never lists it for everyone.
  */
 const REEL_SERVICE_SECTION = {
-  num: "16",
+  num: "15",
   title: "Your Reels",
   steps: [
     "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you from your current listings, newest first. We email you when new ones are ready.",

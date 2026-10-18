@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Button, Input, Label } from "@/components/ui";
+import { friendlyAuthError } from "@/lib/authErrors";
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("");
@@ -28,7 +29,7 @@ export default function ForgotPasswordPage() {
     });
 
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error, "link"));
       setLoading(false);
     } else {
       setSent(true);
@@ -94,6 +95,7 @@ export default function ForgotPasswordPage() {
                 <Input
                   tone="dark"
                   type="email"
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required

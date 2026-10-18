@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Label } from "@/components/ui";
+import { friendlyAuthError } from "@/lib/authErrors";
 
 /** The login page's wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
 function WordmarkLockup({ subtitle = "Portal" }: { subtitle?: string }) {
@@ -53,7 +54,7 @@ export default function SignupPage() {
     });
 
     if (signUpError) {
-      setError(signUpError.message);
+      setError(friendlyAuthError(signUpError, "signup"));
       setLoading(false);
       return;
     }
@@ -184,7 +185,8 @@ export default function SignupPage() {
               <Input
                 tone="dark"
                 type="text"
-                value={form.firstName}
+                autoComplete="given-name"
+              value={form.firstName}
                 onChange={(e) => setForm({ ...form, firstName: e.target.value })}
                 required
                 placeholder="Jane"
@@ -195,7 +197,8 @@ export default function SignupPage() {
               <Input
                 tone="dark"
                 type="text"
-                value={form.lastName}
+                autoComplete="family-name"
+              value={form.lastName}
                 onChange={(e) => setForm({ ...form, lastName: e.target.value })}
                 required
                 placeholder="Smith"
@@ -208,6 +211,7 @@ export default function SignupPage() {
             <Input
               tone="dark"
               type="text"
+              autoComplete="organization"
               value={form.brokerage}
               onChange={(e) => setForm({ ...form, brokerage: e.target.value })}
               required
@@ -219,6 +223,7 @@ export default function SignupPage() {
             <Input
               tone="dark"
               type="email"
+              autoComplete="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               required
@@ -231,6 +236,7 @@ export default function SignupPage() {
             <Input
               tone="dark"
               type="password"
+              autoComplete="new-password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               required

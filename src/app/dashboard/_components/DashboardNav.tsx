@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AccessStatus } from "@/lib/subscriptionAccess";
 import {
   LayoutGrid,
   Ship,
   Camera,
-  ClipboardList,
   Users,
   CreditCard,
   UserRound,
@@ -18,6 +17,8 @@ import {
   HelpCircle,
   Building2,
   Clapperboard,
+  MoreHorizontal,
+  X,
   type LucideIcon,
 } from "lucide-react";
 
@@ -25,32 +26,52 @@ interface NavItem {
   label: string;
   href: string;
   icon: LucideIcon;
-  /** Optional shorter label for the cramped mobile tab bar. */
-  short?: string;
+  /** Short label for the cramped mobile tab bar. */
+  short: string;
 }
 
+// Shoots & Invoices (/dashboard/shoots) is hidden from the nav: the shoots
+// table is empty and invoicing lives in Zoho. The page itself stays in place.
+
 const brokerNavItems: NavItem[] = [
-  { label: "Dashboard", href: "/dashboard", icon: LayoutGrid },
-  { label: "My Listings", href: "/dashboard/listings", icon: Ship },
+  { label: "Dashboard", href: "/dashboard", icon: LayoutGrid, short: "Home" },
+  { label: "My Listings", href: "/dashboard/listings", icon: Ship, short: "Listings" },
   { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
-  { label: "Shoots & Invoices", href: "/dashboard/shoots", icon: ClipboardList },
-  { label: "Team", href: "/dashboard/team", icon: Users },
-  { label: "Billing", href: "/dashboard/billing", icon: CreditCard },
-  { label: "My Profile", href: "/dashboard/profile", icon: UserRound },
-  { label: "News", href: "/dashboard/news", icon: Newspaper },
-  { label: "Tips", href: "/dashboard/tips", icon: Lightbulb },
-  { label: "Help", href: "/dashboard/help", icon: HelpCircle },
+  { label: "Team", href: "/dashboard/team", icon: Users, short: "Team" },
+  { label: "Billing", href: "/dashboard/billing", icon: CreditCard, short: "Billing" },
+  { label: "My Profile", href: "/dashboard/profile", icon: UserRound, short: "Profile" },
+  { label: "News", href: "/dashboard/news", icon: Newspaper, short: "News" },
+  { label: "Tips", href: "/dashboard/tips", icon: Lightbulb, short: "Tips" },
+  { label: "Help", href: "/dashboard/help", icon: HelpCircle, short: "Help" },
 ];
 
 const assistantNavItems: NavItem[] = [
-  { label: "Listings", href: "/dashboard/listings", icon: Ship },
+  { label: "Listings", href: "/dashboard/listings", icon: Ship, short: "Listings" },
   { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
-  { label: "My Brokers", href: "/dashboard/brokers", icon: Users },
-  { label: "My Profile", href: "/dashboard/profile", icon: UserRound },
-  { label: "News", href: "/dashboard/news", icon: Newspaper },
-  { label: "Tips", href: "/dashboard/tips", icon: Lightbulb },
-  { label: "Help", href: "/dashboard/help", icon: HelpCircle },
+  { label: "My Brokers", href: "/dashboard/brokers", icon: Users, short: "Brokers" },
+  { label: "My Profile", href: "/dashboard/profile", icon: UserRound, short: "Profile" },
+  { label: "News", href: "/dashboard/news", icon: Newspaper, short: "News" },
+  { label: "Tips", href: "/dashboard/tips", icon: Lightbulb, short: "Tips" },
+  { label: "Help", href: "/dashboard/help", icon: HelpCircle, short: "Help" },
 ];
+
+// The phone tab bar shows at most five of these (in this order, when present);
+// everything else goes under "More".
+const MOBILE_PRIMARY = [
+  "/dashboard",
+  "/dashboard/listings",
+  "/dashboard/showcase",
+  "/dashboard/reels",
+  "/dashboard/brokers",
+  "/dashboard/profile",
+];
+const MOBILE_TAB_LIMIT = 5;
+
+/** Highlight a nav item on its own page and on any page beneath it. */
+function isActivePath(pathname: string, href: string): boolean {
+  if (href === "/dashboard") return pathname === "/dashboard";
+  return pathname === href || pathname.startsWith(href + "/");
+}
 
 interface Props {
   brokerName: string;
@@ -68,6 +89,15 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
 
+  // Close the "More" sheet on navigation and on Escape.
+  useEffect(() => { setMenuOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenuOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menuOpen]);
+
   const handleSignOut = async () => {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -84,13 +114,20 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
   const baseNavItems = showReels
     ? [
         ...roleNavItems.slice(0, listingsAt + 1),
-        { label: "Your Reels", href: "/dashboard/reels", icon: Clapperboard, short: "Reels" },
+        { label: "Your Reels", href: "/dashboard/reels", icon: Clapperboard, short: "Reels" } as NavItem,
         ...roleNavItems.slice(listingsAt + 1),
       ]
     : roleNavItems;
   const navItems = isBrokerageAdmin
-    ? [baseNavItems[0], { label: "Brokerage", href: "/dashboard/brokerage", icon: Building2 }, ...baseNavItems.slice(1)]
+    ? [baseNavItems[0], { label: "Brokerage", href: "/dashboard/brokerage", icon: Building2, short: "Brokerage" } as NavItem, ...baseNavItems.slice(1)]
     : baseNavItems;
+
+  const mobileTabs = MOBILE_PRIMARY
+    .map((href) => navItems.find((i) => i.href === href))
+    .filter((i): i is NavItem => !!i)
+    .slice(0, MOBILE_TAB_LIMIT);
+  const mobileMore = navItems.filter((i) => !mobileTabs.includes(i));
+  const moreActive = mobileMore.some((i) => isActivePath(pathname, i.href));
 
   return (
     <>
@@ -113,24 +150,90 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
       </div>
 
       {/* Mobile bottom tab bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch overflow-x-auto">
-        {navItems.map((item) => {
-          const active = pathname === item.href || (item.href !== "/dashboard" && pathname.startsWith(item.href));
+      <nav aria-label="Main" className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch pb-[env(safe-area-inset-bottom)]">
+        {mobileTabs.map((item) => {
+          const active = isActivePath(pathname, item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`relative flex-1 min-w-[3.5rem] flex flex-col items-center justify-center py-3 gap-1 transition-colors duration-base ease-quiet ${
+              aria-current={active ? "page" : undefined}
+              className={`relative flex-1 min-w-0 flex flex-col items-center justify-center py-3 gap-1 transition-colors duration-base ease-quiet ${
                 active ? "text-white" : "text-ink-400"
               }`}
             >
               {active && <span aria-hidden className="absolute top-0 inset-x-3 h-0.5 bg-accent-500" />}
               <item.icon size={17} strokeWidth={active ? 2 : 1.5} aria-hidden />
-              <span className="text-[10px] font-medium leading-none">{item.short ?? item.label.split(" ")[0]}</span>
+              <span className="text-[10px] font-medium leading-none truncate max-w-full px-0.5">{item.short}</span>
             </Link>
           );
         })}
-      </div>
+        {mobileMore.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMenuOpen((o) => !o)}
+            aria-expanded={menuOpen}
+            aria-controls="dashboard-more-sheet"
+            className={`relative flex-1 min-w-0 flex flex-col items-center justify-center py-3 gap-1 transition-colors duration-base ease-quiet ${
+              moreActive || menuOpen ? "text-white" : "text-ink-400"
+            }`}
+          >
+            {moreActive && <span aria-hidden className="absolute top-0 inset-x-3 h-0.5 bg-accent-500" />}
+            <MoreHorizontal size={17} strokeWidth={moreActive || menuOpen ? 2 : 1.5} aria-hidden />
+            <span className="text-[10px] font-medium leading-none">More</span>
+          </button>
+        )}
+      </nav>
+
+      {/* Phone "More" sheet — the nav items that don't fit the tab bar */}
+      {menuOpen && (
+        <div className="md:hidden fixed inset-0 z-30">
+          <button
+            type="button"
+            aria-label="Close menu"
+            onClick={() => setMenuOpen(false)}
+            className="absolute inset-0 bg-ink-950/60"
+          />
+          <div
+            id="dashboard-more-sheet"
+            role="dialog"
+            aria-label="More"
+            className="absolute left-0 right-0 bottom-0 bg-ink-950 border-t border-hairline-inverse rounded-t-card px-2 pt-3 pb-[calc(4.25rem+env(safe-area-inset-bottom))] shadow-elev-2"
+          >
+            <div className="flex items-center justify-between px-3 pb-2">
+              <p className="label-caps-inverse">More</p>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close"
+                className="text-ink-400 hover:text-white p-1 rounded-ctl transition-colors duration-base ease-quiet"
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </div>
+            <ul>
+              {mobileMore.map((item) => {
+                const active = isActivePath(pathname, item.href);
+                return (
+                  <li key={item.href}>
+                    <Link
+                      href={item.href}
+                      onClick={() => setMenuOpen(false)}
+                      aria-current={active ? "page" : undefined}
+                      className={`flex items-center gap-3 px-3 py-3 rounded-ctl text-sm transition-colors duration-base ease-quiet ${
+                        active ? "bg-white/[0.05] text-white font-medium" : "text-ink-300 hover:text-white hover:bg-white/[0.03]"
+                      }`}
+                    >
+                      <item.icon size={17} strokeWidth={active ? 2 : 1.5} aria-hidden />
+                      {item.label}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </div>
+      )}
 
       <div className="md:hidden h-12" />
 
@@ -157,7 +260,7 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
         </div>
         <nav className="flex-1 space-y-0.5">
           {navItems.map((item) => {
-            const active = pathname === item.href;
+            const active = isActivePath(pathname, item.href);
             return (
               <Link
                 key={item.href}

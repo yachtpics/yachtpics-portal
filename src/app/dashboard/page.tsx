@@ -9,6 +9,7 @@ import { Badge, Card } from "@/components/ui";
 import type { BadgeTone } from "@/components/ui";
 import { planLabel } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
+import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 
 function statusTone(status: string): BadgeTone {
   if (status === "active") return "success";
@@ -66,7 +67,7 @@ export default async function DashboardPage() {
   const [{ data: profile }, { data: scData }, { data: newsData }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("first_name, last_name, role")
+      .select("first_name, last_name, role, welcomed_at")
       .eq("id", user.id)
       .single(),
     // Recently Photographed rotating strip (shared by broker + assistant views).
@@ -83,6 +84,12 @@ export default async function DashboardPage() {
 
   const isAssistant = profile?.role === "assistant";
   const firstName = profile?.first_name ?? "there";
+  // First visit: the layout stamps welcomed_at on first login (possibly while
+  // this page is rendering), so "not yet stamped" or "stamped minutes ago"
+  // both mean this is the person's first look at the portal.
+  const welcomedAt = (profile as { welcomed_at?: string | null } | null)?.welcomed_at ?? null;
+  const isFirstVisit = !welcomedAt || Date.now() - new Date(welcomedAt).getTime() < 30 * 60 * 1000;
+  const greeting = isFirstVisit ? `Welcome, ${firstName}` : `Welcome back, ${firstName}`;
   // Null when the news table isn't there yet; the card simply doesn't render.
   const latestNews = ((newsData ?? []) as NewsCardRow[]).filter((n) => !!n.title);
 
@@ -159,7 +166,7 @@ export default async function DashboardPage() {
     return (
       <div className="px-4 sm:px-6 py-8 max-w-5xl mx-auto">
         <div className="mb-8 pb-6 border-b border-hairline">
-          <h1 className="text-display text-ink-900">Welcome back, {firstName}</h1>
+          <h1 className="text-display text-ink-900">{greeting}</h1>
           <p className="text-ink-500 mt-1.5 text-sm">
             You&apos;re assisting {brokers.length} broker{brokers.length !== 1 ? "s" : ""}.
           </p>
@@ -223,14 +230,15 @@ export default async function DashboardPage() {
   }
 
   // ── Broker dashboard ─────────────────────────────────────────────────────
-  // Four independent reads — issued together, not queued behind one another,
+  // Independent reads — issued together, not queued behind one another,
   // and alongside the strip's photo signing.
+  const service = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const [
     featured,
     { data: listings },
     { data: subscription },
     { data: brokerDetails },
-    { count: shootCount },
+    effectiveAccess,
   ] = await Promise.all([
     loadFeatured(),
     supabase
@@ -249,11 +257,12 @@ export default async function DashboardPage() {
       .select("brokerage_name, logo_url")
       .eq("id", user.id)
       .single(),
-    supabase
-      .from("shoots")
-      .select("*", { count: "exact", head: true })
-      .eq("broker_id", user.id),
+    // Same rule the layout uses to unlock the portal: own paid plan OR an
+    // active Office plan on the broker's brokerage. Covered brokers shouldn't
+    // be asked to choose a plan or told their trial is ending.
+    getEffectiveAccessStatus(service, user.id),
   ]);
+  const planCovered = effectiveAccess.status === "active";
 
   const activeListings = listings?.filter((l) => l.status === "active").length ?? 0;
 
@@ -266,18 +275,20 @@ export default async function DashboardPage() {
   return (
     <div className="px-4 sm:px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8 pb-6 border-b border-hairline">
-        <h1 className="text-display text-ink-900">Welcome back, {firstName}</h1>
+        <h1 className="text-display text-ink-900">{greeting}</h1>
         <p className="text-ink-500 mt-1.5 text-sm">Manage your listings and create buyer presentations.</p>
       </div>
 
       <FeaturedStrip boats={featured} />
 
-      {isNewAccount && (
+      {isNewAccount && (() => {
+        const steps = planCovered ? 2 : 3;
+        return (
         <div className="bg-ink-950 rounded-card px-6 py-6 mb-6 shadow-elev-2">
-          <p className="text-white font-semibold text-sm">Get set up in 3 steps</p>
+          <p className="text-white font-semibold text-sm">Get set up in {steps} steps</p>
           <p className="text-ink-400 text-xs mt-1">Complete these before your first shoot delivery.</p>
           <div className="rule-inverse my-4" />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`grid grid-cols-1 ${steps === 3 ? "sm:grid-cols-3" : "sm:grid-cols-2"} gap-3`}>
             <Link href="/dashboard/profile" className="bg-white/[0.03] hover:bg-white/[0.07] border border-hairline-inverse-soft rounded-ctl px-4 py-3 transition-colors duration-base ease-quiet block">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-[10px] font-bold text-accent-300 border border-accent-300/40 w-5 h-5 rounded-full flex items-center justify-center shrink-0">1</span>
@@ -294,21 +305,24 @@ export default async function DashboardPage() {
               <p className="text-ink-400 text-xs leading-relaxed mb-2">It appears in every client slideshow footer.</p>
               <span className="text-accent-300 text-xs font-medium">Upload Logo</span>
             </Link>
+            {!planCovered && (
             <Link href="/dashboard/billing" className="bg-white/[0.03] hover:bg-white/[0.07] border border-hairline-inverse-soft rounded-ctl px-4 py-3 transition-colors duration-base ease-quiet block">
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-[10px] font-bold text-accent-300 border border-accent-300/40 w-5 h-5 rounded-full flex items-center justify-center shrink-0">3</span>
                 <p className="text-white text-xs font-semibold">Choose a plan</p>
               </div>
-              <p className="text-ink-400 text-xs leading-relaxed mb-2">Unlock the slideshow builder. Free 30-day trial.</p>
+              <p className="text-ink-400 text-xs leading-relaxed mb-2">Keep the slideshow builder after your free trial.</p>
               <span className="text-accent-300 text-xs font-medium">View Plans</span>
             </Link>
+            )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Only during an active trial (6+ days). The expiring/ended states are
           owned by the top TrialBanner, so this no longer duplicates it. */}
-      {subscription?.status === "trialing" && trialDaysLeft !== null && trialDaysLeft > 5 && (
+      {!planCovered && subscription?.status === "trialing" && trialDaysLeft !== null && trialDaysLeft > 5 && (
         <div className="bg-accent-50 border border-accent-200 rounded-card px-5 py-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
           <div>
             <p className="text-accent-800 font-medium text-sm">
@@ -327,7 +341,7 @@ export default async function DashboardPage() {
         <EnableNotifications onlyWhenOff />
       </div>
 
-      <Card className="mb-8 grid grid-cols-1 sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-hairline">
+      <Card className="mb-8 grid grid-cols-1 sm:grid-cols-2 divide-y sm:divide-y-0 sm:divide-x divide-hairline">
         <div className="px-6 py-5">
           <div className="flex items-center gap-1.5 mb-2">
             <p className="label-caps">Active Listings</p>
@@ -337,41 +351,24 @@ export default async function DashboardPage() {
         </div>
         <div className="px-6 py-5">
           <div className="flex items-center gap-1.5 mb-2">
-            <p className="label-caps">Total Shoots</p>
-            <HelpTip text="Your cumulative YachtPics shoot count. New shoots appear in Shoots and Invoices after delivery." position="below" />
-          </div>
-          <p className="text-3xl font-light tabular-nums text-ink-900">{shootCount ?? 0}</p>
-        </div>
-        <div className="px-6 py-5">
-          <div className="flex items-center gap-1.5 mb-2">
             <p className="label-caps">Plan</p>
             <HelpTip text="Your current subscription tier. Photo downloads are always free. A paid plan unlocks the slideshow builder." detail="Go to Billing to upgrade or manage your plan." position="below" />
           </div>
           <p className="text-3xl font-light text-ink-900 capitalize">
-            {planLabel(subscription ?? null)}
+            {effectiveAccess.officeCovered ? "Office plan" : planLabel(subscription ?? null)}
           </p>
         </div>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+      <div className="mb-8">
         <Link
           href="/dashboard/listings"
-          className="group bg-white border border-hairline rounded-card shadow-elev-1 p-6 transition-all duration-base ease-quiet hover:shadow-elev-2 hover:border-hairline-strong"
+          className="group block bg-white border border-hairline rounded-card shadow-elev-1 p-6 transition-all duration-base ease-quiet hover:shadow-elev-2 hover:border-hairline-strong"
         >
           <h3 className="text-h2 text-ink-900 mb-1">My Listings</h3>
           <p className="text-ink-500 text-sm">View photos, toggle visibility, and reorder your listing gallery.</p>
           <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent-700 transition-colors duration-fast group-hover:text-accent-600">
             View listings <span aria-hidden>&rarr;</span>
-          </span>
-        </Link>
-        <Link
-          href="/dashboard/shoots"
-          className="group bg-white border border-hairline rounded-card shadow-elev-1 p-6 transition-all duration-base ease-quiet hover:shadow-elev-2 hover:border-hairline-strong"
-        >
-          <h3 className="text-h2 text-ink-900 mb-1">Shoots &amp; Invoices</h3>
-          <p className="text-ink-500 text-sm">Track your shoot history and view payment status.</p>
-          <span className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-accent-700 transition-colors duration-fast group-hover:text-accent-600">
-            View shoots <span aria-hidden>&rarr;</span>
           </span>
         </Link>
       </div>

@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
 import { Button, Input, Label } from "@/components/ui";
+import { safeNextPath } from "@/lib/safeNext";
 
 /** Login-page wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
 function WordmarkLockup() {
@@ -25,6 +26,8 @@ export default function ConfirmSignInPage() {
   const [tokenType, setTokenType] = useState<"magiclink" | "recovery" | "email">("magiclink");
   const [signingIn, setSigningIn] = useState(false);
   const [expired, setExpired] = useState(false);
+  // Where the sign-in link was meant to take them (validated, same-site only).
+  const [next, setNext] = useState<string | null>(null);
 
   // Inline resend from the expired screen.
   const [resendEmail, setResendEmail] = useState("");
@@ -36,6 +39,7 @@ export default function ConfirmSignInPage() {
     setTokenHash(params.get("token_hash"));
     const t = params.get("type");
     if (t === "recovery" || t === "email" || t === "magiclink") setTokenType(t);
+    setNext(safeNextPath(params.get("next")));
     // A missing token means the link is malformed or was already stripped.
     if (!params.get("token_hash")) setExpired(true);
   }, []);
@@ -69,7 +73,7 @@ export default function ConfirmSignInPage() {
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
       if (profile?.role === "admin") destination = "/admin";
     }
-    window.location.assign(destination);
+    window.location.assign(next ?? destination);
   }
 
   async function resendLink(e: React.FormEvent) {
@@ -79,7 +83,7 @@ export default function ConfirmSignInPage() {
     await fetch("/api/auth/magic-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: resendEmail.trim() }),
+      body: JSON.stringify({ email: resendEmail.trim(), next }),
     });
     setResending(false);
     setResent(true);

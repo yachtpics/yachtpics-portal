@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Label } from "@/components/ui";
+import { safeNextPath } from "@/lib/safeNext";
+import { friendlyAuthError } from "@/lib/authErrors";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -15,6 +17,17 @@ export default function LoginPage() {
   // who can't get the password to take.
   const [mode, setMode] = useState<"password" | "magic">("password");
   const [magicSent, setMagicSent] = useState(false);
+  // Where the visitor was headed before being asked to sign in (set by the
+  // middleware as ?next=). Validated: same-site paths only.
+  const [next, setNext] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setNext(safeNextPath(params.get("next")));
+    if (params.get("error") === "auth_error") {
+      setError("That sign-in link has expired or was already used. Sign in below, or request a new link.");
+    }
+  }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,7 +38,7 @@ export default function LoginPage() {
     const { data: authData, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-      setError(error.message);
+      setError(friendlyAuthError(error, "login"));
       setLoading(false);
     } else {
       // Brokers/assistants land straight on their Listings — login + one click to
@@ -41,7 +54,7 @@ export default function LoginPage() {
       // from the server with the new session — avoids Next's client-side
       // router cache serving stale pages (e.g. a gallery added since the last
       // session wouldn't appear until a manual refresh).
-      window.location.assign(destination);
+      window.location.assign(next ?? destination);
     }
   };
 
@@ -54,7 +67,7 @@ export default function LoginPage() {
     await fetch("/api/auth/magic-link", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, next }),
     });
     setLoading(false);
     setMagicSent(true);
@@ -122,6 +135,7 @@ export default function LoginPage() {
               <Input
                 tone="dark"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -158,6 +172,7 @@ export default function LoginPage() {
               <Input
                 tone="dark"
                 type="email"
+                autoComplete="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -177,6 +192,7 @@ export default function LoginPage() {
               <Input
                 tone="dark"
                 type="password"
+                autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

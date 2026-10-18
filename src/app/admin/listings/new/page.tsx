@@ -8,6 +8,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
+import { runPool, uploadListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
 
 interface Broker {
   id: string;
@@ -49,6 +50,10 @@ export default function NewListingPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Indices (into `photos`) that failed to upload after the listing was
+  // created — Retry re-runs just these, into the same listing and slots.
+  const [failedPhotoIdx, setFailedPhotoIdx] = useState<number[]>([]);
+  const [retrying, setRetrying] = useState(false);
 
   // Video. Independent of photos — a listing may be video only.
   const [videoFiles, setVideoFiles] = useState<File[]>([]);
@@ -57,6 +62,14 @@ export default function NewListingPage() {
   const [videoIndex, setVideoIndex] = useState(0);
   const [videoRejected, setVideoRejected] = useState("");
   const videoInputRef = useRef<HTMLInputElement>(null);
+
+  // Leaving mid-batch abandons the rest of the uploads — warn first.
+  useEffect(() => {
+    if (!uploading && !uploadingVideo && !retrying) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [uploading, uploadingVideo, retrying]);
 
   function handleVideoFiles(files: FileList | null) {
     if (!files) return;
@@ -95,11 +108,61 @@ export default function NewListingPage() {
 
 
   function removePhoto(index: number) {
+    // After the listing is created, Retry refers to photos by position.
+    if (createdListingId) return;
     setPhotos((prev) => prev.filter((_, i) => i !== index));
   }
 
   function updateCategory(index: number, category: string) {
     setPhotos((prev) => prev.map((p, i) => i === index ? { ...p, category } : p));
+  }
+
+  // Uploads the photos at the given indices into the listing; returns the
+  // indices that failed (in form order). The progress bar counts completed
+  // files over the batch size.
+  async function uploadPhotoBatch(listingId: string, indices: number[]): Promise<number[]> {
+    const { data: { user: uploader } } = await supabase.auth.getUser();
+    const stamp = Date.now();
+    const failed: number[] = [];
+    let done = 0;
+    await runPool(indices, PHOTO_UPLOAD_CONCURRENCY, async (photoIdx) => {
+      const photo = photos[photoIdx];
+      const r = await uploadListingPhoto({
+        supabase,
+        file: photo.file,
+        brokerId: form.broker_id,
+        listingId,
+        pathKey: `${stamp}-${photoIdx}`,
+        category: photo.category,
+        displayOrder: photoIdx,
+        uploadedBy: uploader?.id ?? null,
+      }).catch(() => ({ ok: false as const }));
+      if (!r.ok) failed.push(photoIdx);
+      done++;
+      setUploadProgress(Math.round((done / indices.length) * 100));
+    });
+    return failed.sort((a, b) => a - b);
+  }
+
+  function photoFailureText(indices: number[]) {
+    const ok = photos.length - indices.length;
+    return `${ok} uploaded, ${indices.length} failed: ${indices.map((i) => photos[i].file.name).join(", ")}`;
+  }
+
+  async function retryFailedPhotos() {
+    if (!createdListingId || failedPhotoIdx.length === 0) return;
+    setRetrying(true);
+    setUploading(true);
+    setUploadProgress(0);
+    const stillFailed = await uploadPhotoBatch(createdListingId, failedPhotoIdx);
+    setUploading(false);
+    setRetrying(false);
+    setFailedPhotoIdx(stillFailed);
+    setError(
+      stillFailed.length > 0
+        ? `Some photos still didn't upload. ${photoFailureText(stillFailed)}`
+        : `All photos are uploaded now.${fromInvite ? " Send the ready email from the listing page." : ""}`
+    );
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -134,33 +197,13 @@ export default function NewListingPage() {
     }
 
     // 2. Upload photos — stamped with WHICH admin is doing the delivering, so
-    // "who uploaded these?" has a name, not a shrug.
+    // "who uploaded these?" has a name, not a shrug. Four at a time; each
+    // photo's display_order is its position in the form, decided up front.
+    let photoFailures: number[] = [];
     if (photos.length > 0) {
       setUploading(true);
-      const { data: { user: uploader } } = await supabase.auth.getUser();
-      for (let i = 0; i < photos.length; i++) {
-        const photo = photos[i];
-        const ext = photo.file.name.split(".").pop();
-        const path = `${form.broker_id}/${listing.id}/${Date.now()}-${i}.${ext}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from("listing-photos")
-          .upload(path, photo.file, { upsert: false });
-
-        if (!uploadError) {
-          await supabase.from("photos").insert({
-            listing_id: listing.id,
-            storage_path: path,
-            filename: photo.file.name,
-            category: photo.category,
-            display_order: i,
-            is_visible: true,
-            uploaded_by: uploader?.id ?? null,
-          });
-        }
-
-        setUploadProgress(Math.round(((i + 1) / photos.length) * 100));
-      }
+      setUploadProgress(0);
+      photoFailures = await uploadPhotoBatch(listing.id, photos.map((_, i) => i));
       setUploading(false);
     }
 
@@ -192,21 +235,54 @@ export default function NewListingPage() {
       // worked — say what didn't, and offer the way through.
       if (failures.length > 0) {
         setError(
-          `The listing was created, but ${failures.length === 1 ? "this video didn't upload" : "these videos didn't upload"}:\n${failures.join("\n")}`
+          `The listing was created, but ${failures.length === 1 ? "this video didn't upload" : "these videos didn't upload"}:\n${failures.join("\n")}` +
+          (photoFailures.length > 0 ? `\n\n${photoFailureText(photoFailures)}` : "") +
+          (fromInvite ? "\n\nThe ready email hasn't been sent — send it from the listing page once everything's up." : "")
         );
+        setFailedPhotoIdx(photoFailures);
         setSaving(false);
         setCreatedListingId(listing.id);
         return;
       }
     }
 
+    // Some photos didn't make it: stop here with a Retry rather than moving on
+    // as if they had.
+    if (photoFailures.length > 0) {
+      setError(
+        `The listing was created, but some photos didn't upload. ${photoFailureText(photoFailures)}` +
+        (fromInvite ? "\n\nThe ready email hasn't been sent — send it from the listing page once everything's up." : "")
+      );
+      setFailedPhotoIdx(photoFailures);
+      setSaving(false);
+      setCreatedListingId(listing.id);
+      return;
+    }
+
     // 4. If coming from broker invite flow and media was uploaded, auto-notify broker
     if (fromInvite && (photos.length > 0 || videoFiles.length > 0)) {
-      await fetch("/api/email/notify-broker", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id }),
-      });
+      const mediaType = videoFiles.length > 0 ? (photos.length > 0 ? "both" : "video") : "photos";
+      let notifyError: string | null = null;
+      try {
+        const res = await fetch("/api/email/notify-broker", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ listingId: listing.id, mediaType }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          notifyError = data.error ?? `Server returned ${res.status}`;
+        }
+      } catch (e) {
+        notifyError = e instanceof Error ? e.message : String(e);
+      }
+      if (notifyError) {
+        // Stay on this page so the failure is seen, with the way through.
+        setError(`Listing created, but the ready email didn't send — send it from the listing page.\n(${notifyError})`);
+        setSaving(false);
+        setCreatedListingId(listing.id);
+        return;
+      }
       router.push(`/admin/brokers/${form.broker_id}?invited=true`);
     } else {
       router.push(`/admin/listings/${listing.id}`);
@@ -261,6 +337,16 @@ export default function NewListingPage() {
             >
               Go to the listing →
             </Link>
+          )}
+          {createdListingId && failedPhotoIdx.length > 0 && (
+            <button
+              type="button"
+              onClick={retryFailedPhotos}
+              disabled={retrying}
+              className="mt-2 ml-4 inline-block font-semibold underline underline-offset-2 hover:text-danger-700 disabled:opacity-50"
+            >
+              {retrying ? "Retrying…" : `Retry ${failedPhotoIdx.length} failed photo${failedPhotoIdx.length !== 1 ? "s" : ""}`}
+            </button>
           )}
         </div>
       )}
@@ -521,7 +607,9 @@ export default function NewListingPage() {
           </button>
           <button
             type="submit"
-            disabled={saving}
+            // Once the listing exists, a second submit would create a duplicate —
+            // the way on is the link / Retry in the message above.
+            disabled={saving || createdListingId !== null}
             className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 font-semibold px-6 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet text-sm"
           >
             {saving

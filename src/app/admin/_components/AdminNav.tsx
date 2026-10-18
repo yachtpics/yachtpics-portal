@@ -15,7 +15,6 @@ import {
   ClipboardList,
   BarChart3,
   Mail,
-  Film,
   Clapperboard,
   Megaphone,
   Lightbulb,
@@ -26,6 +25,7 @@ import {
   Repeat,
   MonitorPlay,
   Share2,
+  Tags,
   type LucideIcon,
 } from "lucide-react";
 
@@ -48,6 +48,7 @@ const navItems: NavItem[] = [
   { label: "Assistants", href: "/admin/assistants", icon: UserCheck },
   { label: "Brokerages", href: "/admin/brokerages", icon: Building2 },
   { label: "Listings", href: "/admin/listings", icon: Ship },
+  { label: "Photo Categories", href: "/admin/photo-categories", icon: Tags, short: "Categories" },
   { label: "Recently Photographed", href: "/admin/showcase", icon: Camera },
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
@@ -59,7 +60,6 @@ const navItems: NavItem[] = [
   { label: "Social Accounts", href: "/dashboard/profile#social-accounts", icon: Share2, short: "Social" },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
-  { label: "Video Migration", href: "/admin/media", icon: Film },
   { label: "Announce", href: "/admin/announce", icon: Megaphone },
   { label: "Tips", href: "/admin/tips", icon: Lightbulb },
   { label: "News", href: "/admin/news", icon: Newspaper },
@@ -70,28 +70,17 @@ const navItems: NavItem[] = [
  * Nav order — most-used first, so the pages Charlie actually lives in are
  * reachable immediately (and on mobile, without swiping the bar sideways).
  *
- * Desktop and mobile are kept as SEPARATE lists even though they're currently
- * identical. They serve different constraints — the sidebar shows everything at
- * once, the mobile bar only shows the first few — so when one needs to change,
- * it can move without dragging the other with it.
+ * One list drives both the desktop sidebar and the mobile bar (they were two
+ * identical copies). If the mobile bar ever needs a different order, split it
+ * back out then.
  *
  * Anything not listed keeps its `navItems` order and follows on behind.
  */
-const SIDEBAR_PRIORITY = [
+const NAV_PRIORITY = [
   "/admin/brokers",
   "/admin/assistants",
   "/admin/listings",
-  "/admin/metrics",
-  "/admin/reels",
-  "/admin/reel-studio",
-  "/admin/reel-service",
-  "/admin/emails",
-];
-
-const MOBILE_PRIORITY = [
-  "/admin/brokers",
-  "/admin/assistants",
-  "/admin/listings",
+  "/admin/photo-categories",
   "/admin/metrics",
   "/admin/reels",
   "/admin/reel-studio",
@@ -111,8 +100,8 @@ function orderBy(priority: string[]): NavItem[] {
   });
 }
 
-const sidebarNavItems = orderBy(SIDEBAR_PRIORITY);
-const mobileNavItems = orderBy(MOBILE_PRIORITY);
+const sidebarNavItems = orderBy(NAV_PRIORITY);
+const mobileNavItems = sidebarNavItems;
 
 function isActive(pathname: string, href: string) {
   return pathname === href || (href !== "/admin" && pathname.startsWith(href));

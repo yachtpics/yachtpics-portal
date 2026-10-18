@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { findExistingUser } from "@/lib/findExistingUser";
+import { safeNextPath } from "@/lib/safeNext";
 
 /**
  * Passwordless sign-in. The broker types their email, we generate a one-time
@@ -19,7 +20,9 @@ import { findExistingUser } from "@/lib/findExistingUser";
  */
 export async function POST(req: NextRequest) {
   try {
-    const { email } = await req.json();
+    const { email, next: rawNext } = await req.json();
+    // Where to land after signing in (e.g. the page an emailed link pointed at).
+    const next = safeNextPath(typeof rawNext === "string" ? rawNext : null);
     if (!email || typeof email !== "string" || !email.includes("@")) {
       return NextResponse.json({ error: "A valid email is required." }, { status: 400 });
     }
@@ -52,7 +55,7 @@ export async function POST(req: NextRequest) {
     }
 
     const tokenHash = data.properties.hashed_token;
-    const confirmUrl = `${origin}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink`;
+    const confirmUrl = `${origin}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink${next ? `&next=${encodeURIComponent(next)}` : ""}`;
 
     const html = [
       "<!DOCTYPE html>",

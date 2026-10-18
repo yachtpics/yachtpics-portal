@@ -20,10 +20,15 @@ export default function BillingPage() {
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
+  const [actionError, setActionError] = useState("");
 
   const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const success = searchParams?.get("success") === "1";
   const cancelled = searchParams?.get("cancelled") === "1";
+  // Set by the checkout route when Stripe was told not to charge until the
+  // in-app trial ends (unix seconds).
+  const trialEndParam = Number(searchParams?.get("trial_end") ?? "");
+  const billingStartsOn = Number.isFinite(trialEndParam) && trialEndParam > 0 ? new Date(trialEndParam * 1000) : null;
 
   useEffect(() => {
     async function load() {
@@ -41,28 +46,53 @@ export default function BillingPage() {
   const isActive = sub?.status === "active" || sub?.status === "trialing";
   const accessStatus = getAccessStatus(sub ?? null);
   const trialExpired = accessStatus === "trial_expired";
+  // A real Stripe plan is attached (as opposed to the in-app trial, which has
+  // status "trialing" but no Stripe subscription).
+  const hasPlan = !!sub?.stripe_subscription_id && isActive;
+  const fmtDate = (d: Date) => d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  // In-app trial still running? Mirrors the checkout route: Stripe needs the
+  // trial end at least 48 hours out, otherwise billing starts at checkout.
+  const inAppTrialEnd =
+    !hasPlan && sub?.status === "trialing" && sub.trial_ends_at && new Date(sub.trial_ends_at).getTime() > Date.now()
+      ? new Date(sub.trial_ends_at)
+      : null;
+  const trialDeferrable = !!inAppTrialEnd && inAppTrialEnd.getTime() - Date.now() >= 49 * 60 * 60 * 1000;
 
   async function startCheckout(priceId: string) {
     setCheckoutLoading(priceId);
+    setActionError("");
     try {
       const res = await fetch("/api/stripe/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ priceId }) });
       const text = await res.text();
-      let data: { url?: string; error?: string };
-      try { data = JSON.parse(text); } catch { alert(`Unexpected response: ${text.slice(0, 200)}`); return; }
-      if (data.error) { alert(`Error: ${data.error}`); return; }
-      if (!data.url) { alert("No checkout URL returned"); return; }
+      let data: { url?: string; error?: string } = {};
+      try { data = JSON.parse(text); } catch { /* handled below */ }
+      if (!res.ok || data.error || !data.url) {
+        console.error("Checkout failed:", data.error ?? text.slice(0, 200));
+        setActionError("We couldn't open checkout just now. Please try again in a moment, or contact YachtPics if it continues.");
+        return;
+      }
       window.location.href = data.url;
-    } catch (err) { alert(`Request failed: ${String(err)}`); }
-    finally { setCheckoutLoading(null); }
+    } catch (err) {
+      console.error("Checkout request failed:", err);
+      setActionError("We couldn't reach the billing service. Check your connection and try again.");
+    } finally { setCheckoutLoading(null); }
   }
 
   async function openPortal() {
     setPortalLoading(true);
+    setActionError("");
     try {
       const res = await fetch("/api/stripe/portal", { method: "POST" });
-      const { url, error } = await res.json();
-      if (error) { alert(error); return; }
-      window.location.href = url;
+      const data = await res.json().catch(() => ({} as { url?: string; error?: string }));
+      if (!res.ok || data.error || !data.url) {
+        console.error("Billing portal failed:", data.error);
+        setActionError("We couldn't open your billing details just now. Please try again in a moment.");
+        return;
+      }
+      window.location.href = data.url;
+    } catch (err) {
+      console.error("Billing portal request failed:", err);
+      setActionError("We couldn't reach the billing service. Check your connection and try again.");
     } finally { setPortalLoading(false); }
   }
 
@@ -88,15 +118,21 @@ export default function BillingPage() {
         <div className="mb-6 bg-success-50 border border-success-200 rounded-card px-5 py-4 flex items-center gap-3">
           <span className="text-success-600 text-lg">&#10003;</span>
           <div>
-            <p className="text-sm font-semibold text-success-700">You&apos;re all set!</p>
-            <p className="text-xs text-success-600 mt-0.5">Your subscription is active. Enjoy your 30-day free trial.</p>
+            <p className="text-sm font-semibold text-success-700">Your plan is active.</p>
+            {billingStartsOn && (
+              <p className="text-xs text-success-600 mt-0.5">Billing starts when your trial ends on {fmtDate(billingStartsOn)}.</p>
+            )}
           </div>
         </div>
       )}
       {cancelled && (
         <div className="mb-6 bg-warn-50 border border-warn-200 rounded-card px-5 py-4">
-          <p className="text-sm text-warn-800">Checkout was cancelled -- your plan has not changed.</p>
+          <p className="text-sm text-warn-800">Checkout was cancelled. Your plan has not changed.</p>
         </div>
+      )}
+
+      {actionError && (
+        <p role="alert" className="mb-6 text-sm text-danger-600 bg-danger-50 border border-danger-200 rounded-ctl px-4 py-3">{actionError}</p>
       )}
 
       {isActive && currentPlan && (
@@ -173,10 +209,16 @@ export default function BillingPage() {
       {/* Plan grid */}
       <div>
         <div className="flex items-center gap-2 mb-2">
-          <h2 className="label-caps">{isActive ? "Change Plan" : "Choose a Plan"}</h2>
+          <h2 className="label-caps">{hasPlan ? "Change Plan" : "Choose a Plan"}</h2>
           <HelpTip text="Pick the plan that matches your active listing count. You can switch plans anytime." position="below" width={240} />
         </div>
-        <p className="text-xs text-ink-500 mb-5">All plans include a 30-day free trial. Cancel anytime.</p>
+        <p className="text-xs text-ink-500 mb-5">
+          {inAppTrialEnd && trialDeferrable
+            ? `Your free trial runs until ${fmtDate(inAppTrialEnd)}. Choose a plan now and you won't be charged until then. Cancel anytime.`
+            : inAppTrialEnd
+              ? `Your free trial ends ${fmtDate(inAppTrialEnd)}. Choosing a plan now starts billing today. Cancel anytime.`
+              : "Billed monthly. Cancel anytime."}
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {PLANS.map((plan) => {
             const isCurrent = sub?.stripe_price_id === plan.priceId && isActive;
@@ -194,7 +236,7 @@ export default function BillingPage() {
                   disabled={isCurrent || checkoutLoading === plan.priceId}
                   className={`mt-4 w-full py-2.5 rounded-ctl text-sm font-semibold transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 ${isCurrent ? "bg-ink-100 text-ink-400 cursor-default" : "bg-accent-500 hover:bg-accent-400 text-ink-950"} disabled:opacity-60`}
                 >
-                  {checkoutLoading === plan.priceId ? "Loading..." : isCurrent ? "Current plan" : trialExpired ? "Subscribe" : isActive ? "Switch plan" : "Start free trial"}
+                  {checkoutLoading === plan.priceId ? "Loading..." : isCurrent ? "Current plan" : trialExpired ? "Subscribe" : hasPlan ? "Switch plan" : inAppTrialEnd ? "Choose plan" : "Subscribe"}
                 </button>
               </div>
             );

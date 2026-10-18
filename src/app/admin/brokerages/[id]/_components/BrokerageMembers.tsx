@@ -23,18 +23,36 @@ export default function BrokerageMembers({
   const [available, setAvailable] = useState<Available[]>(initialAvailable);
   const [addId, setAddId] = useState("");
   const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState("");
+  const [msg, setMsgText] = useState("");
+  const [msgIsError, setMsgIsError] = useState(false);
+  function setMsg(text: string, isError = false) {
+    setMsgText(text);
+    setMsgIsError(isError);
+  }
+
+  // Sends a member change; resolves to an error message, or null on success.
+  async function send(method: "POST" | "PATCH" | "DELETE", url: string, body?: unknown): Promise<string | null> {
+    try {
+      const res = await fetch(url, {
+        method,
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      if (res.ok) return null;
+      const data = await res.json().catch(() => ({}));
+      return data.error ?? `Server returned ${res.status}`;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  }
 
   const brokers = members.filter((m) => m.role === "broker");
   const assistants = members.filter((m) => m.role === "assistant");
 
   async function saveName() {
     if (!name.trim() || name.trim() === brokerageName) return;
-    await fetch(`/api/admin/brokerages/${brokerageId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim() }),
-    });
+    const err = await send("PATCH", `/api/admin/brokerages/${brokerageId}`, { name: name.trim() });
+    if (err) { setMsg(`Couldn't save the name: ${err}`, true); return; }
     setMsg("Name saved.");
     router.refresh();
   }
@@ -51,54 +69,63 @@ export default function BrokerageMembers({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: addId }),
       });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error ?? "Failed to add");
       setMembers((prev) => [...prev, { id: person.id, name: person.name, email: person.email, role: person.role, isShared: false, isBrokerageAdmin: false }]);
       setAvailable((prev) => prev.filter((a) => a.id !== addId));
       setAddId("");
     } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Failed to add");
+      setMsg(e instanceof Error ? e.message : "Failed to add", true);
     } finally {
       setBusy(false);
     }
   }
 
+  // Optimistic: the screen changes at once, and is put back (with a message)
+  // if the server refuses.
   async function removeMember(m: Member) {
+    const prevMembers = members;
+    const prevAvailable = available;
+    setMsg("");
     setMembers((prev) => prev.filter((x) => x.id !== m.id));
     setAvailable((prev) => [...prev, { id: m.id, name: m.name, email: m.email, role: m.role, inOtherBrokerage: false }]);
-    await fetch(`/api/admin/brokerages/${brokerageId}/members`, {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: m.id }),
-    }).catch(() => {});
+    const err = await send("DELETE", `/api/admin/brokerages/${brokerageId}/members`, { userId: m.id });
+    if (err) {
+      setMembers(prevMembers);
+      setAvailable(prevAvailable);
+      setMsg(`Couldn't remove ${m.name}: ${err}`, true);
+    }
   }
 
   async function toggleShared(m: Member) {
     const nv = !m.isShared;
+    setMsg("");
     setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, isShared: nv } : x)));
-    await fetch(`/api/admin/brokerages/${brokerageId}/members`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: m.id, isShared: nv }),
-    }).catch(() => {});
+    const err = await send("PATCH", `/api/admin/brokerages/${brokerageId}/members`, { userId: m.id, isShared: nv });
+    if (err) {
+      setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, isShared: !nv } : x)));
+      setMsg(`Couldn't change shared inventory for ${m.name}: ${err}`, true);
+    }
   }
 
   async function toggleBrokerageAdmin(m: Member) {
     const nv = !m.isBrokerageAdmin;
+    setMsg("");
     setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, isBrokerageAdmin: nv } : x)));
-    await fetch(`/api/admin/brokerages/${brokerageId}/members`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: m.id, brokerageAdmin: nv }),
-    }).catch(() => {});
+    const err = await send("PATCH", `/api/admin/brokerages/${brokerageId}/members`, { userId: m.id, brokerageAdmin: nv });
+    if (err) {
+      setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, isBrokerageAdmin: !nv } : x)));
+      setMsg(`Couldn't change brokerage admin for ${m.name}: ${err}`, true);
+    }
   }
 
   async function deleteBrokerage() {
     if (!confirm(`Delete the brokerage "${brokerageName}"? Members stay as accounts but lose shared access.`)) return;
     setBusy(true);
-    const res = await fetch(`/api/admin/brokerages/${brokerageId}`, { method: "DELETE" });
-    if (res.ok) router.push("/admin/brokerages");
-    else setBusy(false);
+    const err = await send("DELETE", `/api/admin/brokerages/${brokerageId}`);
+    if (!err) { router.push("/admin/brokerages"); return; }
+    setBusy(false);
+    setMsg(`Couldn't delete the brokerage: ${err}`, true);
   }
 
   return (
@@ -120,7 +147,11 @@ export default function BrokerageMembers({
         )}
       </div>
 
-      {msg && <p className="text-xs text-success-600 mb-3">{msg}</p>}
+      {msg && (
+        <p role={msgIsError ? "alert" : "status"} className={`text-xs mb-3 ${msgIsError ? "text-danger-600" : "text-success-600"}`}>
+          {msg}
+        </p>
+      )}
 
       {/* Add member */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">

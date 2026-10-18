@@ -1,5 +1,18 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { safeNextPath } from '@/lib/safeNext'
+
+/**
+ * Send a signed-out visitor to the login page, remembering where they were
+ * headed (path + query only — never a full URL) so an emailed link still
+ * lands on the right page after they sign in.
+ */
+function redirectToLogin(request: NextRequest) {
+  const loginUrl = new URL('/auth/login', request.url)
+  const next = safeNextPath(request.nextUrl.pathname + request.nextUrl.search)
+  if (next && next !== '/dashboard') loginUrl.searchParams.set('next', next)
+  return NextResponse.redirect(loginUrl)
+}
 
 export async function middleware(request: NextRequest) {
   try {
@@ -66,17 +79,17 @@ export async function middleware(request: NextRequest) {
 
     // Protect dashboard routes
     if (!user && request.nextUrl.pathname.startsWith('/dashboard')) {
-      return NextResponse.redirect(new URL('/auth/login', request.url))
+      return redirectToLogin(request)
     }
 
     // Protect admin routes
     if (!user && request.nextUrl.pathname.startsWith('/admin')) {
-      return NextResponse.redirect(new URL('/auth/login', request.url))
+      return redirectToLogin(request)
     }
 
     // Protect client gallery routes
     if (!user && request.nextUrl.pathname.startsWith('/client')) {
-      return NextResponse.redirect(new URL('/auth/login', request.url))
+      return redirectToLogin(request)
     }
 
     // Redirect logged-in users away from auth pages
@@ -84,7 +97,9 @@ export async function middleware(request: NextRequest) {
       request.nextUrl.pathname.startsWith('/auth/login') ||
       request.nextUrl.pathname.startsWith('/auth/signup')
     )) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
+      // Already signed in: go where the link was pointing, if it's ours.
+      const next = safeNextPath(request.nextUrl.searchParams.get('next'))
+      return NextResponse.redirect(new URL(next ?? '/dashboard', request.url))
     }
 
     return supabaseResponse

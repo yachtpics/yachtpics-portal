@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button, Input, Label } from "@/components/ui";
+import { friendlyAuthError } from "@/lib/authErrors";
 
 /** The login page's wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
 function WordmarkLockup() {
@@ -157,7 +158,7 @@ export default function SetPasswordClient() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
-      setError(updateError.message);
+      setError(friendlyAuthError(updateError, "reset"));
       setLoading(false);
       return;
     }
@@ -269,6 +270,7 @@ export default function SetPasswordClient() {
               <Input
                 tone="dark"
                 type="password"
+                autoComplete="new-password"
                 required
                 autoFocus={!needsName}
                 value={password}
@@ -281,6 +283,7 @@ export default function SetPasswordClient() {
               <Input
                 tone="dark"
                 type="password"
+                autoComplete="new-password"
                 required
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}

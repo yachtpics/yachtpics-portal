@@ -3,6 +3,31 @@ import { notFound } from "next/navigation";
 import GallerySlideshow from "./_components/GallerySlideshow";
 import { withVideoPosters, withVideoUrls } from "@/lib/videoUrls";
 
+type GalleryContact = { name: string; email: string | null; phone: string | null };
+
+/** Quiet full-page note for a gallery that can't be shown. */
+function GalleryUnavailable({ message, contact }: { message: string; contact: GalleryContact }) {
+  return (
+    <div className="min-h-screen bg-ink-50 flex items-center justify-center px-6 text-center">
+      <div className="max-w-sm">
+        <p className="label-caps text-accent-700">{contact.name}</p>
+        <p className="text-ink-500 text-sm mt-3">{message}</p>
+        {(contact.email || contact.phone) && (
+          <p className="text-ink-500 text-sm mt-4">
+            {contact.email && (
+              <a href={`mailto:${contact.email}`} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast">{contact.email}</a>
+            )}
+            {contact.email && contact.phone && <span className="text-ink-300"> · </span>}
+            {contact.phone && (
+              <a href={`tel:${contact.phone.replace(/[^0-9+]/g, "")}`} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast">{contact.phone}</a>
+            )}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
@@ -14,30 +39,46 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
 
   const { data: gallery } = await supabase
     .from("galleries")
-    .select("id, title, slug, slideshow_published, downloads_enabled, expires_at")
+    .select("id, title, slug, slideshow_published, downloads_enabled, expires_at, created_by")
     .eq("slug", params.slug)
     .maybeSingle();
 
-  if (!gallery || !gallery.slideshow_published) notFound();
+  if (!gallery) notFound();
 
-  // The time limit governs the whole link: once it passes, the gallery stops
-  // working — viewing and downloads alike. Show a friendly note rather than a
-  // raw 404 so a recipient with an old link understands what happened.
-  const isExpired = gallery.expires_at != null && new Date(gallery.expires_at) <= new Date();
-  if (isExpired) {
-    return (
-      <div className="min-h-screen bg-ink-50 flex items-center justify-center px-6 text-center">
-        <div>
-          <p className="label-caps text-accent-700">YachtPics</p>
-          <p className="text-ink-500 text-sm mt-3">This gallery link has expired and is no longer available.</p>
-        </div>
-      </div>
-    );
+  // Who to contact about this gallery: the person who made it. Galleries are
+  // made by YachtPics staff today, so an admin creator reads "Charlie at
+  // YachtPics" with the studio email as a fallback; a broker reads as themself.
+  let contact: GalleryContact = { name: "YachtPics", email: "hello@yachtpics.com", phone: null };
+  if (gallery.created_by) {
+    const { data: creator } = await supabase
+      .from("profiles")
+      .select("role, first_name, last_name, display_email, phone")
+      .eq("id", gallery.created_by)
+      .maybeSingle();
+    if (creator) {
+      const fullName = [creator.first_name, creator.last_name].filter(Boolean).join(" ").trim();
+      if (creator.role === "admin") {
+        contact = {
+          name: creator.first_name ? `${creator.first_name} at YachtPics` : "YachtPics",
+          email: creator.display_email ?? "hello@yachtpics.com",
+          phone: creator.phone ?? null,
+        };
+      } else if (fullName) {
+        contact = { name: fullName, email: creator.display_email ?? null, phone: creator.phone ?? null };
+      }
+    }
   }
 
-  // Downloads additionally require the switch to be on (the gallery is already
-  // known to be within its time limit here).
-  const downloadsEnabled = gallery.downloads_enabled === true;
+  // Unpublished = taken down on purpose: fully blocked, viewing included.
+  if (!gallery.slideshow_published) {
+    return <GalleryUnavailable contact={contact} message={`This gallery is no longer available. Please contact ${contact.name} if you need anything from it.`} />;
+  }
+
+  // The time limit closes DOWNLOADS only — the slideshow stays viewable, as
+  // the client gallery pages promise ("Downloads closed — slideshow still
+  // available"). The download routes enforce the same limit server-side.
+  const isExpired = gallery.expires_at != null && new Date(gallery.expires_at) <= new Date();
+  const downloadsEnabled = !isExpired && gallery.downloads_enabled === true;
 
   const { data: photos } = await supabase
     .from("photos")
@@ -68,5 +109,15 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
     .map((v, i) => ({ url: v.url, filename: v.filename ?? null, posterUrl: videoPosters[i]?.posterUrl ?? null }))
     .filter((s): s is { url: string; filename: string | null; posterUrl: string | null } => !!s.url);
 
-  return <GallerySlideshow slug={gallery.slug} title={gallery.title} photos={photoSlides} videos={videoSlides} downloadsEnabled={downloadsEnabled} />;
+  return (
+    <GallerySlideshow
+      slug={gallery.slug}
+      title={gallery.title}
+      photos={photoSlides}
+      videos={videoSlides}
+      downloadsEnabled={downloadsEnabled}
+      downloadsClosedNote={isExpired ? `Downloads for this gallery have closed. Contact ${contact.name} for files.` : null}
+      contact={contact}
+    />
+  );
 }

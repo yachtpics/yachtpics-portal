@@ -74,12 +74,17 @@ export default function GallerySlideshow({
   photos,
   videos,
   downloadsEnabled = false,
+  downloadsClosedNote = null,
+  contact = null,
 }: {
   slug: string;
   title: string;
   photos: { url: string; category: string | null }[];
   videos: { url: string; filename: string | null; posterUrl?: string | null }[];
   downloadsEnabled?: boolean;
+  /** Shown quietly under the header once the download window has closed. */
+  downloadsClosedNote?: string | null;
+  contact?: { name: string; email: string | null; phone: string | null } | null;
 }) {
   const slides = useMemo<Slide[]>(
     () => [
@@ -389,6 +394,18 @@ export default function GallerySlideshow({
           <span>{dlError}</span>
           <button onClick={() => setDlError("")} className="shrink-0 font-bold text-warn-700 hover:text-warn-800" aria-label="Dismiss">×</button>
         </div>
+      )}
+
+      {downloadsClosedNote && (
+        <p className="mx-4 sm:mx-6 mt-3 text-sm text-ink-500">
+          {downloadsClosedNote}
+          {contact?.email && (
+            <>
+              {" "}
+              <a href={`mailto:${contact.email}`} className="text-accent-700 hover:text-accent-600 transition-colors duration-fast">{contact.email}</a>
+            </>
+          )}
+        </p>
       )}
 
       {view === "slideshow" ? (

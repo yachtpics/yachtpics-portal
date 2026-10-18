@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     // Check if broker already has a Stripe customer ID and whether they've used a trial
     const { data: sub } = await serviceSupabase
       .from("subscriptions")
-      .select("stripe_customer_id, trial_ends_at")
+      .select("stripe_customer_id, trial_ends_at, status, stripe_subscription_id")
       .eq("broker_id", user.id)
       .single();
 
@@ -54,20 +54,29 @@ export async function POST(req: NextRequest) {
 
     const origin = req.headers.get("origin") ?? "https://yachtpics-portal.vercel.app";
 
-    // Only grant a trial if the broker has never had one.
+    // The free trial runs in the portal (subscriptions.trial_ends_at, started
+    // on first login). If a broker picks a plan while that trial is still
+    // running, tell Stripe not to charge until it ends, so choosing early never
+    // costs them trial days. Stripe requires trial_end at least 48 hours out
+    // (we keep an hour's margin); closer than that, billing starts now.
     // Passing undefined is identical to omitting the property in Stripe's SDK.
-    const hasUsedTrial = !!sub?.trial_ends_at;
-    const trialDays = hasUsedTrial ? undefined : 30;
+    let trialEnd: number | undefined;
+    if (sub?.status === "trialing" && !sub.stripe_subscription_id && sub.trial_ends_at) {
+      const endMs = new Date(sub.trial_ends_at).getTime();
+      if (Number.isFinite(endMs) && endMs - Date.now() >= 49 * 60 * 60 * 1000) {
+        trialEnd = Math.floor(endMs / 1000);
+      }
+    }
 
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: "subscription",
       payment_method_types: ["card"],
       line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard/billing?success=1`,
+      success_url: `${origin}/dashboard/billing?success=1${trialEnd ? `&trial_end=${trialEnd}` : ""}`,
       cancel_url: `${origin}/dashboard/billing?cancelled=1`,
       subscription_data: {
-        trial_period_days: trialDays,
+        trial_end: trialEnd,
         metadata: { supabase_user_id: user.id },
       },
       metadata: { supabase_user_id: user.id },

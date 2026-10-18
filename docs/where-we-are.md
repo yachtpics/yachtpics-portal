@@ -1,5 +1,19 @@
 # Where we are — October 6, 2026
 
+## Oct 18 — broker flow fixes — NOT PUSHED (parent will push), NOT TESTED LIVE, no DB changes
+
+- **Billing honesty:** checkout (`/api/stripe/checkout`) now passes `subscription_data.trial_end` = the in-app trial end (`subscriptions.trial_ends_at`) when the broker is still on the portal trial (status `trialing`, no Stripe sub) and it's ≥ 49 h away (Stripe needs 48 h); otherwise no trial and billing starts at checkout. The Billing page says which applies ("you won't be charged until {date}" / "choosing a plan now starts billing today"), buttons read "Choose plan" during the trial (not "Switch plan"/"Start free trial"), success says "Your plan is active." plus "Billing starts when your trial ends on {date}." only when a trial_end was passed (`?trial_end=` on the success URL). `alert()`s replaced with inline error text; "cancelled -- your plan" fixed.
+- **Office-plan brokers:** dashboard uses `getEffectiveAccessStatus`, so office-covered (and paid) brokers no longer see "Your free trial ends in N days — Upgrade" or the "Choose a plan" onboarding step; the Plan tile reads "Office plan" for them.
+- **Shoots & Invoices hidden:** nav item, dashboard "Total Shoots" tile and the Shoots card removed (`/dashboard/shoots` page left in place; table is empty, invoicing is in Zoho).
+- **Return-to-page after sign-in:** middleware adds `?next=<path+query>` when bouncing a signed-out visitor; login honours it (password + magic link), the magic-link email carries it to `/auth/confirm`, which honours it. One validator `src/lib/safeNext.ts` (single leading "/", no "//", "\\", ":" or control chars), also used by `/auth/callback`. Signed-in visitors hitting /auth/login?next=… go straight there. `/auth/login?error=auth_error` now shows a friendly line.
+- **Expired client galleries:** `/g/[slug]` keeps showing the slideshow after the download window closes (downloads off, quiet note "Downloads for this gallery have closed. Contact {name} for files."). Unpublished galleries (the only "revoked" state — there's no revoked column) stay fully blocked, now with a quiet page naming the contact instead of a 404. Contact = gallery creator (admins read "{First} at YachtPics", studio email fallback). Download/signed-url routes already enforce the time limit server-side.
+- **Phone nav:** explicit short labels (Home, Listings, Recent, Reels, Brokers, Profile); bottom bar capped at 5 tabs + **More** (sheet with the rest: Help, Tips, News, Billing, Team, Brokerage…). Desktop sidebar now prefix-matches, so My Listings stays highlighted inside a listing.
+- **Listing page:** closing the Save dialog no longer falls through to a plain download; Copy Link only says "Copied" once the clipboard accepts it (else shows the link); a listing that fails to load shows "This listing isn't available" + Back link; Send to Client errors are inline in the dialog; single-photo downloads are named "Sea Dream – Salon.jpg".
+- **Auth pages:** friendly messages instead of raw Supabase text (`src/lib/authErrors.ts`: wrong password, email not confirmed, rate limited, etc., generic fallback) on login/signup and forgot/reset/set-password; `autoComplete` on email/password fields (current-password on login, new-password elsewhere); dashboard greets "Welcome, {name}" on the first visit (welcomed_at unset or < 30 min old), "Welcome back" after.
+- **Help:** updated — removed the Shoots & Invoices section (sections renumbered 01–14, Your Reels now 15) and its quick-ref row; billing step now explains the trial starts at first sign-in and choosing a plan early doesn't charge until it ends (last two days excepted); added the phone tabs / More step and quick-ref row; "Start a free trial" quick-ref → "Choose a plan". PDF rebuilt (`public/YachtPics_Portal_User_Guide.pdf`, 14 sections, 51 rows).
+- **Check after push:** as a trial broker open Billing (copy + "Choose plan"), run a test checkout and confirm Stripe shows the trial end date; sign out, open an emailed listing link, sign in → lands on that listing; on a phone, bottom bar shows ≤ 6 items and More opens; open an expired `/g/` link → slideshow plays, no download button, note shows.
+- **Tested:** typecheck + eslint clean. Not tested live.
+
 ## Oct 18 — speed pass 1 — NOT PUSHED (parent will push), NOT TESTED LIVE, MIGRATION 20261018d NOT APPLIED
 
 - **Buyer slideshow `/s/[slug]`:** broker_details now fetched with profile/photos/videos; photo, video, video-poster and deck-plan signing run in parallel (was 4 steps in a row).
@@ -48,6 +62,19 @@
 - **Charlie's setup steps:** `docs/meta-setup.md` (dashboard fields, Vercel env vars `META_APP_ID`, `META_APP_SECRET`, `SOCIAL_TOKEN_KEY`, optional `NEXT_PUBLIC_META_APP_ID` / `META_LOGIN_CONFIG_ID`).
 - **Help:** admin-only, so the broker Help page and PDF are unchanged. CLAUDE.md now notes Help must be updated when `SOCIAL_PUBLISHING_FOR_BROKERS` flips (brokers will also need a posting button on their Reels page then).
 - **Tested:** typecheck + eslint clean; encryption round-trip, tamper rejection, `signed_request` verify (good/bad signature) and the login URL checked in Node. **Untested:** everything that talks to Meta (needs the App Secret + migration).
+
+## Oct 18 — admin reliability — NOT PUSHED (parent will push), NOT TESTED LIVE, no DB changes
+
+Admin pages now say when something fails instead of always claiming success.
+
+- **Listing page (`AdminListingDetail.tsx`)**: the banner has a red error style. Status Save, publish/unpublish slideshow, photo show/hide, Sort to standard order, bulk area apply and Send ready email now report failures (red) instead of green. Photo deletes only disappear from the screen once the server confirms; a failed delete keeps them and says why.
+- **Uploads (listing page + New Listing)**: 4 photos upload at a time (order still follows the file order). Failures are listed ("8 uploaded, 2 failed: a.jpg, b.jpg") with a Retry for just those. A photo whose file uploaded but whose record failed has its file removed (no orphans). Closing the tab mid-upload asks first. Shared helper: `src/lib/uploadListingPhoto.ts`.
+- **Send ready email**: media type defaults to what's on the listing (photos / video / both), shows "Last sent {date}" from the email log, and asks before sending again.
+- **New Listing from the invite flow**: if the auto ready-email fails, it stays on the page with "Listing created, but the ready email didn't send — send it from the listing page." If photos fail, it stops with Retry instead of moving on (and the submit button locks so a second click can't make a duplicate listing).
+- **Brokerage members**: remove / shared-inventory / brokerage-admin changes snap back with a red message if the server refuses.
+- **Admin nav**: "Video Migration" removed from the nav (route `/admin/media` still works); "Photo Categories" added next to Listings; the two identical priority lists merged into one.
+- Help: no change — all admin-only.
+- **To check**: on a listing, upload a batch (watch it go faster); try hiding a photo; open Send ready email on a boat that already had one (should ask to confirm).
 
 ## Oct 15 — Showroom Loop (admin only, /admin/showroom) — NOT PUSHED (parent will push), NOT BROWSER-TESTED IN THE PORTAL
 

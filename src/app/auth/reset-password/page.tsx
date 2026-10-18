@@ -5,6 +5,7 @@ export const dynamic = 'force-dynamic';
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Input, Label } from "@/components/ui";
+import { friendlyAuthError } from "@/lib/authErrors";
 
 /** The login page's wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
 function WordmarkLockup() {
@@ -50,7 +51,7 @@ export default function ResetPasswordPage() {
       redirectTo: `${window.location.origin}/auth/reset-password`,
     });
     setResending(false);
-    if (error) { setResendErr(error.message); return; }
+    if (error) { setResendErr(friendlyAuthError(error, "link")); return; }
     setResent(true);
   }
 
@@ -142,7 +143,7 @@ export default function ResetPasswordPage() {
     const { error: updateError } = await supabase.auth.updateUser({ password });
 
     if (updateError) {
-      setError(updateError.message);
+      setError(friendlyAuthError(updateError, "reset"));
       setLoading(false);
       return;
     }
@@ -205,6 +206,7 @@ export default function ResetPasswordPage() {
                     <Input
                       tone="dark"
                       type="email"
+                      autoComplete="email"
                       required
                       autoFocus
                       value={resendEmail}
@@ -259,6 +261,7 @@ export default function ResetPasswordPage() {
             <Input
               tone="dark"
               type="password"
+              autoComplete="new-password"
               required
               autoFocus
               value={password}
@@ -271,6 +274,7 @@ export default function ResetPasswordPage() {
             <Input
               tone="dark"
               type="password"
+              autoComplete="new-password"
               required
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}

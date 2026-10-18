@@ -25,6 +25,7 @@ import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@d
 import { CSS } from "@dnd-kit/utilities";
 import RetryImg from "@/components/RetryImg";
 import { reorderPhotos } from "@/lib/reorderPhotos";
+import { runPool, uploadListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
 import {
   SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
   sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
@@ -192,11 +193,35 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [slideshowCopied, setSlideshowCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [notifying, setNotifying] = useState(false);
-  const [notifyMediaType, setNotifyMediaType] = useState<"photos" | "video" | "both">("photos");
+  // Defaults to what's actually on the listing (photos, video or both) until
+  // the admin picks something by hand.
+  const [notifyMediaType, setNotifyMediaTypeRaw] = useState<"photos" | "video" | "both">(
+    initialVideos.length > 0 ? (initialPhotos.length > 0 ? "both" : "video") : "photos"
+  );
+  const [notifyTypeTouched, setNotifyTypeTouched] = useState(false);
+  // Last "ready" email for this listing, from the email log; updated locally
+  // after a send so the confirm step works without a reload.
+  const [lastReadySentAt, setLastReadySentAt] = useState<string | null>(() => {
+    const times = sentEmails
+      .filter((e) => ["photos_ready", "video_ready", "media_ready"].includes(e.email_type) && e.status !== "failed")
+      .map((e) => e.sent_at)
+      .sort();
+    return times.length ? times[times.length - 1] : null;
+  });
+  // Photos whose upload failed in the last batch — kept so Retry can re-run
+  // just those.
+  const [uploadFailed, setUploadFailed] = useState<{ files: File[]; ok: number } | null>(null);
   // Who gets the "ready" email. "assistant" keeps the broker's inbox quiet when
   // only their assistant needs to know the files have landed.
   const [notifyTo, setNotifyTo] = useState<"both" | "broker" | "assistant">("both");
-  const [message, setMessage] = useState("");
+  // The banner under the header. `kind` picks the colour: a failure must never
+  // show up in the green success style.
+  const [message, setMessageText] = useState("");
+  const [messageKind, setMessageKind] = useState<"success" | "error">("success");
+  function setMessage(text: string, kind: "success" | "error" = "success") {
+    setMessageText(text);
+    setMessageKind(kind);
+  }
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
@@ -411,76 +436,117 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     ? `${broker.first_name} ${broker.last_name ?? ""}`.trim()
     : broker?.display_email ?? "Unknown";
 
-  async function handleFiles(files: FileList | null) {
-    if (!files) return;
+  // Follow what's on the listing for the "ready" email's media type until the
+  // admin chooses one themselves.
+  useEffect(() => {
+    if (notifyTypeTouched) return;
+    setNotifyMediaTypeRaw(videos.length > 0 ? (photos.length > 0 ? "both" : "video") : "photos");
+  }, [photos.length, videos.length, notifyTypeTouched]);
+  function setNotifyMediaType(v: "photos" | "video" | "both") {
+    setNotifyTypeTouched(true);
+    setNotifyMediaTypeRaw(v);
+  }
+
+  // Leaving mid-batch abandons the rest of the uploads — warn first.
+  useEffect(() => {
+    if (!uploading) return;
+    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
+    window.addEventListener("beforeunload", h);
+    return () => window.removeEventListener("beforeunload", h);
+  }, [uploading]);
+
+  async function handleFiles(files: FileList | File[] | null) {
+    if (!files || uploading) return;
+    const fileArr = Array.from(files);
+    if (fileArr.length === 0) return;
     setUploading(true);
     setUploadProgress(0);
-    const fileArr = Array.from(files);
+    setUploadFailed(null);
     // Stamp WHICH admin uploaded these. It used to be null, which made every
     // admin upload anonymous — "who uploaded this?" had no answer beyond
     // "YachtPics". The by-YachtPics checks look the role up by id, so a
     // stamped admin still counts as ours.
     const { data: { user } } = await supabase.auth.getUser();
 
-    for (let i = 0; i < fileArr.length; i++) {
-      const file = fileArr[i];
-      const ext = file.name.split(".").pop();
-      const path = `${listing.broker_id}/${listing.id}/${Date.now()}-${i}.${ext}`;
+    // Order is fixed up front from the files' own order, so running four at a
+    // time can't shuffle display_order by whichever finishes first.
+    const baseOrder = photos.length;
+    const stamp = Date.now();
+    const results: (Photo | null)[] = fileArr.map(() => null);
+    const failedIdx: number[] = [];
+    let done = 0;
 
-      const { error } = await supabase.storage
-        .from("listing-photos")
-        .upload(path, file, { upsert: false });
-
-      if (!error) {
-        const category = guessCategory(file.name);
-        const { data: newPhoto } = await supabase.from("photos").insert({
-          listing_id: listing.id,
-          storage_path: path,
-          filename: file.name,
-          category,
-          display_order: photos.length + i,
-          is_visible: true,
-          uploaded_by: user?.id ?? null,
-        }).select().single();
-
-        if (newPhoto) {
-          const { data: signed } = await supabase.storage
-            .from("listing-photos")
-            .createSignedUrl(path, 3600);
-          setPhotos((prev) => [...prev, { ...newPhoto, url: signed?.signedUrl ?? null } as Photo]);
-        }
+    await runPool(fileArr, PHOTO_UPLOAD_CONCURRENCY, async (file, i) => {
+      const r = await uploadListingPhoto({
+        supabase,
+        file,
+        brokerId: listing.broker_id,
+        listingId: listing.id,
+        pathKey: `${stamp}-${i}`,
+        category: guessCategory(file.name),
+        displayOrder: baseOrder + i,
+        uploadedBy: user?.id ?? null,
+      }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
+      if (r.ok) {
+        const { data: signed } = await supabase.storage
+          .from("listing-photos")
+          .createSignedUrl(r.row.storage_path, 3600);
+        const photo = { ...r.row, url: signed?.signedUrl ?? null } as Photo;
+        results[i] = photo;
+        setPhotos((prev) => [...prev, photo]);
+      } else {
+        failedIdx.push(i);
       }
-      setUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
-    }
+      done++;
+      setUploadProgress(Math.round((done / fileArr.length) * 100));
+    });
+
+    // New photos appeared in finishing order; put them back in file order.
+    const added = results.filter((x): x is Photo => x !== null);
+    const addedIds = new Set(added.map((x) => x.id));
+    setPhotos((prev) => [...prev.filter((x) => !addedIds.has(x.id)), ...added]);
+
     setUploading(false);
     refreshThumbs();
-    setMessage(`${fileArr.length} photo${fileArr.length !== 1 ? "s" : ""} uploaded.`);
-    setTimeout(() => setMessage(""), 3000);
+    if (failedIdx.length === 0) {
+      setMessage(`${added.length} photo${added.length !== 1 ? "s" : ""} uploaded.`);
+      setTimeout(() => setMessage(""), 3000);
+    } else {
+      failedIdx.sort((a, b) => a - b);
+      setUploadFailed({ files: failedIdx.map((i) => fileArr[i]), ok: added.length });
+    }
   }
 
-
   async function toggleVisibility(photoId: string, current: boolean) {
-    await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
+    const { error } = await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
+    if (error) {
+      setMessage(`Couldn't ${current ? "hide" : "show"} that photo: ${error.message}`, "error");
+      setTimeout(() => setMessage(""), 5000);
+      return;
+    }
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
   }
 
-  async function updateCategory(photoId: string, category: string) {
+  async function updateCategory(photoId: string, category: string, quiet = false): Promise<boolean> {
     const res = await fetch("/api/admin/photos/update-category", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ photoId, category }),
     });
     if (!res.ok) {
-      const data = await res.json();
-      setMessage("Failed to save category: " + (data.error ?? "Unknown error"));
-      setTimeout(() => setMessage(""), 4000);
-      return;
+      const data = await res.json().catch(() => ({}));
+      if (!quiet) {
+        setMessage("Failed to save category: " + (data.error ?? "Unknown error"), "error");
+        setTimeout(() => setMessage(""), 4000);
+      }
+      return false;
     }
     setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
     // If it's a non-standard category, add it to the custom list so other photos can pick it
     if (!(PHOTO_CATEGORIES as readonly string[]).includes(category)) {
       setCustomCategories((prev) => prev.includes(category) ? prev : [...prev, category]);
     }
+    return true;
   }
 
   // Set the category on every selected photo at once — so 20 shots of the same
@@ -489,10 +555,20 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (!bulkCategory || selectedIds.size === 0) return;
     setBulkCategorizing(true);
     const ids = Array.from(selectedIds);
-    await Promise.all(ids.map((photoId) => updateCategory(photoId, bulkCategory)));
+    const results = await Promise.all(
+      ids.map((photoId) => updateCategory(photoId, bulkCategory, true).catch(() => false))
+    );
     setBulkCategorizing(false);
-    setSelectedIds(new Set());
     const label = bulkCategory;
+    const failedIds = ids.filter((_, i) => !results[i]);
+    if (failedIds.length > 0) {
+      // Keep the failed ones selected so a second click retries just those.
+      setSelectedIds(new Set(failedIds));
+      const ok = ids.length - failedIds.length;
+      setMessage(`Set ${ok} photo${ok !== 1 ? "s" : ""} to “${label}”; ${failedIds.length} failed (still selected — try again).`, "error");
+      return;
+    }
+    setSelectedIds(new Set());
     setBulkCategory("");
     setMessage(`Set ${ids.length} photo${ids.length !== 1 ? "s" : ""} to “${label}”.`);
     setTimeout(() => setMessage(""), 3000);
@@ -507,7 +583,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     const { error } = await supabase.from("listings").update({ hero_photo_id: next }).eq("id", listing.id);
     if (error) {
       setHeroPhotoId(prev);
-      setMessage("Couldn't update the cover photo.");
+      setMessage("Couldn't update the cover photo.", "error");
       setTimeout(() => setMessage(""), 3000);
       return;
     }
@@ -523,10 +599,19 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced.")) return;
     setSorting(true);
     const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
-    await reorderPhotos(supabase, listing.id, sorted.map((p) => p.id));
+    const { error: orderErr } = await reorderPhotos(supabase, listing.id, sorted.map((p) => p.id));
+    if (orderErr) {
+      setSorting(false);
+      setMessage(`Couldn't save the new order: ${orderErr}`, "error");
+      return;
+    }
     setPhotos(sorted.map((p, i) => ({ ...p, display_order: i })));
-    await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
+    const { error: listErr } = await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
     setSorting(false);
+    if (listErr) {
+      setMessage(`Photos re-sorted, but the listing couldn't be marked hand-sorted (${listErr.message}) — the order may revert. Try again.`, "error");
+      return;
+    }
     setMessage("Sorted to standard order.");
     setTimeout(() => setMessage(""), 2500);
   }
@@ -545,7 +630,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     const { error: orderErr } = await reorderPhotos(supabase, listing.id, next.map((p) => p.id));
     const { error: listErr } = await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
     if (listErr || orderErr) {
-      setMessage("Couldn\u2019t save the new order \u2014 refresh and try again.");
+      setMessage("Couldn\u2019t save the new order \u2014 refresh and try again.", "error");
       setTimeout(() => setMessage(""), 4000);
     }
   }
@@ -554,16 +639,28 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   // calls: the server verifies access, deletes the recorded path, and writes
   // the deletion log — the record that answers "what happened to the photos
   // on this boat?" long after they're gone.
-  async function deletePhotosViaApi(photoIds: string[]) {
-    await fetch("/api/photos/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoIds }),
-    });
+  async function deletePhotosViaApi(photoIds: string[]): Promise<string | null> {
+    try {
+      const res = await fetch("/api/photos/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds }),
+      });
+      if (res.ok) return null;
+      const data = await res.json().catch(() => ({}));
+      return data.error ?? `Server returned ${res.status}`;
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
   }
 
+  // Photos only leave the screen once the server confirms they're gone.
   async function deletePhoto(photoId: string, _storagePath: string) {
-    await deletePhotosViaApi([photoId]);
+    const err = await deletePhotosViaApi([photoId]);
+    if (err) {
+      setMessage(`Couldn't delete that photo: ${err}`, "error");
+      return;
+    }
     setPhotos((prev) => prev.filter((p) => p.id !== photoId));
     setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
   }
@@ -572,11 +669,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (selectedIds.size === 0) return;
     setDeleting(true);
     const toDelete = photos.filter((p) => selectedIds.has(p.id));
-    await deletePhotosViaApi(toDelete.map((p) => p.id));
-    setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
+    const ids = new Set(toDelete.map((p) => p.id));
+    const err = await deletePhotosViaApi(toDelete.map((p) => p.id));
+    setDeleting(false);
+    if (err) {
+      setMessage(`Couldn't delete the selected photos: ${err}. Nothing was removed.`, "error");
+      return;
+    }
+    setPhotos((prev) => prev.filter((p) => !ids.has(p.id)));
     setSelectedIds(new Set());
     setSelectMode(false);
-    setDeleting(false);
     setMessage(`${toDelete.length} photo${toDelete.length !== 1 ? "s" : ""} deleted.`);
     setTimeout(() => setMessage(""), 3000);
   }
@@ -584,16 +686,24 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   async function deleteAll() {
     setDeleting(true);
     setConfirmDeleteAll(false);
-    await deletePhotosViaApi(photos.map((p) => p.id));
-    setPhotos([]);
+    const ids = new Set(photos.map((p) => p.id));
+    const err = await deletePhotosViaApi(photos.map((p) => p.id));
+    setDeleting(false);
+    if (err) {
+      setMessage(`Couldn't delete the photos: ${err}. Nothing was removed.`, "error");
+      return;
+    }
+    setPhotos((prev) => prev.filter((p) => !ids.has(p.id)));
     setSelectedIds(new Set());
     setSelectMode(false);
-    setDeleting(false);
     setMessage("All photos deleted.");
     setTimeout(() => setMessage(""), 3000);
   }
 
   async function notifyBroker() {
+    if (lastReadySentAt && !confirm(
+      `A ready email already went out for this listing on ${new Date(lastReadySentAt).toLocaleString()}. Send another?`
+    )) return;
     setNotifying(true);
     try {
       const wantBroker = notifyTo !== "assistant";
@@ -658,13 +768,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
       if (sentTo.length === 0) {
         // Nothing actually went out — say so rather than report a success.
-        setMessage(`Nothing sent — ${notes.join("; ")}.`);
+        setMessage(`Nothing sent — ${notes.join("; ")}.`, "error");
         return;
       }
 
-      setMessage(`Notification sent to ${sentTo.join(" + ")}.${notes.length ? ` (${notes.join("; ")})` : ""}`);
+      setLastReadySentAt(new Date().toISOString());
+      setMessage(`Notification sent to ${sentTo.join(" + ")}.${notes.length ? ` (${notes.join("; ")})` : ""}`, notes.some((n) => n.includes("failed")) ? "error" : "success");
     } catch (err) {
-      setMessage(`Error: ${err instanceof Error ? err.message : String(err)}`);
+      setMessage(`Error: ${err instanceof Error ? err.message : String(err)}`, "error");
     } finally {
       setNotifying(false);
       // No auto-dismiss — user closes manually so they can confirm who was notified
@@ -673,8 +784,12 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
   async function updateStatus() {
     setSaving(true);
-    await supabase.from("listings").update({ status }).eq("id", listing.id);
+    const { error } = await supabase.from("listings").update({ status }).eq("id", listing.id);
     setSaving(false);
+    if (error) {
+      setMessage(`Couldn't update the status: ${error.message}`, "error");
+      return;
+    }
     setMessage("Status updated.");
     setTimeout(() => setMessage(""), 3000);
   }
@@ -684,6 +799,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     const slug = slideshowSlug ?? Math.random().toString(36).substring(2, 10);
     const { error } = await supabase.from("listings").update({ slideshow_slug: slug, slideshow_published: true }).eq("id", listing.id);
     if (!error) { setSlideshowSlug(slug); setSlideshowPublished(true); }
+    else setMessage(`Couldn't publish the slideshow: ${error.message}`, "error");
     setSlideshowBusy(false);
   }
 
@@ -691,6 +807,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setSlideshowBusy(true);
     const { error } = await supabase.from("listings").update({ slideshow_published: false }).eq("id", listing.id);
     if (!error) setSlideshowPublished(false);
+    else setMessage(`Couldn't unpublish the slideshow: ${error.message}`, "error");
     setSlideshowBusy(false);
   }
 
@@ -717,7 +834,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setTimeout(() => setMessage(""), 3000);
     } catch {
       setIsShared(!next); // revert
-      setMessage("Couldn't update sharing. Please try again.");
+      setMessage("Couldn't update sharing. Please try again.", "error");
       setTimeout(() => setMessage(""), 3000);
     } finally {
       setSharingBusy(false);
@@ -753,7 +870,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setTimeout(() => setMessage(""), 4000);
     } catch {
       setOptOut(!next); // revert
-      setMessage("Couldn't update the pocket-listing setting. Please try again.");
+      setMessage("Couldn't update the pocket-listing setting. Please try again.", "error");
       setTimeout(() => setMessage(""), 3000);
     } finally {
       setOptOutBusy(false);
@@ -776,7 +893,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setTimeout(() => setMessage(""), 3000);
     } catch {
       setInShowcase(!next); // revert
-      setMessage("Couldn't update the showcase. Please try again.");
+      setMessage("Couldn't update the showcase. Please try again.", "error");
       setTimeout(() => setMessage(""), 3000);
     } finally {
       setShowcaseBusy(false);
@@ -800,7 +917,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setTimeout(() => setMessage(""), 2500);
     } catch {
       setSitePage(prev); // revert
-      setMessage("Couldn't set the website page.");
+      setMessage("Couldn't set the website page.", "error");
       setTimeout(() => setMessage(""), 3000);
     }
   }
@@ -824,7 +941,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setMessage(`Added "${data.label}" and set it for this boat.`);
       setTimeout(() => setMessage(""), 4000);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Couldn't add the brokerage page.");
+      setMessage(e instanceof Error ? e.message : "Couldn't add the brokerage page.", "error");
       setTimeout(() => setMessage(""), 5000);
     }
   }
@@ -857,7 +974,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       setTimeout(() => setMessage(""), 5000);
     } catch (e) {
       setSiteMedia(prev); // revert
-      setMessage(e instanceof Error ? e.message : "Couldn't save that.");
+      setMessage(e instanceof Error ? e.message : "Couldn't save that.", "error");
       setTimeout(() => setMessage(""), 5000);
     } finally {
       setSiteMediaBusy(false);
@@ -890,7 +1007,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       else setMessage(`Published to yachtpics.com — ${data.uploaded?.length ?? 0} page(s) uploaded.`);
       setTimeout(() => setMessage(""), 6000);
     } catch (e) {
-      setMessage(e instanceof Error ? e.message : "Couldn't update the website.");
+      setMessage(e instanceof Error ? e.message : "Couldn't update the website.", "error");
       setTimeout(() => setMessage(""), 6000);
     } finally {
       setSiteBusy(false);
@@ -1274,6 +1391,11 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           >
             {notifying ? "Sending..." : "📧 Send ready email"}
           </button>
+          {lastReadySentAt && (
+            <span className="text-xs text-ink-400 self-center" title={new Date(lastReadySentAt).toLocaleString()}>
+              Last sent {new Date(lastReadySentAt).toLocaleDateString()}
+            </span>
+          )}
           <button
             onClick={updateStatus}
             disabled={saving}
@@ -1285,11 +1407,20 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       </div>
 
       {message && (
-        <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-success-50 border border-success-200 text-success-700 flex items-start justify-between gap-3">
+        <div
+          role={messageKind === "error" ? "alert" : "status"}
+          className={`mb-5 px-4 py-3 rounded-ctl text-sm flex items-start justify-between gap-3 ${
+            messageKind === "error"
+              ? "bg-danger-50 border border-danger-200 text-danger-700"
+              : "bg-success-50 border border-success-200 text-success-700"
+          }`}
+        >
           <span>{message}</span>
           <button
             onClick={() => setMessage("")}
-            className="shrink-0 text-success-600 hover:text-success-700 leading-none text-base font-bold"
+            className={`shrink-0 leading-none text-base font-bold ${
+              messageKind === "error" ? "text-danger-600 hover:text-danger-700" : "text-success-600 hover:text-success-700"
+            }`}
             aria-label="Dismiss"
           >
             ×
@@ -1636,6 +1767,29 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <div className="bg-ink-100 rounded-full h-2">
               <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
             </div>
+          </div>
+        )}
+
+        {uploadFailed && !uploading && (
+          <div role="alert" className="mb-4 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700 flex items-start justify-between gap-3">
+            <span>
+              {uploadFailed.ok} uploaded, {uploadFailed.files.length} failed: {uploadFailed.files.map((f) => f.name).join(", ")}
+            </span>
+            <span className="shrink-0 flex items-center gap-3">
+              <button
+                onClick={() => handleFiles(uploadFailed.files)}
+                className="font-semibold underline underline-offset-2 hover:text-danger-600"
+              >
+                Retry
+              </button>
+              <button
+                onClick={() => setUploadFailed(null)}
+                className="text-danger-600 hover:text-danger-700 leading-none text-base font-bold"
+                aria-label="Dismiss"
+              >
+                ×
+              </button>
+            </span>
           </div>
         )}
 
