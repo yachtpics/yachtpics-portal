@@ -22,6 +22,7 @@ export const maxDuration = 60;
 //                        send window + ET date == WEEK1_/LASTCALL_AUTO_SEND_ON
 //                        + email_log dedup)
 //   • reel-service     — EVERY DAY (plans the month's missing Reel Service jobs)
+//   • social           — EVERY DAY (due Instagram posts + unfinished IG reels)
 const PROD = "https://portal.yachtpics.com";
 
 export async function GET(req: NextRequest) {
@@ -72,6 +73,11 @@ export async function GET(req: NextRequest) {
   // enrolled brokers (the whole month on the 1st; mid-month enrolments any
   // day). Idempotent, renders nothing, emails no one.
   jobs.push("/api/cron/reel-service");
+  // Social publishing: sends Instagram posts whose scheduled time has passed
+  // and finishes Instagram reels still processing after "Post now". Daily is
+  // the Hobby limit, so this is the safety net — Facebook schedules publish on
+  // Facebook's side at the exact time. Self-gating: no Meta config, no run.
+  jobs.push("/api/cron/social");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never

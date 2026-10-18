@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import HelpTip from "@/components/HelpTip";
 import EnableNotifications from "@/components/EnableNotifications";
+import SocialAccounts from "@/components/SocialAccounts";
 
 interface ProfileData {
   first_name: string;
@@ -261,6 +262,9 @@ export default function ProfilePage() {
         </div>
         <p className="text-ink-500 text-xs mt-3">Essential account emails — client delivery confirmations, password resets, and billing — are always sent.</p>
       </section>
+
+      {/* Social accounts — renders only when the server opens it to this viewer */}
+      <SocialAccounts />
 
       {/* Company Logo — brokers only */}
       {!isAssistant && (

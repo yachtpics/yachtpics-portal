@@ -215,6 +215,11 @@ export default function LoginPage() {
         <p className="mt-12 text-center text-[0.625rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-white/25">
           Yacht Photography
         </p>
+        <p className="mt-3 text-center text-xs text-ink-500">
+          <Link href="/privacy" className="hover:text-ink-300 transition-colors duration-fast">Privacy</Link>
+          {" · "}
+          <Link href="/data-deletion" className="hover:text-ink-300 transition-colors duration-fast">Data deletion</Link>
+        </p>
       </div>
     </div>
   );

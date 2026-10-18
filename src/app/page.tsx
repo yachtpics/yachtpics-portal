@@ -80,7 +80,11 @@ export default function Home() {
           © {new Date().getFullYear()} YachtPics · North Palm Beach, Florida ·{" "}
           <a href="https://www.yachtpics.com" className="hover:text-ink-300 transition-colors duration-fast">
             yachtpics.com
-          </a>
+          </a>{" "}
+          ·{" "}
+          <Link href="/privacy" className="hover:text-ink-300 transition-colors duration-fast">
+            Privacy
+          </Link>
         </p>
       </footer>
     </main>

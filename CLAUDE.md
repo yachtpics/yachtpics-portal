@@ -34,6 +34,10 @@ or do, update the Help page in the same change:
   `DEPTH_LOOKS_STEP` and `REEL_SERVICE_SECTION` in the Help page. Anything kept
   outside `sections` never reaches the PDF.
 - Don't invent features or prices; check the code.
+- Facebook/Instagram posting is admin-only behind `SOCIAL_PUBLISHING_FOR_BROKERS`
+  in `src/lib/meta/config.ts` (see `docs/meta-setup.md`). When that flips to
+  `true`, add Social accounts + posting to the Help page and rebuild the PDF in
+  the same change.
 - Say in the hand-off note (`docs/where-we-are.md`) what you changed in Help,
   or why Help didn't need a change.
 

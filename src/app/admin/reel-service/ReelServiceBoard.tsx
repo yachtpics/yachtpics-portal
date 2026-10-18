@@ -7,6 +7,7 @@ import { ANGLE_LABEL, VIDEO_LED_LOOKS, VIDEO_LED_MIN_FOOTAGE, footageOf, jobMusi
 import { MUSIC_CHOICES, MUSIC_LABEL, moodForLook } from "@/lib/reelMusic";
 import { detectShots, probeClip, rememberShots, type ShotInfo } from "@/lib/reelClips";
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
+import SocialPostDialog from "@/components/SocialPostDialog";
 
 /** A listing video, for the footage badge and "Measure videos". */
 /** `shots`: how many shots were detected (videos.shot_cuts); null = not yet (or the column isn't there). */
@@ -62,7 +63,7 @@ function byListing(list: BoardJob[]): { listingId: string; boat: string; jobs: B
 /** Planned, failed, or stuck "rendering" from a closed tab: these can be made. */
 const renderable = (s: string) => s === "planned" || s === "failed" || s === "rendering";
 
-export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColumn = false }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[]; shotsColumn?: boolean }) {
+export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColumn = false, socialEnabled = false }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[]; shotsColumn?: boolean; socialEnabled?: boolean }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
@@ -70,6 +71,8 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
   const [current, setCurrent] = useState<string | null>(null);
   const [progress, setProgress] = useState<Record<string, { text: string; pct: number }>>({});
   const [outcomes, setOutcomes] = useState<Record<string, RenderOutcome>>({});
+  /** The reel the "Post to Facebook / Instagram" dialog is open for. */
+  const [posting, setPosting] = useState<BoardJob | null>(null);
 
   const jobById = useMemo(() => {
     const m: Record<string, BoardJob> = {};
@@ -222,6 +225,15 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
 
   return (
     <div className="mt-6">
+      {posting && (
+        <SocialPostDialog
+          jobId={posting.id}
+          brokerId={posting.broker_id}
+          title={`${boatName(posting)} · #${posting.slot} ${ANGLE_LABEL[posting.angle as ReelServiceAngle] ?? posting.angle}`}
+          defaultCaption={posting.caption ?? ""}
+          onClose={() => setPosting(null)}
+        />
+      )}
       <div className="flex items-end gap-3 flex-wrap">
         <label className="text-xs text-ink-500">
           Month
@@ -420,6 +432,13 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
                         {j.video_path && (
                           <button onClick={() => void preview(j.id)} className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700">
                             Preview
+                          </button>
+                        )}
+                        {socialEnabled && j.video_path && (j.status === "ready" || j.status === "delivered") && !isCurrent && (
+                          <button onClick={() => setPosting(j)}
+                            title="Post this reel to a connected Facebook Page and its Instagram account"
+                            className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400">
+                            Post to Facebook / Instagram
                           </button>
                         )}
                         {j.status === "ready" && (

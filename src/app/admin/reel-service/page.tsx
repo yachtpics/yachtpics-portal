@@ -2,6 +2,7 @@ import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { isPeriod, periodET } from "@/lib/reelService";
 import { parseShotInfo } from "@/lib/reelClips";
+import { metaAppIdConfigured } from "@/lib/meta/config";
 import ReelServiceBoard, { type BoardJob, type BoardSub, type BoardVideo } from "./ReelServiceBoard";
 
 export const dynamic = "force-dynamic";
@@ -75,7 +76,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
           Couldn&rsquo;t read the Reel Service tables ({subErr.message}). The migration <code>20261004_reel_service.sql</code> may not be applied yet.
         </p>
       )}
-      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} shotsColumn={shotsColumn} />
+      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} shotsColumn={shotsColumn} socialEnabled={metaAppIdConfigured()} />
     </div>
   );
 }
