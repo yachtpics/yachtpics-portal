@@ -30,6 +30,7 @@ import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import RetryImg from "@/components/RetryImg";
+import { reorderPhotos } from "@/lib/reorderPhotos";
 import SortableVideoList from "@/components/SortableVideoList";
 
 // The QR card sits well down the page and only shows once a slideshow is
@@ -44,7 +45,6 @@ interface Photo {
   category: string | null;
   display_order: number;
   is_visible: boolean;
-  url: string | null;
 }
 
 export default function BrokerListingPage() {
@@ -118,6 +118,13 @@ export default function BrokerListingPage() {
   // tile shows a skeleton until its url arrives, so nothing blocks and nothing
   // requests a full-size original.
   const [thumbs, setThumbs] = useState<Record<string, string>>({});
+  // Photos whose file isn't in storage (reported by /api/thumbs) — the tile
+  // shows "File missing" for these.
+  const [missingIds, setMissingIds] = useState<Set<string>>(new Set());
+  // Full-size originals, signed only when someone needs one (the lightbox).
+  // Cached per photo id. Downloads always sign fresh links instead, so a page
+  // left open for hours still downloads.
+  const [originals, setOriginals] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -245,7 +252,7 @@ export default function BrokerListingPage() {
   const [pdfViewer, setPdfViewer] = useState<{ url: string; filename: string | null; storagePath: string } | null>(null);
 
   // Videos
-  interface Video { id: string; storage_path: string; storage_host?: string | null; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; display_order?: number | null; title?: string | null; description?: string | null; }
+  interface Video { id: string; storage_path: string; storage_host?: string | null; filename: string | null; created_at: string; url: string | null; in_slideshow: boolean; display_order?: number | null; title?: string | null; description?: string | null; thumbnail_path?: string | null; posterUrl?: string | null; }
   const [videos, setVideos] = useState<Video[]>([]);
   const [uploadingVideo, setUploadingVideo] = useState(false);
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
@@ -306,7 +313,10 @@ export default function BrokerListingPage() {
       .then((r) => (r.ok ? r.json() : null))
       // Keep URLs already on screen (re-signing them would make every
       // thumbnail reload); only photos new since the last fetch get one.
-      .then((d) => { if (d?.urls) setThumbs((prev) => ({ ...d.urls, ...prev })); })
+      .then((d) => {
+        if (d?.urls) setThumbs((prev) => ({ ...d.urls, ...prev }));
+        if (Array.isArray(d?.missing)) setMissingIds(new Set<string>(d.missing));
+      })
       .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
   }, [id]);
   useEffect(() => { refreshThumbs(); }, [refreshThumbs]);
@@ -322,18 +332,47 @@ export default function BrokerListingPage() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [lightboxIndex, photos.length]);
 
+  // Sign the open photo's original (and its neighbours) only when the lightbox
+  // needs them — not every original up front on page load.
+  useEffect(() => {
+    if (lightboxIndex === null) return;
+    const need = [lightboxIndex, lightboxIndex - 1, lightboxIndex + 1]
+      .map((i) => photos[i])
+      .filter((p): p is Photo => !!p && !originals[p.id]);
+    if (need.length) signOriginals(need, 3600);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lightboxIndex, photos]);
+
   // Warm the neighbouring photos while the lightbox is open so paging feels instant.
   useEffect(() => {
     if (lightboxIndex === null) return;
     [lightboxIndex - 1, lightboxIndex + 1].forEach((i) => {
       const p = photos[i];
-      if (p?.url) {
+      const url = p ? originals[p.id] : undefined;
+      if (url) {
         const img = new window.Image();
         img.decoding = "async";
-        img.src = p.url;
+        img.src = url;
       }
     });
-  }, [lightboxIndex, photos]);
+  }, [lightboxIndex, photos, originals]);
+
+  /**
+   * Sign full-size originals for these photos in one request, matched by path
+   * (not index). Caches the result for the lightbox and returns it.
+   */
+  async function signOriginals(targets: Photo[], expiresIn: number): Promise<Record<string, string>> {
+    const out: Record<string, string> = {};
+    if (targets.length === 0) return out;
+    const { data } = await supabase.storage
+      .from("listing-photos")
+      .createSignedUrls(targets.map((t) => t.storage_path), expiresIn);
+    const byPath = new Map<string, string>();
+    (data ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath.set(d.path, d.signedUrl); });
+    targets.forEach((t) => { const u = byPath.get(t.storage_path); if (u) out[t.id] = u; });
+    if (Object.keys(out).length) setOriginals((prev) => ({ ...prev, ...out }));
+    return out;
+  }
 
   /**
    * Everything this page needs, in two waves instead of a queue.
@@ -389,7 +428,7 @@ export default function BrokerListingPage() {
         .eq("listing_id", id)
         .order("created_at"),
       supabase.from("videos")
-        .select("id, storage_path, storage_host, filename, created_at, in_slideshow, display_order, title, description")
+        .select("id, storage_path, storage_host, filename, created_at, in_slideshow, display_order, title, description, thumbnail_path")
         .eq("listing_id", id)
         .order("display_order", { ascending: true, nullsFirst: false })
         .order("created_at"),
@@ -425,18 +464,16 @@ export default function BrokerListingPage() {
     const brokerId = (l as unknown as { broker_id: string }).broker_id;
     setListingBrokerId(brokerId);
 
-    // Wave 2 — the three reads that needed a result from wave 1.
+    // Wave 2 — the reads that needed a result from wave 1.
     // The subscription lookup goes through the API (service role) so RLS
     // doesn't block assistants from reading the broker's subscription row.
-    const [subData, signedData, vidSigned] = await Promise.all([
+    // Full-size photo originals are NOT signed here any more: the grid uses
+    // /api/thumbs, and the lightbox / downloads sign originals on demand.
+    const posterPaths = (vids ?? []).map((v) => v.thumbnail_path).filter((p): p is string => !!p);
+    const [subData, vidSigned, posterSigned] = await Promise.all([
       fetch(`/api/subscription/status?brokerId=${brokerId}`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
-      photos_raw.length
-        ? supabase.storage.from("listing-photos")
-            .createSignedUrls(photos_raw.map((photo) => photo.storage_path), 3600)
-            .then((r) => r.data)
-        : Promise.resolve(null),
       // Videos are signed by the server, not here: some now live on the
       // private Cloudflare bucket, whose credentials the browser doesn't have.
       // The API answers from whichever store holds each file.
@@ -450,16 +487,27 @@ export default function BrokerListingPage() {
             .then((d) => (d?.urls ?? null) as Record<string, string> | null)
             .catch(() => null)
         : Promise.resolve(null),
+      // Video still frames (saved at upload) live in the photo bucket.
+      posterPaths.length
+        ? supabase.storage.from("listing-photos")
+            .createSignedUrls(posterPaths, 3600)
+            .then((r) => r.data)
+        : Promise.resolve(null),
     ]);
 
     setSubStatus(subData?.status ?? null);
     setAccessStatus((subData?.status as AccessStatus) ?? "no_access");
 
-    // Index-based signed URL mapping — Supabase preserves order.
-    setPhotos(photos_raw.map((photo, i) => ({ ...photo, url: signedData?.[i]?.signedUrl ?? null })));
+    setPhotos(photos_raw);
 
     if (vids?.length) {
-      setVideos(vids.map(v => ({ ...v, url: vidSigned?.[v.id] ?? null })));
+      const posterByPath = new Map<string, string>();
+      (posterSigned ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) posterByPath.set(d.path, d.signedUrl); });
+      setVideos(vids.map(v => ({
+        ...v,
+        url: vidSigned?.[v.id] ?? null,
+        posterUrl: v.thumbnail_path ? posterByPath.get(v.thumbnail_path) ?? null : null,
+      })));
     } else {
       setVideos([]);
     }
@@ -580,8 +628,7 @@ export default function BrokerListingPage() {
         }).select().single();
 
         if (newPhoto) {
-          const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrl(path, 3600);
-          setPhotos((prev) => [...prev, { ...newPhoto, url: signed?.signedUrl ?? null } as Photo]);
+          setPhotos((prev) => [...prev, newPhoto as Photo]);
           if (category === "Other") needsLabel.push(newPhoto.id);
         }
       }
@@ -688,9 +735,13 @@ export default function BrokerListingPage() {
 
     const folderName = listing?.vessel_name ?? "photos";
 
+    // Sign fresh links now, at download time — never reuse ones from page
+    // load, which expire after an hour.
+    const fresh = await signOriginals(targets, 3600);
+
     // Single photo — direct download, no ZIP needed
-    if (targets.length === 1 && targets[0].url) {
-      const response = await fetch(targets[0].url);
+    if (targets.length === 1 && fresh[targets[0].id]) {
+      const response = await fetch(fresh[targets[0].id]);
       const blob = await response.blob();
       const ext = targets[0].filename?.split(".").pop() ?? "jpg";
       const filename = `${targets[0].category ?? "photo"}.${ext}`;
@@ -720,9 +771,10 @@ export default function BrokerListingPage() {
       await Promise.all(
         batch.map(async (photo, bi) => {
           const globalIndex = b + bi;
-          if (!photo.url) return;
+          const url = fresh[photo.id];
+          if (!url) return;
           try {
-            const response = await fetch(photo.url);
+            const response = await fetch(url);
             const blob = await response.blob();
             const ext = photo.filename?.split(".").pop() ?? "jpg";
             const filename = `${String(globalIndex + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
@@ -1088,11 +1140,7 @@ export default function BrokerListingPage() {
     const newIndex = photos.findIndex(p => p.id === over.id);
     const newPhotos = arrayMove(photos, oldIndex, newIndex);
     setPhotos(newPhotos);
-    await Promise.all(
-      newPhotos.map((photo, idx) =>
-        supabase.from("photos").update({ display_order: idx }).eq("id", photo.id)
-      )
-    );
+    await reorderPhotos(supabase, id, newPhotos.map((photo) => photo.id));
     // Record that this listing has been hand-sorted. From here on the manual
     // order wins and the canonical walk-the-boat category order steps aside.
     await supabase.from("listings").update({ photo_order_manual: true }).eq("id", id);
@@ -1109,11 +1157,7 @@ export default function BrokerListingPage() {
     try {
       const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
       setPhotos(sorted);
-      await Promise.all(
-        sorted.map((photo, idx) =>
-          supabase.from("photos").update({ display_order: idx }).eq("id", photo.id)
-        )
-      );
+      await reorderPhotos(supabase, id, sorted.map((photo) => photo.id));
       await supabase.from("listings").update({ photo_order_manual: true }).eq("id", id);
     } finally {
       setSortingPhotos(false);
@@ -1166,10 +1210,10 @@ export default function BrokerListingPage() {
 
           {/* Photo area — fills remaining height; the print floats on the paper, lifted by its shadow */}
           <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-            {photos[lightboxIndex]?.url && (
+            {photos[lightboxIndex] && originals[photos[lightboxIndex].id] && (
               <LightboxPhoto
                 key={photos[lightboxIndex].id}
-                src={photos[lightboxIndex].url!}
+                src={originals[photos[lightboxIndex].id]}
                 alt={photos[lightboxIndex].filename ?? ""}
               />
             )}
@@ -1527,6 +1571,8 @@ export default function BrokerListingPage() {
                 key={photo.id}
                 photo={photo}
                 thumbUrl={thumbs[photo.id]}
+                originalUrl={originals[photo.id]}
+                fileMissing={missingIds.has(photo.id)}
                 index={photos.indexOf(photo)}
                 isSelected={isSelected}
                 selectMode={selectMode}
@@ -1891,6 +1937,7 @@ export default function BrokerListingPage() {
                 {video.url && (
                   <video
                     src={video.url}
+                    poster={video.posterUrl ?? undefined}
                     controls
                     playsInline
                     preload="metadata"
@@ -2335,12 +2382,17 @@ function relativeTime(date: Date): string {
 
 // ─── Sortable photo card ───────────────────────────────────────────────────────
 function SortablePhotoCard({
-  photo, thumbUrl, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
+  photo, thumbUrl, originalUrl, fileMissing, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
   onSetHero, onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
 }: {
-  photo: { id: string; url: string | null; filename: string | null; category: string | null; is_visible: boolean };
-  /** Light resized version for the grid; falls back to the original until ready. */
+  photo: { id: string; filename: string | null; category: string | null; is_visible: boolean };
+  /** Light resized version for the grid. */
   thumbUrl?: string;
+  /** Full-size original, if one has already been signed (lightbox). Used only
+   *  as the last-resort fallback when the thumbnail won't load. */
+  originalUrl?: string;
+  /** The file isn't in storage (from /api/thumbs). */
+  fileMissing: boolean;
   index: number;
   isSelected: boolean;
   selectMode: boolean;
@@ -2421,7 +2473,7 @@ function SortablePhotoCard({
           }}
           className={`relative w-full overflow-hidden rounded-[2px] bg-white shadow-print cursor-pointer ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
         >
-          {photo.url ? (
+          {!fileMissing ? (
             <>
               {(!imgLoaded || !thumbUrl) && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
               {/* Deliberately renders NOTHING until the resized url arrives.
@@ -2429,11 +2481,11 @@ function SortablePhotoCard({
                   fetch every full-size original (~2 MB each) the instant the
                   page paints — which is the exact cost we're removing. A brief
                   skeleton is much cheaper than 227 originals.
-                  The lightbox and downloads still use photo.url. */}
+                  The lightbox and downloads sign originals on demand. */}
               {thumbUrl && (
               <RetryImg
                 src={thumbUrl}
-                fallbackSrc={photo.url}
+                fallbackSrc={originalUrl}
                 alt={photo.filename ?? ""}
                 loading={index < 4 ? "eager" : "lazy"}
                 decoding="async"

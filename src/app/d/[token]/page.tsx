@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import DownloadPageClient from "./_components/DownloadPageClient";
-import { signVideoUrl } from "@/lib/videoUrls";
+import { signVideoUrl, withVideoPosters } from "@/lib/videoUrls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -103,7 +103,7 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
   const { data: videos } = wantsVideos
     ? await supabase
         .from("videos")
-        .select("id, storage_path, storage_host, filename, created_at")
+        .select("id, storage_path, storage_host, filename, created_at, thumbnail_path")
         .eq("listing_id", link.listing_id)
         .order("display_order", { ascending: true, nullsFirst: false })
         .order("created_at")
@@ -113,7 +113,9 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
   // separately — appending &download= to a signed URL only worked on Supabase;
   // an R2 signature covers the whole query string, so a tacked-on parameter
   // invalidates the link. signVideoUrl bakes the disposition in for either host.
-  const videosWithUrls = await Promise.all(
+  const [videoPosters, signedVideos] = await Promise.all([
+    withVideoPosters(supabase, videos ?? [], { expiresIn: 60 * 60 * 6 }),
+    Promise.all(
     (videos ?? []).map(async (v, i) => {
       const dlName = v.filename && /\.\w+$/.test(v.filename) ? v.filename : `${v.filename ?? "video"}.mp4`;
       const [previewUrl, downloadUrl] = await Promise.all([
@@ -122,7 +124,10 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
       ]);
       return { id: v.id, previewUrl, downloadUrl, label: v.filename ?? `Video ${i + 1}` };
     })
-  );
+    ),
+  ]);
+  // Still frame for the inline player, where one was saved at upload.
+  const videosWithUrls = signedVideos.map((v, i) => ({ ...v, posterUrl: videoPosters[i]?.posterUrl ?? null }));
 
   const vesselName = listing?.vessel_name ?? "Vessel";
 

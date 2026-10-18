@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import GallerySlideshow from "./_components/GallerySlideshow";
-import { withVideoUrls } from "@/lib/videoUrls";
+import { withVideoPosters, withVideoUrls } from "@/lib/videoUrls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -56,13 +56,17 @@ export default async function GallerySlideshowPage({ params }: { params: { slug:
 
   const { data: videos } = await supabase
     .from("videos")
-    .select("id, storage_path, storage_host, filename, created_at")
+    .select("id, storage_path, storage_host, filename, created_at, thumbnail_path")
     .eq("gallery_id", gallery.id)
     .order("display_order", { ascending: true, nullsFirst: false })
     .order("created_at");
-  const videoSlides = (await withVideoUrls(supabase, videos ?? [], { expiresIn: 7200 }))
-    .map((v) => ({ url: v.url, filename: v.filename ?? null }))
-    .filter((s): s is { url: string; filename: string | null } => !!s.url);
+  const [videoUrls, videoPosters] = await Promise.all([
+    withVideoUrls(supabase, videos ?? [], { expiresIn: 7200 }),
+    withVideoPosters(supabase, videos ?? [], { expiresIn: 7200 }),
+  ]);
+  const videoSlides = videoUrls
+    .map((v, i) => ({ url: v.url, filename: v.filename ?? null, posterUrl: videoPosters[i]?.posterUrl ?? null }))
+    .filter((s): s is { url: string; filename: string | null; posterUrl: string | null } => !!s.url);
 
   return <GallerySlideshow slug={gallery.slug} title={gallery.title} photos={photoSlides} videos={videoSlides} downloadsEnabled={downloadsEnabled} />;
 }

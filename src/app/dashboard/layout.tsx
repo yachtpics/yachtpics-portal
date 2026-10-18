@@ -5,10 +5,11 @@ import DashboardNav from "./_components/DashboardNav";
 import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
+import { getCurrentUser } from "@/lib/getCurrentUser";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
 
   if (!user) redirect("/auth/login");
 

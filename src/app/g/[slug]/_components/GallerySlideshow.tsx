@@ -1,11 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import JSZip from "jszip";
 
 type Slide =
   | { type: "photo"; url: string; category: string | null }
-  | { type: "video"; url: string; filename: string | null };
+  | { type: "video"; url: string; filename: string | null; posterUrl?: string | null };
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -79,13 +78,13 @@ export default function GallerySlideshow({
   slug: string;
   title: string;
   photos: { url: string; category: string | null }[];
-  videos: { url: string; filename: string | null }[];
+  videos: { url: string; filename: string | null; posterUrl?: string | null }[];
   downloadsEnabled?: boolean;
 }) {
   const slides = useMemo<Slide[]>(
     () => [
       ...photos.map((p) => ({ type: "photo" as const, url: p.url, category: p.category })),
-      ...videos.map((v) => ({ type: "video" as const, url: v.url, filename: v.filename })),
+      ...videos.map((v) => ({ type: "video" as const, url: v.url, filename: v.filename, posterUrl: v.posterUrl ?? null })),
     ],
     [photos, videos]
   );
@@ -174,6 +173,7 @@ export default function GallerySlideshow({
         setDownloadingAll(false);
         return;
       }
+      const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       const BATCH = 8;
       let fetched = 0;
@@ -447,6 +447,7 @@ export default function GallerySlideshow({
               <video
                 key={`v-${current}`}
                 src={slide.url}
+                poster={slide.posterUrl ?? undefined}
                 controls
                 playsInline
                 preload="metadata"

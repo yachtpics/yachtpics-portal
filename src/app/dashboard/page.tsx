@@ -8,6 +8,7 @@ import FeaturedStrip, { type FeaturedBoat } from "@/components/FeaturedStrip";
 import { Badge, Card } from "@/components/ui";
 import type { BadgeTone } from "@/components/ui";
 import { planLabel } from "@/lib/subscriptionAccess";
+import { getCurrentUser } from "@/lib/getCurrentUser";
 
 function statusTone(status: string): BadgeTone {
   if (status === "active") return "success";
@@ -57,7 +58,7 @@ function LatestInYachting({ items }: { items: NewsCardRow[] }) {
 
 export default async function DashboardPage() {
   const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const user = await getCurrentUser();
   if (!user) redirect("/auth/login");
 
   // Who you are and the Recently Photographed strip don't depend on each

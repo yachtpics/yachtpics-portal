@@ -8,7 +8,11 @@ export const maxDuration = 30;
 
 /**
  * POST /api/thumbs  { listingId, width? }
- *   → { [photoId]: signedThumbnailUrl }
+ *   → { urls: { [photoId]: signedThumbnailUrl }, missing: photoId[] }
+ *
+ * `missing` lists photos whose file isn't in storage (signing fails for those).
+ * The broker listing page uses it for the "File missing" tile — it used to
+ * learn that by signing every full-size original up front.
  *
  * One access check, one response, and then every thumbnail loads straight from
  * Supabase's CDN.
@@ -57,19 +61,21 @@ export async function POST(req: NextRequest) {
     .from("photos")
     .select("id, storage_path")
     .eq("listing_id", body.listingId);
-  if (!photos?.length) return NextResponse.json({ urls: {} });
+  if (!photos?.length) return NextResponse.json({ urls: {}, missing: [] });
 
   const urls: Record<string, string> = {};
+  const missing: string[] = [];
   for (let i = 0; i < photos.length; i += CHUNK) {
     const batch = photos.slice(i, i + CHUNK);
     await Promise.all(
       batch.map(async (p) => {
-        const { data } = await service.storage
+        const { data, error } = await service.storage
           .from("listing-photos")
           .createSignedUrl(p.storage_path, 60 * 60 * 6, {
             transform: { width, height: width, resize: "contain", quality: 72 },
           });
         if (data?.signedUrl) urls[p.id] = data.signedUrl;
+        else if (error && /not.?found|does not exist/i.test(error.message)) missing.push(p.id);
       })
     );
   }
@@ -85,5 +91,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ urls });
+  return NextResponse.json({ urls, missing });
 }

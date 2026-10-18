@@ -127,3 +127,26 @@ export async function withVideoUrls<T extends SignableVideo>(
 
 /** Columns every caller must select for the helpers above to work. */
 export const VIDEO_URL_COLUMNS = "id, storage_path, storage_host, filename";
+
+/**
+ * Attach a `posterUrl` to each row: the still frame saved at upload time
+ * (videos.thumbnail_path), which lives in the listing-photos bucket beside the
+ * listing's photos — see uploadListingVideo.ts. Rows without a still get null,
+ * so the <video> behaves exactly as it did before (no poster attribute).
+ */
+export async function withVideoPosters<T extends { thumbnail_path?: string | null }>(
+  supabase: SupabaseClient,
+  videos: T[],
+  opts: { expiresIn?: number } = {}
+): Promise<(T & { posterUrl: string | null })[]> {
+  const paths = videos.map((v) => v.thumbnail_path).filter((p): p is string => !!p);
+  if (paths.length === 0) return videos.map((v) => ({ ...v, posterUrl: null }));
+  const { data } = await supabase.storage
+    .from("listing-photos")
+    .createSignedUrls(paths, opts.expiresIn ?? DEFAULT_TTL);
+  const byPath = new Map((data ?? []).map((d) => [d.path, d.signedUrl] as const));
+  return videos.map((v) => ({
+    ...v,
+    posterUrl: v.thumbnail_path ? byPath.get(v.thumbnail_path) ?? null : null,
+  }));
+}

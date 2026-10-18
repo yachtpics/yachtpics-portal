@@ -24,6 +24,7 @@ import {
 import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import RetryImg from "@/components/RetryImg";
+import { reorderPhotos } from "@/lib/reorderPhotos";
 import {
   SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
   sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
@@ -522,7 +523,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced.")) return;
     setSorting(true);
     const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
-    await Promise.all(sorted.map((p, i) => supabase.from("photos").update({ display_order: i }).eq("id", p.id)));
+    await reorderPhotos(supabase, listing.id, sorted.map((p) => p.id));
     setPhotos(sorted.map((p, i) => ({ ...p, display_order: i })));
     await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
     setSorting(false);
@@ -541,9 +542,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     if (oldIndex < 0 || newIndex < 0) return;
     const next = arrayMove(photos, oldIndex, newIndex).map((p, i) => ({ ...p, display_order: i }));
     setPhotos(next);
-    const results = await Promise.all(next.map((p, i) => supabase.from("photos").update({ display_order: i }).eq("id", p.id)));
+    const { error: orderErr } = await reorderPhotos(supabase, listing.id, next.map((p) => p.id));
     const { error: listErr } = await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
-    if (listErr || results.some((r) => r.error)) {
+    if (listErr || orderErr) {
       setMessage("Couldn\u2019t save the new order \u2014 refresh and try again.");
       setTimeout(() => setMessage(""), 4000);
     }

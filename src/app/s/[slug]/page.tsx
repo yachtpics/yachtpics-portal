@@ -6,7 +6,7 @@ import SlideshowViewer from "./SlideshowViewer";
 import { orderPhotos } from "@/lib/photoOrder";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
-import { withVideoUrls } from "@/lib/videoUrls";
+import { withVideoPosters, withVideoUrls } from "@/lib/videoUrls";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -71,7 +71,7 @@ export default async function PublicSlideshowPage({
     );
   }
 
-  const [{ data: profile }, { data: photos }, { data: rawVideos }] =
+  const [{ data: profile }, { data: photos }, { data: rawVideos }, { data: brokerDetails }] =
     await Promise.all([
       supabase
         .from("profiles")
@@ -86,24 +86,34 @@ export default async function PublicSlideshowPage({
         .order("display_order"),
       supabase
         .from("videos")
-        .select("id, storage_path, storage_host, filename")
+        .select("id, storage_path, storage_host, filename, thumbnail_path")
         .eq("listing_id", listing.id)
         .eq("in_slideshow", true)
         .order("display_order", { ascending: true, nullsFirst: false })
         .order("created_at"),
+      supabase
+        .from("broker_details")
+        .select("brokerage_name, brokerage_website, logo_url")
+        .eq("id", listing.broker_id)
+        .maybeSingle(),
     ]);
 
-  const { data: brokerDetails } = await supabase
-    .from("broker_details")
-    .select("brokerage_name, brokerage_website, logo_url")
-    .eq("id", listing.broker_id)
-    .maybeSingle();
-
-  // Sign photo URLs
+  // Sign photos, videos (+ their still frames) and the deck plan all at once —
+  // they don't depend on each other.
   const paths = (photos ?? []).map(p => p.storage_path);
-  const { data: signedData } = paths.length > 0
-    ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 7200)
-    : { data: [] };
+  const [{ data: signedData }, signedVideos, videoPosters, deckPlanUrl] = await Promise.all([
+    paths.length > 0
+      ? supabase.storage.from("listing-photos").createSignedUrls(paths, 7200)
+      : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
+    // Sign video URLs from whichever store holds each file, plus the poster still.
+    withVideoUrls(supabase, rawVideos ?? [], { expiresIn: 7200 }),
+    withVideoPosters(supabase, rawVideos ?? [], { expiresIn: 7200 }),
+    // Deck plan (an image the broker uploaded) — signed like the photos.
+    listing.deck_plan_path
+      ? supabase.storage.from("listing-photos").createSignedUrl(listing.deck_plan_path, 7200)
+          .then(({ data: dp }) => dp?.signedUrl ?? null)
+      : Promise.resolve(null as string | null),
+  ]);
   const urlMap = new Map((signedData ?? []).map(d => [d.path, d.signedUrl]));
   // Default to the canonical walk-the-boat order (profiles → tower → flybridge →
   // … → master) UNLESS the broker/assistant hand-arranged this listing, in which
@@ -118,15 +128,15 @@ export default async function PublicSlideshowPage({
     url: urlMap.get(photo.storage_path) ?? null,
   }));
 
-  // Sign video URLs from whichever store holds each file.
-  const videos = await withVideoUrls(supabase, rawVideos ?? [], { expiresIn: 7200 });
-
-  // Deck plan (an image the broker uploaded) — signed like the photos.
-  let deckPlanUrl: string | null = null;
-  if (listing.deck_plan_path) {
-    const { data: dp } = await supabase.storage.from("listing-photos").createSignedUrl(listing.deck_plan_path, 7200);
-    deckPlanUrl = dp?.signedUrl ?? null;
-  }
+  // Same shape the viewer always got, plus posterUrl (null when no still exists).
+  const videos = signedVideos.map((v, i) => ({
+    id: v.id,
+    storage_path: v.storage_path,
+    storage_host: v.storage_host,
+    filename: v.filename,
+    url: v.url,
+    posterUrl: videoPosters[i]?.posterUrl ?? null,
+  }));
 
   const broker = {
     name:

@@ -13,11 +13,12 @@ interface Video {
   id: string;
   url: string | null;
   filename: string | null;
+  posterUrl?: string | null;
 }
 
 type Slide =
   | { type: "photo"; id: string; url: string | null; category: string | null; filename: string | null }
-  | { type: "video"; id: string; url: string | null; filename: string | null };
+  | { type: "video"; id: string; url: string | null; filename: string | null; posterUrl?: string | null };
 
 interface Listing {
   vessel_name: string | null;
@@ -538,6 +539,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 <video
                   key={`video-${current}`}
                   src={currentSlide.url}
+                  poster={currentSlide.posterUrl ?? undefined}
                   controls
                   playsInline
                   preload="metadata"
@@ -645,6 +647,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 <div key={video.id} className="overflow-hidden rounded-[2px] bg-ink-950 shadow-print">
                   <video
                     src={video.url}
+                    poster={video.posterUrl ?? undefined}
                     controls
                     playsInline
                     preload="metadata"

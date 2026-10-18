@@ -1,5 +1,18 @@
 # Where we are — October 6, 2026
 
+## Oct 18 — speed pass 1 — NOT PUSHED (parent will push), NOT TESTED LIVE, MIGRATION 20261018d NOT APPLIED
+
+- **Buyer slideshow `/s/[slug]`:** broker_details now fetched with profile/photos/videos; photo, video, video-poster and deck-plan signing run in parallel (was 4 steps in a row).
+- **Dashboard:** layout + home page share one per-request `getCurrentUser()` (`src/lib/getCurrentUser.ts`, React `cache()`), so Supabase Auth is asked once per load.
+- **Video posters:** the upload-time still (`videos.thumbnail_path`, in the `listing-photos` bucket) is signed and passed as `poster=` on the buyer slideshow, gallery `/g`, download page `/d`, and the broker listing page. New helper `withVideoPosters()` in `src/lib/videoUrls.ts`. No still → unchanged. (Client gallery `/client/[id]` has no inline player, so nothing to do there.)
+- **Photo reorder in one request:** `src/lib/reorderPhotos.ts` calls `reorder_photos(listing, ids[])` (migration `20261018d_reorder_photos.sql`, security invoker so RLS applies, 0-based). Until the migration is applied it falls back to the old per-photo updates automatically. Used by broker listing page (drag + "Sort to standard order") and admin listing detail.
+- **Broker listing page no longer signs every original on load.** The lightbox signs the open photo + neighbours on demand (cached); downloads sign fresh links at download time (fixes downloads failing on a page open > 1 hour). "File missing" tiles now come from `/api/thumbs`, which returns a `missing` list alongside `urls`.
+- **JSZip** loaded on demand in `/g`, `/d`, `/client` download handlers.
+- **Admin listing page:** removed the dead read-every-photo fallback for `distinct_photo_categories` (function confirmed live).
+- **Help:** no broker-visible feature change, so Help/PDF untouched.
+- **Check after push:** open a listing, click a photo (lightbox shows after a beat), download one photo and a multi-photo zip; drag a photo and reload (order sticks); open a slideshow with a video that has a still — the still shows before Play.
+- **Tested:** typecheck + eslint clean.
+
 ## Oct 18 — Security hardening — NOT PUSHED (parent will push); DB part already live
 
 - **Database (already applied to prod by SQL; recorded in `supabase/migrations/20261018c_security_hardening.sql`, safe to re-run):** trigger `protect_profile_privileges` blocks users changing their own `role` / `is_brokerage_admin` / `brokerage_id` (service role, postgres and portal admins still can); `handle_new_user()` forces any sign-up role other than broker/assistant/client to broker; anon has no rights on `profiles`; `search_path` pinned on the SECURITY DEFINER helpers; EXECUTE revoked from anon on several helpers. Note: four of those functions are still executable via the PUBLIC grant, so the anon revoke alone doesn't bite — see the follow-up list below.

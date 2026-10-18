@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import JSZip from "jszip";
 
 type Photo = {
   id: string;
@@ -13,6 +12,7 @@ type Photo = {
 type Video = {
   id: string;
   previewUrl: string | null;
+  posterUrl?: string | null;
   downloadUrl: string | null;
   label: string;
 };
@@ -87,6 +87,7 @@ export default function DownloadPageClient({
         return;
       }
 
+      const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       const BATCH = 8;
       let fetched = 0;
@@ -175,6 +176,7 @@ export default function DownloadPageClient({
                 {video.previewUrl && (
                   <video
                     src={video.previewUrl}
+                    poster={video.posterUrl ?? undefined}
                     controls
                     playsInline
                     preload="metadata"

@@ -33,19 +33,14 @@ export default async function AdminListingPage({ params, searchParams }: { param
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  // Every category in use across all listings, for the dropdown. Prefers the
-  // distinct_photo_categories() function (a handful of rows) over reading the
-  // category of every photo in the library. Until that migration
-  // (supabase/migrations/20260923_distinct_photo_categories.sql) is applied the
-  // rpc errors, and this falls back to the original query unchanged.
+  // Every category in use across all listings, for the dropdown, via the
+  // distinct_photo_categories() function (a handful of rows) rather than
+  // reading the category of every photo in the library. The function is live
+  // in production (20260923_distinct_photo_categories.sql), so the old
+  // read-every-photo fallback is gone; on an error the list is just empty.
   const loadUsedCategories = async (): Promise<{ data: { category: string | null }[] | null }> => {
-    const { data, error } = await supabase.rpc("distinct_photo_categories");
-    if (!error) return { data: (data ?? []) as { category: string | null }[] };
-    const { data: rows } = await supabase
-      .from("photos")
-      .select("category")
-      .not("category", "is", null);
-    return { data: rows as { category: string | null }[] | null };
+    const { data } = await supabase.rpc("distinct_photo_categories");
+    return { data: (data ?? []) as { category: string | null }[] };
   };
 
   // Every read below depends only on the listing id from the URL, so they all

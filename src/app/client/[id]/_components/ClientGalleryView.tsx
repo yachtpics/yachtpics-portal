@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import JSZip from "jszip";
 
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null };
 type Video = { id: string; filename: string | null; url: string | null };
@@ -216,6 +215,7 @@ export default function ClientGalleryView({
       // have expired, and a large set takes a while to pull down.
       const fresh = await freshUrls();
 
+      const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
       const BATCH = 8;
       let fetched = 0;
