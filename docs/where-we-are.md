@@ -1,5 +1,18 @@
 # Where we are — October 6, 2026
 
+## Oct 18 — Security hardening — NOT PUSHED (parent will push); DB part already live
+
+- **Database (already applied to prod by SQL; recorded in `supabase/migrations/20261018c_security_hardening.sql`, safe to re-run):** trigger `protect_profile_privileges` blocks users changing their own `role` / `is_brokerage_admin` / `brokerage_id` (service role, postgres and portal admins still can); `handle_new_user()` forces any sign-up role other than broker/assistant/client to broker; anon has no rights on `profiles`; `search_path` pinned on the SECURITY DEFINER helpers; EXECUTE revoked from anon on several helpers. Note: four of those functions are still executable via the PUBLIC grant, so the anon revoke alone doesn't bite — see the follow-up list below.
+- **Cron routes fail closed:** all 12 `/api/cron/*` routes now return 500 "CRON_SECRET not configured" if the env var is missing instead of running unauthenticated (Bearer header and `?secret=` both still accepted).
+- **Welcome email** `/api/email/welcome` now needs header `x-internal-secret` = `CRON_SECRET`; the dashboard layout sends it.
+- **Removed** the logo debug route `/api/debug/logo` (moved out of `src/` to `.git/stale-debug-route/` because deletes are blocked in this shell — Charlie can delete that folder).
+- **Logo upload:** PNG / JPG / WebP only, 2 MB max, extension taken from the file type. SVG is no longer accepted (it can carry script); Profile page file picker and hint text updated to match. Existing SVG logos keep working.
+- **Login callback:** `next=` only honoured for same-site paths (`/…`, not `//…`, no `\` or `:`), so it can't bounce people to another site.
+- **Download logging** `/api/listings/[id]/log-download` now checks the caller can reach the listing (`assertListingAccess` with co-broker + brokerage admin, falling back to an RLS read so colleagues' shared listings still log).
+- **Next.js 14.2.5 → 14.2.35** (`package.json` pinned exact + lockfile). Only the lockfile was updated here (`--package-lock-only`); run `npm install` on the ThinkPad after pulling. Vercel installs from the lockfile.
+- **Help:** the only broker-visible change is the logo file types; Profile page text updated, Help page/PDF didn't mention logo formats so no rebuild needed.
+- **Tested:** typecheck + eslint clean. Not tested live.
+
 ## Oct 18 (later) — Post a listing reel to Facebook / Instagram from the listing's Reel Maker (admin only) — NOT PUSHED (parent will push), NOT TESTED LIVE, MIGRATION 20261018b NOT APPLIED
 
 - **What:** on a listing's **Reel** page (`/dashboard/listings/[id]/reel`, the only place the listing Reel Maker lives), after rendering, admins get **Post to Facebook / Instagram** next to Download — only when `/api/social/connections` says Meta is configured and a Page is connected. Opens the existing `SocialPostDialog` (now takes `source: { kind: "reel_service_job", id } | { kind: "listing_reel", id, upload, durationSec, width, height }`; Reel Service board updated). Caption drafted from the listing + broker card only (name; year make model · length′; location; "Presented by {broker}, {brokerage}."; "Delivered through the YachtPics Portal.").

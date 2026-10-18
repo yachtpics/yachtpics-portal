@@ -3,6 +3,15 @@ import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 
 export async function POST(req: NextRequest) {
+  // Internal-only: called from the dashboard layout on first login.
+  const internalSecret = process.env.CRON_SECRET;
+  if (!internalSecret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  if (req.headers.get("x-internal-secret") !== internalSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const { userId } = await req.json();
     if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });

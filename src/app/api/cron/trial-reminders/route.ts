@@ -35,12 +35,13 @@ async function sendEmail(to: string, subject: string, html: string, headers?: Re
 export async function GET(req: NextRequest) {
   // Same auth pattern as the storage-report cron.
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const authHeader = req.headers.get("authorization");
-    const querySecret = req.nextUrl.searchParams.get("secret");
-    if (authHeader !== `Bearer ${secret}` && querySecret !== secret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = req.headers.get("authorization");
+  const querySecret = req.nextUrl.searchParams.get("secret");
+  if (authHeader !== `Bearer ${secret}` && querySecret !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const supabase = createClient(

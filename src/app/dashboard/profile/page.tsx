@@ -271,7 +271,7 @@ export default function ProfilePage() {
         <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6 mb-5">
           <div className="flex items-center gap-2 mb-1">
             <h2 className="text-h2 text-ink-900">Company Logo</h2>
-            <HelpTip text="Your logo appears in the footer of every client slideshow, on any device." detail="Best: PNG or SVG with transparent or white background. Max 2 MB." position="below" width={270} />
+            <HelpTip text="Your logo appears in the footer of every client slideshow, on any device." detail="Best: PNG with transparent or white background. JPG and WebP also work. Max 2 MB." position="below" width={270} />
           </div>
           <p className="text-ink-500 text-sm mb-5">Displayed in the footer of your client slideshows.</p>
           <div className="flex items-center gap-5 flex-wrap">
@@ -288,10 +288,10 @@ export default function ProfilePage() {
             <div className="flex flex-col gap-2">
               <label className={"cursor-pointer inline-flex items-center gap-2 bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet" + (uploadingLogo ? " opacity-50 pointer-events-none" : "")}>
                 {uploadingLogo ? "Uploading..." : logoUrl ? "Replace Logo" : "Upload Logo"}
-                <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f); }} />
               </label>
               {logoUrl && <button onClick={removeLogo} className="text-xs text-danger-600 hover:text-danger-700 transition-colors duration-fast ease-quiet text-left">Remove logo</button>}
-              <p className="text-ink-500 text-xs">PNG, JPG, SVG or WebP. Max 2MB.</p>
+              <p className="text-ink-500 text-xs">PNG, JPG or WebP. Max 2 MB.</p>
               <p className="text-ink-500 text-xs">Best on a white or transparent background.</p>
             </div>
           </div>

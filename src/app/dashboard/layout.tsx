@@ -42,7 +42,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
     // Fire welcome email (non-blocking failure — if it fails, we don't crash the app)
     fetch(`${process.env.NEXT_PUBLIC_APP_URL ?? "https://portal.yachtpics.com"}/api/email/welcome`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-secret": process.env.CRON_SECRET ?? "",
+      },
       body: JSON.stringify({ userId: user.id }),
     }).catch(() => {});
   }

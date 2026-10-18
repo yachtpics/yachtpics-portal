@@ -18,12 +18,13 @@ export const maxDuration = 60;
 // general launch also skips anyone who got the early-access email.
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
-  if (secret) {
-    const authHeader = req.headers.get("authorization");
-    const querySecret = req.nextUrl.searchParams.get("secret");
-    if (authHeader !== `Bearer ${secret}` && querySecret !== secret) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  if (!secret) {
+    return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  }
+  const authHeader = req.headers.get("authorization");
+  const querySecret = req.nextUrl.searchParams.get("secret");
+  if (authHeader !== `Bearer ${secret}` && querySecret !== secret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const admin = createClient(
