@@ -25,6 +25,7 @@ import {
   Wand2,
   Repeat,
   MonitorPlay,
+  Share2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,6 +56,7 @@ const navItems: NavItem[] = [
   { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
   { label: "Showroom Loop", href: "/admin/showroom", icon: MonitorPlay, short: "Showroom" },
   { label: "Reel Service", href: "/admin/reel-service", icon: Repeat, short: "Service" },
+  { label: "Social Accounts", href: "/dashboard/profile#social-accounts", icon: Share2, short: "Social" },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
   { label: "Video Migration", href: "/admin/media", icon: Film },
