@@ -26,6 +26,57 @@ export async function runPool<T>(
   await Promise.all(lanes);
 }
 
+/**
+ * Ask the server to make the stored 600 / 2000 px WebP copies of freshly
+ * uploaded (or replaced) photos — fire-and-forget. Ids are gathered per
+ * listing and sent in small batches (8 at once, or after 1.5 s of quiet) to
+ * POST /api/listings/[id]/photos/derivatives, with `keepalive` so a page
+ * change doesn't cancel them. If a request never lands, nothing breaks: pages
+ * fall back to on-the-fly resizing and the daily backfill catches the photo.
+ */
+const derivativeQueue = new Map<string, { ids: Set<string>; timer: ReturnType<typeof setTimeout> | null }>();
+let derivativePagehideHooked = false;
+
+function flushDerivatives(listingId: string) {
+  const entry = derivativeQueue.get(listingId);
+  if (!entry) return;
+  derivativeQueue.delete(listingId);
+  if (entry.timer) clearTimeout(entry.timer);
+  const ids = Array.from(entry.ids);
+  for (let i = 0; i < ids.length; i += 40) {
+    try {
+      fetch(`/api/listings/${listingId}/photos/derivatives`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds: ids.slice(i, i + 40) }),
+        keepalive: true,
+      }).catch(() => { /* the daily backfill catches it */ });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function requestDerivatives(listingId: string, photoIds: string[]) {
+  if (typeof window === "undefined" || !listingId || photoIds.length === 0) return;
+  if (!derivativePagehideHooked) {
+    derivativePagehideHooked = true;
+    window.addEventListener("pagehide", () => {
+      Array.from(derivativeQueue.keys()).forEach(flushDerivatives);
+    });
+  }
+  const entry = derivativeQueue.get(listingId) ?? { ids: new Set<string>(), timer: null };
+  photoIds.forEach((id) => entry.ids.add(id));
+  derivativeQueue.set(listingId, entry);
+  if (entry.timer) clearTimeout(entry.timer);
+  entry.timer = null;
+  if (entry.ids.size >= 8) {
+    flushDerivatives(listingId);
+  } else {
+    entry.timer = setTimeout(() => flushDerivatives(listingId), 1500);
+  }
+}
+
 /** How many listing photos upload at once (admin pages). */
 export const PHOTO_UPLOAD_CONCURRENCY = 4;
 
@@ -81,6 +132,7 @@ export async function uploadListingPhoto(opts: {
     await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
     return { ok: false, error: insertError?.message ?? "Couldn't save the photo record." };
   }
+  requestDerivatives(listingId, [(row as ListingPhotoRow).id]);
   return { ok: true, row: row as ListingPhotoRow };
 }
 
@@ -145,5 +197,8 @@ export async function replaceListingPhoto(opts: {
     await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
     return { ok: false, error: data?.error ?? `The server answered ${res.status}` };
   }
+  // The replace route cleared derivatives_at and removed the old copies;
+  // make the new file's copies now.
+  requestDerivatives(listingId, [photoId]);
   return { ok: true, photo: data.photo as ReplacedPhoto };
 }

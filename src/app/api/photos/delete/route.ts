@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
+import { removeDerivatives } from "@/lib/photoDerivatives";
 
 /**
  * POST /api/photos/delete
@@ -76,6 +77,8 @@ export async function POST(req: NextRequest) {
     if (paths.length > 0) {
       await svc.storage.from("listing-photos").remove(paths).catch(() => {});
     }
+    // …and their stored 600 / 2000 px copies (`_d/`), computed from the row.
+    await removeDerivatives(svc, photos.map((p) => ({ id: p.id as string, storage_path: p.storage_path as string })));
     const { error: dbError } = await svc.from("photos").delete().in("id", photos.map((p) => p.id));
     if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 });
 

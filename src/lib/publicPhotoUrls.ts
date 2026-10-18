@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { signDerivatives } from "@/lib/photoDerivatives";
 
 /**
  * Right-sized photo links for the public pages (buyer slideshow /s, gallery /g,
@@ -20,6 +21,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * viewers fetch the rest in chunks via their /urls routes (signIdsAtSize,
  * 20 at a time). Supabase also rate-limits the image *render* (~200 at once),
  * which is why every tile using these is lazy-loaded and retries.
+ *
+ * Oct 18 — STORED DERIVATIVES (src/lib/photoDerivatives.ts): once a photo has
+ * `derivatives_at`, its thumb (600) and full (2000) copies are plain stored
+ * objects, so a whole listing signs in ONE createSignedUrls call per size and
+ * there's no transform to rate-limit. Everything here prefers them
+ * (`signPhotosAtSize`, `signGridThumbs`); the per-photo transform signing below
+ * is now only the fallback for photos not backfilled yet.
  */
 
 export type ImageTransform = {
@@ -120,6 +128,44 @@ export async function signIdsAtSize(
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
   return out;
+}
+
+export type SignablePhoto = { id: string; storage_path: string; derivatives_at?: string | null };
+
+/**
+ * id → url at `size` for `items`: stored derivatives in one batch call, and
+ * the per-photo transform path (signIdsAtSize) only for photos without them —
+ * at most `fallbackLimit` of those (default: all), so a page render can cap
+ * the expensive part while still sending every derivative link.
+ */
+export async function signPhotosAtSize(
+  supabase: SupabaseClient,
+  items: SignablePhoto[],
+  size: PhotoSize,
+  ttlSeconds: number,
+  opts: { fallbackLimit?: number; concurrency?: number } = {}
+): Promise<Record<string, string>> {
+  if (items.length === 0) return {};
+  const { urls, missing } = await signDerivatives(supabase, items, size === "full" ? 2000 : 600, ttlSeconds);
+  const rest = opts.fallbackLimit === undefined ? missing : missing.slice(0, Math.max(0, opts.fallbackLimit));
+  if (rest.length === 0) return urls;
+  const fallback = await signIdsAtSize(supabase, rest, size, ttlSeconds, opts.concurrency ?? 20);
+  return { ...fallback, ...urls };
+}
+
+/**
+ * Grid-tile links for /d and /client: id → url. Every photo with stored
+ * derivatives gets its 600 copy (one batch call); of the rest, only the first
+ * `fallbackLimit` (24) get a transform link — past that the page shows the
+ * original for the tile, as before.
+ */
+export async function signGridThumbs(
+  supabase: SupabaseClient,
+  photos: SignablePhoto[],
+  ttlSeconds: number,
+  fallbackLimit = 24
+): Promise<Record<string, string>> {
+  return signPhotosAtSize(supabase, photos, "thumb", ttlSeconds, { fallbackLimit });
 }
 
 /** Alt text for a photo on a public page: "Salon — Sea Dream". */

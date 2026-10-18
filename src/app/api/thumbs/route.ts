@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
+import { signDerivatives } from "@/lib/photoDerivatives";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -23,8 +24,12 @@ export const maxDuration = 30;
  * listing that overhead swamped the saving from resizing. Checking access once
  * and handing back all the URLs removes the proxy from the hot path entirely.
  *
- * Supabase only supports transforms when signing a single URL at a time, so the
- * signing is still per-photo — but it happens here, in parallel, once.
+ * Oct 18 — stored derivatives: photos with `derivatives_at` set get their
+ * pre-made 600px WebP copy, ALL signed in ONE createSignedUrls call (plain
+ * objects — no transform rate limit, no per-photo round trip). Only photos
+ * without derivatives yet fall back to the per-photo transform signing below
+ * (Supabase only supports transforms one URL at a time). `width` is ignored
+ * for derivative photos — 600 serves the 200/400 tiles and the 800 is close.
  */
 
 const ALLOWED_WIDTHS = [200, 400, 800];
@@ -59,19 +64,22 @@ export async function POST(req: NextRequest) {
 
   const { data: photos } = await service
     .from("photos")
-    .select("id, storage_path")
+    .select("id, storage_path, derivatives_at")
     .eq("listing_id", body.listingId);
   if (!photos?.length) return NextResponse.json({ urls: {}, missing: [] });
 
-  const urls: Record<string, string> = {};
+  const TTL = 60 * 60 * 6;
+  const derived = await signDerivatives(service, photos, 600, TTL);
+  const urls: Record<string, string> = { ...derived.urls };
   const missing: string[] = [];
-  for (let i = 0; i < photos.length; i += CHUNK) {
-    const batch = photos.slice(i, i + CHUNK);
+  const fallback = derived.missing;
+  for (let i = 0; i < fallback.length; i += CHUNK) {
+    const batch = fallback.slice(i, i + CHUNK);
     await Promise.all(
       batch.map(async (p) => {
         const { data, error } = await service.storage
           .from("listing-photos")
-          .createSignedUrl(p.storage_path, 60 * 60 * 6, {
+          .createSignedUrl(p.storage_path, TTL, {
             transform: { width, height: width, resize: "contain", quality: 72 },
           });
         if (data?.signedUrl) urls[p.id] = data.signedUrl;
@@ -84,7 +92,7 @@ export async function POST(req: NextRequest) {
   // off Supabase quietly signs the original instead of erroring — so the page
   // still "works" while downloading full-size files. One line in the logs is
   // the difference between noticing that and not.
-  const list = Object.values(urls);
+  const list = fallback.map((p) => urls[p.id]).filter(Boolean);
   if (list.length > 0 && list.some((u) => !u.includes("/render/image/"))) {
     console.warn(
       "Supabase image transformation appears to be disabled — /api/thumbs is returning full-size originals"

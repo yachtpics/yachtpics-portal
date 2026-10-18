@@ -23,6 +23,7 @@ export const maxDuration = 60;
 //                        + email_log dedup)
 //   • reel-service     — EVERY DAY (plans the month's missing Reel Service jobs)
 //   • social           — EVERY DAY (due Instagram posts + unfinished IG reels)
+//   • derivatives      — EVERY DAY (~50 s of photo thumbnail backfill)
 const PROD = "https://portal.yachtpics.com";
 
 export async function GET(req: NextRequest) {
@@ -79,6 +80,10 @@ export async function GET(req: NextRequest) {
   // the Hobby limit, so this is the safety net — Facebook schedules publish on
   // Facebook's side at the exact time. Self-gating: no Meta config, no run.
   jobs.push("/api/cron/social");
+  // Photo derivatives: makes the stored 600 / 2000 px copies for any photo
+  // still without them (uploads whose browser request never arrived, gallery
+  // photos, anything the admin backfill hasn't reached). ~50 s, newest first.
+  jobs.push("/api/cron/derivatives");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never

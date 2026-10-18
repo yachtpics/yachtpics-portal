@@ -31,7 +31,8 @@ import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import RetryImg from "@/components/RetryImg";
 import { reorderPhotos } from "@/lib/reorderPhotos";
-import { replaceListingPhoto, runPool } from "@/lib/uploadListingPhoto";
+import { replaceListingPhoto, requestDerivatives, runPool } from "@/lib/uploadListingPhoto";
+import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import SortableVideoList from "@/components/SortableVideoList";
 
 // The QR card sits well down the page and only shows once a slideshow is
@@ -71,6 +72,8 @@ interface Photo {
   category: string | null;
   display_order: number;
   is_visible: boolean;
+  /** Stored 600/2000 px copies made (src/lib/photoDerivativePaths.ts). */
+  derivatives_at?: string | null;
 }
 
 export default function BrokerListingPage() {
@@ -148,7 +151,8 @@ export default function BrokerListingPage() {
   // Photos whose file isn't in storage (reported by /api/thumbs) — the tile
   // shows "File missing" for these.
   const [missingIds, setMissingIds] = useState<Set<string>>(new Set());
-  // Full-size originals, signed only when someone needs one (the lightbox).
+  // Lightbox display copies (the stored 2000px WebP, or the original when a
+  // photo has none yet), signed only when someone needs one.
   // Cached per photo id. Downloads always sign fresh links instead, so a page
   // left open for hours still downloads.
   const [originals, setOriginals] = useState<Record<string, string>>({});
@@ -411,18 +415,32 @@ export default function BrokerListingPage() {
   }, [lightboxIndex, photos, originals]);
 
   /**
-   * Sign full-size originals for these photos in one request, matched by path
-   * (not index). Caches the result for the lightbox and returns it.
+   * Sign the lightbox's display copy for these photos in one request, matched
+   * by path (not index): the stored 2000px WebP when the photo has one (a few
+   * hundred KB instead of a 10–20 MB original), otherwise the original as
+   * before. Downloads never use this — they get originals / chosen sizes from
+   * the download-urls route. Caches the result for the lightbox.
    */
   async function signOriginals(targets: Photo[], expiresIn: number): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     if (targets.length === 0) return out;
+    const pathFor = (t: Photo) => (hasDerivatives(t) ? derivativePath(t, 2000) : t.storage_path);
     const { data } = await supabase.storage
       .from("listing-photos")
-      .createSignedUrls(targets.map((t) => t.storage_path), expiresIn);
+      .createSignedUrls(targets.map(pathFor), expiresIn);
     const byPath = new Map<string, string>();
     (data ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath.set(d.path, d.signedUrl); });
-    targets.forEach((t) => { const u = byPath.get(t.storage_path); if (u) out[t.id] = u; });
+    targets.forEach((t) => { const u = byPath.get(pathFor(t)); if (u) out[t.id] = u; });
+    // A stored copy that couldn't be signed (object missing): try the original.
+    const retry = targets.filter((t) => !out[t.id] && hasDerivatives(t));
+    if (retry.length) {
+      const { data: again } = await supabase.storage
+        .from("listing-photos")
+        .createSignedUrls(retry.map((t) => t.storage_path), expiresIn);
+      const byPath2 = new Map<string, string>();
+      (again ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath2.set(d.path, d.signedUrl); });
+      retry.forEach((t) => { const u = byPath2.get(t.storage_path); if (u) out[t.id] = u; });
+    }
     if (Object.keys(out).length) setOriginals((prev) => ({ ...prev, ...out }));
     return out;
   }
@@ -473,7 +491,7 @@ export default function BrokerListingPage() {
         .eq("id", id)
         .single(),
       supabase.from("photos")
-        .select("id, storage_path, filename, category, display_order, is_visible")
+        .select("id, storage_path, filename, category, display_order, is_visible, derivatives_at")
         .eq("listing_id", id)
         .order("display_order"),
       supabase.from("documents")
@@ -685,6 +703,7 @@ export default function BrokerListingPage() {
         if (newPhoto) {
           setPhotos((prev) => [...prev, newPhoto as Photo]);
           if (category === "Other") needsLabel.push(newPhoto.id);
+          requestDerivatives(id, [newPhoto.id]);
         }
       }
       setUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
@@ -976,7 +995,8 @@ export default function BrokerListingPage() {
       return;
     }
     const np = r.photo;
-    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, storage_path: np.storage_path, filename: np.filename } : p)));
+    // derivatives_at cleared server-side: the old stored copies belong to the old file.
+    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, storage_path: np.storage_path, filename: np.filename, derivatives_at: null } : p)));
     setThumbs((prev) => {
       const next = { ...prev };
       if (np.thumbUrl) next[photoId] = np.thumbUrl; else delete next[photoId];

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GALLERY_TTL, getGalleryBySlug, getGalleryRows, signGalleryExtras } from "@/lib/publicGallery";
 import { serviceClient } from "@/lib/publicSlideshow";
-import { signIdsAtSize } from "@/lib/publicPhotoUrls";
+import { signPhotosAtSize } from "@/lib/publicPhotoUrls";
 import { rateLimited } from "@/lib/simpleRateLimit";
 
 export const runtime = "nodejs";
@@ -23,6 +23,10 @@ const MAX_IDS = 60;
  *
  * Downloads don't use this; they re-sign originals through
  * /api/g/[slug]/signed-urls, which also checks the download window.
+ *
+ * Since Oct 18 photos with stored derivatives are signed in one batch call
+ * (and the page already sends them all), so this mostly serves photos not
+ * backfilled yet, plus link refreshes.
  *
  * Public, same rule as the page: the gallery must be published (an expired
  * gallery stays viewable). Only this gallery's visible photos, display sizes
@@ -59,7 +63,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (ids) {
       const wanted = new Set(ids);
       const items = rows.photos.filter((p) => wanted.has(p.id));
-      const signed = await signIdsAtSize(supabase, items, size, GALLERY_TTL, 20);
+      const signed = await signPhotosAtSize(supabase, items, size, GALLERY_TTL);
       const photos: Record<string, { thumb?: string; full?: string }> = {};
       for (const [id, url] of Object.entries(signed)) photos[id] = size === "full" ? { full: url } : { thumb: url };
       return NextResponse.json({ photos }, { headers: { "Cache-Control": "no-store" } });

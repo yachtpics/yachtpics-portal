@@ -5,6 +5,7 @@ import Link from "next/link";
 import ListingsBrowser from "./_components/ListingsBrowser";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import { signDerivatives } from "@/lib/photoDerivatives";
 
 export default async function ListingsPage() {
   const supabase = await createClient();
@@ -99,7 +100,21 @@ export default async function ListingsPage() {
   if (rows.length > 0) {
     const paths = Array.from(new Set(rows.map((r) => r.storage_path)));
     const urlByPath = new Map<string, string>();
-    await Promise.all(paths.map(async (path) => {
+    // Oct 18: covers with stored derivatives get their 600px copy, all signed
+    // in ONE batch call. The RPC returns no photo id, so one small read (under
+    // the user's RLS, like the RPC) finds id + derivatives_at by path.
+    const { data: heroPhotos } = await supabase
+      .from("photos")
+      .select("id, storage_path, derivatives_at")
+      .in("listing_id", Array.from(new Set(rows.map((r) => r.listing_id))))
+      .in("storage_path", paths);
+    const { urls: derivedUrls } = await signDerivatives(supabase, (heroPhotos ?? []) as { id: string; storage_path: string; derivatives_at: string | null }[], 600, 3600);
+    (heroPhotos ?? []).forEach((p) => {
+      const u = derivedUrls[p.id as string];
+      if (u) urlByPath.set(p.storage_path as string, u);
+    });
+    // Covers not backfilled yet: the per-photo transform, as before.
+    await Promise.all(paths.filter((path) => !urlByPath.has(path)).map(async (path) => {
       const { data: signed } = await supabase.storage
         .from("listing-photos")
         .createSignedUrl(path, 3600, {

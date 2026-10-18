@@ -8,6 +8,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
+import { requestDerivatives } from "@/lib/uploadListingPhoto";
 
 type BrokerOption = { id: string; name: string };
 
@@ -175,7 +176,7 @@ export default function NewListingPage() {
 
         if (!uploadError) {
           const { data: { user } } = await supabase.auth.getUser();
-          await supabase.from("photos").insert({
+          const { data: newPhoto } = await supabase.from("photos").insert({
             listing_id: listingId,
             storage_path: path,
             filename: photo.file.name,
@@ -183,7 +184,9 @@ export default function NewListingPage() {
             display_order: i,
             is_visible: true,
             uploaded_by: user?.id ?? brokerId,
-          });
+          }).select("id").single();
+          // Stored 600 / 2000 px copies, made server-side (fire-and-forget).
+          if (newPhoto?.id) requestDerivatives(listingId, [newPhoto.id as string]);
         }
         setUploadProgress(Math.round(((i + 1) / photos.length) * 100));
       }

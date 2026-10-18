@@ -5,6 +5,7 @@ import { planForPriceId } from "@/lib/plans";
 import { getAccessStatus, isStripePaid, isComped } from "@/lib/subscriptionAccess";
 import RepublishLiveBoats from "./_components/RepublishLiveBoats";
 import RetiredPages from "./_components/RetiredPages";
+import GenerateThumbnails from "./_components/GenerateThumbnails";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +36,7 @@ export default async function AdminPage() {
     { count: sends30 },
     { data: recentShoots },
     { data: retiredPages },
+    { count: photosWithoutDerivatives },
   ] = await Promise.all([
     service.from("profiles").select("id, first_name, last_name, display_email").eq("role", "broker"),
     service.from("subscriptions").select("broker_id, status, stripe_subscription_id, stripe_price_id, trial_ends_at"),
@@ -51,6 +53,8 @@ export default async function AdminPage() {
     // Without the has_page filter, a page you'd already deleted kept reappearing
     // here on every refresh.
     service.from("site_pages").select("label, filename").eq("is_active", false).eq("has_page", true).order("label"),
+    // Photos still without stored thumbnails (partial index on derivatives_at is null).
+    service.from("photos").select("id", { count: "exact", head: true }).is("derivatives_at", null),
   ]);
 
   // ---- Revenue + subscription mix ----
@@ -203,6 +207,7 @@ export default async function AdminPage() {
 
       {/* Website maintenance */}
       <div className="mb-8 space-y-4">
+        <GenerateThumbnails initialRemaining={photosWithoutDerivatives ?? 0} />
         <RepublishLiveBoats />
         <RetiredPages pages={(retiredPages ?? []) as { label: string; filename: string }[]} />
       </div>

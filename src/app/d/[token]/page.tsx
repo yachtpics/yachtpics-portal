@@ -3,7 +3,7 @@ import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 import DownloadPageClient from "./_components/DownloadPageClient";
 import { signVideoUrl, withVideoPosters } from "@/lib/videoUrls";
-import { OG_TRANSFORM, signOneTransformed, signTransformed, THUMB_TRANSFORM } from "@/lib/publicPhotoUrls";
+import { OG_TRANSFORM, signGridThumbs, signOneTransformed } from "@/lib/publicPhotoUrls";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -150,26 +150,28 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
   const { data: photos } = wantsPhotos
     ? await supabase
         .from("photos")
-        .select("id, storage_path, filename, category, display_order")
+        .select("id, storage_path, filename, category, display_order, derivatives_at")
         .eq("listing_id", link.listing_id)
         .order("display_order")
     : { data: [] };
 
   // Originals for downloading, plus a 600px copy for the preview tiles (the
   // grid used to pull every full-size original just to show a thumbnail).
+  // Tiles: stored derivatives for every backfilled photo (one batch call);
+  // transform links for the first 24 of the rest; the original after that.
   const paths = (photos ?? []).map((p) => p.storage_path);
   const [{ data: signed }, thumbMap] = await Promise.all([
     paths.length > 0
       ? supabase.storage.from("listing-photos").createSignedUrls(paths, 60 * 60 * 6)
       : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
-    signTransformed(supabase, paths, THUMB_TRANSFORM, 60 * 60 * 6),
+    signGridThumbs(supabase, photos ?? [], 60 * 60 * 6),
   ]);
   const urlMap = new Map((signed ?? []).map((d) => [d.path, d.signedUrl]));
 
   const photosWithUrls = (photos ?? []).map((p) => ({
     id: p.id,
     url: urlMap.get(p.storage_path) ?? null,
-    thumbUrl: thumbMap.get(p.storage_path) ?? null,
+    thumbUrl: thumbMap[p.id] ?? null,
     filename: p.filename,
     category: p.category,
   }));

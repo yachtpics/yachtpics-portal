@@ -1,8 +1,7 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { serviceClient } from "@/lib/publicSlideshow";
+import { serviceClient, signFirstPaint } from "@/lib/publicSlideshow";
 import { withVideoUrls } from "@/lib/videoUrls";
-import { signIdsAtSize } from "@/lib/publicPhotoUrls";
 
 /**
  * Shared by the public gallery page (/g/[slug]), its link preview and its
@@ -36,7 +35,7 @@ export const getGalleryBySlug = cache(async (slug: string): Promise<PublicGaller
   return (data as PublicGallery | null) ?? null;
 });
 
-export type GalleryPhotoRow = { id: string; storage_path: string; category: string | null; display_order: number | null };
+export type GalleryPhotoRow = { id: string; storage_path: string; category: string | null; display_order: number | null; derivatives_at: string | null };
 export type GalleryVideoRow = {
   id: string;
   storage_path: string;
@@ -49,7 +48,7 @@ export type GalleryExtras = {
   videos: Record<string, { url: string | null; posterUrl: string | null }>;
 };
 
-/** How many grid/filmstrip tiles the server signs for first paint. */
+/** Tiles signed by transform for first paint when a gallery isn't backfilled (same as FIRST_PAINT_TILES). */
 export const GALLERY_FIRST_PAINT_TILES = 12;
 
 /** Visible photos (display order) + videos. DB only. Cached per request (page + link preview). */
@@ -61,7 +60,7 @@ export const getGalleryRows = cache(async (galleryId: string): Promise<{
   const [{ data: photos }, { data: videos }] = await Promise.all([
     supabase
       .from("photos")
-      .select("id, storage_path, category, display_order")
+      .select("id, storage_path, category, display_order, derivatives_at")
       .eq("gallery_id", galleryId)
       .eq("is_visible", true)
       .order("display_order"),
@@ -108,18 +107,19 @@ export async function signGalleryExtras(
   return { extras, originals };
 }
 
-/** First paint: opening photo at slide size + the first dozen tiles (≤ 13 calls, parallel). */
+/**
+ * What the page sends with the HTML: every stored-derivative link (two batch
+ * calls), plus — for photos not backfilled yet — the opening slide and first
+ * dozen tiles by transform. Same rule as the buyer slideshow (signFirstPaint).
+ */
 export async function signGalleryFirstPaint(
   supabase: SupabaseClient,
   photos: GalleryPhotoRow[]
 ): Promise<Record<string, { thumb: string | null; full?: string }>> {
-  const [full, thumbs] = await Promise.all([
-    signIdsAtSize(supabase, photos.slice(0, 1), "full", GALLERY_TTL),
-    signIdsAtSize(supabase, photos.slice(0, GALLERY_FIRST_PAINT_TILES), "thumb", GALLERY_TTL),
-  ]);
-  const map: Record<string, { thumb: string | null; full?: string }> = {};
-  for (const p of photos.slice(0, GALLERY_FIRST_PAINT_TILES)) {
-    map[p.id] = { thumb: thumbs[p.id] ?? null, ...(full[p.id] ? { full: full[p.id] } : {}) };
+  const map = await signFirstPaint(supabase, photos, GALLERY_TTL);
+  const out: Record<string, { thumb: string | null; full?: string }> = {};
+  for (const [id, v] of Object.entries(map)) {
+    out[id] = { thumb: v.thumb ?? null, ...(v.full ? { full: v.full } : {}) };
   }
-  return map;
+  return out;
 }

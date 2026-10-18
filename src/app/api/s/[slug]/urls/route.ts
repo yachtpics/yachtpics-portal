@@ -7,7 +7,7 @@ import {
   slideshowRows,
   SLIDESHOW_TTL,
 } from "@/lib/publicSlideshow";
-import { signIdsAtSize } from "@/lib/publicPhotoUrls";
+import { signPhotosAtSize } from "@/lib/publicPhotoUrls";
 import { rateLimited } from "@/lib/simpleRateLimit";
 
 export const runtime = "nodejs";
@@ -30,6 +30,10 @@ const MAX_IDS = 60;
  *     → { photos: {}, videos: { [videoId]: { url, posterUrl } }, deckPlanUrl }
  *   Re-signs the video / still / deck-plan links when a tab returns after
  *   they've gone stale.
+ *
+ * Since Oct 18 photos with stored derivatives are signed in one batch call
+ * (and the page already sends them all), so this mostly serves photos not
+ * backfilled yet, plus link refreshes.
  *
  * Public — no login — but it applies EXACTLY the page's rules (shared code in
  * src/lib/publicSlideshow.ts): the listing must be published under this slug,
@@ -69,7 +73,7 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     if (ids) {
       const wanted = new Set(ids);
       const items = rows.photos.filter((p) => wanted.has(p.id));
-      const signed = await signIdsAtSize(supabase, items, size, SLIDESHOW_TTL, 20);
+      const signed = await signPhotosAtSize(supabase, items, size, SLIDESHOW_TTL);
       const photos: Record<string, { thumb?: string; full?: string }> = {};
       for (const [id, url] of Object.entries(signed)) photos[id] = size === "full" ? { full: url } : { thumb: url };
       return NextResponse.json({ photos }, { headers: { "Cache-Control": "no-store" } });

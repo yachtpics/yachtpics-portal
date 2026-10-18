@@ -7,6 +7,7 @@ import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
+import { requestDerivatives } from "@/lib/uploadListingPhoto";
 import Link from "next/link";
 
 export default function InviteBrokerPage() {
@@ -164,7 +165,7 @@ export default function InviteBrokerPage() {
             .upload(path, photo.file, { upsert: false });
 
           if (!uploadError) {
-            await supabase.from("photos").insert({
+            const { data: newPhoto } = await supabase.from("photos").insert({
               listing_id: listingId,
               storage_path: path,
               filename: photo.file.name,
@@ -172,7 +173,9 @@ export default function InviteBrokerPage() {
               display_order: i,
               is_visible: true,
               uploaded_by: uploader?.id ?? null,
-            });
+            }).select("id").single();
+            // Stored 600 / 2000 px copies, made server-side (fire-and-forget).
+            if (newPhoto?.id) requestDerivatives(listingId, [newPhoto.id as string]);
           }
         }
       }

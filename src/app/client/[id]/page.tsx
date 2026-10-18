@@ -3,7 +3,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
 import ClientGalleryView from "./_components/ClientGalleryView";
 import { withVideoUrls } from "@/lib/videoUrls";
-import { signTransformed, THUMB_TRANSFORM } from "@/lib/publicPhotoUrls";
+import { signGridThumbs } from "@/lib/publicPhotoUrls";
 
 export const dynamic = "force-dynamic";
 
@@ -35,16 +35,18 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
 
   const { data: photos } = await service
     .from("photos")
-    .select("id, storage_path, filename, category, display_order, is_visible, uploaded_by")
+    .select("id, storage_path, filename, category, display_order, is_visible, uploaded_by, derivatives_at")
     .eq("gallery_id", params.id)
     .order("display_order");
   const photoPaths = (photos ?? []).map((p) => p.storage_path);
-  // Originals for downloads; a 600px copy for the grid tiles.
+  // Originals for downloads; a 600px copy for the grid tiles (stored
+  // derivative when the photo has one — one batch call — else a transform
+  // for the first 24, the original after that).
   const [{ data: ps }, thumbMap] = await Promise.all([
     photoPaths.length > 0
       ? service.storage.from("listing-photos").createSignedUrls(photoPaths, 7200)
       : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
-    signTransformed(service, photoPaths, THUMB_TRANSFORM, 7200),
+    signGridThumbs(service, photos ?? [], 7200),
   ]);
   const pmap = new Map((ps ?? []).map((d) => [d.path, d.signedUrl]));
   const photosWithUrls = (photos ?? []).map((p) => ({
@@ -53,7 +55,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
     category: p.category,
     is_visible: p.is_visible,
     url: pmap.get(p.storage_path) ?? null,
-    thumbUrl: thumbMap.get(p.storage_path) ?? null,
+    thumbUrl: thumbMap[p.id] ?? null,
   }));
 
   const { data: videos } = await service

@@ -16,6 +16,12 @@
 - Every admin page calls `requireAdminPage()`; every `/api/admin` route calls
   `requireAdmin()`.
 - Never create scratch files inside `src/`.
+- Listing photos have stored resized copies (600 / 2000 px WebP) under
+  `{broker}/{listing}/_d/` in the same `listing-photos` bucket, flagged by
+  `photos.derivatives_at`. Name and sign them only through
+  `src/lib/photoDerivativePaths.ts` / `src/lib/photoDerivatives.ts`; anything
+  that deletes a photo's file must also call `removeDerivatives`. Reels,
+  showroom and other render pipelines keep using originals.
 
 ## Help page rule — every change, not later
 

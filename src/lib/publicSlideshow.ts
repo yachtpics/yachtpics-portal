@@ -5,7 +5,7 @@ import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
 import { withVideoUrls } from "@/lib/videoUrls";
-import { signIdsAtSize, type PhotoSize } from "@/lib/publicPhotoUrls";
+import { signPhotosAtSize, type PhotoSize } from "@/lib/publicPhotoUrls";
 
 /**
  * Shared by the buyer slideshow page (/s/[slug]), its link preview
@@ -93,6 +93,7 @@ export type SlideshowPhotoRow = {
   category: string | null;
   filename: string | null;
   display_order: number | null;
+  derivatives_at: string | null;
 };
 
 export type SlideshowVideoRow = {
@@ -126,7 +127,7 @@ export const getSlideshowRows = cache(async (listingId: string, manual: boolean,
   const [{ data: photos }, { data: rawVideos }] = await Promise.all([
     supabase
       .from("photos")
-      .select("id, storage_path, category, filename, display_order")
+      .select("id, storage_path, category, filename, display_order, derivatives_at")
       .eq("listing_id", listingId)
       .eq("is_visible", true)
       .order("display_order"),
@@ -180,22 +181,43 @@ export async function signSlideshowExtras(
 }
 
 /**
- * First paint only: the opening photo at slide size + the first dozen tiles.
- * ≤ 13 signing calls, in parallel. Everything else the viewer asks for in
- * chunks through /api/s/[slug]/urls.
+ * What the page sends with the HTML.
+ *
+ * Photos with stored derivatives: EVERY tile (600) and slide (2000) link, in
+ * two batch createSignedUrls calls — cheap however big the boat — so the
+ * viewer never has to ask for them.
+ *
+ * Photos without derivatives yet (not backfilled): the old first-paint rule —
+ * the opening photo at slide size + the first dozen tiles via per-photo
+ * transform signing (≤ 13 calls); the viewer fetches the rest in chunks
+ * through /api/s/[slug]/urls.
  */
 export async function signFirstPaint(
   supabase: SupabaseClient,
-  photos: { id: string; storage_path: string }[],
+  photos: { id: string; storage_path: string; derivatives_at?: string | null }[],
   ttl: number
 ): Promise<PhotoUrlMap> {
+  // The fallback caps apply to the first photo / first dozen only: past those,
+  // a photo without derivatives is left for the viewer to ask for.
+  const firstTiles = new Set(photos.slice(0, FIRST_PAINT_TILES).map((p) => p.id));
+  const firstId = photos[0]?.id;
   const [full, thumbs] = await Promise.all([
-    signIdsAtSize(supabase, photos.slice(0, 1), "full", ttl),
-    signIdsAtSize(supabase, photos.slice(0, FIRST_PAINT_TILES), "thumb", ttl),
+    signPhotosAtSize(supabase, photos, "full", ttl, { fallbackLimit: 0 }),
+    signPhotosAtSize(supabase, photos, "thumb", ttl, { fallbackLimit: 0 }),
   ]);
+  const needFull = photos.filter((p) => p.id === firstId && !full[p.id]);
+  const needThumb = photos.filter((p) => firstTiles.has(p.id) && !thumbs[p.id]);
+  const [fullFb, thumbFb] = await Promise.all([
+    needFull.length ? signPhotosAtSize(supabase, needFull, "full", ttl) : Promise.resolve({} as Record<string, string>),
+    needThumb.length ? signPhotosAtSize(supabase, needThumb, "thumb", ttl) : Promise.resolve({} as Record<string, string>),
+  ]);
+  Object.assign(full, fullFb);
+  Object.assign(thumbs, thumbFb);
   const map: PhotoUrlMap = {};
-  for (const p of photos.slice(0, FIRST_PAINT_TILES)) {
-    map[p.id] = { thumb: thumbs[p.id] ?? null, ...(full[p.id] ? { full: full[p.id] } : {}) };
+  for (const p of photos) {
+    const t = thumbs[p.id];
+    const f = full[p.id];
+    if (t || f) map[p.id] = { thumb: t ?? null, ...(f ? { full: f } : {}) };
   }
   return map;
 }

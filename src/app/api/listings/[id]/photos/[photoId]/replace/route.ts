@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
+import { removeDerivatives } from "@/lib/photoDerivatives";
 
 export const runtime = "nodejs";
 
@@ -93,7 +94,9 @@ export async function POST(
     const oldPath = photo.storage_path as string;
     const { data: updated, error: updateError } = await svc
       .from("photos")
-      .update({ storage_path: newPath, filename: filename ?? photo.filename })
+      // derivatives_at cleared: the stored thumbnails belong to the old file.
+      // The browser asks for new ones right after (replaceListingPhoto).
+      .update({ storage_path: newPath, filename: filename ?? photo.filename, derivatives_at: null })
       .eq("id", photoId)
       .eq("listing_id", listingId)
       .select("id, storage_path, filename")
@@ -106,6 +109,8 @@ export async function POST(
     // other row still does. Best effort: a leftover file is harmless, a row
     // pointing at nothing is not.
     if (oldPath) {
+      // The old file's stored thumbnails ({dir}/_d/{photoId}-{hash of old path}-…).
+      await removeDerivatives(svc, [{ id: photoId, storage_path: oldPath }]);
       const { data: stillUsed } = await svc.from("photos").select("id").eq("storage_path", oldPath).limit(1);
       if (!(stillUsed ?? []).length) {
         await svc.storage.from(BUCKET).remove([oldPath]).catch(() => {});
