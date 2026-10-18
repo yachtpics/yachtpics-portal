@@ -227,7 +227,7 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
     <div className="mt-6">
       {posting && (
         <SocialPostDialog
-          jobId={posting.id}
+          source={{ kind: "reel_service_job", id: posting.id }}
           brokerId={posting.broker_id}
           title={`${boatName(posting)} · #${posting.slot} ${ANGLE_LABEL[posting.angle as ReelServiceAngle] ?? posting.angle}`}
           defaultCaption={posting.caption ?? ""}

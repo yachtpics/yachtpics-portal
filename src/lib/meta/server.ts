@@ -71,6 +71,36 @@ export async function reelVideoUrl(job: ReelSource): Promise<string> {
   return r2SignedGetUrl(job.video_path, { expiresIn: 2 * 60 * 60 });
 }
 
+/**
+ * What a post can be made from:
+ *  - 'reel_service_job' — source_id = reel_service_jobs.id; the file is the job's.
+ *  - 'listing_reel'     — source_id = listings.id; a reel rendered in the
+ *    listing's Reel Maker and uploaded to the private bucket under
+ *    social-uploads/{listing_id}/ — social_posts.video_path holds the key
+ *    (migration 20261018b_social_listing_reels.sql). Admin only for now.
+ */
+export const SOCIAL_SOURCE_KINDS = ["reel_service_job", "listing_reel"] as const;
+export type SocialSourceKind = (typeof SOCIAL_SOURCE_KINDS)[number];
+
+/**
+ * The link Meta fetches for a post, signed now (~2 hours). A listing reel's
+ * key is read from video_path on demand rather than via POST_COLUMNS, so the
+ * Reel Service path keeps working even before migration 20261018b is applied.
+ */
+export async function postVideoUrl(svc: SupabaseClient, post: SocialPostRow): Promise<string> {
+  if (post.source_kind === "listing_reel") {
+    const { data, error } = await svc.from("social_posts").select("video_path").eq("id", post.id).maybeSingle();
+    if (error) throw new Error(`Couldn't read the reel's file (${error.message}). Is migration 20261018b_social_listing_reels.sql applied?`);
+    const path = (data as { video_path?: string | null } | null)?.video_path;
+    if (!path) throw new Error("This post has no video file.");
+    if (!r2VideoConfigured()) throw new Error("Video storage isn't configured.");
+    return r2SignedGetUrl(path, { expiresIn: 2 * 60 * 60 });
+  }
+  const job = await loadReelSource(svc, post.source_id);
+  if ("error" in job) throw new Error(job.error);
+  return reelVideoUrl(job);
+}
+
 export async function loadConnection(svc: SupabaseClient, id: string): Promise<SocialConnectionRow | null> {
   const { data } = await svc.from("social_connections")
     .select("id, broker_id, fb_user_id, page_id, page_name, page_token_enc, ig_user_id, ig_username").eq("id", id).maybeSingle();
@@ -113,9 +143,7 @@ export async function startPost(svc: SupabaseClient, post: SocialPostRow, opts: 
     const conn = await connectionFor(svc, post);
     if (!conn) throw new Error("The Facebook Page connection was removed.");
     const token = decryptToken(conn.page_token_enc);
-    const job = await loadReelSource(svc, post.source_id);
-    if ("error" in job) throw new Error(job.error);
-    const videoUrl = await reelVideoUrl(job);
+    const videoUrl = await postVideoUrl(svc, post);
     const caption = post.caption ?? "";
 
     if (post.platform === "facebook") {

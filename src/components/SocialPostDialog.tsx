@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { pagePicture } from "./SocialAccounts";
 
 /**
- * "Post to Facebook / Instagram" for one finished reel.
+ * "Post to Facebook / Instagram" for one finished reel — a Reel Service reel
+ * (Admin → Reel Service) or a listing reel just made in the listing's Reel
+ * Maker (admin only), which is uploaded first, on Post, with a progress bar.
  *
  * Pick the Page (admin: any connected Page), tick Facebook and/or Instagram,
  * edit the caption, then Post now or schedule. Below: this reel's posts with
@@ -27,15 +29,33 @@ const STATUS_STYLE: Record<string, string> = {
 };
 const MAX_CAPTION = 2200;
 
+/**
+ * What's being posted.
+ *  - reel_service_job: a stored Reel Service reel (`id` = job id).
+ *  - listing_reel: a reel rendered in the browser for listing `id`. `upload`
+ *    puts the MP4 in the private bucket and resolves to its key (it may
+ *    remember the key per render, so a second post doesn't upload again);
+ *    the duration and frame size go to the server for its own check.
+ */
+export type SocialSource =
+  | { kind: "reel_service_job"; id: string }
+  | {
+      kind: "listing_reel"; id: string;
+      upload: (onProgress: (pct: number) => void) => Promise<string>;
+      durationSec: number; width: number; height: number;
+    };
+
 /** "2026-10-20T09:00" in the viewer's local time, for <input type="datetime-local">. */
 function localInputValue(d: Date) {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function SocialPostDialog({ jobId, title, defaultCaption, brokerId, onClose }: {
-  jobId: string; title: string; defaultCaption: string; brokerId?: string; onClose: () => void;
+export default function SocialPostDialog({ source, title, defaultCaption, brokerId, onClose }: {
+  source: SocialSource; title: string; defaultCaption: string; brokerId?: string; onClose: () => void;
 }) {
+  const sourceId = source.id;
+  const isListing = source.kind === "listing_reel";
   const [conns, setConns] = useState<Connection[] | null>(null);
   const [configured, setConfigured] = useState(true);
   const [connId, setConnId] = useState("");
@@ -50,16 +70,19 @@ export default function SocialPostDialog({ jobId, title, defaultCaption, brokerI
   });
   const [posts, setPosts] = useState<Post[]>([]);
   const [busy, setBusy] = useState("");
+  const [uploadPct, setUploadPct] = useState(0);
   const [msg, setMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const checking = useRef(false);
   const [scope, setScope] = useState<"reel" | "all">("reel");
 
   const loadPosts = useCallback(async () => {
-    const url = scope === "reel" ? `/api/social/posts?jobId=${encodeURIComponent(jobId)}` : "/api/social/posts";
+    const url = scope === "reel"
+      ? `/api/social/posts?${source.kind === "reel_service_job" ? "jobId" : "sourceId"}=${encodeURIComponent(sourceId)}`
+      : "/api/social/posts";
     const res = await fetch(url, { cache: "no-store" }).catch(() => null);
     const d = res ? await res.json().catch(() => ({})) : {};
     setPosts((d?.posts ?? []) as Post[]);
-  }, [jobId, scope]);
+  }, [source.kind, sourceId, scope]);
 
   useEffect(() => {
     void (async () => {
@@ -68,8 +91,9 @@ export default function SocialPostDialog({ jobId, title, defaultCaption, brokerI
       const list = (d?.connections ?? []) as Connection[];
       setConfigured(!!d?.configured);
       setConns(list);
-      // Prefer the reel's broker's own Page, else the first one.
-      const own = brokerId ? list.find((c) => c.broker_id === brokerId) : undefined;
+      // Prefer the reel's broker's own Page (no broker given: the viewer's
+      // own — "You"), else the first one.
+      const own = brokerId ? list.find((c) => c.broker_id === brokerId) : list.find((c) => c.broker_name === "You");
       setConnId((own ?? list[0])?.id ?? "");
       if (d?.error) setMsg({ type: "error", text: d.error });
     })();
@@ -113,12 +137,25 @@ export default function SocialPostDialog({ jobId, title, defaultCaption, brokerI
       if (isNaN(d.getTime())) { setMsg({ type: "error", text: "Pick a date and time." }); return; }
       scheduledFor = d.toISOString();
     }
-    setBusy("post"); setMsg(null);
+    setMsg(null);
     try {
+      let body: Record<string, unknown>;
+      if (source.kind === "listing_reel") {
+        // Upload first (the browser holds the only copy), then post from the stored file.
+        setBusy("upload"); setUploadPct(0);
+        const videoPath = await source.upload(setUploadPct);
+        body = {
+          sourceKind: "listing_reel", listingId: source.id, videoPath,
+          durationSec: source.durationSec, width: source.width, height: source.height,
+        };
+      } else {
+        body = { jobId: source.id };
+      }
+      setBusy("post");
       const res = await fetch("/api/social/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId, connectionId: conn.id, platforms, caption, scheduledFor }),
+        body: JSON.stringify({ ...body, connectionId: conn.id, platforms, caption, scheduledFor }),
       });
       const d = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(d?.error ?? `Failed (${res.status}).`);
@@ -223,24 +260,32 @@ export default function SocialPostDialog({ jobId, title, defaultCaption, brokerI
             </div>
 
             <div className="flex gap-3 pt-1">
-              <button onClick={onClose} disabled={busy === "post"}
+              <button onClick={onClose} disabled={busy === "post" || busy === "upload"}
                 className="flex-1 bg-white border border-hairline-strong hover:bg-ink-50 disabled:opacity-50 text-ink-700 text-sm font-medium py-2.5 rounded-ctl">
                 Close
               </button>
               <button onClick={() => void submit()} disabled={!!busy || !conn || caption.length > MAX_CAPTION || (!fb && !wantIg)}
                 className="flex-1 bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold py-2.5 rounded-ctl">
-                {busy === "post" ? (when === "now" ? "Posting… (up to a minute)" : "Scheduling…") : when === "now" ? "Post now" : "Schedule"}
+                {busy === "upload" ? `Uploading… ${uploadPct}%` : busy === "post" ? (when === "now" ? "Posting… (up to a minute)" : "Scheduling…") : when === "now" ? "Post now" : "Schedule"}
               </button>
             </div>
+            {busy === "upload" && (
+              <div className="h-1.5 bg-ink-100 rounded-full overflow-hidden" role="progressbar" aria-valuenow={uploadPct} aria-valuemin={0} aria-valuemax={100} aria-label="Uploading the reel">
+                <div className="h-full bg-accent-500 transition-all" style={{ width: `${uploadPct}%` }} />
+              </div>
+            )}
+            {isListing && !busy && (
+              <p className="text-xs text-ink-400">The reel uploads to the portal&rsquo;s private storage first; Facebook and Instagram fetch it from there.</p>
+            )}
           </div>
         )}
 
         {(posts.length > 0 || scope === "all") && (
           <div className="mt-6 border-t border-hairline pt-4">
             <div className="flex items-center justify-between mb-2">
-              <p className="label-caps">{scope === "reel" ? "This reel\u2019s posts" : "Recent posts, all reels"}</p>
+              <p className="label-caps">{scope === "reel" ? (isListing ? "This listing\u2019s reel posts" : "This reel\u2019s posts") : "Recent posts, all reels"}</p>
               <button onClick={() => setScope(scope === "reel" ? "all" : "reel")} className="text-xs text-accent-700 font-semibold hover:underline">
-                {scope === "reel" ? "Show all recent" : "Just this reel"}
+                {scope === "reel" ? "Show all recent" : isListing ? "Just this listing" : "Just this reel"}
               </button>
             </div>
             {posts.length === 0 && <p className="text-xs text-ink-400">No posts yet.</p>}

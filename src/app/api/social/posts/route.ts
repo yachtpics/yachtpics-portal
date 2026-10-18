@@ -9,16 +9,19 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 /**
- * GET /api/social/posts[?jobId=…] → { posts } — recent posts (admin: all;
- * broker: own), newest first, with the Page name. With jobId, just that reel's.
+ * GET /api/social/posts[?jobId=…|?sourceId=…] → { posts } — recent posts
+ * (admin: all; broker: own), newest first, with the Page name. With jobId /
+ * sourceId, just that reel's (or that listing's listing-reel posts).
  */
 export async function GET(req: NextRequest) {
   const viewer = await socialViewer();
   if (!viewer) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   if (!viewer.allowed) return NextResponse.json({ posts: [] });
   let q = viewer.svc.from("social_posts").select(POST_COLUMNS).order("created_at", { ascending: false }).limit(25);
-  const jobId = req.nextUrl.searchParams.get("jobId");
-  if (jobId) q = q.eq("source_id", jobId);
+  // jobId (a Reel Service reel) or sourceId (any source — e.g. a listing id
+  // for its listing reels): just that source's posts.
+  const sourceId = req.nextUrl.searchParams.get("jobId") || req.nextUrl.searchParams.get("sourceId");
+  if (sourceId) q = q.eq("source_id", sourceId);
   if (!viewer.isAdmin) q = q.eq("broker_id", viewer.userId);
   const { data, error } = await q;
   if (error) return NextResponse.json({ posts: [], error: error.message });

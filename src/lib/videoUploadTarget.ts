@@ -36,10 +36,18 @@ export const REEL_SHARE_PREFIX = "reel-shares/";
 /** Reel Service deliveries: reel-service/{broker_id}/{YYYY-MM}/{job_id}.mp4 */
 export const REEL_SERVICE_PREFIX = "reel-service/";
 
+/**
+ * Listing reels sent to Facebook / Instagram (admin only, Oct 18):
+ * social-uploads/{listing_id}/{uuid}.mp4. Meta fetches the file through a
+ * short-lived signed link made at posting time; swept after 35 days (the
+ * longest schedule is 29 days ahead).
+ */
+export const SOCIAL_UPLOAD_PREFIX = "social-uploads/";
+
 export async function resolveVideoUploadTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown }
+  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown }
 ): Promise<VideoUploadTarget> {
   const filename = sanitizeVideoFilename(body?.filename);
 
@@ -56,6 +64,17 @@ export async function resolveVideoUploadTarget(
     if (!job) return NextResponse.json({ error: "Reel job not found" }, { status: 404 });
     const prefix = `${REEL_SERVICE_PREFIX}${job.broker_id}/${job.period}/`;
     return { prefix, path: `${prefix}${job.id}.mp4` };
+  }
+
+  // A listing reel going to Facebook / Instagram. Admin only while posting
+  // is (SOCIAL_PUBLISHING_FOR_BROKERS); the server picks the whole key.
+  if (body?.socialUpload === true && body?.listingId && typeof body.listingId === "string") {
+    const { data: me } = await svc.from("profiles").select("role").eq("id", userId).maybeSingle();
+    if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
+    const { data: listing } = await svc.from("listings").select("id").eq("id", body.listingId).maybeSingle();
+    if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
+    const prefix = `${SOCIAL_UPLOAD_PREFIX}${listing.id}/`;
+    return { prefix, path: `${prefix}${crypto.randomUUID()}.mp4` };
   }
 
   if (body?.listingId && typeof body.listingId === "string") {
@@ -102,7 +121,7 @@ export async function resolveVideoUploadTarget(
 export async function assertPathBelongsToTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown },
+  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown },
   path: unknown
 ): Promise<NextResponse | { path: string }> {
   if (typeof path !== "string" || !path) {

@@ -1,5 +1,15 @@
 # Where we are — October 6, 2026
 
+## Oct 18 (later) — Post a listing reel to Facebook / Instagram from the listing's Reel Maker (admin only) — NOT PUSHED (parent will push), NOT TESTED LIVE, MIGRATION 20261018b NOT APPLIED
+
+- **What:** on a listing's **Reel** page (`/dashboard/listings/[id]/reel`, the only place the listing Reel Maker lives), after rendering, admins get **Post to Facebook / Instagram** next to Download — only when `/api/social/connections` says Meta is configured and a Page is connected. Opens the existing `SocialPostDialog` (now takes `source: { kind: "reel_service_job", id } | { kind: "listing_reel", id, upload, durationSec, width, height }`; Reel Service board updated). Caption drafted from the listing + broker card only (name; year make model · length′; location; "Presented by {broker}, {brokerage}."; "Delivered through the YachtPics Portal.").
+- **Upload:** on Post the dialog uploads the rendered MP4 (progress %) through the existing private-R2 upload routes with a new admin-only target `{ listingId, socialUpload: true }` → `social-uploads/{listing_id}/{uuid}.mp4` (server-chosen key; `resolveVideoUploadTarget`). Remembered per render, so re-posting doesn't re-upload. No new bucket, no RLS change. Swept after 35 days by `/api/cron/reel-share-sweep`.
+- **Publish:** `POST /api/social/publish` accepts `sourceKind: "listing_reel"` (admin only even when `SOCIAL_PUBLISHING_FOR_BROKERS` flips): checks listing, key prefix, file exists in R2, 9:16 and 3–90 s; rows get `source_kind='listing_reel'`, `source_id`=listing, `video_path`=key. `startPost` now calls `postVideoUrl()` which signs a 2-hour link from `video_path` at send time (cron re-signs for scheduled Instagram). `GET /api/social/posts` also takes `?sourceId=`.
+- **Limits:** Films (16:9) can't be posted; reels over 90 s (possible only with many clips/long holds) or under 3 s are blocked with the reason. Reel Studio (no listing) has no button.
+- **Migration (write-only, not applied):** `supabase/migrations/20261018b_social_listing_reels.sql` — `social_posts.video_path text` + check that listing_reel rows have it. Reel Service posting works without it.
+- **Help:** admin-only, so the broker Help page and PDF are unchanged.
+- **Tested:** typecheck + eslint clean. Not tested against Meta.
+
 ## Oct 18 — Facebook & Instagram Reels posting (admin only) + public Privacy / Data deletion pages — NOT PUSHED (parent will push), NOT TESTED LIVE (no App Secret yet), MIGRATION NOT APPLIED
 
 - **What:** Admin → Reel Service → any ready/delivered reel → **Post to Facebook / Instagram**: pick a connected Page (any connection, for admin), tick Facebook and/or Instagram (IG greyed out if the Page has no linked IG professional account), caption prefilled from `job.caption` (2,200 limit), **Post now** or **Schedule for** a date/time (15 min – 29 days). The dialog lists this reel's posts (or all recent) with status, **View** link, and **Cancel** on scheduled ones; while an Instagram reel is processing it nudges it every ~8 s until live.

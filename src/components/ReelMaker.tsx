@@ -28,6 +28,7 @@ import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MA
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
+import SocialPostDialog from "@/components/SocialPostDialog";
 import { composeReelMusic, isMusicChoice, moodForLook, musicCanCompose, nextMusicSeed, resolveMood, seedFromString, MUSIC_BLURB, MUSIC_CHOICES, MUSIC_LABEL, MUSIC_SAMPLE_RATE, type ComposeOptions, type MusicChoice, type MusicMood } from "@/lib/reelMusic";
 import {
   CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader, createClipInputPool,
@@ -214,6 +215,27 @@ function safeName(s: string | null | undefined) {
 
 function fmtPrice(n: number | null) {
   return n ? `$${Number(n).toLocaleString("en-US")}` : null;
+}
+
+/** Facebook and Instagram take API-published Reels of 3–90 seconds, 9:16. */
+const SOCIAL_MIN_SEC = 3;
+const SOCIAL_MAX_SEC = 90;
+
+/**
+ * The draft caption for posting a listing reel (admin): only what the listing
+ * and the broker's card say — name, year / make / model / length, where she
+ * lies, who presents her — and a quiet sign-off. Editable in the dialog.
+ */
+function socialCaption(listing: ListingData, broker: BrokerCard | null): string {
+  const lines: string[] = [];
+  if (listing.vessel_name) lines.push(listing.vessel_name);
+  const len = listing.length_ft ? `${Math.round(Number(listing.length_ft) * 10) / 10}′` : "";
+  const spec = [listing.year, listing.make, listing.model].filter(Boolean).join(" ");
+  const specLine = [spec, len].filter(Boolean).join(" · ");
+  if (specLine) lines.push(specLine);
+  if (listing.location) lines.push(listing.location);
+  if (broker?.name) lines.push(`Presented by ${broker.name}${broker.brokerage ? `, ${broker.brokerage}` : ""}.`);
+  return (lines.length ? lines.join("\n") + "\n\n" : "") + "Delivered through the YachtPics Portal.";
 }
 
 
@@ -512,7 +534,15 @@ export default function ReelMaker({
   // (still phase "loading" — the status line just says what it is doing).
   const [depthReading, setDepthReading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; renderId: string; music?: string | null } | null>(null);
+  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; duration?: number; renderId: string; music?: string | null } | null>(null);
+  /**
+   * Admin: "Post to Facebook / Instagram" from the listing. Shown once the
+   * portal says Meta is configured and a Page is connected. The upload is
+   * remembered per render, so posting the same reel again doesn't re-upload.
+   */
+  const [socialReady, setSocialReady] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
+  const socialUploadRef = useRef<{ renderId: string; path: string } | null>(null);
   const [adding, setAdding] = useState(false);
 
   /**
@@ -598,6 +628,20 @@ export default function ReelMaker({
     const url = result?.url;
     return () => { if (url) URL.revokeObjectURL(url); };
   }, [result]);
+
+  // Admin on a listing: is Facebook / Instagram posting set up (configured + a Page connected)?
+  useEffect(() => {
+    if (!isAdmin || !listingId || auto) return;
+    let gone = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/social/connections?all=1", { cache: "no-store" });
+        const d = await res.json().catch(() => ({}));
+        if (!gone) setSocialReady(res.ok && !!d?.allowed && !!d?.configured && Array.isArray(d?.connections) && d.connections.length > 0);
+      } catch { /* no button — the rest of the page is unaffected */ }
+    })();
+    return () => { gone = true; };
+  }, [isAdmin, listingId, auto]);
 
   // Can this browser encode H.264 at all? (Chrome, Edge, Safari 16.4+; Firefox 130+.)
   useEffect(() => {
@@ -2938,7 +2982,7 @@ export default function ReelMaker({
       if (!buffer) throw new Error("The video came back empty.");
       const blob = new Blob([buffer], { type: "video/mp4" });
       const url = URL.createObjectURL(blob);
-      setResult({ url, blob, format, seconds: Math.round(total), renderId, music: musicLabel });
+      setResult({ url, blob, format, seconds: Math.round(total), duration: total, renderId, music: musicLabel });
       setProgress(100);
       setPhase("done");
       // What was made, not what was selected: the look, the shape and the
@@ -3071,6 +3115,23 @@ export default function ReelMaker({
   }
 
   /**
+   * Admin: put this render in the private bucket for Facebook / Instagram
+   * (social-uploads/{listing}/{uuid}.mp4, key chosen by the server) and
+   * return the key. Once per render.
+   */
+  async function uploadForSocial(onProgress: (pct: number) => void): Promise<string> {
+    if (!result || !listingId) throw new Error("Make the reel first.");
+    const r = result;
+    if (socialUploadRef.current?.renderId === r.renderId) { onProgress(100); return socialUploadRef.current.path; }
+    if (!(await claimReel(r.renderId))) throw new Error("This reel can't leave the page.");
+    const file = new File([r.blob], `${safeName(listing.vessel_name)}-reel.mp4`, { type: "video/mp4" });
+    const up = await uploadVideoToPrivateBucket({ file, target: { listingId, socialUpload: true }, onProgress });
+    if (!up.ok) throw new Error(up.error);
+    socialUploadRef.current = { renderId: r.renderId, path: up.path };
+    return up.path;
+  }
+
+  /**
    * Get the finished reel onto the phone it'll be posted from. Uploads the
    * rendered file to the private bucket under a short-lived prefix, signs a
    * 24-hour link, shows it as a QR code and emails it as a backup.
@@ -3195,6 +3256,14 @@ export default function ReelMaker({
   // This render can't leave the page: both included reels are used and it
   // isn't one of them. (A render already claimed stays takeable.)
   const allowanceSpent = !!result && usedUp && !claimedIds[result.renderId];
+  // Admin posting from the listing: why Meta would refuse this render, if it would.
+  const socialSeconds = result ? (result.duration ?? result.seconds) : 0;
+  const socialBlocked = !result ? null
+    : result.format !== "reel" ? "Facebook and Instagram Reels must be vertical (9:16) \u2014 switch to Reel and make it again."
+    : socialSeconds > SOCIAL_MAX_SEC ? `Facebook Reels must be ${SOCIAL_MAX_SEC} seconds or less \u2014 pick a shorter length.`
+    : socialSeconds < SOCIAL_MIN_SEC ? `Reels must be at least ${SOCIAL_MIN_SEC} seconds long.`
+    : null;
+  const showSocial = isAdmin && !!listingId && socialReady && !auto;
   // A listing on the allowance (a non-subscriber's, after the open house).
   const metered = !!listingId && !!allowance && !allowance.unlimited;
   // "N of 2 left" — non-subscribers only, only after the open house.
@@ -3884,6 +3953,13 @@ export default function ReelMaker({
               ) : (
                 <>
                   <button onClick={download} className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">⬇ Download MP4</button>
+                  {/* Admin only: straight to the connected Facebook Page / Instagram. */}
+                  {showSocial && (
+                    <button onClick={() => setSocialOpen(true)} disabled={!!socialBlocked} title={socialBlocked ?? undefined}
+                      className="bg-white border border-hairline-strong hover:border-ink-400 disabled:opacity-50 disabled:cursor-not-allowed text-ink-800 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">
+                      Post to Facebook / Instagram
+                    </button>
+                  )}
                   {/* Already on the phone that made it: the share sheet is the
                       only door to the camera roll, and only iOS opens it. */}
                   {canSaveToCameraRoll && (
@@ -3916,6 +3992,20 @@ export default function ReelMaker({
               <p className="text-xs text-ink-500 text-center mt-2">Tap <span className="font-semibold">Save to camera roll</span> once more to open the share sheet.</p>
             )}
             {phoneError && <p className="mt-3 text-sm text-danger-700 text-center">{phoneError}</p>}
+            {showSocial && socialBlocked && !locked && !allowanceSpent && (
+              <p className="mt-2 text-xs text-warn-800 text-center">{socialBlocked}</p>
+            )}
+            {socialOpen && showSocial && listingId && !socialBlocked && (
+              <SocialPostDialog
+                source={{
+                  kind: "listing_reel", id: listingId, upload: uploadForSocial,
+                  durationSec: socialSeconds, width: SPEC[result.format].w, height: SPEC[result.format].h,
+                }}
+                title={`${listing.vessel_name ?? "Listing"} \u00b7 Reel \u00b7 ${result.seconds}s`}
+                defaultCaption={socialCaption(listing, broker)}
+                onClose={() => setSocialOpen(false)}
+              />
+            )}
 
             {phone && (
               <div className="mt-5 bg-ink-50 border border-hairline rounded-ctl p-5 flex flex-col sm:flex-row items-center gap-5">

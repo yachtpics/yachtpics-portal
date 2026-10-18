@@ -107,6 +107,8 @@ function describePutFailure(status: number): string {
 /** `share: true` files a short-lived hand-off copy under its own prefix. */
 export type PrivateBucketTarget =
   | { listingId: string; share?: boolean }
+  /** Admin only: a listing reel going to Facebook / Instagram (social-uploads/{listing}/{uuid}.mp4). */
+  | { listingId: string; socialUpload: true }
   | { galleryId: string }
   /** Reel Service (admin only): reel-service/{broker}/{period}/{job}.mp4 */
   | { reelServiceJobId: string };
