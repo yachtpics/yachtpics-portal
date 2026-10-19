@@ -151,6 +151,7 @@ export default async function PublicSlideshowPage({
     storage_path: v.storage_path,
     storage_host: v.storage_host,
     filename: v.filename,
+    title: v.title ?? null,
     url: extras.videos[v.id]?.url ?? null,
     posterUrl: extras.videos[v.id]?.posterUrl ?? null,
   }));

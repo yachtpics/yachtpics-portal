@@ -1,5 +1,10 @@
 # Where we are — October 6, 2026
 
+## Oct 19 — buyer Video tab — NOT PUSHED (parent will push), NOT TESTED LIVE, no DB changes
+
+- **What:** `/s` (`SlideshowViewer.tsx`) and `/g` (`GallerySlideshow.tsx`) slideshows, filmstrips and All Photos are now photos only; videos moved to a new **Video** tab (after All Photos, only when a playable video exists) rendered by shared `src/components/VideoStack.tsx` (stacked, max 960px, poster, title-or-filename caption, one plays at a time; /g keeps per-video Download when downloads are open). `#video` on the link opens that tab; a video-only listing/gallery opens on it. `/s` now also selects `videos.title` (`publicSlideshow.ts`). Tracking unchanged: each play still logs `video_play`; no tab-open event (a new kind needs a DB check-constraint change).
+- **Help:** Videos step updated (Video tab, `#video` links; the old "front of the slideshow" line was stale). PDF rebuilt (14 sections, 53 rows). Typecheck + eslint clean.
+
 ## Oct 19 — /see showcase, login strip, Presented-through credit — NOT PUSHED (parent will push), NOT TESTED LIVE, no DB changes
 
 - **yachtpics.com nav fix (`src/lib/siteTemplates.ts` `nav()`):** the menu stamped on published boat/brokerage pages and yacht-photos.html now matches the hand-written pages: Home / Gallery / Video / Clients (was "Boats") / Team / Marine Blog (marine-news.php) / Portal (portal.html) / Contact. Nothing published. Note: portal.html returned 404 on the live site on Oct 19 — upload it before the next publish or the new Portal link will be dead. Hand-written pages (index.html etc.) still need Portal added by hand.

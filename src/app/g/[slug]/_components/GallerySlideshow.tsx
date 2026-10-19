@@ -5,6 +5,7 @@ import RetryImg from "@/components/RetryImg";
 import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
 import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/publicPhotoUrls";
+import VideoStack, { videoLabel } from "@/components/VideoStack";
 
 type GalleryPhoto = {
   id: string;
@@ -18,9 +19,8 @@ type GalleryPhoto = {
 };
 type GalleryVideo = { id?: string; url: string; filename: string | null; posterUrl?: string | null };
 
-type Slide =
-  | { type: "photo"; id: string; url: string | null; thumbUrl?: string | null; downloadUrl?: string | null; category: string | null }
-  | { type: "video"; url: string; filename: string | null; posterUrl?: string | null };
+/** The slideshow and All Photos are photographs only; videos have their own tab. */
+type Slide = { id: string; url: string | null; thumbUrl?: string | null; downloadUrl?: string | null; category: string | null };
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -146,11 +146,8 @@ export default function GallerySlideshow({
   const altFor = (category: string | null) => photoAlt(category, title);
 
   const slides = useMemo<Slide[]>(
-    () => [
-      ...photos.map((p) => ({ type: "photo" as const, id: p.id, url: p.url, thumbUrl: p.thumbUrl ?? null, downloadUrl: p.downloadUrl ?? null, category: p.category })),
-      ...videos.map((v) => ({ type: "video" as const, url: v.url, filename: v.filename, posterUrl: v.posterUrl ?? null })),
-    ],
-    [photos, videos]
+    () => photos.map((p) => ({ id: p.id, url: p.url, thumbUrl: p.thumbUrl ?? null, downloadUrl: p.downloadUrl ?? null, category: p.category })),
+    [photos]
   );
 
   const [downloadingAll, setDownloadingAll] = useState(false);
@@ -193,9 +190,9 @@ export default function GallerySlideshow({
     return blob;
   }, []);
 
-  // Download the single item currently on screen (works for photos and videos).
+  // Download the photo currently on screen.
   const downloadCurrentSlide = useCallback(async (s: Slide, index: number) => {
-    if ((s.type === "video" && !s.url) || downloadingOne) return;
+    if (downloadingOne) return;
     setDownloadingOne(true);
     setDlError("");
     try {
@@ -203,26 +200,40 @@ export default function GallerySlideshow({
       const fresh = await freshUrls();
       // Photos fall back to the original signed with the page, never the
       // resized display copy — a download should be the real file.
-      const url = s.type === "video"
-        ? (fresh?.videos?.[index - photos.length] ?? s.url)
-        : (fresh?.photos?.[index] ?? s.downloadUrl);
+      const url = fresh?.photos?.[index] ?? s.downloadUrl;
       if (!url) throw new Error("no link");
       const blob = await fetchFile(url);
-      const name =
-        s.type === "video"
-          ? (s.filename ?? "video.mp4")
-          : `${s.category ?? "photo"}.jpg`;
-      triggerDownload(blob, name);
+      triggerDownload(blob, `${s.category ?? "photo"}.jpg`);
       logDownload(1, "single");
     } catch {
       setDlError("That file couldn't be downloaded — please refresh the page and try again.");
     } finally {
       setDownloadingOne(false);
     }
-  }, [downloadingOne, logDownload, freshUrls, fetchFile, photos.length]);
+  }, [downloadingOne, logDownload, freshUrls, fetchFile]);
+
+  // Download one video from the Video tab (index into `videos`, the same
+  // order /signed-urls returns them in).
+  const downloadVideo = useCallback(async (index: number) => {
+    const v = videos[index];
+    if (!v?.url || downloadingOne) return;
+    setDownloadingOne(true);
+    setDlError("");
+    try {
+      const fresh = await freshUrls();
+      const url = fresh?.videos?.[index] ?? v.url;
+      const blob = await fetchFile(url);
+      triggerDownload(blob, v.filename ?? "video.mp4");
+      logDownload(1, "single");
+    } catch {
+      setDlError("That file couldn't be downloaded — please refresh the page and try again.");
+    } finally {
+      setDownloadingOne(false);
+    }
+  }, [videos, downloadingOne, logDownload, freshUrls, fetchFile]);
 
   // Zip every photo. Videos are excluded from the zip (they can be large) — the
-  // per-slide download handles those individually.
+  // Video tab downloads those one at a time.
   const downloadAllPhotos = useCallback(async () => {
     if (downloadingAll || photos.length === 0) return;
     setDownloadingAll(true);
@@ -295,7 +306,10 @@ export default function GallerySlideshow({
     }
   }, [downloadingAll, photos, title, logDownload, freshUrls, fetchFile]);
 
-  const [view, setView] = useState<"slideshow" | "grid">("slideshow");
+  const hasVideo = videos.length > 0;
+  const [view, setView] = useState<"slideshow" | "grid" | "video">(
+    initialPhotos.length === 0 && initialVideos.length > 0 ? "video" : "slideshow"
+  );
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
   const [incomingReady, setIncomingReady] = useState(true);
@@ -309,6 +323,12 @@ export default function GallerySlideshow({
     logged.current = true;
     fetch(`/api/g/${slug}/view`, { method: "POST" }).catch(() => {});
   }, [slug]);
+
+  // "…/g/slug#video" opens straight on the Video tab.
+  useEffect(() => {
+    if (window.location.hash.toLowerCase() === "#video" && hasVideo) setView("video");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const goTo = useCallback((i: number) => {
     setCurrent((cur) => {
@@ -358,12 +378,14 @@ export default function GallerySlideshow({
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Arrow keys seek a playing video — don't page the hidden slideshow too.
+      if (view === "video") return;
       if (e.key === "ArrowRight") next();
       else if (e.key === "ArrowLeft") prev();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [next, prev]);
+  }, [next, prev, view]);
 
   useEffect(() => {
     if (!playing || slides.length < 2 || view !== "slideshow") return;
@@ -378,7 +400,7 @@ export default function GallerySlideshow({
     const ids: string[] = [];
     for (let k = -3; k <= 8; k++) {
       const s = slides[(current + k + slides.length) % slides.length];
-      if (s && s.type === "photo" && !ids.includes(s.id)) ids.push(s.id);
+      if (s && !ids.includes(s.id)) ids.push(s.id);
     }
     if (ids.length) want(ids, "full");
   }, [current, slides, want]);
@@ -394,7 +416,7 @@ export default function GallerySlideshow({
     [current - 1, current + 1].forEach((i) => {
       const idx = slides.length ? (i + slides.length) % slides.length : -1;
       const s = slides[idx];
-      if (s && s.type === "photo" && s.url) {
+      if (s && s.url) {
         const img = new window.Image();
         img.decoding = "async";
         // A neighbour failing on old links re-signs before the viewer gets there.
@@ -404,7 +426,7 @@ export default function GallerySlideshow({
     });
   }, [current, slides, onMediaError]);
 
-  if (slides.length === 0) {
+  if (slides.length === 0 && !hasVideo) {
     return (
       <div className="min-h-screen bg-ink-50 flex items-center justify-center px-6 text-center">
         <div>
@@ -415,9 +437,9 @@ export default function GallerySlideshow({
     );
   }
 
-  const slide = slides[current];
+  const slide = slides[current] as Slide | undefined;
   const outSlide = outgoing !== null ? slides[outgoing] : null;
-  const caption = slide.type === "video" ? "Video" : slide.category ?? "";
+  const caption = slide?.category ?? "";
 
   const tabClass = (active: boolean) =>
     `text-xs font-medium px-3 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
@@ -429,14 +451,6 @@ export default function GallerySlideshow({
     "border border-hairline bg-white text-ink-700 text-2xl leading-none shadow-elev-1 " +
     "hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
-
-  const videoTile = (size: string) => (
-    <div className={`${size} bg-ink-900 flex items-center justify-center`}>
-      <svg className="w-1/4 h-1/4 text-white" fill="currentColor" viewBox="0 0 20 20">
-        <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-      </svg>
-    </div>
-  );
 
   return (
     <div className="min-h-screen bg-ink-50 flex flex-col">
@@ -465,12 +479,21 @@ export default function GallerySlideshow({
             </button>
           )}
           <div className="flex items-center gap-1 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
-            <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
-              Slideshow
-            </button>
-            <button onClick={() => setView("grid")} className={tabClass(view === "grid")}>
-              All Photos
-            </button>
+            {slides.length > 0 && (
+              <>
+                <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
+                  Slideshow
+                </button>
+                <button onClick={() => setView("grid")} className={tabClass(view === "grid")}>
+                  All Photos
+                </button>
+              </>
+            )}
+            {hasVideo && (
+              <button onClick={() => setView("video")} className={tabClass(view === "video")}>
+                Video
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -494,7 +517,25 @@ export default function GallerySlideshow({
         </p>
       )}
 
-      {view === "slideshow" ? (
+      {view === "video" ? (
+        <VideoStack
+          videos={videos.map((v, i) => ({ key: v.id ?? String(i), url: v.url, posterUrl: v.posterUrl ?? null, label: videoLabel(null, v.filename) }))}
+          onError={onMediaError}
+          extra={downloadsEnabled ? (_v, i) => (
+            <button
+              onClick={() => downloadVideo(i)}
+              disabled={downloadingOne}
+              aria-label="Download this video"
+              className="shrink-0 flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0l-4-4m4 4l4-4M4 21h16" />
+              </svg>
+              {downloadingOne ? "…" : "Download"}
+            </button>
+          ) : undefined}
+        />
+      ) : view === "slideshow" && slide ? (
         <>
           {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
           <div
@@ -509,7 +550,7 @@ export default function GallerySlideshow({
             }}
           >
             {/* Outgoing photo (stays underneath while the new one fades in) */}
-            {outSlide?.type === "photo" && (outSlide.url ?? outSlide.thumbUrl) && (
+            {outSlide && (outSlide.url ?? outSlide.thumbUrl) && (
               <div
                 key={`out-${outgoing}`}
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
@@ -533,43 +574,23 @@ export default function GallerySlideshow({
             )}
 
             {/* Current slide */}
-            {slide.type === "photo" ? (
-              <div
-                key={`in-${current}`}
-                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
-                style={{ zIndex: 1 }}
-              >
-                {/* Until the slide-size link arrives, show the tile copy if we have one. */}
-                {(slide.url ?? slide.thumbUrl) && (
-                <FadePhoto
-                  src={(slide.url ?? slide.thumbUrl)!}
-                  alt={altFor(slide.category)}
-                  eager
-                  retries={3}
-                  onError={onMediaError}
-                  className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
-                />
-                )}
-              </div>
-            ) : (
-              <video
-                key={`v-${current}`}
-                src={slide.url}
-                poster={slide.posterUrl ?? undefined}
-                controls
-                playsInline
-                preload="metadata"
+            <div
+              key={`in-${current}`}
+              className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+              style={{ zIndex: 1 }}
+            >
+              {/* Until the slide-size link arrives, show the tile copy if we have one. */}
+              {(slide.url ?? slide.thumbUrl) && (
+              <FadePhoto
+                src={(slide.url ?? slide.thumbUrl)!}
+                alt={altFor(slide.category)}
+                eager
+                retries={3}
                 onError={onMediaError}
-                className="absolute inset-0 h-full w-full"
-                style={{
-                  zIndex: 1,
-                  opacity: incomingReady ? 1 : 0,
-                  transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)",
-                  objectFit: "contain",
-                  background: "transparent",
-                }}
+                className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
               />
-            )}
+              )}
+            </div>
 
             {slides.length > 1 && (
               <>
@@ -603,11 +624,11 @@ export default function GallerySlideshow({
                 </svg>
               </button>
             )}
-            {downloadsEnabled && (slide.type === "photo" || slide.url) && (
+            {downloadsEnabled && (
               <button
                 onClick={() => downloadCurrentSlide(slide, current)}
                 disabled={downloadingOne}
-                aria-label={slide.type === "video" ? "Download this video" : "Download this photo"}
+                aria-label="Download this photo"
                 className="flex items-center gap-1 text-xs font-medium text-ink-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 rounded"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24" aria-hidden="true">
@@ -631,10 +652,10 @@ export default function GallerySlideshow({
                   i === current ? "opacity-100 ring-1 ring-accent-500" : "opacity-50 hover:opacity-100"
                 }`}
               >
-                {s.type === "photo" && !(s.thumbUrl ?? s.url) ? (
+                {!(s.thumbUrl ?? s.url) ? (
                   // Link still on its way — a quiet paper square, not a broken image.
                   <div className="w-[70px] h-11 bg-ink-100" />
-                ) : s.type === "photo" ? (
+                ) : (
                   <RetryImg
                     src={(s.thumbUrl ?? s.url)!}
                     alt=""
@@ -643,8 +664,6 @@ export default function GallerySlideshow({
                     onError={onMediaError}
                     className="w-[70px] h-11 object-cover"
                   />
-                ) : (
-                  videoTile("w-[70px] h-11")
                 )}
               </button>
             ))}
@@ -662,7 +681,7 @@ export default function GallerySlideshow({
                 aria-label={`Open slide ${i + 1}`}
                 className="aspect-[4/3] relative overflow-hidden rounded-[2px] bg-white shadow-print focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
               >
-                {s.type === "photo" ? ((s.thumbUrl ?? s.url) &&
+                {(s.thumbUrl ?? s.url) && (
                   <FadePhoto
                     src={(s.thumbUrl ?? s.url)!}
                     alt={altFor(s.category)}
@@ -671,8 +690,6 @@ export default function GallerySlideshow({
                     onError={onMediaError}
                     className="absolute inset-0 h-full w-full object-contain"
                   />
-                ) : (
-                  videoTile("w-full h-full")
                 )}
               </button>
             ))}

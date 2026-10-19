@@ -58,7 +58,7 @@ const sections = [
     steps: [
       "Open any listing and scroll to the Videos section below your photos.",
       "Click Upload MP4 and select an MP4 or MOV file from your computer.",
-      "By default a video appears at the front of the client slideshow. Use 'Hide from slideshow' on the video to keep it on the listing but out of the gallery.",
+      "By default a video appears on the Video tab of the client slideshow — the slideshow itself shows photos only. Use 'Hide from slideshow' on the video to keep it on the listing but off the client's page. To send a link that opens straight on the video, add #video to the end of the slideshow link.",
       "You can also send a video on its own — in Send to Client, tick the video to email the client a direct link, separate from the slideshow.",
       "For smooth playback on phones, export videos at 1080p (not 4K). To remove a video, click Delete on its card. There's no limit on video count.",
     ],

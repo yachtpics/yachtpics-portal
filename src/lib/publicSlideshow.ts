@@ -101,6 +101,7 @@ export type SlideshowVideoRow = {
   storage_path: string;
   storage_host: string | null;
   filename: string | null;
+  title: string | null;
   thumbnail_path: string | null;
 };
 
@@ -133,7 +134,7 @@ export const getSlideshowRows = cache(async (listingId: string, manual: boolean,
       .order("display_order"),
     supabase
       .from("videos")
-      .select("id, storage_path, storage_host, filename, thumbnail_path")
+      .select("id, storage_path, storage_host, filename, title, thumbnail_path")
       .eq("listing_id", listingId)
       .eq("in_slideshow", true)
       .order("display_order", { ascending: true, nullsFirst: false })

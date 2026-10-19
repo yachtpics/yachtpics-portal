@@ -5,6 +5,7 @@ import RetryImg from "@/components/RetryImg";
 import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
 import { photoAlt } from "@/lib/publicPhotoUrls";
 import PresentedThrough from "@/components/PresentedThrough";
+import VideoStack, { videoLabel } from "@/components/VideoStack";
 
 interface Photo {
   id: string;
@@ -20,12 +21,9 @@ interface Video {
   id: string;
   url: string | null;
   filename: string | null;
+  title?: string | null;
   posterUrl?: string | null;
 }
-
-type Slide =
-  | { type: "photo"; id: string; url: string | null; thumbUrl?: string | null; category: string | null; filename: string | null }
-  | { type: "video"; id: string; url: string | null; filename: string | null; posterUrl?: string | null };
 
 interface Listing {
   vessel_name: string | null;
@@ -214,15 +212,15 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const deckPlanUrl = liveUrls.deckPlanUrl ?? initialDeckPlanUrl;
   const altFor = (category: string | null) => photoAlt(category, listing.vessel_name);
 
-  // Photos first, then videos — a buyer opening the link should see a slideshow,
-  // not a video player (Oct 19). Videos stay in the sequence and the filmstrip.
-  const slides = useMemo<Slide[]>(() => [
-    ...photos.map(p => ({ type: "photo" as const, ...p })),
-    ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
-  ], [videos, photos]);
+  // The slideshow and All Photos are photographs only; videos live on their
+  // own Video tab (Oct 19) so the slideshow reads as a slideshow.
+  const slides = photos;
+  const playableVideos = useMemo(() => videos.filter((v) => !!v.url), [videos]);
+  const hasVideo = playableVideos.length > 0;
 
-
-  const [view, setView] = useState<"slideshow" | "grid" | "details">("slideshow");
+  const [view, setView] = useState<"slideshow" | "grid" | "details" | "video">(
+    initialPhotos.length === 0 && initialVideos.some((v) => v.url) ? "video" : "slideshow"
+  );
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
   const [incomingReady, setIncomingReady] = useState(true);
@@ -332,6 +330,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     }
   }
 
+  // "…/s/slug#video" opens straight on the Video tab — for "watch the video" links.
+  useEffect(() => {
+    if (window.location.hash.toLowerCase() === "#video" && hasVideo) setView("video");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Track view once per session
   useEffect(() => {
     const key = `viewed_${slug}`;
@@ -370,12 +374,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     // flick-past, not a look — don't count it.
     const leaving = slides[current];
     const dwellMs = Date.now() - slideEnteredAtRef.current;
-    if (leaving && leaving.type === "photo" && dwellMs >= 1500) {
+    if (leaving && dwellMs >= 1500) {
       track({ kind: "dwell", photoId: leaving.id, value: Math.round(dwellMs / 1000) });
     }
     slideEnteredAtRef.current = Date.now();
     const arriving = slides[idx];
-    if (arriving && arriving.type === "photo") seenRef.current.add(arriving.id);
+    if (arriving) seenRef.current.add(arriving.id);
     if (fadeTimerRef.current) clearTimeout(fadeTimerRef.current);
     setOutgoing(current);
     setIncomingReady(false);
@@ -407,7 +411,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     const ids: string[] = [];
     for (let i = Math.max(0, current - 3); i <= Math.min(slides.length - 1, current + 8); i++) {
       const s = slides[i];
-      if (s && s.type === "photo") ids.push(s.id);
+      if (s) ids.push(s.id);
     }
     if (ids.length) want(ids, "full");
   }, [current, slides, want]);
@@ -423,7 +427,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   useEffect(() => {
     [current - 1, current + 1].forEach((i) => {
       const s = slides[i];
-      if (s && s.type === "photo" && s.url) {
+      if (s && s.url) {
         const img = new window.Image();
         img.decoding = "async";
         // A neighbour failing on old links re-signs before the viewer gets there.
@@ -435,7 +439,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   useEffect(() => {
     const first = slides[0];
-    if (first && first.type === "photo") seenRef.current.add(first.id);
+    if (first) seenRef.current.add(first.id);
   }, [slides]);
 
   const vesselTitle = [listing.year, listing.make, listing.model, listing.vessel_name]
@@ -471,7 +475,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   addSpec("Location", listing.location);
   const hasDetails = specRows.length > 0 || !!listing.description || !!deckPlanUrl;
 
-  if (slides.length === 0) {
+  if (slides.length === 0 && !hasVideo) {
     return (
       <div className="min-h-screen bg-ink-50 flex items-center justify-center">
         <p className="label-caps text-ink-600">No photos available</p>
@@ -479,13 +483,9 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     );
   }
 
-  const currentSlide = slides[current];
+  const currentSlide = slides[current] as Photo | undefined;
   const outgoingSlide = outgoing !== null ? slides[outgoing] : null;
-  const isVideoSlide = currentSlide.type === "video";
-
-  const caption = isVideoSlide
-    ? "Video"
-    : (currentSlide as { category: string | null }).category ?? "";
+  const caption = currentSlide?.category ?? "";
 
   const tabClass = (active: boolean) =>
     `text-xs font-medium px-3 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
@@ -511,12 +511,21 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           )}
         </div>
         <div className="flex items-center gap-1 shrink-0 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
-          <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
-            Slideshow
-          </button>
-          <button onClick={() => setView("grid")} className={tabClass(view === "grid")}>
-            All Photos
-          </button>
+          {slides.length > 0 && (
+            <>
+              <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
+                Slideshow
+              </button>
+              <button onClick={() => setView("grid")} className={tabClass(view === "grid")}>
+                All Photos
+              </button>
+            </>
+          )}
+          {hasVideo && (
+            <button onClick={() => setView("video")} className={tabClass(view === "video")}>
+              Video
+            </button>
+          )}
           {hasDetails && (
             <button
               onClick={() => {
@@ -547,7 +556,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         </div>
       </div>
 
-      {view === "slideshow" ? (
+      {view === "video" ? (
+        <VideoStack
+          videos={playableVideos.map((v) => ({ key: v.id, url: v.url!, posterUrl: v.posterUrl ?? null, label: videoLabel(v.title, v.filename) }))}
+          onPlay={(id) => track({ kind: "video_play", videoId: id })}
+          onError={onMediaError}
+        />
+      ) : view === "slideshow" && currentSlide ? (
         <>
           {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
           <div
@@ -561,11 +576,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               setTouchStart(null);
             }}
           >
-            {/* Outgoing photo (don't show outgoing video to avoid audio overlap).
-                It fades OUT as the incoming fades in — a true crossfade — so a
+            {/* Outgoing photo. It fades OUT as the incoming fades in — a true crossfade — so a
                 wider outgoing shot doesn't leave its edges hanging when the
                 incoming is a different shape (e.g. horizontal → vertical). */}
-            {outgoingSlide?.type === "photo" && (outgoingSlide.url ?? outgoingSlide.thumbUrl) && (
+            {outgoingSlide && (outgoingSlide.url ?? outgoingSlide.thumbUrl) && (
               <div
                 key={`out-${outgoing}`}
                 className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
@@ -595,60 +609,37 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {/* Current slide */}
             {/* A photo whose slide-size link is still on its way shows its tile
                 copy meanwhile (when we have one); FadePhoto swaps in place. */}
-            {(currentSlide.type === "photo" ? (currentSlide.url ?? currentSlide.thumbUrl) : currentSlide.url) && (
-              currentSlide.type === "photo" ? (
-                <div
-                  key={`in-${current}`}
-                  className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
-                  style={{ zIndex: 1 }}
-                >
-                  <FadePhoto
-                    src={(currentSlide.url ?? currentSlide.thumbUrl)!}
-                    alt={altFor(currentSlide.category)}
-                    eager
-                    fadeMs={1200}
-                    retries={3}
-                    onError={onMediaError}
-                    className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
-                  />
-                </div>
-              ) : (
-                <video
-                  key={`video-${current}`}
-                  src={currentSlide.url ?? undefined}
-                  poster={currentSlide.posterUrl ?? undefined}
-                  controls
-                  playsInline
-                  preload="metadata"
+            {(currentSlide.url ?? currentSlide.thumbUrl) && (
+              <div
+                key={`in-${current}`}
+                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+                style={{ zIndex: 1 }}
+              >
+                <FadePhoto
+                  src={(currentSlide.url ?? currentSlide.thumbUrl)!}
+                  alt={altFor(currentSlide.category)}
+                  eager
+                  fadeMs={1200}
+                  retries={3}
                   onError={onMediaError}
-                  onPlay={() => track({ kind: "video_play", videoId: currentSlide.id })}
-                  className="absolute inset-0 h-full w-full"
-                  style={{
-                    zIndex: 1,
-                    opacity: incomingReady ? 1 : 0,
-                    transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)",
-                    objectFit: "contain",
-                    background: "transparent",
-                  }}
+                  className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                 />
-              )
+              </div>
             )}
 
             {/* Save this photo — a quiet heart, bottom-right of the stage */}
-            {currentSlide.type === "photo" && (
-              <button
-                onClick={() => toggleFavorite(currentSlide.id)}
-                aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
-                aria-pressed={favorites.has(currentSlide.id)}
-                className={`absolute bottom-3 right-3 z-[3] flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-white shadow-elev-1 transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-                  favorites.has(currentSlide.id) ? "text-accent-600" : "text-ink-400 hover:text-ink-700"
-                } ${favPulse === currentSlide.id ? "scale-110" : ""}`}
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill={favorites.has(currentSlide.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
-                </svg>
-              </button>
-            )}
+            <button
+              onClick={() => toggleFavorite(currentSlide.id)}
+              aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
+              aria-pressed={favorites.has(currentSlide.id)}
+              className={`absolute bottom-3 right-3 z-[3] flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-white shadow-elev-1 transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                favorites.has(currentSlide.id) ? "text-accent-600" : "text-ink-400 hover:text-ink-700"
+              } ${favPulse === currentSlide.id ? "scale-110" : ""}`}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill={favorites.has(currentSlide.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
+              </svg>
+            </button>
 
             {/* Prev */}
             {current > 0 && (
@@ -701,10 +692,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     : "opacity-50 hover:opacity-100"
                 }`}
               >
-                {slide.type === "photo" && !(slide.thumbUrl ?? slide.url) ? (
+                {!(slide.thumbUrl ?? slide.url) ? (
                   // Link still on its way — a quiet paper square, not a broken image.
                   <div className="w-[70px] h-11 bg-ink-100" />
-                ) : slide.type === "photo" ? (
+                ) : (
                   <RetryImg
                     src={(slide.thumbUrl ?? slide.url)!}
                     alt=""
@@ -713,39 +704,15 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                     onError={onMediaError}
                     className="w-[70px] h-11 object-cover"
                   />
-                ) : (
-                  <div className="w-[70px] h-11 bg-ink-900 flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                    </svg>
-                  </div>
                 )}
               </button>
             ))}
           </div>
           )}
         </>
-      ) : view === "grid" ? (
+      ) : view === "grid" && slides.length > 0 ? (
         /* Grid view — a gallery wall on paper: large prints on white mats, lifted by their shadows */
         <div className="flex-1 px-3 sm:px-5 py-4 overflow-auto">
-          {videos.length > 0 && (
-            <div className="mb-4 space-y-4">
-              {videos.map((video) => video.url && (
-                <div key={video.id} className="overflow-hidden rounded-[2px] bg-ink-950 shadow-print">
-                  <video
-                    src={video.url}
-                    poster={video.posterUrl ?? undefined}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    onError={onMediaError}
-                    onPlay={() => track({ kind: "video_play", videoId: video.id })}
-                    className="w-full max-h-[480px]"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {photos.map((photo, i) => (
               <button
