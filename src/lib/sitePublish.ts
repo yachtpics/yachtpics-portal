@@ -262,6 +262,8 @@ export async function renderSitemap(): Promise<SiteFile> {
     ["yacht-photos.html", "0.8"],
     ["team.html", "0.6"],
     ["marine-industry-blog.html", "0.5"],
+    ["marine-news.php", "0.6"],
+    ["portal.html", "0.7"],
   ];
 
   const { data: pages } = await svc

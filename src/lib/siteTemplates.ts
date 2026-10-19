@@ -76,6 +76,8 @@ function head(opts: { title: string; description: string; canonical: string; dep
 <body>`;
 }
 
+// Must match the <nav> on the hand-written yachtpics.com pages exactly: every
+// publish rewrites boat/brokerage pages and yacht-photos.html with this menu.
 function nav(depth: number): string {
   const b = depth > 0 ? "../".repeat(depth) : "";
   return `<header>
@@ -87,8 +89,10 @@ function nav(depth: number): string {
         <li><a href="${b}index.html">Home</a></li>
         <li><a href="${b}gallery.html">Gallery</a></li>
         <li><a href="${b}video.html">Video</a></li>
-        <li><a href="${b}yacht-photos.html">Boats</a></li>
+        <li><a href="${b}yacht-photos.html">Clients</a></li>
         <li><a href="${b}team.html">Team</a></li>
+        <li><a href="${b}marine-news.php">Marine Blog</a></li>
+        <li><a href="${b}portal.html">Portal</a></li>
         <li><a href="${b}contact.html">Contact</a></li>
       </ul>
     </nav>
