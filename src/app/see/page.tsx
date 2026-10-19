@@ -114,7 +114,7 @@ export default async function SeePage() {
         <div className="max-w-5xl mx-auto">
           <p className="text-[0.6875rem] font-medium uppercase tracking-caps-wide text-accent-300/90 mb-6">YachtPics Portal</p>
           <h1 className="text-white text-[2rem] sm:text-5xl font-semibold tracking-tight leading-[1.1] max-w-3xl">
-            Shot on Tuesday.<br />On your buyer&rsquo;s phone by Wednesday.
+            From the dock<br />to your buyer&rsquo;s phone.
           </h1>
           <p className="text-ink-400 text-base sm:text-lg leading-relaxed max-w-xl mt-6">
             Your photographs, reels and client galleries, delivered in your brand and ready to send.
