@@ -146,7 +146,7 @@ export default async function SeePage() {
             title="Delivered."
             lines={[
               "Your photographs arrive in your Portal, ordered by area, in your brand.",
-              "Nothing is listed, syndicated or shared anywhere unless you send it.",
+              "Your slideshows and galleries go only where you send them. Some boats we shoot are also featured on yachtpics.com and YachtPics social.",
             ]}
           >
             <a href={slideshowHref} target="_blank" rel="noopener noreferrer" className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-4 focus-visible:ring-offset-ink-950 rounded-card">
