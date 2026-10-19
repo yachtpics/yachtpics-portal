@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { REEL_STYLES, STYLE_ORDER } from "@/lib/reelStyles";
 import Link from "next/link";
 import { getSeeShowcase, getSeeStats, type SeeReel } from "@/lib/seeShowcase";
 import { SEE_QUOTES } from "@/content/seeQuotes";
@@ -14,6 +15,10 @@ import ShowcaseReelVideo from "./_components/ShowcaseReelVideo";
 export const revalidate = 3600;
 
 const TITLE = "YachtPics Portal — See it";
+const LOOK_COUNT = STYLE_ORDER.filter((k) => !REEL_STYLES[k].adminOnly).length;
+const LOOK_WORDS: Record<number, string> = { 8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve" };
+const LOOKS = LOOK_WORDS[LOOK_COUNT] ?? String(LOOK_COUNT);
+
 const DESCRIPTION = "Photographs, reels and client galleries for yacht brokers, delivered in your brand.";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -163,7 +168,7 @@ export default async function SeePage() {
             title="Reels."
             lines={[
               "Vertical reels made from the listing’s own photographs, sized for Instagram and Facebook.",
-              "Two looks, Walkthrough and Underway, each with its own pace and music.",
+              `Walkthrough and Underway, two of ${LOOKS} looks, each with its own pace and the Portal’s own music.`,
             ]}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-sm sm:max-w-xl mx-auto md:mx-0">
@@ -221,7 +226,7 @@ export default async function SeePage() {
       {stats && (
         <section className="relative px-4 sm:px-8 py-16 sm:py-20 border-t border-hairline-inverse-soft">
           <div className="max-w-5xl mx-auto">
-            <p className="label-caps-inverse mb-10">In numbers</p>
+            <p className="label-caps-inverse mb-10">Since the Portal opened in May 2026</p>
             <dl className="grid grid-cols-1 sm:grid-cols-3 gap-10">
               {[
                 { label: "Active brokers", value: stats.brokers },
