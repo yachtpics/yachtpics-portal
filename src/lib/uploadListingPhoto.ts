@@ -77,7 +77,7 @@ export function requestDerivatives(listingId: string, photoIds: string[]) {
   }
 }
 
-/** How many listing photos upload at once (admin pages). */
+/** How many listing photos upload at once (admin pages and the broker listing page). */
 export const PHOTO_UPLOAD_CONCURRENCY = 4;
 
 export type ListingPhotoRow = {
@@ -102,10 +102,13 @@ export async function uploadListingPhoto(opts: {
   /** Unique within the batch — goes into the storage file name. */
   pathKey: string;
   category: string;
+  /** Written to photos.category_source only when given (the broker listing
+   *  page records "filename" / "manual"; admin uploads leave it null). */
+  categorySource?: "filename" | "manual";
   displayOrder: number;
   uploadedBy: string | null;
 }): Promise<{ ok: true; row: ListingPhotoRow } | { ok: false; error: string }> {
-  const { supabase, file, brokerId, listingId, pathKey, category, displayOrder, uploadedBy } = opts;
+  const { supabase, file, brokerId, listingId, pathKey, category, categorySource, displayOrder, uploadedBy } = opts;
   const ext = file.name.split(".").pop();
   const path = `${brokerId}/${listingId}/${pathKey}.${ext}`;
 
@@ -121,6 +124,7 @@ export async function uploadListingPhoto(opts: {
       storage_path: path,
       filename: file.name,
       category,
+      ...(categorySource ? { category_source: categorySource } : {}),
       display_order: displayOrder,
       is_visible: true,
       uploaded_by: uploadedBy,

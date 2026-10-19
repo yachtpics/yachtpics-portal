@@ -22,6 +22,11 @@
   `src/lib/photoDerivativePaths.ts` / `src/lib/photoDerivatives.ts`; anything
   that deletes a photo's file must also call `removeDerivatives`. Reels,
   showroom and other render pipelines keep using originals.
+- Listing photo management (grid, upload, replace, delete, reorder, categories,
+  cover, show/hide, AI labels, lightbox, downloads) lives in ONE place:
+  `src/components/listing-photos/`, used by both the broker listing page and
+  the admin listing page. Change it there, not in either page; role
+  differences go in `PhotoCapabilities` / the `variant` prop.
 
 ## Help page rule — every change, not later
 

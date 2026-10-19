@@ -1,24 +1,12 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
-// JSZip is loaded on demand inside the download handler, not up front — it's a
-// sizeable library and it's only needed when someone actually zips photos.
-import {
-  DndContext, closestCenter, PointerSensor, useSensor, useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  SortableContext, rectSortingStrategy, arrayMove, useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
-import { orderPhotos } from "@/lib/photoOrder";
-import { guessCategory } from "@/lib/guessCategory";
+import { arrayMove } from "@dnd-kit/sortable";
 import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
 import ContentRightsModal from "@/components/ContentRightsModal";
 import DownloadLicenseModal from "@/components/DownloadLicenseModal";
@@ -29,105 +17,29 @@ import { reelPromoActive } from "@/lib/reelPromo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
-import RetryImg from "@/components/RetryImg";
-import { reorderPhotos } from "@/lib/reorderPhotos";
-import { replaceListingPhoto, requestDerivatives, runPool } from "@/lib/uploadListingPhoto";
-import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import SortableVideoList from "@/components/SortableVideoList";
+// Photo management (grid, upload, replace, delete, order, categories, cover,
+// lightbox, downloads) is shared with the admin listing page.
+import {
+  BROKER_PHOTO_CAPABILITIES, type PhotoMessage,
+  useListingPhotos, usePhotoActions, useSizedDownloads,
+  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, DownloadSizeSelect,
+  PhotoFileInputs, UploadProgress, UploadFailedNotice, UncategorizedPrompt,
+} from "@/components/listing-photos";
 
 // The QR card sits well down the page and only shows once a slideshow is
 // published, so its encoder library (qrcode) is loaded on demand rather than
 // shipped with the page's first bundle.
 const ListingQRCode = dynamic(() => import("@/components/ListingQRCode"), { ssr: false });
 
-/** Download sizes offered to brokers. Resized ones are Supabase transforms
- *  signed by /api/listings/[id]/photos/download-urls (long edge capped). */
-type DownloadSize = "full" | "web" | "social";
-const DOWNLOAD_SIZES: { value: DownloadSize; label: string; short: string; suffix: string }[] = [
-  { value: "full", label: "Full resolution", short: "Full resolution", suffix: "" },
-  { value: "web", label: "Web & MLS (2048px)", short: "Web & MLS", suffix: "2048px" },
-  { value: "social", label: "Social (1080px)", short: "Social", suffix: "1080px" },
-];
-// Resized downloads are made on the fly by Supabase, which answers 429 to a
-// burst — so a zip of them fetches a few at a time. Originals can go wider.
-const RESIZED_FETCH_CONCURRENCY = 6;
-const ORIGINAL_FETCH_CONCURRENCY = 8;
-
-/** fetch → blob, retrying a 429 / 5xx twice with a short back-off. */
-async function fetchBlobWithRetry(url: string): Promise<Blob> {
-  for (let attempt = 0; ; attempt++) {
-    const res = await fetch(url);
-    if (res.ok) return res.blob();
-    if (attempt >= 2 || !(res.status === 429 || res.status >= 500)) {
-      throw new Error(`HTTP ${res.status}`);
-    }
-    await new Promise((r) => setTimeout(r, 800 * (attempt + 1) + Math.random() * 400));
-  }
-}
-
-interface Photo {
-  id: string;
-  storage_path: string;
-  filename: string | null;
-  category: string | null;
-  display_order: number;
-  is_visible: boolean;
-  /** Stored 600/2000 px copies made (src/lib/photoDerivativePaths.ts). */
-  derivatives_at?: string | null;
-}
-
 export default function BrokerListingPage() {
   const supabase = createClient();
   const params = useParams();
   const id = params.id as string;
 
-  const [customCategories, setCustomCategories] = useState<{ id: string; name: string }[]>([]);
   const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean; showcase_opt_out: boolean; year: number | null; length_ft: number | null; make: string | null; asking_price: number | null; vessel_type: string | null; staterooms: number | null; description: string | null; tour_url: string | null } | null>(null);
   const [optOutBusy, setOptOutBusy] = useState(false);
-  const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [heroFit, setHeroFit] = useState<"fit" | "fill">("fit");
-  const [sortingPhotos, setSortingPhotos] = useState(false);
-  // AI photo labelling — on only when the server has a key. Checked once.
-  const [aiConfigured, setAiConfigured] = useState(false);
-  const [labeling, setLabeling] = useState(false);
-  const [labelNote, setLabelNote] = useState<string | null>(null);
-
-  useEffect(() => {
-    fetch("/api/photos/categorize").then((r) => (r.ok ? r.json() : null)).then((d) => setAiConfigured(!!d?.configured)).catch(() => {});
-  }, []);
-
-  /**
-   * Ask the vision model to label photos that are still "Other" (or, with
-   * `force`, everything a person hasn't set by hand). Updates the grid in
-   * place. Quiet on failure — labelling is a convenience, never a blocker.
-   */
-  async function labelWithAi(photoIds?: string[], force = false) {
-    if (!aiConfigured) return 0;
-    setLabeling(true);
-    setLabelNote(null);
-    try {
-      const res = await fetch("/api/photos/categorize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: id, photoIds, force }),
-      });
-      const data = await res.json().catch(() => ({}));
-      const updated: { id: string; category: string }[] = data?.updated ?? [];
-      if (updated.length) {
-        const map = new Map(updated.map((u) => [u.id, u.category]));
-        setPhotos((prev) => prev.map((p) => (map.has(p.id) ? { ...p, category: map.get(p.id)! } : p)));
-      }
-      if (!res.ok && data?.error) setLabelNote(`Labelling stopped: ${data.error}`);
-      else if (data?.considered === 0) setLabelNote("Nothing left to label.");
-      else setLabelNote(`${updated.length} photo${updated.length === 1 ? "" : "s"} labelled${data?.unsure ? ` · ${data.unsure} left as Other` : ""}.`);
-      setTimeout(() => setLabelNote(null), 5000);
-      return updated.length;
-    } catch {
-      return 0;
-    } finally {
-      setLabeling(false);
-    }
-  }
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
   const [isShared, setIsShared] = useState(false);
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -143,24 +55,7 @@ export default function BrokerListingPage() {
   const [sendError, setSendError] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
   const [slideshowWorking, setSlideshowWorking] = useState(false);
-  const [photos, setPhotos] = useState<Photo[]>([]);
-  // Resized thumbnails, keyed by photo id. Fetched once in the background; each
-  // tile shows a skeleton until its url arrives, so nothing blocks and nothing
-  // requests a full-size original.
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
-  // Photos whose file isn't in storage (reported by /api/thumbs) — the tile
-  // shows "File missing" for these.
-  const [missingIds, setMissingIds] = useState<Set<string>>(new Set());
-  // Lightbox display copies (the stored 2000px WebP, or the original when a
-  // photo has none yet), signed only when someone needs one.
-  // Cached per photo id. Downloads always sign fresh links instead, so a page
-  // left open for hours still downloads.
-  const [originals, setOriginals] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
-  const [downloading, setDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState(0);
   const [message, setMessage] = useState("");
   // Colour of the banner above. Most messages are confirmations (green);
   // flash(..., "error") shows a failure in red.
@@ -170,45 +65,37 @@ export default function BrokerListingPage() {
     setMessage(text);
     if (ms > 0) setTimeout(() => setMessage((cur) => (cur === text ? "" : cur)), ms);
   }
-  // Download size for every download button on the page (remembered per browser).
-  const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("full");
-  function setDownloadSize(v: DownloadSize) {
-    setDownloadSizeState(v);
-    try { localStorage.setItem("yp_download_size", v); } catch { /* private mode */ }
-  }
-  useEffect(() => {
-    try {
-      const v = localStorage.getItem("yp_download_size");
-      if (v === "full" || v === "web" || v === "social") setDownloadSizeState(v);
-    } catch { /* private mode */ }
-  }, []);
-  // Replace photo: which tiles are mid-replace (and at what stage), and which
-  // just failed (the tile says so for a few seconds).
-  const [replacing, setReplacing] = useState<Record<string, "uploading" | "saving">>({});
-  const [replaceFailed, setReplaceFailed] = useState<Record<string, string>>({});
-  const replaceInputRef = useRef<HTMLInputElement>(null);
-  const replaceTargetRef = useRef<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [selectMode, setSelectMode] = useState(false);
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
-  // Pending destructive actions, held until confirmed. Deleting media here is
-  // permanent — the file leaves storage — so nothing irreversible happens on a
-  // single click.
+
+  // ── Photos — shared with the admin listing page (src/components/listing-photos).
+  // Loading, thumbnails, upload, replace, delete, order, categories, cover,
+  // show/hide and AI labels live there; this page supplies the broker's
+  // capabilities, its banner, and the rights / licence gates.
+  const photoState = useListingPhotos({ supabase, listingId: id, caps: BROKER_PHOTO_CAPABILITIES });
+  const { photos, setPhotos, thumbs, heroPhotoId, setHeroPhotoId } = photoState;
+  const onPhotoMessage = (m: PhotoMessage) => flash(m.text, m.kind, m.ms ?? 4000);
+  const photoActions = usePhotoActions({
+    supabase,
+    listingId: id,
+    caps: BROKER_PHOTO_CAPABILITIES,
+    state: photoState,
+    onMessage: onPhotoMessage,
+    // Files go under the signed-in uploader's folder, as they always have here.
+    ownerFolder: (userId) => userId,
+  });
+  const downloads = useSizedDownloads({
+    listingId: id,
+    vesselName: listing?.vessel_name ?? null,
+    onMessage: onPhotoMessage,
+    onFinished: photoActions.clearSelection,
+  });
+  const dragCounter = useRef(0);
+  // Deleting media here is permanent — the file leaves storage — so nothing
+  // irreversible happens on a single click.
   const [pendingVideoDelete, setPendingVideoDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
   const [pendingDocDelete, setPendingDocDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
-  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkCategorizing, setBulkCategorizing] = useState(false);
-  // Upload category prompt — shown when files can't be auto-categorized
-  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null);
-  const [pendingCategory, setPendingCategory] = useState("Other");
-  const [deletingIds, setDeletingIds] = useState<Set<string>>(new Set());
   const [dragOver, setDragOver] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [lightboxTouch, setLightboxTouch] = useState<number | null>(null);
   const [mounted, setMounted] = useState(false);
-  const tapStart = useRef<{x: number; y: number} | null>(null);
   useEffect(() => setMounted(true), []);
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -217,31 +104,6 @@ export default function BrokerListingPage() {
     }
   }, []);
 
-  // Load custom photo categories
-  useEffect(() => {
-    fetch("/api/photo-categories")
-      .then((r) => r.json())
-      .then((d) => { if (d.categories) setCustomCategories(d.categories); })
-      .catch(() => {});
-  }, []);
-
-  async function saveCustomCategory(name: string) {
-    if ((PHOTO_CATEGORIES as readonly string[]).includes(name)) return;
-    if (customCategories.some((c) => c.name === name)) return;
-    try {
-      const res = await fetch("/api/photo-categories", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
-      });
-      const data = await res.json();
-      if (res.ok && !data.skipped) {
-        setCustomCategories((prev) => [...prev, { id: data.id ?? name, name }].sort((a, b) => a.name.localeCompare(b.name)));
-      }
-    } catch {}
-  }
-  const dragCounter = useRef(0);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function requireRights(action: () => void) {
     if (rightsAccepted) { action(); return; }
@@ -345,105 +207,13 @@ export default function BrokerListingPage() {
     e.preventDefault();
     dragCounter.current = 0;
     setDragOver(false);
-    if (hasAccess(accessStatus)) requireRights(() => handleFiles(e.dataTransfer.files));
+    if (hasAccess(accessStatus)) requireRights(() => photoActions.handleFiles(e.dataTransfer.files));
   }
 
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
-
-  // Thumbnails are requested the instant the page mounts, alongside everything
-  // else — not after. Signing them server-side measured at ~855ms, and it used
-  // to start only once all the other loading had finished, so that time was
-  // added on the end rather than spent while the rest was already in flight.
-  // This only needs the listing id, which comes straight from the URL, so
-  // there is nothing for it to wait on.
-  // Also re-run after an upload: a photo added after page load has no signed
-  // thumbnail until the list is fetched again.
-  const refreshThumbs = useCallback(() => {
-    fetch("/api/thumbs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId: id, width: 400 }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      // Keep URLs already on screen (re-signing them would make every
-      // thumbnail reload); only photos new since the last fetch get one.
-      .then((d) => {
-        if (d?.urls) setThumbs((prev) => ({ ...d.urls, ...prev }));
-        if (Array.isArray(d?.missing)) setMissingIds(new Set<string>(d.missing));
-      })
-      .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
-  }, [id]);
-  useEffect(() => { refreshThumbs(); }, [refreshThumbs]);
-
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (lightboxIndex === null) return;
-      if (e.key === "ArrowLeft") setLightboxIndex(i => i !== null ? Math.max(0, i - 1) : null);
-      if (e.key === "ArrowRight") setLightboxIndex(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
-      if (e.key === "Escape") setLightboxIndex(null);
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [lightboxIndex, photos.length]);
-
-  // Sign the open photo's original (and its neighbours) only when the lightbox
-  // needs them — not every original up front on page load.
-  useEffect(() => {
-    if (lightboxIndex === null) return;
-    const need = [lightboxIndex, lightboxIndex - 1, lightboxIndex + 1]
-      .map((i) => photos[i])
-      .filter((p): p is Photo => !!p && !originals[p.id]);
-    if (need.length) signOriginals(need, 3600);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lightboxIndex, photos]);
-
-  // Warm the neighbouring photos while the lightbox is open so paging feels instant.
-  useEffect(() => {
-    if (lightboxIndex === null) return;
-    [lightboxIndex - 1, lightboxIndex + 1].forEach((i) => {
-      const p = photos[i];
-      const url = p ? originals[p.id] : undefined;
-      if (url) {
-        const img = new window.Image();
-        img.decoding = "async";
-        img.src = url;
-      }
-    });
-  }, [lightboxIndex, photos, originals]);
-
-  /**
-   * Sign the lightbox's display copy for these photos in one request, matched
-   * by path (not index): the stored 2000px WebP when the photo has one (a few
-   * hundred KB instead of a 10–20 MB original), otherwise the original as
-   * before. Downloads never use this — they get originals / chosen sizes from
-   * the download-urls route. Caches the result for the lightbox.
-   */
-  async function signOriginals(targets: Photo[], expiresIn: number): Promise<Record<string, string>> {
-    const out: Record<string, string> = {};
-    if (targets.length === 0) return out;
-    const pathFor = (t: Photo) => (hasDerivatives(t) ? derivativePath(t, 2000) : t.storage_path);
-    const { data } = await supabase.storage
-      .from("listing-photos")
-      .createSignedUrls(targets.map(pathFor), expiresIn);
-    const byPath = new Map<string, string>();
-    (data ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath.set(d.path, d.signedUrl); });
-    targets.forEach((t) => { const u = byPath.get(pathFor(t)); if (u) out[t.id] = u; });
-    // A stored copy that couldn't be signed (object missing): try the original.
-    const retry = targets.filter((t) => !out[t.id] && hasDerivatives(t));
-    if (retry.length) {
-      const { data: again } = await supabase.storage
-        .from("listing-photos")
-        .createSignedUrls(retry.map((t) => t.storage_path), expiresIn);
-      const byPath2 = new Map<string, string>();
-      (again ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath2.set(d.path, d.signedUrl); });
-      retry.forEach((t) => { const u = byPath2.get(t.storage_path); if (u) out[t.id] = u; });
-    }
-    if (Object.keys(out).length) setOriginals((prev) => ({ ...prev, ...out }));
-    return out;
-  }
 
   /**
    * Everything this page needs, in two waves instead of a queue.
@@ -652,396 +422,6 @@ export default function BrokerListingPage() {
     setPdfViewer({ url: data.signedUrl, filename, storagePath });
   }
 
-  async function handleFiles(files: FileList | null) {
-    if (!files) return;
-    const fileArr = Array.from(files);
-
-    // If any files can't be auto-categorized, prompt before uploading — unless
-    // the model can label them after upload, in which case just go.
-    const uncategorized = fileArr.filter((f) => guessCategory(f.name) === "Other");
-    if (uncategorized.length > 0 && !aiConfigured) {
-      setPendingFiles(fileArr);
-      setPendingCategory("Other");
-      return;
-    }
-
-    await doUpload(fileArr, null);
-  }
-
-  async function doUpload(fileArr: File[], overrideCategory: string | null) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-
-    setUploading(true);
-    setUploadProgress(0);
-    setPendingFiles(null);
-    const needsLabel: string[] = [];
-
-    for (let i = 0; i < fileArr.length; i++) {
-      const file = fileArr[i];
-      const ext = file.name.split(".").pop();
-      const path = `${user.id}/${id}/${Date.now()}-${i}.${ext}`;
-
-      const { error } = await supabase.storage.from("listing-photos").upload(path, file, { upsert: false });
-
-      if (!error) {
-        const guessed = guessCategory(file.name);
-        const usedOverride = !!overrideCategory && guessed === "Other";
-        const category = usedOverride ? overrideCategory! : guessed;
-
-        const { data: newPhoto } = await supabase.from("photos").insert({
-          listing_id: id,
-          storage_path: path,
-          filename: file.name,
-          category,
-          category_source: usedOverride ? "manual" : "filename",
-          display_order: photos.length + i,
-          is_visible: true,
-          uploaded_by: user.id,
-        }).select().single();
-
-        if (newPhoto) {
-          setPhotos((prev) => [...prev, newPhoto as Photo]);
-          if (category === "Other") needsLabel.push(newPhoto.id);
-          requestDerivatives(id, [newPhoto.id]);
-        }
-      }
-      setUploadProgress(Math.round(((i + 1) / fileArr.length) * 100));
-    }
-
-    setUploading(false);
-    refreshThumbs();
-    setMessage(`${fileArr.length} photo${fileArr.length !== 1 ? "s" : ""} uploaded.`);
-    setTimeout(() => setMessage(""), 3000);
-
-    // Anything the filename couldn't place, the model labels now.
-    if (needsLabel.length && aiConfigured) await labelWithAi(needsLabel);
-  }
-
-
-  function toggleSelect(photoId: string) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      next.has(photoId) ? next.delete(photoId) : next.add(photoId);
-      return next;
-    });
-  }
-
-  function selectAll() {
-    setSelectedIds(new Set(photos.filter(p => p.is_visible).map(p => p.id)));
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-    setSelectMode(false);
-    setBulkCategory("");
-  }
-
-  async function applyBulkCategory() {
-    if (!bulkCategory || selectedIds.size === 0) return;
-    setBulkCategorizing(true);
-    const ids = Array.from(selectedIds);
-    await Promise.all(ids.map((photoId) => updateCategory(photoId, bulkCategory)));
-    setBulkCategorizing(false);
-    setBulkCategory("");
-    clearSelection();
-  }
-
-  async function deletePhoto(photoId: string, storagePath: string) {
-    setDeletingIds((prev) => new Set(Array.from(prev).concat(photoId)));
-    const res = await fetch("/api/photos/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoId, storagePath }),
-    });
-    if (res.ok) {
-      setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-      setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
-    } else {
-      const data = await res.json().catch(() => ({}));
-      setMessage("Delete failed: " + (data.error ?? res.statusText));
-      setTimeout(() => setMessage(""), 4000);
-    }
-    setDeletingIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
-  }
-
-  async function deleteSelected() {
-    if (selectedIds.size === 0) return;
-    setDeleting(true);
-    const toDelete = photos.filter((p) => selectedIds.has(p.id));
-    // One call for the whole batch — the server deletes them together and
-    // records the action as a single entry in the deletion log.
-    await fetch("/api/photos/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoIds: toDelete.map((p) => p.id) }),
-    });
-    setPhotos((prev) => prev.filter((p) => !selectedIds.has(p.id)));
-    setSelectedIds(new Set());
-    setSelectMode(false);
-    setDeleting(false);
-    setMessage(`${toDelete.length} photo${toDelete.length !== 1 ? "s" : ""} deleted.`);
-    setTimeout(() => setMessage(""), 3000);
-  }
-
-  async function deleteAll() {
-    setDeleting(true);
-    setConfirmDeleteAll(false);
-    // Through the delete API rather than raw storage calls — same permission
-    // checks as every other deletion, and it lands in the deletion log.
-    await fetch("/api/photos/delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoIds: photos.map((p) => p.id) }),
-    });
-    setPhotos([]);
-    setSelectedIds(new Set());
-    setSelectMode(false);
-    setDeleting(false);
-    setMessage("All photos deleted.");
-    setTimeout(() => setMessage(""), 3000);
-  }
-
-  /**
-   * Fresh download links for these photos at the chosen size, signed by the
-   * server at download time (re-checks access; never reuses page-load links,
-   * which expire). Full resolution are the originals; the others are resized
-   * by Supabase when fetched.
-   */
-  async function signForDownload(targets: Photo[], size: DownloadSize): Promise<Record<string, string>> {
-    if (targets.length === 0) return {};
-    try {
-      const res = await fetch(`/api/listings/${id}/photos/download-urls`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoIds: targets.map((t) => t.id), size }),
-      });
-      if (!res.ok) return {};
-      const d = await res.json().catch(() => null);
-      return (d?.urls ?? {}) as Record<string, string>;
-    } catch {
-      return {};
-    }
-  }
-
-  async function downloadPhotos(targets: Photo[]) {
-    if (targets.length === 0) return;
-    setDownloading(true);
-    setDownloadProgress(0);
-
-    const size = downloadSize;
-    const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
-    const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
-    const vessel = listing?.vessel_name ? cleanName(listing.vessel_name) : "";
-    const extOf = (p: Photo) => (p.filename?.split(".").pop() ?? "jpg").toLowerCase();
-
-    const fresh = await signForDownload(targets, size);
-
-    // Single photo — direct download, no ZIP needed
-    if (targets.length === 1) {
-      const photo = targets[0];
-      try {
-        const url = fresh[photo.id];
-        if (!url) throw new Error("no link");
-        const blob = await fetchBlobWithRetry(url);
-        // "Sea Dream – Salon.jpg": the vessel name keeps a loose download
-        // identifiable in a Downloads folder full of "Salon.jpg"s. Resized
-        // copies say their size so they can't be mistaken for the original.
-        const label = cleanName(photo.category ?? "Photo") || "Photo";
-        const filename = `${vessel ? `${vessel} – ` : ""}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${extOf(photo)}`;
-        triggerDownload(blob, filename);
-        // Log download silently (fire-and-forget)
-        fetch(`/api/listings/${id}/log-download`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photoCount: 1 }),
-        }).catch(() => {});
-        clearSelection();
-      } catch {
-        flash("That photo couldn't be downloaded. Please try again in a moment.", "error", 6000);
-      }
-      setDownloading(false);
-      setDownloadProgress(0);
-      return;
-    }
-
-    // Multiple photos — ZIP, all inside a "{Vessel}/" folder, named
-    // "{nn} {Category}.jpg" so they sort in listing order.
-    // STORE (no compression): JPEGs are already compressed, so this makes zip
-    // generation 5-10x faster.
-    const { default: JSZip } = await import("jszip");
-    const zip = new JSZip();
-    const folder = vessel || "Photos";
-    const pad = Math.max(2, String(targets.length).length);
-    let fetched = 0;
-    let added = 0;
-
-    await runPool(
-      targets,
-      size === "full" ? ORIGINAL_FETCH_CONCURRENCY : RESIZED_FETCH_CONCURRENCY,
-      async (photo, index) => {
-        const url = fresh[photo.id];
-        try {
-          if (url) {
-            const blob = await fetchBlobWithRetry(url);
-            const label = cleanName(photo.category ?? "Photo") || "Photo";
-            zip.file(`${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${extOf(photo)}`, blob);
-            added++;
-          }
-        } catch { /* counted below */ }
-        fetched++;
-        // Fetch phase = 0–85% of progress
-        setDownloadProgress(Math.round((fetched / targets.length) * 85));
-      }
-    );
-    const failedCount = targets.length - added;
-
-    if (added === 0) {
-      setDownloading(false);
-      setDownloadProgress(0);
-      flash("None of those photos could be downloaded. Please try again in a moment.", "error", 8000);
-      return;
-    }
-
-    // Zip generation phase = 85–100%
-    setDownloadProgress(88);
-    const zipBlob = await zip.generateAsync(
-      { type: "blob", compression: "STORE" },
-      (meta) => setDownloadProgress(88 + Math.round(meta.percent * 0.12))
-    );
-    const zipName = `${listing?.vessel_name ? cleanName(listing.vessel_name) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
-
-    const finish = () => {
-      fetch(`/api/listings/${id}/log-download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoCount: added }),
-      }).catch(() => {});
-      setDownloading(false);
-      setDownloadProgress(0);
-      clearSelection();
-      if (failedCount > 0) {
-        flash(
-          `${failedCount} photo${failedCount !== 1 ? "s" : ""} couldn't be added to the zip — download ${failedCount !== 1 ? "them" : "it"} again on ${failedCount !== 1 ? "their" : "its"} own.`,
-          "error",
-          10000
-        );
-      }
-    };
-
-    if ("showSaveFilePicker" in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: zipName,
-          types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(zipBlob);
-        await writable.close();
-        finish();
-        return;
-      } catch (err) {
-        // The broker closed the Save dialog: that's a "no", not a cue to
-        // download anyway. Anything else (picker unsupported in this
-        // context, write failed) falls through to a normal download.
-        if (err instanceof DOMException && err.name === "AbortError") {
-          setDownloading(false);
-          setDownloadProgress(0);
-          return;
-        }
-      }
-    }
-
-    triggerDownload(zipBlob, zipName);
-    finish();
-  }
-
-  /** Open the file picker to replace one photo's file. */
-  function startReplace(photoId: string) {
-    if (replacing[photoId]) return;
-    replaceTargetRef.current = photoId;
-    if (replaceInputRef.current) {
-      replaceInputRef.current.value = "";
-      replaceInputRef.current.click();
-    }
-  }
-
-  /**
-   * Replace a photo's file, keeping its id — so its category, place in the
-   * order and cover-photo status all stay. New file, new storage path, then
-   * the server repoints the row and removes the old file; the tile swaps to
-   * the new thumbnail (new path = no stale cached image).
-   */
-  async function replacePhoto(photoId: string, file: File) {
-    const { data: { session } } = await supabase.auth.getSession();
-    const user = session?.user;
-    if (!user) return;
-    setReplaceFailed((prev) => { const next = { ...prev }; delete next[photoId]; return next; });
-    setReplacing((prev) => ({ ...prev, [photoId]: "uploading" }));
-    const r = await replaceListingPhoto({
-      supabase,
-      file,
-      ownerFolder: user.id,
-      listingId: id,
-      photoId,
-      onStage: (stage) => setReplacing((prev) => ({ ...prev, [photoId]: stage })),
-    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
-    setReplacing((prev) => { const next = { ...prev }; delete next[photoId]; return next; });
-
-    if (!r.ok) {
-      setReplaceFailed((prev) => ({ ...prev, [photoId]: r.error }));
-      setTimeout(() => setReplaceFailed((prev) => { const next = { ...prev }; delete next[photoId]; return next; }), 8000);
-      flash(`Couldn't replace that photo: ${r.error}`, "error", 8000);
-      return;
-    }
-    const np = r.photo;
-    // derivatives_at cleared server-side: the old stored copies belong to the old file.
-    setPhotos((prev) => prev.map((p) => (p.id === photoId ? { ...p, storage_path: np.storage_path, filename: np.filename, derivatives_at: null } : p)));
-    setThumbs((prev) => {
-      const next = { ...prev };
-      if (np.thumbUrl) next[photoId] = np.thumbUrl; else delete next[photoId];
-      return next;
-    });
-    setOriginals((prev) => {
-      const next = { ...prev };
-      if (np.originalUrl) next[photoId] = np.originalUrl; else delete next[photoId];
-      return next;
-    });
-    setMissingIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
-    if (!np.thumbUrl) refreshThumbs();
-    flash("Photo replaced — same spot, category and cover setting.");
-  }
-
-  function triggerDownload(blob: Blob, filename: string) {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  async function toggleVisibility(photoId: string, current: boolean) {
-    await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
-    setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
-  }
-
-  // Mark a photo as the hero — the image used on the spec sheet & social posts.
-  // Clicking the current hero clears it (falls back to first photo).
-  async function setHero(photoId: string) {
-    const next = heroPhotoId === photoId ? null : photoId;
-    setHeroPhotoId(next); // optimistic
-    const { error } = await supabase.from("listings").update({ hero_photo_id: next }).eq("id", id);
-    if (error) {
-      setHeroPhotoId(heroPhotoId); // revert
-      setMessage("Couldn't update the cover photo. Please try again.");
-      setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-    setMessage(next ? "Cover photo set." : "Cover photo cleared.");
-    setTimeout(() => setMessage(""), 2500);
-  }
-
   // How the cover photo sits on the flyer: "fit" shows the whole photo,
   // "fill" crops it to fill the band edge-to-edge.
   async function updateHeroFit(mode: "fit" | "fill") {
@@ -1050,12 +430,6 @@ export default function BrokerListingPage() {
     setHeroFit(mode); // optimistic
     const { error } = await supabase.from("listings").update({ hero_fit: mode }).eq("id", id);
     if (error) { setHeroFit(prev); }
-  }
-
-  async function updateCategory(photoId: string, category: string) {
-    // A category a person chose is never overwritten by the model.
-    await supabase.from("photos").update({ category, category_source: "manual" }).eq("id", photoId);
-    setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
   }
 
   async function handleVideoFiles(files: FileList | null) {
@@ -1322,46 +696,11 @@ export default function BrokerListingPage() {
   }
 
   const visiblePhotos = photos.filter(p => p.is_visible);
-  const selectedPhotos = photos.filter(p => selectedIds.has(p.id));
+  const selectedPhotos = photos.filter(p => photoActions.selectedIds.has(p.id));
 
   // Send to Client is a paid feature and needs something to deliver
   // (a published slideshow, a document, or a video).
   const canSendToClient = !!listing && hasAccess(accessStatus) && (listing.slideshow_published || documents.length > 0 || videos.length > 0);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
-  );
-
-  async function handleDragEnd(event: DragEndEvent) {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = photos.findIndex(p => p.id === active.id);
-    const newIndex = photos.findIndex(p => p.id === over.id);
-    const newPhotos = arrayMove(photos, oldIndex, newIndex);
-    setPhotos(newPhotos);
-    await reorderPhotos(supabase, id, newPhotos.map((photo) => photo.id));
-    // Record that this listing has been hand-sorted. From here on the manual
-    // order wins and the canonical walk-the-boat category order steps aside.
-    await supabase.from("listings").update({ photo_order_manual: true }).eq("id", id);
-  }
-
-  // Rewrite display_order into the standard walk-the-boat order: outside, up
-  // top, cockpit, engine room, then in through the interior. Writes the order
-  // down rather than sorting at render time, so the portal, client sends and the
-  // website all show the identical sequence — and you can still drag afterwards.
-  async function sortToStandardOrder() {
-    if (sortingPhotos || photos.length === 0) return;
-    if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced. You can still drag afterwards.")) return;
-    setSortingPhotos(true);
-    try {
-      const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
-      setPhotos(sorted);
-      await reorderPhotos(supabase, id, sorted.map((photo) => photo.id));
-      await supabase.from("listings").update({ photo_order_manual: true }).eq("id", id);
-    } finally {
-      setSortingPhotos(false);
-    }
-  }
 
   // This — not loading.tsx — is what people actually see after clicking a boat.
   // It used to be the word "Loading..." in a small box, which is easy to read as
@@ -1388,62 +727,17 @@ export default function BrokerListingPage() {
       onDragOver={handlePageDragOver}
       onDrop={handlePageDrop}
     >
-      {/* Lightbox — portal to document.body, all layout via inline styles to avoid Tailwind purging.
-          A print on paper (ink-50): the counter and a single hairline are the only chrome on screen. */}
-      {mounted && lightboxIndex !== null && createPortal(
-        <div
-          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "var(--ink-50)", display: "flex", flexDirection: "column" }}
-          onTouchStart={(e) => setLightboxTouch(e.touches[0].clientX)}
-          onTouchEnd={(e) => {
-            if (lightboxTouch === null) return;
-            const diff = lightboxTouch - e.changedTouches[0].clientX;
-            if (Math.abs(diff) > 50) {
-              if (diff > 0) setLightboxIndex(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
-              else setLightboxIndex(i => i !== null ? Math.max(0, i - 1) : null);
-            }
-            setLightboxTouch(null);
-          }}
-        >
-          {/* Header — counter above a single hairline */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 6px 20px", flexShrink: 0, borderBottom: "1px solid var(--hairline)" }}>
-            <span style={{ color: "var(--ink-600)", fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-              {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
-            </span>
-            <button
-              onClick={() => setLightboxIndex(null)}
-              aria-label="Close"
-              style={{ color: "var(--ink-700)", fontSize: 26, lineHeight: 1, width: 44, height: 44, display: "flex", alignItems: "center", justifyContent: "center", background: "#fff", border: "1px solid var(--hairline)", borderRadius: "50%", boxShadow: "var(--shadow-elev-1)", cursor: "pointer" }}
-            >
-              ×
-            </button>
-          </div>
-
-          {/* Photo area — fills remaining height; the print floats on the paper, lifted by its shadow */}
-          <div style={{ flex: 1, minHeight: 0, position: "relative" }}>
-            {photos[lightboxIndex] && originals[photos[lightboxIndex].id] && (
-              <LightboxPhoto
-                key={photos[lightboxIndex].id}
-                src={originals[photos[lightboxIndex].id]}
-                alt={photos[lightboxIndex].filename ?? ""}
-              />
-            )}
-            {lightboxIndex > 0 && (
-              <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
-                aria-label="Previous photo"
-                style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", background: "#fff", border: "1px solid var(--hairline)", borderRadius: "50%", width: 44, height: 44, color: "var(--ink-700)", fontSize: 24, boxShadow: "var(--shadow-elev-1)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                ‹
-              </button>
-            )}
-            {lightboxIndex < photos.length - 1 && (
-              <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
-                aria-label="Next photo"
-                style={{ position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)", background: "#fff", border: "1px solid var(--hairline)", borderRadius: "50%", width: 44, height: 44, color: "var(--ink-700)", fontSize: 24, boxShadow: "var(--shadow-elev-1)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                ›
-              </button>
-            )}
-          </div>
-        </div>,
-        document.body
+      {/* Lightbox — shared with the admin page (src/components/listing-photos/Lightbox.tsx).
+          A print on paper (ink-50); shows the stored 2000px copy, signed on demand. */}
+      {lightboxIndex !== null && (
+        <PhotoLightbox
+          variant="broker"
+          photos={photos}
+          index={lightboxIndex}
+          setIndex={setLightboxIndex}
+          displayCopies={photoState.originals}
+          signDisplayCopies={photoState.signDisplayCopies}
+        />
       )}
 
       {/* Full-page drop overlay */}
@@ -1502,7 +796,7 @@ export default function BrokerListingPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {!selectMode && (
+          {!photoActions.selectMode && (
             <button
               onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
               disabled={!canSendToClient}
@@ -1512,113 +806,21 @@ export default function BrokerListingPage() {
               Send to Client
             </button>
           )}
-          {photos.length > 0 && !selectMode && (
-            <>
-              <button
-                onClick={() => { setSelectMode(true); }}
-                className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-              >
-                Select
-              </button>
-              <select
-                value={downloadSize}
-                onChange={(e) => setDownloadSize(e.target.value as DownloadSize)}
-                disabled={downloading}
-                title="Size for every photo download on this page"
-                aria-label="Download size"
-                className="text-sm border border-hairline-strong rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent-500 bg-white text-ink-700 disabled:opacity-50"
-              >
-                {DOWNLOAD_SIZES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </select>
-              <button
-                onClick={() => requireDownloadLicense(() => downloadPhotos(visiblePhotos))}
-                disabled={downloading}
-                className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
-              >
-                {downloading ? `Zipping... ${downloadProgress}%` : `Download All (${visiblePhotos.length})`}
-              </button>
-              <button
-                onClick={() => setConfirmDeleteAll(true)}
-                className="bg-white border border-hairline-strong hover:border-danger-300 text-danger-600 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
-              >
-                Delete All
-              </button>
-            </>
-          )}
-
-          {selectMode && (
-            <>
-              <button onClick={selectAll} className="text-sm text-accent-700 hover:text-accent-600 font-medium transition-colors px-2">
-                Select all
-              </button>
-              <button onClick={clearSelection} className="text-sm text-ink-400 hover:text-ink-600 transition-colors px-2">
-                Cancel
-              </button>
-              {selectedIds.size > 0 && (
-                <>
-                  {/* Bulk category assign */}
-                  <div className="flex items-center gap-2">
-                    <select
-                      value={bulkCategory}
-                      onChange={(e) => setBulkCategory(e.target.value)}
-                      className="text-sm border border-hairline-strong rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-500 bg-white"
-                    >
-                      <option value="">Assign category…</option>
-                      {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
-                        <option key={cat} value={cat}>{cat}</option>
-                      ))}
-                      {/* Custom categories were missing here while the admin
-                          version had them — so a category added on one screen
-                          simply wasn't offered on the other, with nothing to
-                          explain why. */}
-                      {customCategories
-                        .filter((c) => !(PHOTO_CATEGORIES as readonly string[]).includes(c.name))
-                        .map((c) => (
-                          <option key={c.id} value={c.name}>{c.name}</option>
-                        ))}
-                      <option value="Other">Other</option>
-                    </select>
-                    {bulkCategory && (
-                      <button
-                        onClick={applyBulkCategory}
-                        disabled={bulkCategorizing}
-                        className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-3 py-2 rounded-lg transition-colors whitespace-nowrap"
-                      >
-                        {bulkCategorizing ? "Applying…" : `Apply to ${selectedIds.size}`}
-                      </button>
-                    )}
-                  </div>
-                  <select
-                    value={downloadSize}
-                    onChange={(e) => setDownloadSize(e.target.value as DownloadSize)}
-                    disabled={downloading}
-                    title="Size for every photo download on this page"
-                    aria-label="Download size"
-                    className="text-sm border border-hairline-strong rounded-lg px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-accent-500 bg-white text-ink-700 disabled:opacity-50"
-                  >
-                    {DOWNLOAD_SIZES.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
-                  <button
-                    onClick={() => requireDownloadLicense(() => downloadPhotos(selectedPhotos))}
-                    disabled={downloading}
-                    className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
-                  >
-                    {downloading ? `Zipping... ${downloadProgress}%` : `Download ${selectedIds.size}`}
-                  </button>
-                  <button
-                    onClick={() => setConfirmDeleteSelected(true)}
-                    disabled={deleting}
-                    className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
-                  >
-                    {deleting ? "Deleting..." : `Delete ${selectedIds.size}`}
-                  </button>
-                </>
-              )}
-            </>
-          )}
+          <PhotoToolbar
+            variant="broker"
+            actions={photoActions}
+            photoCount={photos.length}
+            customCategories={photoState.customCategories}
+            downloadAllCount={visiblePhotos.length}
+            downloadBusy={downloads.downloading}
+            busyLabel={`Zipping... ${downloads.downloadProgress}%`}
+            onDownloadAll={() => requireDownloadLicense(() => downloads.downloadPhotos(visiblePhotos))}
+            onDownloadSelected={() => requireDownloadLicense(() => downloads.downloadPhotos(selectedPhotos))}
+            sizeSelect={<DownloadSizeSelect value={downloads.downloadSize} onChange={downloads.setDownloadSize} disabled={downloads.downloading} />}
+          />
 
           {hasAccess(accessStatus) ? (
-            <button onClick={() => requireRights(() => fileInputRef.current?.click())}
+            <button onClick={() => requireRights(() => photoActions.fileInputRef.current?.click())}
               className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
               + Add Photos
             </button>
@@ -1630,19 +832,7 @@ export default function BrokerListingPage() {
             </Link>
           )}
         </div>
-        <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-        <input
-          ref={replaceInputRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            const target = replaceTargetRef.current;
-            replaceTargetRef.current = null;
-            if (file && target) replacePhoto(target, file);
-          }}
-        />
+        <PhotoFileInputs actions={photoActions} />
       </div>
 
       {/* Readiness — what's done, what would make the listing land better */}
@@ -1695,55 +885,16 @@ export default function BrokerListingPage() {
         </span>
       </label>
 
-      {uploading && (
-        <div className="mb-5">
-          <div className="flex justify-between text-xs text-ink-500 mb-1"><span>Uploading...</span><span>{uploadProgress}%</span></div>
-          <div className="bg-ink-100 rounded-full h-2">
-            <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
-          </div>
-        </div>
-      )}
+      <UploadProgress variant="broker" actions={photoActions} />
+      <UploadFailedNotice variant="broker" actions={photoActions} />
 
       {/* Category prompt — shown when photos can't be auto-categorized from filename */}
-      {pendingFiles && (
-        <div className="mb-5 bg-warn-50 border border-warn-200 rounded-xl px-5 py-4">
-          <p className="text-sm font-semibold text-warn-800 mb-1">
-            {pendingFiles.filter(f => guessCategory(f.name) === "Other").length} of {pendingFiles.length} photo{pendingFiles.length !== 1 ? "s" : ""} couldn&apos;t be auto-categorized
-          </p>
-          <p className="text-xs text-warn-700 mb-3">
-            Pick a category to apply to those photos, or skip and assign them manually after uploading.
-          </p>
-          <div className="flex flex-wrap items-center gap-3">
-            <select
-              value={pendingCategory}
-              onChange={(e) => setPendingCategory(e.target.value)}
-              className="text-sm border border-warn-200 bg-white rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-accent-500"
-            >
-              {PHOTO_CATEGORIES.filter(c => c !== "Other").map((cat) => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
-              <option value="Other">Other (assign later)</option>
-            </select>
-            <button
-              onClick={() => doUpload(pendingFiles, pendingCategory === "Other" ? null : pendingCategory)}
-              className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
-            >
-              Upload {pendingFiles.length} photo{pendingFiles.length !== 1 ? "s" : ""}
-            </button>
-            <button
-              onClick={() => setPendingFiles(null)}
-              className="text-sm text-ink-400 hover:text-ink-600 transition-colors"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      <UncategorizedPrompt actions={photoActions} />
 
       <div id="photos" className="scroll-mt-24" />
       {photos.length === 0 ? (
         <div
-          onClick={() => hasAccess(accessStatus) && requireRights(() => fileInputRef.current?.click())}
+          onClick={() => hasAccess(accessStatus) && requireRights(() => photoActions.fileInputRef.current?.click())}
           className={`border-2 border-dashed rounded-xl p-16 text-center transition-colors ${hasAccess(accessStatus) ? "border-hairline-strong cursor-pointer hover:border-accent-500" : "border-hairline cursor-default"}`}
         >
           {hasAccess(accessStatus) ? (
@@ -1760,7 +911,7 @@ export default function BrokerListingPage() {
         </div>
       ) : (
         <div>
-          {!selectMode && (
+          {!photoActions.selectMode && (
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <p className="text-xs text-ink-400 flex-1 min-w-[220px]">
                 Tap the <span className="text-accent-700">★</span> on a photo to make it the cover — that&apos;s the image used on the spec sheet and social posts. If none is set, the first photo is used.
@@ -1788,72 +939,59 @@ export default function BrokerListingPage() {
             <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
               <p className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</p>
               <div className="flex items-center gap-2 flex-wrap">
-                {labelNote && <span className="text-xs text-ink-500">{labelNote}</span>}
-                {aiConfigured && (
+                {photoActions.labelNote && <span className="text-xs text-ink-500">{photoActions.labelNote}</span>}
+                {photoState.aiConfigured && (
                   <button
-                    onClick={() => labelWithAi(undefined, photos.every((p) => p.category && p.category !== "Other"))}
-                    disabled={labeling}
+                    onClick={() => photoActions.labelWithAi(undefined, photos.every((p) => p.category && p.category !== "Other"))}
+                    disabled={photoActions.labeling}
                     title={photos.some((p) => !p.category || p.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo you haven't set by hand"}
                     className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
                   >
-                    {labeling ? "Labelling…" : photos.some((p) => !p.category || p.category === "Other") ? "Label photos" : "Re-label photos"}
+                    {photoActions.labeling ? "Labelling…" : photos.some((p) => !p.category || p.category === "Other") ? "Label photos" : "Re-label photos"}
                   </button>
                 )}
                 <button
-                  onClick={sortToStandardOrder}
-                  disabled={sortingPhotos}
+                  onClick={photoActions.sortToStandardOrder}
+                  disabled={photoActions.sorting}
                   title="Rewrite the order to the standard walk-through: outside, up top, cockpit, engine room, then the interior"
                   className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
                 >
-                  {sortingPhotos ? "Sorting…" : "Sort to standard order"}
+                  {photoActions.sorting ? "Sorting…" : "Sort to standard order"}
                 </button>
               </div>
             </div>
           )}
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={photos.map(p => p.id)} strategy={rectSortingStrategy}>
-          {/* The gallery wall — prints on paper, chrome on demand */}
-          <div className="rounded-card bg-ink-50 border border-hairline p-2 sm:p-3">
-          <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-3">
-          {photos.filter(p => !deletingIds.has(p.id)).map((photo) => {
-            const isSelected = selectedIds.has(photo.id);
-            return (
-              <SortablePhotoCard
-                key={photo.id}
-                photo={photo}
-                thumbUrl={thumbs[photo.id]}
-                originalUrl={originals[photo.id]}
-                fileMissing={missingIds.has(photo.id)}
-                index={photos.indexOf(photo)}
-                isSelected={isSelected}
-                selectMode={selectMode}
-                downloading={downloading}
-                tapStart={tapStart}
-                extraCategories={customCategories.map((c) => c.name)}
-                isHero={heroPhotoId === photo.id}
-                onSetHero={() => setHero(photo.id)}
-                onTap={() => selectMode ? toggleSelect(photo.id) : setLightboxIndex(photos.indexOf(photo))}
-                onDownload={() => requireDownloadLicense(() => downloadPhotos([photo]))}
-                onToggleVisibility={() => toggleVisibility(photo.id, photo.is_visible)}
-                onUpdateCategory={(cat) => updateCategory(photo.id, cat)}
-                onSaveCategory={saveCustomCategory}
-                onDelete={() => deletePhoto(photo.id, photo.storage_path)}
-                canReplace={hasAccess(accessStatus)}
-                replaceStage={replacing[photo.id] ?? null}
-                replaceError={replaceFailed[photo.id] ?? null}
-                onReplace={() => requireRights(() => startReplace(photo.id))}
-                downloadTitle={downloadSize === "full" ? "Download photo" : `Download photo (${DOWNLOAD_SIZES.find((o) => o.value === downloadSize)?.label})`}
-              />
-            );
-          })}
-          </div>
-          </div>
-          </SortableContext>
-          </DndContext>
+          <PhotoGrid
+            variant="broker"
+            photos={photos}
+            thumbs={thumbs}
+            originals={photoState.originals}
+            missingIds={photoState.missingIds}
+            selectedIds={photoActions.selectedIds}
+            selectMode={photoActions.selectMode}
+            heroPhotoId={heroPhotoId}
+            customCategories={photoState.customCategories}
+            deletingIds={photoActions.deletingIds}
+            replacing={photoActions.replacing}
+            replaceFailed={photoActions.replaceFailed}
+            downloadBusy={downloads.downloading}
+            downloadTitle={downloads.downloadTitle}
+            canReplace={hasAccess(accessStatus)}
+            onOpen={setLightboxIndex}
+            onToggleSelect={photoActions.toggleSelect}
+            onSetHero={photoActions.setHero}
+            onDownload={(photo) => requireDownloadLicense(() => downloads.downloadPhotos([photo]))}
+            onToggleVisibility={(photo) => photoActions.toggleVisibility(photo.id, photo.is_visible)}
+            onUpdateCategory={(photoId, cat) => { photoActions.updateCategory(photoId, cat); }}
+            onSaveCategory={photoState.saveCustomCategory}
+            onDelete={(photo) => photoActions.deletePhoto(photo.id, photo.storage_path)}
+            onReplace={(photoId) => requireRights(() => photoActions.startReplace(photoId))}
+            onDragEnd={photoActions.handleDragEnd}
+          />
 
           {/* Drop zone strip */}
           <div
-            onClick={() => requireRights(() => fileInputRef.current?.click())}
+            onClick={() => requireRights(() => photoActions.fileInputRef.current?.click())}
             className="mt-3 border-2 border-dashed border-hairline-strong rounded-xl py-4 text-center cursor-pointer hover:border-accent-500 transition-colors"
           >
             <p className="text-ink-400 text-xs">Drag photos anywhere on this page, or click here to add more</p>
@@ -2091,42 +1229,7 @@ export default function BrokerListingPage() {
         }}
       />
 
-      <ConfirmDeleteDialog
-        open={confirmDeleteSelected}
-        title={`Delete ${selectedIds.size} photo${selectedIds.size !== 1 ? "s" : ""}?`}
-        body="These photos will be permanently removed from this listing. This can't be undone."
-        confirmLabel={`Delete ${selectedIds.size}`}
-        busy={deleting}
-        onCancel={() => setConfirmDeleteSelected(false)}
-        onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected(); }}
-      />
-
-      {/* Delete All confirmation dialog */}
-      {confirmDeleteAll && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl p-6 max-w-sm w-full shadow-xl">
-            <h3 className="text-lg font-bold text-ink-900 mb-2">Delete all photos?</h3>
-            <p className="text-ink-500 text-sm mb-6">
-              This will permanently delete all {photos.length} photo{photos.length !== 1 ? "s" : ""}. This can&apos;t be undone.
-            </p>
-            <div className="flex gap-3">
-              <button
-                onClick={() => setConfirmDeleteAll(false)}
-                className="flex-1 bg-white border border-hairline-strong hover:bg-ink-50 text-ink-700 text-sm font-medium py-2.5 rounded-lg transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={deleteAll}
-                disabled={deleting}
-                className="flex-1 bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-lg transition-colors"
-              >
-                {deleting ? "Deleting..." : "Delete All"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <DeletePhotosDialogs variant="broker" actions={photoActions} photoCount={photos.length} />
 
       {/* Video section */}
       <div id="videos" className="mt-8 bg-white border border-hairline rounded-card shadow-elev-1 p-6 scroll-mt-24">
@@ -2637,439 +1740,4 @@ function relativeTime(date: Date): string {
   if (days < 7) return `${days} days ago`;
   if (days < 30) return `${Math.floor(days / 7)}w ago`;
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-}
-
-// ─── Sortable photo card ───────────────────────────────────────────────────────
-function SortablePhotoCard({
-  photo, thumbUrl, originalUrl, fileMissing, index, isSelected, selectMode, downloading, tapStart, extraCategories, isHero,
-  onSetHero, onTap, onDownload, onToggleVisibility, onUpdateCategory, onSaveCategory, onDelete,
-  canReplace, replaceStage, replaceError, onReplace, downloadTitle,
-}: {
-  photo: { id: string; filename: string | null; category: string | null; is_visible: boolean };
-  /** Light resized version for the grid. */
-  thumbUrl?: string;
-  /** Full-size original, if one has already been signed (lightbox). Used only
-   *  as the last-resort fallback when the thumbnail won't load. */
-  originalUrl?: string;
-  /** The file isn't in storage (from /api/thumbs). */
-  fileMissing: boolean;
-  index: number;
-  isSelected: boolean;
-  selectMode: boolean;
-  downloading: boolean;
-  tapStart: React.MutableRefObject<{ x: number; y: number } | null>;
-  extraCategories: string[];
-  isHero: boolean;
-  onSetHero: () => void;
-  onTap: () => void;
-  onDownload: () => void;
-  onToggleVisibility: () => void;
-  onUpdateCategory: (cat: string) => void;
-  onSaveCategory: (cat: string) => void;
-  onDelete: () => void;
-  /** Show the Replace button (needs upload access). */
-  canReplace: boolean;
-  /** Mid-replace stage for this tile, if any. */
-  replaceStage: "uploading" | "saving" | null;
-  /** Why the last replace failed (shown on the tile for a few seconds). */
-  replaceError: string | null;
-  onReplace: () => void;
-  /** Tooltip for the download button — names the chosen size. */
-  downloadTitle: string;
-}) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: photo.id });
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [isVertical, setIsVertical] = useState(false);
-  const [imgLoaded, setImgLoaded] = useState(false);
-  const allCategories = [...(PHOTO_CATEGORIES as readonly string[]), ...extraCategories.filter(c => !(PHOTO_CATEGORIES as readonly string[]).includes(c))];
-  const inStandardList = allCategories.includes(photo.category ?? "");
-  const [showCustomInput, setShowCustomInput] = useState(!inStandardList);
-  const [customValue, setCustomValue] = useState(!inStandardList ? (photo.category ?? "") : "");
-
-  function commitCustom() {
-    const trimmed = customValue.trim();
-    if (trimmed) {
-      onUpdateCategory(trimmed);
-      onSaveCategory(trimmed); // auto-save to master list
-    } else {
-      setShowCustomInput(false);
-      setCustomValue("");
-      onUpdateCategory("Other");
-    }
-  }
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.6 : 1,
-    zIndex: isDragging ? 10 : undefined,
-  };
-
-  // Chrome on demand: management affordances rest hidden and appear on hover or
-  // keyboard focus. Devices that can't hover (touch) keep them visible so
-  // nothing is lost dockside.
-  const chrome =
-    "opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto " +
-    "group-focus-within:opacity-100 group-focus-within:pointer-events-auto " +
-    "[@media(hover:none)]:opacity-100 [@media(hover:none)]:pointer-events-auto " +
-    "transition-opacity duration-base ease-quiet";
-
-  const ctl =
-    "flex h-8 w-8 items-center justify-center rounded-full " +
-    "bg-white border border-hairline text-ink-700 shadow-elev-1 " +
-    "hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet " +
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group relative flex flex-col touch-manipulation ${
-        isSelected ? "ring-2 ring-accent-500 ring-offset-2 ring-offset-ink-50" : ""
-      }`}
-    >
-      <div className="relative">
-        {/* The photograph — a print on a white mat, lifted by its shadow, nothing over it at rest */}
-        <div
-          onClick={onTap}
-          onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
-          onTouchEnd={(e) => {
-            if (!tapStart.current) return;
-            const dx = Math.abs(e.changedTouches[0].clientX - tapStart.current.x);
-            const dy = Math.abs(e.changedTouches[0].clientY - tapStart.current.y);
-            tapStart.current = null;
-            if (dx < 8 && dy < 8) { e.preventDefault(); onTap(); }
-          }}
-          className={`relative w-full overflow-hidden rounded-[2px] bg-white shadow-print cursor-pointer ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
-        >
-          {!fileMissing ? (
-            <>
-              {(!imgLoaded || !thumbUrl) && <div aria-hidden className="absolute inset-0 animate-pulse bg-ink-950/[0.05]" />}
-              {/* Deliberately renders NOTHING until the resized url arrives.
-                  Falling back to photo.url looks harmless but makes the browser
-                  fetch every full-size original (~2 MB each) the instant the
-                  page paints — which is the exact cost we're removing. A brief
-                  skeleton is much cheaper than 227 originals.
-                  The lightbox and downloads sign originals on demand. */}
-              {thumbUrl && (
-              <RetryImg
-                src={thumbUrl}
-                fallbackSrc={originalUrl}
-                alt={photo.filename ?? ""}
-                loading={index < 4 ? "eager" : "lazy"}
-                decoding="async"
-                ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setImgLoaded(true); }}
-                onLoad={(e) => {
-                  const img = e.target as HTMLImageElement;
-                  setIsVertical(img.naturalHeight > img.naturalWidth);
-                  setImgLoaded(true);
-                }}
-                className={`absolute inset-0 h-full w-full object-contain pointer-events-none transition-opacity duration-base ease-quiet ${
-                  !imgLoaded ? "opacity-0" : photo.is_visible ? "opacity-100" : "opacity-40"
-                }`}
-              />
-              )}
-            </>
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none">
-              <span className="text-2xl">⚠️</span>
-              <div className="text-center px-3">
-                <p className="text-warn-700 text-xs font-semibold">File missing</p>
-                <p className="text-warn-700 text-[10px] mt-0.5">{canReplace ? "Use Replace to upload it again" : "Delete and re-upload"}</p>
-              </div>
-            </div>
-          )}
-          {!photo.is_visible && (
-            <span className="pointer-events-none absolute left-1.5 bottom-1.5 label-caps-inverse rounded-sm bg-ink-950/70 px-1.5 py-0.5">
-              Hidden
-            </span>
-          )}
-          {replaceStage && (
-            <div role="status" className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 bg-white/80">
-              <span aria-hidden className="h-5 w-5 rounded-full border-2 border-accent-500 border-t-transparent animate-spin" />
-              <span className="text-xs font-medium text-ink-800">
-                {replaceStage === "uploading" ? "Uploading new photo…" : "Swapping it in…"}
-              </span>
-            </div>
-          )}
-          {!replaceStage && replaceError && (
-            <div role="alert" className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-danger-600/90 px-2 py-1 text-[11px] font-medium text-white">
-              Replace failed — {replaceError}
-            </div>
-          )}
-        </div>
-
-        {/* Hero (cover) star — the current cover stays marked; the rest appear on demand */}
-        {!selectMode && (
-          <button
-            onClick={(e) => { e.stopPropagation(); onSetHero(); }}
-            onPointerDown={(e) => e.stopPropagation()}
-            title={isHero ? "Cover photo — used on the spec sheet & social posts. Tap to clear." : "Set as cover photo (spec sheet & social posts)"}
-            aria-label={isHero ? "Clear cover photo" : "Set as cover photo"}
-            className={`absolute top-1.5 left-1.5 z-10 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full text-sm transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
-              isHero ? "bg-accent-500 text-ink-950 shadow-elev-1" : `bg-white/70 sm:bg-white border border-hairline text-ink-700 shadow-elev-1 hover:bg-ink-50 hover:text-ink-950 ${chrome}`
-            }`}
-          >
-            {isHero ? "★" : "☆"}
-          </button>
-        )}
-
-        {/* Drag handle — top-right grip */}
-        {!selectMode && (
-          <div
-            {...attributes}
-            {...listeners}
-            title="Drag to reorder"
-            className={`absolute top-1.5 right-1.5 z-10 flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-full bg-white/70 sm:bg-white border border-hairline text-ink-700 shadow-elev-1 hover:bg-ink-50 hover:text-ink-950 cursor-grab active:cursor-grabbing touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${chrome}`}
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-              <circle cx="4" cy="3" r="1.2"/><circle cx="8" cy="3" r="1.2"/>
-              <circle cx="4" cy="6" r="1.2"/><circle cx="8" cy="6" r="1.2"/>
-              <circle cx="4" cy="9" r="1.2"/><circle cx="8" cy="9" r="1.2"/>
-            </svg>
-          </div>
-        )}
-
-        {/* Actions on demand — download, hide/show, delete-with-confirm (sm+; phones get the row under the photo) */}
-        {!selectMode && (
-          <div
-            className={`absolute inset-x-0 bottom-0 z-10 hidden sm:flex items-center justify-end gap-1 px-1.5 pb-1.5 pt-8 bg-gradient-to-t from-white/90 to-transparent ${chrome}`}
-            onClick={(e) => e.stopPropagation()}
-            onTouchStart={(e) => e.stopPropagation()}
-            onTouchEnd={(e) => e.stopPropagation()}
-          >
-            {confirmDelete ? (
-              <>
-                <span className="mr-auto pl-1 text-xs font-medium text-ink-800">Delete photo?</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                  className="h-11 sm:h-8 px-3 rounded-full bg-white border border-hairline text-ink-700 text-xs font-medium shadow-elev-1 hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                  className="h-11 sm:h-8 px-3 rounded-full bg-danger-600 text-white text-xs font-semibold hover:bg-danger-500 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-                >
-                  Confirm
-                </button>
-              </>
-            ) : (
-              <>
-                {canReplace && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onReplace(); }}
-                    disabled={!!replaceStage}
-                    title="Replace with a new file — keeps its place, category and cover setting"
-                    aria-label="Replace photo"
-                    className={`${ctl} disabled:opacity-40`}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                  </button>
-                )}
-                <button
-                  onClick={(e) => { e.stopPropagation(); onDownload(); }}
-                  disabled={downloading}
-                  title={downloadTitle}
-                  aria-label={downloadTitle}
-                  className={`${ctl} disabled:opacity-40`}
-                >
-                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
-                  title={photo.is_visible ? "Hide from slideshow & downloads" : "Show in slideshow & downloads"}
-                  aria-label={photo.is_visible ? "Hide photo" : "Show photo"}
-                  className={ctl}
-                >
-                  {photo.is_visible ? (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                  )}
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-                  title="Delete photo"
-                  aria-label="Delete photo"
-                  className={`${ctl} hover:text-danger-600`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-                </button>
-              </>
-            )}
-          </div>
-        )}
-
-        {/* Checkbox in select mode */}
-        {selectMode && (
-          <div
-            onClick={onTap}
-            className={`absolute top-2 left-2 z-10 w-6 h-6 rounded-sm border-2 flex items-center justify-center transition-colors duration-fast cursor-pointer shadow-elev-1 ${
-              isSelected ? "bg-accent-500 border-accent-500" : "bg-white/90 border-ink-400"
-            }`}
-          >
-            {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
-          </div>
-        )}
-      </div>
-
-      {/* Phone actions — below sm the controls sit under the photo instead of over it,
-          so the whole picture stays visible on a narrow (folded) screen. */}
-      {!selectMode && (
-        <div
-          className="flex sm:hidden items-center justify-around gap-1 px-0.5 pt-1"
-          onClick={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchEnd={(e) => e.stopPropagation()}
-        >
-          {confirmDelete ? (
-            <>
-              <span className="mr-auto pl-1 text-xs font-medium text-ink-800">Delete?</span>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmDelete(false); }}
-                className="h-8 px-2 rounded-full text-ink-600 text-xs font-medium hover:bg-ink-100 hover:text-ink-950 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onDelete(); }}
-                className="h-8 px-2.5 rounded-full bg-danger-600 text-white text-xs font-semibold hover:bg-danger-500 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-              >
-                Confirm
-              </button>
-            </>
-          ) : (
-            <>
-              {canReplace && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); onReplace(); }}
-                  disabled={!!replaceStage}
-                  title="Replace with a new file"
-                  aria-label="Replace photo"
-                  className="flex h-8 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-ink-900 active:bg-ink-100 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 disabled:opacity-40"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-                </button>
-              )}
-              <button
-                onClick={(e) => { e.stopPropagation(); onDownload(); }}
-                disabled={downloading}
-                title={downloadTitle}
-                aria-label={downloadTitle}
-                className={`flex h-8 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-ink-900 active:bg-ink-100 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 disabled:opacity-40`}
-              >
-                <svg className="w-4 h-4" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onToggleVisibility(); }}
-                title={photo.is_visible ? "Hide from slideshow & downloads" : "Show in slideshow & downloads"}
-                aria-label={photo.is_visible ? "Hide photo" : "Show photo"}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-ink-900 active:bg-ink-100 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-              >
-                {photo.is_visible ? (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.45 10.45 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.523 10.523 0 01-4.293 5.774M6.228 6.228L3 3m3.228 3.228l3.65 3.65m7.894 7.894L21 21m-3.228-3.228l-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
-                ) : (
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                )}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
-                title="Delete photo"
-                aria-label="Delete photo"
-                className="flex h-8 w-8 items-center justify-center rounded-full text-ink-500 hover:bg-ink-100 hover:text-danger-600 active:bg-ink-100 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={1.8} viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" /></svg>
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {/* Gallery plaque — number, category, state */}
-      <div className="flex items-center gap-1.5 px-1.5 pt-1 pb-0.5" title={photo.filename ?? undefined}>
-        <span className="text-[11px] font-semibold tracking-caps text-ink-500 shrink-0">{String(index + 1).padStart(2, "0")}</span>
-        {!showCustomInput ? (
-          <select
-            value={photo.category ?? "Other"}
-            onChange={(e) => {
-              e.stopPropagation();
-              if (e.target.value === "__custom__") {
-                setShowCustomInput(true);
-                setCustomValue("");
-              } else {
-                onUpdateCategory(e.target.value);
-              }
-            }}
-            onClick={(e) => e.stopPropagation()}
-            className="text-xs font-medium text-ink-600 bg-transparent border-none outline-none cursor-pointer hover:text-ink-950 focus-visible:text-ink-950 transition-colors duration-fast flex-1 min-w-0 truncate py-1"
-          >
-            <option value="__custom__">+ Custom...</option>
-            {allCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        ) : (
-          <div className="flex items-center gap-1 flex-1 min-w-0">
-            <input
-              type="text"
-              value={customValue}
-              onChange={(e) => { e.stopPropagation(); setCustomValue(e.target.value); }}
-              onBlur={commitCustom}
-              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); commitCustom(); } }}
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              placeholder="Type & press Enter..."
-              autoFocus
-              className="text-xs text-ink-900 placeholder-ink-400 bg-transparent border-b border-hairline-strong outline-none flex-1 min-w-0 py-1 focus:border-accent-500"
-            />
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setShowCustomInput(false); setCustomValue(""); onUpdateCategory("Other"); }}
-              className="text-ink-400 hover:text-ink-700 text-xs shrink-0 px-1.5 py-1"
-              title="Back to list"
-            >✕</button>
-          </div>
-        )}
-        {!photo.is_visible && <span className="text-ink-600 text-[11px] shrink-0">hidden</span>}
-      </div>
-    </div>
-  );
-}
-
-// ─── Lightbox photo ────────────────────────────────────────────────────────────
-// Raw <img> on purpose (time-limited signed URLs — never next/image). Fades in
-// once decoded; inline styles because this renders inside a body portal.
-// The print sizes to its content so the shadow hugs the photograph itself;
-// padding stays minimal so the image claims the viewport.
-function LightboxPhoto({ src, alt }: { src: string; alt: string }) {
-  const [loaded, setLoaded] = useState(false);
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 12,
-      }}
-    >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={src}
-        alt={alt}
-        decoding="async"
-        ref={(el) => { if (el && el.complete && el.naturalWidth > 0) setLoaded(true); }}
-        onLoad={() => setLoaded(true)}
-        style={{
-          maxWidth: "100%",
-          maxHeight: "100%",
-          objectFit: "contain",
-          borderRadius: 2,
-          boxShadow: "var(--shadow-print)",
-          opacity: loaded ? 1 : 0,
-          transition: "opacity 160ms cubic-bezier(0.25, 0, 0.15, 1)",
-        }}
-      />
-    </div>
-  );
 }

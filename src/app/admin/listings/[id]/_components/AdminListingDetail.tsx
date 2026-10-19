@@ -1,13 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect } from "react";
 import CoBrokerManager from "./CoBrokerManager";
-import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
-import { guessCategory } from "@/lib/guessCategory";
-import { orderPhotos } from "@/lib/photoOrder";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import PrepareVideoForSite from "@/components/PrepareVideoForSite";
@@ -17,19 +13,15 @@ import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
 import ListingEngagement from "@/components/ListingEngagement";
 import SortableVideoList from "@/components/SortableVideoList";
+import { arrayMove } from "@dnd-kit/sortable";
+// Photo management (grid, upload, replace, delete, order, categories, cover,
+// lightbox, saving originals) is shared with the broker listing page.
 import {
-  DndContext, closestCenter, MouseSensor, TouchSensor, useSensor, useSensors,
-  type DragEndEvent,
-} from "@dnd-kit/core";
-import { SortableContext, rectSortingStrategy, arrayMove, useSortable } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import RetryImg from "@/components/RetryImg";
-import { reorderPhotos } from "@/lib/reorderPhotos";
-import { runPool, uploadListingPhoto, replaceListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
-import {
-  SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
-  sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
-} from "@/lib/photoSave";
+  ADMIN_PHOTO_CAPABILITIES, type PhotoMessage,
+  useListingPhotos, usePhotoActions, useOriginalSave,
+  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, SavePanel,
+  PhotoFileInputs, UploadProgress, UploadFailedNotice,
+} from "@/components/listing-photos";
 
 interface Photo {
   id: string;
@@ -116,59 +108,6 @@ type Lead = { id: string; name: string | null; email: string | null; phone: stri
 
 export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false, pocketSetBy = null }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean; pocketSetBy?: string | null }) {
   const supabase = createClient();
-  const [photos, setPhotos] = useState<Photo[]>(initialPhotos);
-  // Resized thumbnails keyed by photo id, signed once in the background. The
-  // grid shows the full-size original until they land, so nothing blocks.
-  const [thumbs, setThumbs] = useState<Record<string, string>>({});
-
-  // AI photo labelling — only offered when the server has a key.
-  const [aiConfigured, setAiConfigured] = useState(false);
-  const [labeling, setLabeling] = useState(false);
-  const [labelNote, setLabelNote] = useState<string | null>(null);
-  useEffect(() => {
-    fetch("/api/photos/categorize").then((r) => (r.ok ? r.json() : null)).then((d) => setAiConfigured(!!d?.configured)).catch(() => {});
-  }, []);
-  async function labelWithAi(force: boolean) {
-    setLabeling(true);
-    setLabelNote(null);
-    try {
-      const res = await fetch("/api/photos/categorize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId: listing.id, force }),
-      });
-      const data = await res.json().catch(() => ({}));
-      const updated: { id: string; category: string }[] = data?.updated ?? [];
-      if (updated.length) {
-        const map = new Map(updated.map((u) => [u.id, u.category]));
-        setPhotos((prev) => prev.map((ph) => (map.has(ph.id) ? { ...ph, category: map.get(ph.id)! } : ph)));
-      }
-      if (!res.ok && data?.error) setLabelNote(`Labelling stopped: ${data.error}`);
-      else if (data?.considered === 0) setLabelNote("Nothing left to label.");
-      else setLabelNote(`${updated.length} labelled${data?.unsure ? ` · ${data.unsure} left as Other` : ""}.`);
-      setTimeout(() => setLabelNote(null), 5000);
-    } finally {
-      setLabeling(false);
-    }
-  }
-
-  // Re-run after an upload too: thumbnails are signed per listing, so a photo
-  // added after page load has no thumb until this is fetched again.
-  const refreshThumbs = useCallback(() => {
-    fetch("/api/thumbs", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ listingId: listing.id, width: 400 }),
-    })
-      .then((r) => (r.ok ? r.json() : null))
-      // Keep URLs already on screen (re-signing them would make every
-      // thumbnail reload); only photos new since the last fetch get one.
-      .then((d) => { if (d?.urls) setThumbs((prev) => ({ ...d.urls, ...prev })); })
-      .catch(() => { /* thumbnails are an optimisation, never a blocker */ });
-  }, [listing.id]);
-  useEffect(() => { refreshThumbs(); }, [refreshThumbs]);
-  const [uploading, setUploading] = useState(false);
-  const [uploadProgress, setUploadProgress] = useState(0);
   const [status, setStatus] = useState(listing.status);
   const [isShared, setIsShared] = useState(listing.is_shared === true);
   const [sharingBusy, setSharingBusy] = useState(false);
@@ -208,9 +147,6 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
       .sort();
     return times.length ? times[times.length - 1] : null;
   });
-  // Photos whose upload failed in the last batch — kept so Retry can re-run
-  // just those.
-  const [uploadFailed, setUploadFailed] = useState<{ files: File[]; ok: number } | null>(null);
   // Who gets the "ready" email. "assistant" keeps the broker's inbox quiet when
   // only their assistant needs to know the files have landed.
   const [notifyTo, setNotifyTo] = useState<"both" | "broker" | "assistant">("both");
@@ -222,157 +158,48 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     setMessageText(text);
     setMessageKind(kind);
   }
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  // Replace photo — which tiles are mid-replace (and at what stage).
-  const [replacing, setReplacing] = useState<Record<string, "uploading" | "saving">>({});
-  const replaceInputRef = useRef<HTMLInputElement>(null);
-  const replaceTargetRef = useRef<string | null>(null);
-  const [selectMode, setSelectMode] = useState(false);
-  const [confirmDeleteAll, setConfirmDeleteAll] = useState(false);
+
+  // ── Photos — shared with the broker listing page (src/components/listing-photos).
+  // Thumbnails, upload, replace, delete, order, categories, cover, show/hide,
+  // AI labels, lightbox and saving originals live there; this page supplies
+  // the admin capabilities and its banner. Failures stay up until closed;
+  // confirmations clear themselves.
+  const photoState = useListingPhotos({
+    supabase,
+    listingId: listing.id,
+    caps: ADMIN_PHOTO_CAPABILITIES,
+    initialPhotos,
+    initialHeroPhotoId: listing.hero_photo_id ?? null,
+    initialCustomCategories: globalCustomCategories,
+  });
+  const { photos, thumbs, heroPhotoId } = photoState;
+  const onPhotoMessage = (m: PhotoMessage) => {
+    setMessage(m.text, m.kind);
+    if (m.kind === "success" && m.ms) {
+      const shown = m.text;
+      setTimeout(() => setMessageText((cur) => (cur === shown ? "" : cur)), m.ms);
+    }
+  };
+  const photoActions = usePhotoActions({
+    supabase,
+    listingId: listing.id,
+    caps: ADMIN_PHOTO_CAPABILITIES,
+    state: photoState,
+    onMessage: onPhotoMessage,
+    // Files go under the listing's broker, as with every admin upload.
+    ownerFolder: () => listing.broker_id,
+  });
+  const save = useOriginalSave({
+    supabase,
+    vesselName: listing.vessel_name,
+    photos,
+    onMessage: onPhotoMessage,
+    onFinished: photoActions.clearSelection,
+  });
   // Held until confirmed — deleting media is permanent, so nothing irreversible
   // happens on a single click.
   const [pendingVideoDelete, setPendingVideoDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
-  const [confirmDeleteSelected, setConfirmDeleteSelected] = useState(false);
-  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [deleting, setDeleting] = useState(false);
-  const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkCategorizing, setBulkCategorizing] = useState(false);
-  const [heroPhotoId, setHeroPhotoId] = useState<string | null>(listing.hero_photo_id ?? null);
-  const [sorting, setSorting] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  // Drag-to-reorder (same order rules as the broker page): a mouse drag starts
-  // after 8px of movement, so a click is still a click; on a phone a short
-  // press-and-hold picks the photo up, so an ordinary swipe still scrolls.
-  // (Mouse + Touch rather than one Pointer sensor, so a scroll on a phone
-  // can never turn into a drag.)
-  const photoSensors = useSensors(
-    useSensor(MouseSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 220, tolerance: 8 } }),
-  );
-  // The click that ends a drag must not also open the lightbox.
-  const lastDragAt = useRef(0);
-  const [mounted, setMounted] = useState(false);
-  const [customEdit, setCustomEdit] = useState<{ photoId: string; value: string } | null>(null);
-  // Custom categories — seeded from every listing in the DB at page load,
-  // then extended locally when a new one is saved during this session
-  const [customCategories, setCustomCategories] = useState<string[]>(globalCustomCategories);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // ── Saving full-resolution originals (phone or desktop) ──────────────────
-  // Same files brokers download (the listing-photos originals), signed fresh
-  // at the moment of saving so a page left open for hours still works. No
-  // licence modal and no broker download log — this is the admin's own copy.
-  // Phone: photos are fetched, then a button opens the share sheet ("Save
-  // image" / Instagram / Facebook) — iOS needs a fresh tap for that, so the
-  // fetch can't happen inside the same tap. Up to SHARE_BATCH per sheet.
-  // Desktop: one photo → the file; several → a zip.
-  const [saveBusy, setSaveBusy] = useState<{ done: number; total: number; zipping?: boolean } | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [shareJob, setShareJob] = useState<{ targets: Photo[]; start: number; files: File[]; failed: number } | null>(null);
-  const saveLocked = saveBusy !== null || shareJob !== null;
-
-  async function saveItems(targets: Photo[]): Promise<{ url: string; name: string }[]> {
-    const fresh = new Map<string, string>();
-    try {
-      const { data } = await supabase.storage.from("listing-photos").createSignedUrls(targets.map((t) => t.storage_path), 900);
-      (data ?? []).forEach((d) => { if (d.path && d.signedUrl) fresh.set(d.path, d.signedUrl); });
-    } catch { /* fall back to the urls the page was given */ }
-    const out: { url: string; name: string }[] = [];
-    targets.forEach((t) => {
-      const url = fresh.get(t.storage_path) ?? t.url;
-      if (url) out.push({ url, name: photoFileName(listing.vessel_name, photos.indexOf(t), t) });
-    });
-    return out;
-  }
-
-  async function prepareShareBatch(targets: Photo[], start: number) {
-    const batch = targets.slice(start, start + SHARE_BATCH);
-    setShareJob(null);
-    setSaveError(null);
-    setSaveBusy({ done: 0, total: batch.length });
-    try {
-      const items = await saveItems(batch);
-      const { files, failed } = await fetchPhotoFiles(items, (done, total) => setSaveBusy({ done, total }));
-      if (files.length === 0) {
-        setSaveError("Couldn't get the photos. Check your connection and try again.");
-        return;
-      }
-      setShareJob({ targets, start, files, failed: failed + (batch.length - items.length) });
-    } catch {
-      setSaveError("Couldn't get the photos. Check your connection and try again.");
-    } finally {
-      setSaveBusy(null);
-    }
-  }
-
-  async function savePhotos(targets: Photo[]) {
-    if (targets.length === 0 || saveLocked) return;
-    setSaveError(null);
-    if (shouldUseShareSheet()) {
-      await prepareShareBatch(targets, 0);
-      return;
-    }
-    setSaveBusy({ done: 0, total: targets.length });
-    try {
-      const items = await saveItems(targets);
-      const { files, failed } = await fetchPhotoFiles(items, (done, total) => setSaveBusy({ done, total }));
-      if (files.length === 0) {
-        setSaveError("Couldn't get the photos. Check your connection and try again.");
-        return;
-      }
-      if (files.length === 1 || isTouchDevice()) {
-        await saveFilesSequentially(files);
-      } else {
-        setSaveBusy({ done: files.length, total: files.length, zipping: true });
-        const base = (listing.vessel_name ?? "photos").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "photos";
-        await saveFilesAsZip(files, `${base}-photos.zip`);
-      }
-      const missed = failed + (targets.length - items.length);
-      if (missed > 0) setSaveError(`${missed} photo${missed !== 1 ? "s" : ""} couldn't be downloaded; the rest were saved.`);
-      else { setMessage(`${files.length} photo${files.length !== 1 ? "s" : ""} downloaded.`); setTimeout(() => setMessage(""), 3000); }
-      if (selectMode) { setSelectedIds(new Set()); setSelectMode(false); }
-    } catch {
-      setSaveError("The download didn't finish. Please try again.");
-    } finally {
-      setSaveBusy(null);
-    }
-  }
-
-  // Runs straight from the button's click — nothing awaited before share().
-  function shareReadyBatch() {
-    if (!shareJob) return;
-    const job = shareJob;
-    sharePhotoFiles(job.files).then((result) => {
-      if (result === "cancelled") return; // keep the batch; they can tap again
-      if (result === "failed") {
-        setSaveError("Your phone wouldn't open the share sheet. Try \u201cDownload instead\u201d.");
-        return;
-      }
-      const nextStart = job.start + SHARE_BATCH;
-      if (nextStart < job.targets.length) {
-        prepareShareBatch(job.targets, nextStart);
-      } else {
-        setShareJob(null);
-        if (selectMode) { setSelectedIds(new Set()); setSelectMode(false); }
-        setMessage("Photos sent to your phone.");
-        setTimeout(() => setMessage(""), 3000);
-      }
-    });
-  }
-
-  async function downloadReadyBatchInstead() {
-    if (!shareJob) return;
-    const job = shareJob;
-    await saveFilesSequentially(job.files);
-    const nextStart = job.start + SHARE_BATCH;
-    if (nextStart < job.targets.length) prepareShareBatch(job.targets, nextStart);
-    else setShareJob(null);
-  }
-
-  function closeSavePanel() {
-    setShareJob(null);
-    setSaveError(null);
-  }
 
   // Video state
   const [videos, setVideos] = useState<Video[]>(initialVideos);
@@ -423,17 +250,6 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     }
   }
 
-  useEffect(() => { setMounted(true); }, []);
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (lightboxIndex === null) return;
-      if (e.key === "ArrowLeft") setLightboxIndex(i => i !== null ? Math.max(0, i - 1) : null);
-      if (e.key === "ArrowRight") setLightboxIndex(i => i !== null ? Math.min(photos.length - 1, i + 1) : null);
-      if (e.key === "Escape") setLightboxIndex(null);
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [lightboxIndex, photos.length]);
 
   const broker = listing.profiles;
   const brokerName = broker?.first_name
@@ -449,305 +265,6 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   function setNotifyMediaType(v: "photos" | "video" | "both") {
     setNotifyTypeTouched(true);
     setNotifyMediaTypeRaw(v);
-  }
-
-  // Leaving mid-batch abandons the rest of the uploads — warn first.
-  useEffect(() => {
-    if (!uploading) return;
-    const h = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ""; };
-    window.addEventListener("beforeunload", h);
-    return () => window.removeEventListener("beforeunload", h);
-  }, [uploading]);
-
-  async function handleFiles(files: FileList | File[] | null) {
-    if (!files || uploading) return;
-    const fileArr = Array.from(files);
-    if (fileArr.length === 0) return;
-    setUploading(true);
-    setUploadProgress(0);
-    setUploadFailed(null);
-    // Stamp WHICH admin uploaded these. It used to be null, which made every
-    // admin upload anonymous — "who uploaded this?" had no answer beyond
-    // "YachtPics". The by-YachtPics checks look the role up by id, so a
-    // stamped admin still counts as ours.
-    const { data: { user } } = await supabase.auth.getUser();
-
-    // Order is fixed up front from the files' own order, so running four at a
-    // time can't shuffle display_order by whichever finishes first.
-    const baseOrder = photos.length;
-    const stamp = Date.now();
-    const results: (Photo | null)[] = fileArr.map(() => null);
-    const failedIdx: number[] = [];
-    let done = 0;
-
-    await runPool(fileArr, PHOTO_UPLOAD_CONCURRENCY, async (file, i) => {
-      const r = await uploadListingPhoto({
-        supabase,
-        file,
-        brokerId: listing.broker_id,
-        listingId: listing.id,
-        pathKey: `${stamp}-${i}`,
-        category: guessCategory(file.name),
-        displayOrder: baseOrder + i,
-        uploadedBy: user?.id ?? null,
-      }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
-      if (r.ok) {
-        const { data: signed } = await supabase.storage
-          .from("listing-photos")
-          .createSignedUrl(r.row.storage_path, 3600);
-        const photo = { ...r.row, url: signed?.signedUrl ?? null } as Photo;
-        results[i] = photo;
-        setPhotos((prev) => [...prev, photo]);
-      } else {
-        failedIdx.push(i);
-      }
-      done++;
-      setUploadProgress(Math.round((done / fileArr.length) * 100));
-    });
-
-    // New photos appeared in finishing order; put them back in file order.
-    const added = results.filter((x): x is Photo => x !== null);
-    const addedIds = new Set(added.map((x) => x.id));
-    setPhotos((prev) => [...prev.filter((x) => !addedIds.has(x.id)), ...added]);
-
-    setUploading(false);
-    refreshThumbs();
-    if (failedIdx.length === 0) {
-      setMessage(`${added.length} photo${added.length !== 1 ? "s" : ""} uploaded.`);
-      setTimeout(() => setMessage(""), 3000);
-    } else {
-      failedIdx.sort((a, b) => a - b);
-      setUploadFailed({ files: failedIdx.map((i) => fileArr[i]), ok: added.length });
-    }
-  }
-
-  async function toggleVisibility(photoId: string, current: boolean) {
-    const { error } = await supabase.from("photos").update({ is_visible: !current }).eq("id", photoId);
-    if (error) {
-      setMessage(`Couldn't ${current ? "hide" : "show"} that photo: ${error.message}`, "error");
-      setTimeout(() => setMessage(""), 5000);
-      return;
-    }
-    setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, is_visible: !current } : p));
-  }
-
-  async function updateCategory(photoId: string, category: string, quiet = false): Promise<boolean> {
-    const res = await fetch("/api/admin/photos/update-category", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoId, category }),
-    });
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (!quiet) {
-        setMessage("Failed to save category: " + (data.error ?? "Unknown error"), "error");
-        setTimeout(() => setMessage(""), 4000);
-      }
-      return false;
-    }
-    setPhotos((prev) => prev.map((p) => p.id === photoId ? { ...p, category } : p));
-    // If it's a non-standard category, add it to the custom list so other photos can pick it
-    if (!(PHOTO_CATEGORIES as readonly string[]).includes(category)) {
-      setCustomCategories((prev) => prev.includes(category) ? prev : [...prev, category]);
-    }
-    return true;
-  }
-
-  // Set the category on every selected photo at once — so 20 shots of the same
-  // area are one pick, not twenty.
-  async function applyBulkCategory() {
-    if (!bulkCategory || selectedIds.size === 0) return;
-    setBulkCategorizing(true);
-    const ids = Array.from(selectedIds);
-    const results = await Promise.all(
-      ids.map((photoId) => updateCategory(photoId, bulkCategory, true).catch(() => false))
-    );
-    setBulkCategorizing(false);
-    const label = bulkCategory;
-    const failedIds = ids.filter((_, i) => !results[i]);
-    if (failedIds.length > 0) {
-      // Keep the failed ones selected so a second click retries just those.
-      setSelectedIds(new Set(failedIds));
-      const ok = ids.length - failedIds.length;
-      setMessage(`Set ${ok} photo${ok !== 1 ? "s" : ""} to “${label}”; ${failedIds.length} failed (still selected — try again).`, "error");
-      return;
-    }
-    setSelectedIds(new Set());
-    setBulkCategory("");
-    setMessage(`Set ${ids.length} photo${ids.length !== 1 ? "s" : ""} to “${label}”.`);
-    setTimeout(() => setMessage(""), 3000);
-  }
-
-  // Star / cover photo — the featured image used on the showcase card, listings
-  // card, flyer, and social posts. Clicking the current one clears it.
-  async function setHero(photoId: string) {
-    const next = heroPhotoId === photoId ? null : photoId;
-    const prev = heroPhotoId;
-    setHeroPhotoId(next); // optimistic
-    const { error } = await supabase.from("listings").update({ hero_photo_id: next }).eq("id", listing.id);
-    if (error) {
-      setHeroPhotoId(prev);
-      setMessage("Couldn't update the cover photo.", "error");
-      setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-    setMessage(next ? "Cover photo set." : "Cover photo cleared.");
-    setTimeout(() => setMessage(""), 2500);
-  }
-
-  // Rewrite display_order into the canonical walk-the-boat order (profiles →
-  // exterior → engine room → interior → staterooms). Marks the listing
-  // hand-sorted so that order sticks everywhere.
-  async function sortToStandardOrder() {
-    if (sorting || photos.length === 0) return;
-    if (!confirm("Re-sort all photos into the standard order? Your current order will be replaced.")) return;
-    setSorting(true);
-    const sorted = orderPhotos(photos, { manual: false, heroId: heroPhotoId ?? null, byFilename: true });
-    const { error: orderErr } = await reorderPhotos(supabase, listing.id, sorted.map((p) => p.id));
-    if (orderErr) {
-      setSorting(false);
-      setMessage(`Couldn't save the new order: ${orderErr}`, "error");
-      return;
-    }
-    setPhotos(sorted.map((p, i) => ({ ...p, display_order: i })));
-    const { error: listErr } = await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
-    setSorting(false);
-    if (listErr) {
-      setMessage(`Photos re-sorted, but the listing couldn't be marked hand-sorted (${listErr.message}) — the order may revert. Try again.`, "error");
-      return;
-    }
-    setMessage("Sorted to standard order.");
-    setTimeout(() => setMessage(""), 2500);
-  }
-
-  // Drop: write display_order for every photo in the new order and mark the
-  // listing hand-sorted — exactly what the broker page does.
-  async function handlePhotoDragEnd(event: DragEndEvent) {
-    lastDragAt.current = Date.now();
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = photos.findIndex((p) => p.id === active.id);
-    const newIndex = photos.findIndex((p) => p.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    const next = arrayMove(photos, oldIndex, newIndex).map((p, i) => ({ ...p, display_order: i }));
-    setPhotos(next);
-    const { error: orderErr } = await reorderPhotos(supabase, listing.id, next.map((p) => p.id));
-    const { error: listErr } = await supabase.from("listings").update({ photo_order_manual: true }).eq("id", listing.id);
-    if (listErr || orderErr) {
-      setMessage("Couldn\u2019t save the new order \u2014 refresh and try again.", "error");
-      setTimeout(() => setMessage(""), 4000);
-    }
-  }
-
-  // All photo deletions go through the delete API rather than raw storage
-  // calls: the server verifies access, deletes the recorded path, and writes
-  // the deletion log — the record that answers "what happened to the photos
-  // on this boat?" long after they're gone.
-  async function deletePhotosViaApi(photoIds: string[]): Promise<string | null> {
-    try {
-      const res = await fetch("/api/photos/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoIds }),
-      });
-      if (res.ok) return null;
-      const data = await res.json().catch(() => ({}));
-      return data.error ?? `Server returned ${res.status}`;
-    } catch (e) {
-      return e instanceof Error ? e.message : String(e);
-    }
-  }
-
-  function startReplace(photoId: string) {
-    if (replacing[photoId]) return;
-    replaceTargetRef.current = photoId;
-    if (replaceInputRef.current) {
-      replaceInputRef.current.value = "";
-      replaceInputRef.current.click();
-    }
-  }
-
-  // Swap the file behind a photo but keep the photo — its id, so its place in
-  // the order, area/category, visibility and cover status all stay. New file
-  // goes to a new storage path (no stale CDN/thumbnail cache), the server
-  // repoints the row and removes the old file.
-  async function replacePhoto(photoId: string, file: File) {
-    setReplacing((prev) => ({ ...prev, [photoId]: "uploading" }));
-    setMessage("Replacing photo — uploading the new file…");
-    const r = await replaceListingPhoto({
-      supabase,
-      file,
-      ownerFolder: listing.broker_id,
-      listingId: listing.id,
-      photoId,
-      onStage: (stage) => {
-        setReplacing((prev) => ({ ...prev, [photoId]: stage }));
-        if (stage === "saving") setMessage("Replacing photo — swapping it in…");
-      },
-    }).catch((e) => ({ ok: false as const, error: e instanceof Error ? e.message : String(e) }));
-    setReplacing((prev) => { const next = { ...prev }; delete next[photoId]; return next; });
-    if (!r.ok) {
-      setMessage(`Couldn't replace that photo: ${r.error}`, "error");
-      return;
-    }
-    const np = r.photo;
-    setPhotos((prev) => prev.map((p) => (p.id === photoId
-      ? { ...p, storage_path: np.storage_path, filename: np.filename, url: np.originalUrl ?? p.url }
-      : p)));
-    setThumbs((prev) => {
-      const next = { ...prev };
-      if (np.thumbUrl) next[photoId] = np.thumbUrl; else delete next[photoId];
-      return next;
-    });
-    if (!np.thumbUrl) refreshThumbs();
-    setMessage(`Photo replaced with ${np.filename ?? "the new file"} — same spot, area and cover setting.`);
-    setTimeout(() => setMessage(""), 4000);
-  }
-
-  // Photos only leave the screen once the server confirms they're gone.
-  async function deletePhoto(photoId: string, _storagePath: string) {
-    const err = await deletePhotosViaApi([photoId]);
-    if (err) {
-      setMessage(`Couldn't delete that photo: ${err}`, "error");
-      return;
-    }
-    setPhotos((prev) => prev.filter((p) => p.id !== photoId));
-    setSelectedIds((prev) => { const next = new Set(prev); next.delete(photoId); return next; });
-  }
-
-  async function deleteSelected() {
-    if (selectedIds.size === 0) return;
-    setDeleting(true);
-    const toDelete = photos.filter((p) => selectedIds.has(p.id));
-    const ids = new Set(toDelete.map((p) => p.id));
-    const err = await deletePhotosViaApi(toDelete.map((p) => p.id));
-    setDeleting(false);
-    if (err) {
-      setMessage(`Couldn't delete the selected photos: ${err}. Nothing was removed.`, "error");
-      return;
-    }
-    setPhotos((prev) => prev.filter((p) => !ids.has(p.id)));
-    setSelectedIds(new Set());
-    setSelectMode(false);
-    setMessage(`${toDelete.length} photo${toDelete.length !== 1 ? "s" : ""} deleted.`);
-    setTimeout(() => setMessage(""), 3000);
-  }
-
-  async function deleteAll() {
-    setDeleting(true);
-    setConfirmDeleteAll(false);
-    const ids = new Set(photos.map((p) => p.id));
-    const err = await deletePhotosViaApi(photos.map((p) => p.id));
-    setDeleting(false);
-    if (err) {
-      setMessage(`Couldn't delete the photos: ${err}. Nothing was removed.`, "error");
-      return;
-    }
-    setPhotos((prev) => prev.filter((p) => !ids.has(p.id)));
-    setSelectedIds(new Set());
-    setSelectMode(false);
-    setMessage("All photos deleted.");
-    setTimeout(() => setMessage(""), 3000);
   }
 
   async function notifyBroker() {
@@ -1209,18 +726,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           >
             Seller Report ↗
           </a>
-          {aiConfigured && (
+          {photoState.aiConfigured && (
             <button
               type="button"
-              onClick={() => labelWithAi(photos.every((ph) => ph.category && ph.category !== "Other"))}
-              disabled={labeling}
+              onClick={() => photoActions.labelWithAi(undefined, photos.every((ph) => ph.category && ph.category !== "Other"))}
+              disabled={photoActions.labeling}
               className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
               title={photos.some((ph) => !ph.category || ph.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo not set by hand"}
             >
-              {labeling ? "Labelling…" : photos.some((ph) => !ph.category || ph.category === "Other") ? "Label photos" : "Re-label photos"}
+              {photoActions.labeling ? "Labelling…" : photos.some((ph) => !ph.category || ph.category === "Other") ? "Label photos" : "Re-label photos"}
             </button>
           )}
-          {labelNote && <span className="ml-2 text-xs text-ink-500">{labelNote}</span>}
+          {photoActions.labelNote && <span className="ml-2 text-xs text-ink-500">{photoActions.labelNote}</span>}
           {/* Straight through to the broker. Reading a listing and wanting the
               person behind it is constant — their other boats, their contact
               details, whether they are subscribed — and the old route was
@@ -1642,123 +1159,36 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <p className="text-ink-500 text-sm">{photos.length} photo{photos.length !== 1 ? "s" : ""}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {photos.length > 0 && !selectMode && (
-              <>
-                <button
-                  onClick={() => setSelectMode(true)}
-                  className="text-sm text-ink-500 hover:text-ink-700 border border-hairline-strong px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                >
-                  Select
-                </button>
-                <button
-                  onClick={() => savePhotos(photos)}
-                  disabled={saveLocked}
-                  title="Full-size originals. On a phone they open in the share sheet (10 at a time) — Save image, Instagram, Facebook."
-                  className="text-sm text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                >
-                  Download all
-                </button>
-                <button
-                  onClick={() => setConfirmDeleteAll(true)}
-                  className="text-sm text-danger-600 hover:text-danger-700 border border-hairline-strong hover:border-danger-300 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                >
-                  Delete All
-                </button>
-              </>
-            )}
-            {selectMode && (
-              <>
-                <button
-                  onClick={() => setSelectedIds(new Set(photos.map((p) => p.id)))}
-                  className="text-sm text-accent-700 font-medium transition-colors duration-fast ease-quiet px-2"
-                >
-                  Select all
-                </button>
-                <button
-                  onClick={() => { setSelectedIds(new Set()); setSelectMode(false); }}
-                  className="text-sm text-ink-400 hover:text-ink-600 transition-colors duration-fast ease-quiet px-2"
-                >
-                  Cancel
-                </button>
-                {selectedIds.size > 0 && (
-                  <>
-                    {/* Bulk category — set the area on every selected photo at once */}
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={bulkCategory}
-                        onChange={(e) => setBulkCategory(e.target.value)}
-                        className="text-sm border border-hairline-strong rounded-ctl px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-accent-500"
-                      >
-                        <option value="">Assign category…</option>
-                        {PHOTO_CATEGORIES.filter((c) => c !== "Other").map((cat) => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                        {customCategories.map((cat) => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                        <option value="Other">Other</option>
-                      </select>
-                      {bulkCategory && (
-                        <button
-                          onClick={applyBulkCategory}
-                          disabled={bulkCategorizing}
-                          className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
-                        >
-                          {bulkCategorizing ? "Applying…" : `Apply to ${selectedIds.size}`}
-                        </button>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => savePhotos(photos.filter((p) => selectedIds.has(p.id)))}
-                      disabled={saveLocked}
-                      className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
-                    >
-                      {`Download ${selectedIds.size}`}
-                    </button>
-                    <button
-                      onClick={() => setConfirmDeleteSelected(true)}
-                      disabled={deleting}
-                      className="bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                    >
-                      {deleting ? "Deleting..." : `🗑 Delete ${selectedIds.size}`}
-                    </button>
-                  </>
-                )}
-              </>
-            )}
-            {photos.length > 1 && !selectMode && (
+            <PhotoToolbar
+              variant="admin"
+              actions={photoActions}
+              photoCount={photos.length}
+              customCategories={photoState.customCategories}
+              downloadBusy={save.saveLocked}
+              onDownloadAll={() => save.savePhotos(photos)}
+              onDownloadSelected={() => save.savePhotos(photos.filter((p) => photoActions.selectedIds.has(p.id)))}
+            />
+            {photos.length > 1 && !photoActions.selectMode && (
               <span className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</span>
             )}
-            {photos.length > 1 && !selectMode && (
+            {photos.length > 1 && !photoActions.selectMode && (
               <button
-                onClick={sortToStandardOrder}
-                disabled={sorting}
+                onClick={photoActions.sortToStandardOrder}
+                disabled={photoActions.sorting}
                 title="Rewrite the order to the standard walk-through: profiles, exterior, engine room, then the interior"
                 className="text-sm font-medium px-3 py-2 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast ease-quiet"
               >
-                {sorting ? "Sorting…" : "Sort to standard order"}
+                {photoActions.sorting ? "Sorting…" : "Sort to standard order"}
               </button>
             )}
             <button
-              onClick={() => fileInputRef.current?.click()}
+              onClick={() => photoActions.fileInputRef.current?.click()}
               className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
             >
               + Add Photos
             </button>
           </div>
-          <input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
-          <input
-            ref={replaceInputRef}
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              const target = replaceTargetRef.current;
-              replaceTargetRef.current = null;
-              if (file && target) replacePhoto(target, file);
-            }}
-          />
+          <PhotoFileInputs actions={photoActions} />
         </div>
 
         {/* Deleting media is permanent — the file leaves storage entirely, so
@@ -1784,272 +1214,41 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           }}
         />
 
-        <ConfirmDeleteDialog
-          open={confirmDeleteSelected}
-          title={`Delete ${selectedIds.size} photo${selectedIds.size !== 1 ? "s" : ""}?`}
-          body="These photos will be permanently removed from this listing. This can't be undone."
-          confirmLabel={`Delete ${selectedIds.size}`}
-          busy={deleting}
-          onCancel={() => setConfirmDeleteSelected(false)}
-          onConfirm={() => { setConfirmDeleteSelected(false); deleteSelected(); }}
-        />
+        <DeletePhotosDialogs variant="admin" actions={photoActions} photoCount={photos.length} />
 
-        {/* Delete All confirmation */}
-        {confirmDeleteAll && (
-          <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-surface p-6 max-w-sm w-full shadow-elev-3">
-              <h3 className="text-lg font-bold text-ink-900 mb-2">Delete all photos?</h3>
-              <p className="text-ink-500 text-sm mb-6">
-                This will permanently delete all {photos.length} photo{photos.length !== 1 ? "s" : ""} for this listing. This can&apos;t be undone.
-              </p>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setConfirmDeleteAll(false)}
-                  className="flex-1 bg-white border border-hairline-strong hover:bg-ink-50 text-ink-700 text-sm font-medium py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={deleteAll}
-                  disabled={deleting}
-                  className="flex-1 bg-danger-600 hover:bg-danger-500 disabled:opacity-50 text-white text-sm font-semibold py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
-                >
-                  {deleting ? "Deleting..." : "Delete All"}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {uploading && (
-          <div className="mb-4">
-            <div className="flex justify-between text-xs text-ink-500 mb-1">
-              <span>Uploading...</span><span className="tabular-nums">{uploadProgress}%</span>
-            </div>
-            <div className="bg-ink-100 rounded-full h-2">
-              <div className="bg-accent-500 h-2 rounded-full transition-all" style={{ width: `${uploadProgress}%` }} />
-            </div>
-          </div>
-        )}
-
-        {uploadFailed && !uploading && (
-          <div role="alert" className="mb-4 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700 flex items-start justify-between gap-3">
-            <span>
-              {uploadFailed.ok} uploaded, {uploadFailed.files.length} failed: {uploadFailed.files.map((f) => f.name).join(", ")}
-            </span>
-            <span className="shrink-0 flex items-center gap-3">
-              <button
-                onClick={() => handleFiles(uploadFailed.files)}
-                className="font-semibold underline underline-offset-2 hover:text-danger-600"
-              >
-                Retry
-              </button>
-              <button
-                onClick={() => setUploadFailed(null)}
-                className="text-danger-600 hover:text-danger-700 leading-none text-base font-bold"
-                aria-label="Dismiss"
-              >
-                ×
-              </button>
-            </span>
-          </div>
-        )}
+        <UploadProgress variant="admin" actions={photoActions} />
+        <UploadFailedNotice variant="admin" actions={photoActions} />
 
         {photos.length === 0 ? (
           <div
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => photoActions.fileInputRef.current?.click()}
             onDragOver={(e) => e.preventDefault()}
-            onDrop={(e) => { e.preventDefault(); handleFiles(e.dataTransfer.files); }}
+            onDrop={(e) => { e.preventDefault(); photoActions.handleFiles(e.dataTransfer.files); }}
             className="border-2 border-dashed border-ink-200 rounded-card p-12 text-center cursor-pointer hover:border-accent-500 transition-colors duration-fast ease-quiet"
           >
             <p className="text-ink-400 text-sm">Drag photos here or click to upload</p>
           </div>
         ) : (
-          <DndContext
-            sensors={photoSensors}
-            collisionDetection={closestCenter}
-            onDragEnd={handlePhotoDragEnd}
-            onDragCancel={() => { lastDragAt.current = Date.now(); }}
-          >
-          <SortableContext items={photos.map((p) => p.id)} strategy={rectSortingStrategy}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 items-start">
-            {photos.map((photo, idx) => {
-              const isSelected = selectedIds.has(photo.id);
-              return (
-                <SortableTile
-                  key={photo.id}
-                  id={photo.id}
-                  disabled={selectMode || customEdit?.photoId === photo.id}
-                  className={`rounded-lg overflow-hidden border-2 bg-white transition-colors duration-fast ease-quiet ${
-                    isSelected ? "border-accent-500 shadow-elev-2" :
-                    photo.is_visible ? "border-transparent" : "border-ink-200 opacity-60"
-                  }`}
-                >
-                  {(dragHandle) => (<>
-                  {/* Thumbnail — click to enlarge or select; drag to reorder
-                      (the photo itself is the handle, so the controls below
-                      it never start a drag). */}
-                  <div
-                    {...dragHandle}
-                    className="relative cursor-pointer select-none touch-manipulation [-webkit-touch-callout:none]"
-                    title={selectMode ? undefined : "Click to enlarge \u00b7 drag to reorder"}
-                    onClick={() => {
-                      if (Date.now() - lastDragAt.current < 300) return;
-                      if (selectMode) setSelectedIds((prev) => { const next = new Set(prev); next.has(photo.id) ? next.delete(photo.id) : next.add(photo.id); return next; });
-                      else setLightboxIndex(idx);
-                    }}
-                  >
-                    {/* Only ever the resized url — never the original. Falling back
-                        to photo.url would make the browser pull every full-size
-                        file (~2 MB each) on first paint. */}
-                    {photo.url ? (
-                      <OrientedThumbnail url={thumbs[photo.id] ?? null} fallbackUrl={photo.url} filename={photo.filename} />
-                    ) : (
-                      <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-ink-400 text-xs">No preview</div>
-                    )}
-                    {replacing[photo.id] && (
-                      <div role="status" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-2 bg-white/80">
-                        <span aria-hidden className="h-5 w-5 rounded-full border-2 border-accent-500 border-t-transparent animate-spin" />
-                        <span className="text-xs font-medium text-ink-800">
-                          {replacing[photo.id] === "uploading" ? "Uploading…" : "Swapping in…"}
-                        </span>
-                      </div>
-                    )}
-                    {selectMode && (
-                      <div className={`absolute top-2 left-2 w-5 h-5 rounded border-2 flex items-center justify-center ${
-                        isSelected ? "bg-accent-500 border-accent-500" : "bg-white/80 border-ink-300"
-                      }`}>
-                        {isSelected && <span className="text-ink-950 text-xs font-bold">✓</span>}
-                      </div>
-                    )}
-                    {/* Cover-photo star — sets the featured image (showcase card,
-                        listings card, flyer, social). Filled = current cover. */}
-                    {!selectMode && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); setHero(photo.id); }}
-                        title={heroPhotoId === photo.id ? "Cover photo — click to clear" : "Set as cover photo"}
-                        aria-label={heroPhotoId === photo.id ? "Clear cover photo" : "Set as cover photo"}
-                        className={`absolute top-2 right-2 w-7 h-7 rounded-full flex items-center justify-center text-sm shadow-elev-1 transition-colors duration-fast ease-quiet ${
-                          heroPhotoId === photo.id
-                            ? "bg-accent-500 text-ink-950"
-                            : "bg-white/85 text-ink-500 hover:text-ink-900"
-                        }`}
-                      >
-                        {heroPhotoId === photo.id ? "★" : "☆"}
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Category + actions below thumbnail */}
-                  <div className="p-2 bg-white">
-                    {customEdit?.photoId === photo.id ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="text"
-                          autoFocus
-                          value={customEdit.value}
-                          onChange={(e) => setCustomEdit({ photoId: photo.id, value: e.target.value })}
-                          onBlur={() => {
-                            const v = customEdit.value.trim();
-                            updateCategory(photo.id, v || "Other");
-                            setCustomEdit(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              const v = customEdit.value.trim();
-                              updateCategory(photo.id, v || "Other");
-                              setCustomEdit(null);
-                            }
-                            if (e.key === "Escape") setCustomEdit(null);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          placeholder="Type & press Enter..."
-                          className="text-xs text-ink-700 bg-transparent border-b border-hairline-strong outline-none flex-1 min-w-0 focus:border-accent-500"
-                        />
-                        <button type="button" onClick={(e) => { e.stopPropagation(); setCustomEdit(null); }}
-                          className="text-ink-400 hover:text-ink-600 text-xs px-1">✕</button>
-                      </div>
-                    ) : (
-                      <select
-                        value={
-                          (PHOTO_CATEGORIES as readonly string[]).includes(photo.category ?? "") ||
-                          customCategories.includes(photo.category ?? "")
-                            ? (photo.category ?? "Other")
-                            : "__custom__"
-                        }
-                        onChange={(e) => {
-                          e.stopPropagation();
-                          if (e.target.value === "__new__") {
-                            setCustomEdit({ photoId: photo.id, value: "" });
-                          } else {
-                            updateCategory(photo.id, e.target.value);
-                          }
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="text-xs text-ink-600 bg-transparent border-none outline-none cursor-pointer hover:text-accent-700 transition-colors duration-fast ease-quiet max-w-full"
-                      >
-                        <option value="__new__">+ New custom...</option>
-                        {[...PHOTO_CATEGORIES, ...customCategories]
-                          .sort((a, b) => a.localeCompare(b))
-                          .map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    )}
-                    {!photo.is_visible && <span className="text-[10px] text-ink-400 ml-1">· hidden</span>}
-                    {!selectMode && (
-                      <div className="flex gap-1.5 mt-2">
-                        <button
-                          onClick={() => toggleVisibility(photo.id, photo.is_visible)}
-                          className="flex-1 text-[10px] font-medium text-ink-500 hover:text-ink-800 border border-hairline-strong hover:border-ink-400 rounded py-1 transition-colors duration-fast ease-quiet"
-                        >
-                          {photo.is_visible ? "Hide" : "Show"}
-                        </button>
-                        <button
-                          onClick={() => savePhotos([photo])}
-                          disabled={saveLocked}
-                          title="Download the full-size photo"
-                          aria-label="Download this photo"
-                          className="flex-1 text-[10px] font-medium text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 rounded py-1 transition-colors duration-fast ease-quiet"
-                        >
-                          ↓ Save
-                        </button>
-                        <button
-                          onClick={() => startReplace(photo.id)}
-                          disabled={!!replacing[photo.id]}
-                          title="Replace with a new file — keeps its place, area and cover setting"
-                          aria-label="Replace this photo"
-                          className="flex-1 text-[10px] font-medium text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 rounded py-1 transition-colors duration-fast ease-quiet"
-                        >
-                          {replacing[photo.id] ? "…" : "Replace"}
-                        </button>
-                        {confirmDeleteId === photo.id ? (
-                          <>
-                            <button onClick={() => setConfirmDeleteId(null)}
-                              className="flex-1 text-[10px] font-medium text-ink-500 border border-hairline-strong rounded py-1 transition-colors duration-fast ease-quiet">
-                              Cancel
-                            </button>
-                            <button onClick={() => { setConfirmDeleteId(null); deletePhoto(photo.id, photo.storage_path); }}
-                              className="flex-1 text-[10px] font-bold text-white bg-danger-600 hover:bg-danger-500 rounded py-1 transition-colors duration-fast ease-quiet">
-                              Confirm
-                            </button>
-                          </>
-                        ) : (
-                          <button onClick={() => setConfirmDeleteId(photo.id)}
-                            className="flex-1 text-[10px] font-medium text-danger-600 hover:text-danger-700 border border-danger-200 hover:border-danger-300 rounded py-1 transition-colors duration-fast ease-quiet">
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  </>)}
-                </SortableTile>
-              );
-            })}
-          </div>
-          </SortableContext>
-          </DndContext>
+          <PhotoGrid
+            variant="admin"
+            photos={photos}
+            thumbs={thumbs}
+            selectedIds={photoActions.selectedIds}
+            selectMode={photoActions.selectMode}
+            heroPhotoId={heroPhotoId}
+            customCategories={photoState.customCategories}
+            replacing={photoActions.replacing}
+            downloadBusy={save.saveLocked}
+            onOpen={setLightboxIndex}
+            onToggleSelect={photoActions.toggleSelect}
+            onSetHero={photoActions.setHero}
+            onDownload={(photo) => save.savePhotos([photo])}
+            onToggleVisibility={(photo) => photoActions.toggleVisibility(photo.id, photo.is_visible)}
+            onUpdateCategory={(photoId, cat) => { photoActions.updateCategory(photoId, cat); }}
+            onDelete={(photo) => photoActions.deletePhoto(photo.id, photo.storage_path)}
+            onReplace={photoActions.startReplace}
+            onDragEnd={photoActions.handleDragEnd}
+          />
         )}
       </div>
 
@@ -2160,170 +1359,21 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>
         <DeleteListingButton listingId={listing.id} vesselName={listing.vessel_name} brokerId={listing.broker_id} />
       </div>
-      {/* Save / share panel — pinned to the bottom of the screen so it's in
-          reach wherever the page is scrolled, and above the lightbox. */}
-      {mounted && (saveBusy || shareJob || saveError) && createPortal(
-        <div style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 10000, padding: "12px 16px calc(12px + env(safe-area-inset-bottom))" }}>
-          <div className="mx-auto max-w-md bg-white border border-hairline rounded-card shadow-elev-2 p-4">
-            {saveBusy ? (
-              <p className="text-sm text-ink-700">
-                {saveBusy.zipping
-                  ? "Making the zip…"
-                  : `Getting full-size photos… ${saveBusy.done} of ${saveBusy.total}`}
-              </p>
-            ) : shareJob ? (
-              <>
-                <p className="text-sm text-ink-900 font-medium">
-                  {shareJob.targets.length > SHARE_BATCH
-                    ? `Photos ${shareJob.start + 1}–${Math.min(shareJob.start + SHARE_BATCH, shareJob.targets.length)} of ${shareJob.targets.length} ready`
-                    : `${shareJob.files.length} photo${shareJob.files.length !== 1 ? "s" : ""} ready`}
-                </p>
-                <p className="text-xs text-ink-500 mt-1">
-                  Tap below, then choose Save image / Save to Photos, or share straight to Instagram or Facebook.
-                  {shareJob.targets.length > SHARE_BATCH ? ` Your phone takes ${SHARE_BATCH} at a time; the next ${SHARE_BATCH} get ready after each.` : ""}
-                  {shareJob.failed > 0 ? ` ${shareJob.failed} couldn't be fetched and are left out.` : ""}
-                </p>
-                {saveError && <p className="text-xs text-danger-600 mt-2">{saveError}</p>}
-                <div className="flex flex-wrap gap-2 mt-3">
-                  <button
-                    onClick={shareReadyBatch}
-                    className="flex-1 bg-ink-950 hover:bg-ink-800 text-white text-sm font-semibold px-4 py-2.5 rounded-ctl"
-                  >
-                    {`Save / share ${shareJob.files.length} photo${shareJob.files.length !== 1 ? "s" : ""}`}
-                  </button>
-                  <button
-                    onClick={downloadReadyBatchInstead}
-                    className="text-sm text-ink-600 border border-hairline-strong px-3 py-2.5 rounded-ctl"
-                  >
-                    Download instead
-                  </button>
-                  <button onClick={closeSavePanel} className="text-sm text-ink-400 px-2 py-2.5">Cancel</button>
-                </div>
-              </>
-            ) : (
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-sm text-danger-600">{saveError}</p>
-                <button onClick={closeSavePanel} className="text-sm text-ink-500 shrink-0">Close</button>
-              </div>
-            )}
-          </div>
-        </div>,
-        document.body
-      )}
+      {/* Save / share panel — pinned to the bottom of the screen, above the lightbox. */}
+      <SavePanel save={save} />
 
-      {/* Lightbox */}
-      {mounted && lightboxIndex !== null && createPortal(
-        <div
-          style={{ position: "fixed", inset: 0, zIndex: 9999, background: "rgba(0,0,0,0.97)", display: "flex", flexDirection: "column" }}
-          onClick={() => setLightboxIndex(null)}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", flexShrink: 0 }}>
-            <span style={{ color: "#9ca3af", fontSize: 14 }}>
-              {photos[lightboxIndex]?.category ? `${photos[lightboxIndex].category} · ` : ""}{lightboxIndex + 1} / {photos.length}
-            </span>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              {photos[lightboxIndex] && (
-                <button
-                  onClick={(e) => { e.stopPropagation(); const p = photos[lightboxIndex]; if (p) savePhotos([p]); }}
-                  disabled={saveLocked}
-                  style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: 6, fontSize: 14, padding: "8px 12px", cursor: "pointer", opacity: saveLocked ? 0.5 : 1 }}
-                >↓ Save</button>
-              )}
-              <button onClick={() => setLightboxIndex(null)}
-                style={{ color: "#fff", background: "none", border: "none", fontSize: 28, cursor: "pointer", lineHeight: 1 }}>×</button>
-            </div>
-          </div>
-          <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 48px" }}
-            onClick={(e) => e.stopPropagation()}>
-            {photos[lightboxIndex]?.url && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={photos[lightboxIndex].url!} alt={photos[lightboxIndex].filename ?? ""}
-                style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", display: "block" }} />
-            )}
-            {lightboxIndex > 0 && (
-              <button onClick={() => setLightboxIndex(i => i !== null ? i - 1 : null)}
-                style={{ position: "absolute", left: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-            )}
-            {lightboxIndex < photos.length - 1 && (
-              <button onClick={() => setLightboxIndex(i => i !== null ? i + 1 : null)}
-                style={{ position: "absolute", right: 8, background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "50%", width: 40, height: 40, color: "#fff", fontSize: 22, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 8, overflowX: "auto", padding: "12px 16px", flexShrink: 0 }}>
-            {photos.map((p, i) => (
-              <button key={p.id} onClick={(e) => { e.stopPropagation(); setLightboxIndex(i); }}
-                style={{ flexShrink: 0, borderRadius: 4, overflow: "hidden", border: "none", cursor: "pointer", opacity: i === lightboxIndex ? 1 : 0.4, outline: i === lightboxIndex ? "2px solid var(--accent)" : "none" }}>
-                {/* Filmstrip renders at 56px — the resized version is plenty. */}
-                {(thumbs[p.id] ?? p.url) && (
-                  <img src={thumbs[p.id] ?? p.url!} alt="" loading="lazy" decoding="async" style={{ width: 56, height: 36, objectFit: "cover", display: "block" }} />
-                )}
-              </button>
-            ))}
-          </div>
-        </div>,
-        document.body
+      {/* Lightbox — shared with the broker page (src/components/listing-photos/Lightbox.tsx). */}
+      {lightboxIndex !== null && (
+        <PhotoLightbox
+          variant="admin"
+          photos={photos}
+          index={lightboxIndex}
+          setIndex={setLightboxIndex}
+          thumbs={thumbs}
+          onSave={(photo) => save.savePhotos([photo])}
+          saveLocked={save.saveLocked}
+        />
       )}
     </div>
-  );
-}
-
-/**
- * One sortable photo card. The card moves; only the element that receives
- * `dragHandle` (the thumbnail) starts a drag.
- */
-function SortableTile({ id, disabled, className, children }: {
-  id: string;
-  disabled: boolean;
-  className: string;
-  children: (dragHandle: Record<string, unknown>) => React.ReactNode;
-}) {
-  const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id, disabled });
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    position: "relative",
-    ...(isDragging ? { opacity: 0.6, zIndex: 10 } : {}),
-  };
-  return (
-    <div ref={setNodeRef} style={style} className={className}>
-      {children((listeners ?? {}) as Record<string, unknown>)}
-    </div>
-  );
-}
-
-/**
- * A grid thumbnail. Through RetryImg, so a resize that Supabase answers with a
- * 429 is retried with backoff and, if it still fails, falls back to the
- * full-size original (`fallbackUrl`) instead of sitting broken.
- */
-function OrientedThumbnail({ url, fallbackUrl, filename }: { url: string | null; fallbackUrl: string | null; filename: string | null }) {
-  const [isVertical, setIsVertical] = useState(false);
-  const ref = useRef<HTMLImageElement>(null);
-
-  // onLoad alone misses images that are already cached/complete before React
-  // attaches the handler — which left every card defaulting to landscape (4:3)
-  // and cropping verticals. Measure on mount too so orientation is always right.
-  useEffect(() => {
-    const img = ref.current;
-    if (img && img.complete && img.naturalWidth > 0) {
-      setIsVertical(img.naturalHeight > img.naturalWidth);
-    }
-  }, [url]);
-
-  return (
-    <RetryImg
-      ref={ref}
-      src={url ?? fallbackUrl ?? undefined}
-      fallbackSrc={fallbackUrl ?? undefined}
-      alt={filename ?? ""}
-      loading="lazy"
-      decoding="async"
-      draggable={false}
-      onLoad={(e) => {
-        const img = e.currentTarget;
-        setIsVertical(img.naturalHeight > img.naturalWidth);
-      }}
-      className={`w-full object-cover pointer-events-none ${isVertical ? "aspect-[3/4]" : "aspect-[4/3]"}`}
-    />
   );
 }
