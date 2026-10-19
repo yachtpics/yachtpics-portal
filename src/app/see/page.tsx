@@ -168,7 +168,7 @@ export default async function SeePage() {
             title="Reels."
             lines={[
               "Vertical reels made from the listing’s own photographs, sized for Instagram and Facebook.",
-              `Walkthrough and Underway, two of ${LOOKS} looks, each with its own pace and the Portal’s own music.`,
+              `Walkthrough and Marquee, two of ${LOOKS} looks, each with its own pace and the Portal’s own music.`,
             ]}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-sm sm:max-w-xl mx-auto md:mx-0">

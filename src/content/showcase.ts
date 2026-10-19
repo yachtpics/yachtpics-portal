@@ -8,15 +8,15 @@
  *
  * To feature another boat later: add a row to SHOWCASE_BOATS (its listing id,
  * a short key for the R2 folder and its published slideshow slug), make a
- * Walkthrough and an Underway reel on that listing's Reel page and use
+ * Walkthrough and a Marquee reel on that listing's Reel page and use
  * "Save to showcase". FEATURED_SHOWCASE_KEY picks the boat /see shows.
  */
 
-export type ShowcaseLook = "walkthrough" | "underway";
+export type ShowcaseLook = "walkthrough" | "marquee";
 
 export const SHOWCASE_LOOKS: { look: ShowcaseLook; label: string }[] = [
   { look: "walkthrough", label: "Walkthrough" },
-  { look: "underway", label: "Underway" },
+  { look: "marquee", label: "Marquee" },
 ];
 
 export type ShowcaseBoat = {
@@ -35,7 +35,7 @@ export const SHOWCASE_BOATS: ShowcaseBoat[] = [
 export const FEATURED_SHOWCASE_KEY = "short-story";
 
 export function isShowcaseLook(v: unknown): v is ShowcaseLook {
-  return v === "walkthrough" || v === "underway";
+  return v === "walkthrough" || v === "marquee";
 }
 
 export function showcaseBoatByKey(key: string): ShowcaseBoat | null {

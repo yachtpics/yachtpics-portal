@@ -10,11 +10,11 @@ import { isShowcaseLook, showcaseBoatForListing, showcaseReelKey } from "@/conte
  * The browser has already put the rendered MP4 in the private video bucket
  * through the Facebook/Instagram upload target (social-uploads/{listing}/…),
  * so this route only copies that object, server side, to the fixed key the
- * public /see page reads: showcase/{boat}/{walkthrough|underway}.mp4.
+ * public /see page reads: showcase/{boat}/{walkthrough|marquee}.mp4.
  * Overwrites — re-saving is how a showcase reel is replaced. /see re-signs
  * within the hour (its page cache).
  *
- * Body: { listingId, look: "walkthrough" | "underway", path }.
+ * Body: { listingId, look: "walkthrough" | "marquee", path }.
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
   const look = body?.look;
   const path = typeof body?.path === "string" ? body.path : "";
 
-  if (!isShowcaseLook(look)) return NextResponse.json({ error: "Pick Walkthrough or Underway." }, { status: 400 });
+  if (!isShowcaseLook(look)) return NextResponse.json({ error: "Pick Walkthrough or Marquee." }, { status: 400 });
   const boat = showcaseBoatForListing(listingId);
   if (!boat) return NextResponse.json({ error: "This listing isn't set up for the showcase." }, { status: 400 });
   if (!path.startsWith(`${SOCIAL_UPLOAD_PREFIX}${listingId}/`) || path.includes("..")) {
