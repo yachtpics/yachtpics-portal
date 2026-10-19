@@ -163,7 +163,7 @@ export default async function SeePage() {
             title="Reels."
             lines={[
               "Vertical reels made from the listing’s own photographs, sized for Instagram and Facebook.",
-              "Walkthrough moves through the boat. Underway puts her on the water.",
+              "Two looks, Walkthrough and Underway, each with its own pace and music.",
             ]}
           >
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 max-w-sm sm:max-w-xl mx-auto md:mx-0">
@@ -202,7 +202,7 @@ export default async function SeePage() {
             title="Posted."
             lines={[
               "Reels leave the Portal ready for Facebook and Instagram.",
-              "Posting straight from the listing page is rolling out to brokers now.",
+              "Send one to your phone and it is posted in a minute.",
             ]}
           >
             <ol className="flex flex-wrap items-center gap-x-3 gap-y-3" aria-label="Reel, caption, live">
