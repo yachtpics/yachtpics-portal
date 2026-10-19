@@ -125,7 +125,7 @@ export default async function SeePage() {
             Your photographs, reels and client galleries, delivered in your brand and ready to send.
           </p>
           <div className="mt-8 flex flex-wrap gap-x-8 gap-y-1">
-            <a href={slideshowHref} target="_blank" rel="noopener noreferrer" className={quietLink}>See a delivered listing →</a>
+            <a href={slideshowHref} target="_blank" rel="noopener noreferrer" className={quietLink}>See one as your buyer sees it →</a>
             <Link href="/auth/signup" className={quietLink}>Request access →</Link>
           </div>
         </div>
@@ -145,8 +145,8 @@ export default async function SeePage() {
             index="01"
             title="Delivered."
             lines={[
-              "The shoot arrives in the Portal ordered by area, profiles to master stateroom.",
-              "Your name and logo are on every page a buyer opens.",
+              "Your photographs arrive in your Portal, ordered by area, in your brand.",
+              "Nothing is listed, syndicated or shared anywhere unless you send it.",
             ]}
           >
             <a href={slideshowHref} target="_blank" rel="noopener noreferrer" className="group block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-4 focus-visible:ring-offset-ink-950 rounded-card">
