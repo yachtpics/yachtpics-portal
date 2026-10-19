@@ -145,7 +145,7 @@ export default async function SeePage() {
             index="01"
             title="Delivered."
             lines={[
-              "Your photographs arrive in your Portal, ordered by area, in your brand.",
+              "Your photographs arrive in your Portal, ordered by area, in your brand. Downloads are free, always.",
               "Your slideshows and galleries go only where you send them. Some boats we shoot are also featured on yachtpics.com and YachtPics social.",
             ]}
           >
@@ -267,7 +267,13 @@ export default async function SeePage() {
         <div className="max-w-5xl mx-auto">
           <p className="label-caps-inverse mb-4">Plans</p>
           <p className="text-white text-h1 font-medium max-w-xl">
-            Plans from ${fromPrice} a month for individual brokers; office plans for brokerages.
+            Your photographs are free. The tools are the plan.
+          </p>
+          <p className="text-ink-300 text-base sm:text-lg leading-relaxed max-w-xl mt-6">
+            If YachtPics shot your listing, the photographs are yours to download at no charge, always, and every listing includes two reels. No plan, no trial clock.
+          </p>
+          <p className="text-ink-300 text-base sm:text-lg leading-relaxed max-w-xl mt-4">
+            A plan adds the marketing tools: unlimited reels, branded slideshows and client galleries, from ${fromPrice} a month. Brokers we haven&rsquo;t shot for can bring their own listings and use the same tools on the same plans.
           </p>
           <Link
             href="/auth/signup"
