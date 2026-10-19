@@ -29,6 +29,7 @@ import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import RetryImg from "@/components/RetryImg";
 import ReelClipTrimmer from "@/components/ReelClipTrimmer";
 import SocialPostDialog from "@/components/SocialPostDialog";
+import { SHOWCASE_LOOKS, showcaseBoatForListing, type ShowcaseLook } from "@/content/showcase";
 import { composeReelMusic, isMusicChoice, moodForLook, musicCanCompose, nextMusicSeed, resolveMood, seedFromString, MUSIC_BLURB, MUSIC_CHOICES, MUSIC_LABEL, MUSIC_SAMPLE_RATE, type ComposeOptions, type MusicChoice, type MusicMood } from "@/lib/reelMusic";
 import {
   CLIP_MAX, CLIP_MAX_PHONE, CLIP_ID_PREFIX, isClipId, detectPhone, openClipReader, createClipInputPool,
@@ -543,6 +544,11 @@ export default function ReelMaker({
   const [socialReady, setSocialReady] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
   const socialUploadRef = useRef<{ renderId: string; path: string } | null>(null);
+  // Admin: "Save to showcase" (the public /see page's reels).
+  const [showcaseMenu, setShowcaseMenu] = useState(false);
+  const [showcaseBusy, setShowcaseBusy] = useState<{ look: ShowcaseLook; pct: number } | null>(null);
+  const [showcaseNote, setShowcaseNote] = useState<{ ok: boolean; text: string } | null>(null);
+  useEffect(() => { setShowcaseNote(null); setShowcaseMenu(false); }, [result?.renderId]);
   const [adding, setAdding] = useState(false);
 
   /**
@@ -3132,6 +3138,35 @@ export default function ReelMaker({
   }
 
   /**
+   * Admin: save this render as one of the /see page's showcase reels. Uploads
+   * through the same private-bucket path as Facebook / Instagram (reused if
+   * already uploaded for this render), then the server copies it to the fixed
+   * key showcase/{boat}/{look}.mp4 — re-saving replaces it.
+   */
+  async function saveToShowcase(look: ShowcaseLook) {
+    setShowcaseMenu(false);
+    if (!listingId || showcaseBusy) return;
+    setShowcaseNote(null);
+    setShowcaseBusy({ look, pct: 0 });
+    try {
+      const path = await uploadForSocial((pct) => setShowcaseBusy({ look, pct }));
+      const res = await fetch("/api/admin/showcase/reel", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, look, path }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(String(d?.error ?? `Couldn't save (error ${res.status}).`));
+      const label = SHOWCASE_LOOKS.find((l) => l.look === look)?.label ?? look;
+      setShowcaseNote({ ok: true, text: `Saved as the ${label} showcase reel. The See page picks it up within the hour.` });
+    } catch (e) {
+      setShowcaseNote({ ok: false, text: e instanceof Error ? e.message : "Couldn't save to the showcase." });
+    } finally {
+      setShowcaseBusy(null);
+    }
+  }
+
+  /**
    * Get the finished reel onto the phone it'll be posted from. Uploads the
    * rendered file to the private bucket under a short-lived prefix, signs a
    * 24-hour link, shows it as a QR code and emails it as a backup.
@@ -3264,6 +3299,9 @@ export default function ReelMaker({
     : socialSeconds < SOCIAL_MIN_SEC ? `Reels must be at least ${SOCIAL_MIN_SEC} seconds long.`
     : null;
   const showSocial = isAdmin && !!listingId && socialReady && !auto;
+  // Same admin gate as posting, minus the Meta connection (not needed here),
+  // and only on a listing set up in src/content/showcase.ts.
+  const showShowcase = isAdmin && !!listingId && !auto && !!showcaseBoatForListing(listingId);
   // A listing on the allowance (a non-subscriber's, after the open house).
   const metered = !!listingId && !!allowance && !allowance.unlimited;
   // "N of 2 left" — non-subscribers only, only after the open house.
@@ -3960,6 +3998,25 @@ export default function ReelMaker({
                       Post to Facebook / Instagram
                     </button>
                   )}
+                  {/* Admin only: one of the public /see page's two reels. */}
+                  {showShowcase && result.format === "reel" && (
+                    <div className="relative">
+                      <button onClick={() => setShowcaseMenu((o) => !o)} disabled={!!showcaseBusy} aria-haspopup="menu" aria-expanded={showcaseMenu}
+                        className="bg-white border border-hairline-strong hover:border-ink-400 disabled:opacity-50 text-ink-800 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">
+                        {showcaseBusy ? `Saving… ${showcaseBusy.pct}%` : "Save to showcase ▾"}
+                      </button>
+                      {showcaseMenu && (
+                        <div role="menu" className="absolute left-1/2 -translate-x-1/2 mt-1 z-20 w-48 bg-white border border-hairline-strong rounded-ctl shadow-elev-2 py-1">
+                          {SHOWCASE_LOOKS.map((l) => (
+                            <button key={l.look} role="menuitem" onClick={() => saveToShowcase(l.look)}
+                              className="block w-full text-left px-4 py-2.5 text-sm text-ink-800 hover:bg-ink-50">
+                              {l.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {/* Already on the phone that made it: the share sheet is the
                       only door to the camera roll, and only iOS opens it. */}
                   {canSaveToCameraRoll && (
@@ -3992,6 +4049,9 @@ export default function ReelMaker({
               <p className="text-xs text-ink-500 text-center mt-2">Tap <span className="font-semibold">Save to camera roll</span> once more to open the share sheet.</p>
             )}
             {phoneError && <p className="mt-3 text-sm text-danger-700 text-center">{phoneError}</p>}
+            {showcaseNote && (
+              <p className={`mt-3 text-sm text-center ${showcaseNote.ok ? "text-success-700" : "text-danger-700"}`}>{showcaseNote.text}</p>
+            )}
             {showSocial && socialBlocked && !locked && !allowanceSpent && (
               <p className="mt-2 text-xs text-warn-800 text-center">{socialBlocked}</p>
             )}

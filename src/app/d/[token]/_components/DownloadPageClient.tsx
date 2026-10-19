@@ -3,6 +3,7 @@
 import { useState } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/publicPhotoUrls";
+import PresentedThrough from "@/components/PresentedThrough";
 
 type Photo = {
   id: string;
@@ -254,6 +255,7 @@ export default function DownloadPageClient({
             All rights reserved.
           </p>
         </div>
+        <PresentedThrough className="mt-6 pb-2" />
       </div>
     </div>
   );

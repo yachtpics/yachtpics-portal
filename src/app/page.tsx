@@ -30,7 +30,7 @@ export default function Home() {
           Your listings.<br />Presented perfectly.
         </h1>
         <p className="text-ink-400 text-lg max-w-xl mb-10">
-          Download your professional shoot photos, build branded slideshows, and share polished presentations with buyers — all in under 60 seconds.
+          Your shoot photos, listing reels and client galleries in one place, in your brand. Share a slideshow with a buyer, or a reel to Instagram, from the listing page.
         </p>
         <div className="flex gap-4 flex-wrap justify-center">
           <Link
@@ -46,6 +46,12 @@ export default function Home() {
             Request Access
           </Link>
         </div>
+        <Link
+          href="/see"
+          className="mt-6 text-sm text-accent-300 hover:text-accent-200 transition-colors duration-fast min-h-[44px] inline-flex items-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 rounded-sm px-1"
+        >
+          See it →
+        </Link>
       </section>
 
       {/* Features */}

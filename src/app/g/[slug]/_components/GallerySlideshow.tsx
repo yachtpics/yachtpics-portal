@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
+import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/publicPhotoUrls";
 
 type GalleryPhoto = {
@@ -678,6 +679,9 @@ export default function GallerySlideshow({
           </div>
         </div>
       )}
+
+      {/* YachtPics credit — the last line of the page */}
+      <PresentedThrough className="py-4" />
     </div>
   );
 }

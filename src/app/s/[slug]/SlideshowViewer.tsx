@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import RetryImg from "@/components/RetryImg";
 import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
 import { photoAlt } from "@/lib/publicPhotoUrls";
+import PresentedThrough from "@/components/PresentedThrough";
 
 interface Photo {
   id: string;
@@ -880,6 +881,9 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           </div>
         </div>
       </div>
+
+      {/* YachtPics credit — below the broker's footer, never above it */}
+      <PresentedThrough className="pb-4" />
 
       {/* Inquiry modal */}
       {inquireOpen && (

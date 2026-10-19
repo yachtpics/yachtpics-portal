@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Label } from "@/components/ui";
 import { safeNextPath } from "@/lib/safeNext";
 import { friendlyAuthError } from "@/lib/authErrors";
+import { WHATS_NEW } from "@/content/whatsNew";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -99,6 +100,18 @@ export default function LoginPage() {
           </Link>
           <p className="text-ink-400 mt-6 text-sm">Sign in to your account</p>
         </div>
+
+        {/* What's new — one quiet line, from src/content/whatsNew.ts */}
+        {WHATS_NEW[0] && (
+          <p className="-mt-4 mb-6 text-center text-xs text-ink-400 leading-relaxed">
+            <span className="text-[0.625rem] font-medium uppercase tracking-caps text-accent-300/90 mr-2">{WHATS_NEW[0].label}</span>
+            {WHATS_NEW[0].href ? (
+              <Link href={WHATS_NEW[0].href} className="hover:text-ink-200 transition-colors duration-fast">{WHATS_NEW[0].text}</Link>
+            ) : (
+              WHATS_NEW[0].text
+            )}
+          </p>
+        )}
 
         {magicSent ? (
           <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm text-center">
@@ -225,6 +238,11 @@ export default function LoginPage() {
           Need access?{" "}
           <Link href="/auth/signup" className="text-accent-300 hover:text-accent-200 transition-colors duration-fast">
             Request an account
+          </Link>
+        </p>
+        <p className="text-center text-sm mt-3">
+          <Link href="/see" className="text-ink-400 hover:text-ink-200 transition-colors duration-fast">
+            See what your listings could look like →
           </Link>
         </p>
 
