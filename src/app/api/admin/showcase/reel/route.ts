@@ -22,9 +22,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const listingId = typeof body?.listingId === "string" ? body.listingId : "";
-  // A Reel page opened before Oct 19 still offers "Underway" for the second
-  // slot; that slot is Marquee now, so the old label lands in the same place.
-  const look = body?.look === "underway" ? "marquee" : body?.look;
+  const look = body?.look;
   const path = typeof body?.path === "string" ? body.path : "";
 
   if (!isShowcaseLook(look)) return NextResponse.json({ error: "Pick Walkthrough or Marquee." }, { status: 400 });
