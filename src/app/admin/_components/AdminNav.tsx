@@ -26,6 +26,7 @@ import {
   MonitorPlay,
   Share2,
   Tags,
+  Anchor,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,6 +50,7 @@ const navItems: NavItem[] = [
   { label: "Brokerages", href: "/admin/brokerages", icon: Building2 },
   { label: "Listings", href: "/admin/listings", icon: Ship },
   { label: "Photo Categories", href: "/admin/photo-categories", icon: Tags, short: "Categories" },
+  { label: "Shows", href: "/admin/shows", icon: Anchor },
   { label: "Recently Photographed", href: "/admin/showcase", icon: Camera },
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
@@ -81,6 +83,7 @@ const NAV_PRIORITY = [
   "/admin/assistants",
   "/admin/listings",
   "/admin/photo-categories",
+  "/admin/shows",
   "/admin/metrics",
   "/admin/reels",
   "/admin/reel-studio",

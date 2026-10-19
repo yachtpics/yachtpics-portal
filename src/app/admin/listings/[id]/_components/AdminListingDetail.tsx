@@ -1,5 +1,6 @@
 "use client";
 
+import BoatShowCard from "@/components/BoatShowCard";
 import { useState, useRef, useEffect } from "react";
 import CoBrokerManager from "./CoBrokerManager";
 import { createClient } from "@/lib/supabase/client";
@@ -994,6 +995,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </button>
         </div>
       )}
+
+      {/* Boat shows — the same card brokers see; admins can mark any listing. */}
+      <BoatShowCard listingId={listing.id} onMessage={(text, kind) => setMessage(text, kind)} className="mb-6" />
 
       <CoBrokerManager listingId={listing.id} brokers={brokerOptions} initialCoBrokers={coBrokers} />
 

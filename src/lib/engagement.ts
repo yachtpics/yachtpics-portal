@@ -26,6 +26,9 @@ export type EngagementSummary = {
   videoPlays: number;
   detailsViews: number;
   leads: number;
+  /** Dock-card QR scans per boat show (views whose source is a show key),
+   * counted as distinct visits. Only shows with at least one scan. */
+  showScans: { showKey: string; label: string; scans: number }[];
   firstViewAt: string | null;
   lastViewAt: string | null;
 };
@@ -34,12 +37,14 @@ export async function buildEngagement(
   service: SupabaseClient,
   listingId: string
 ): Promise<EngagementSummary> {
-  const [{ data: views }, { data: sends }, { data: events }, { count: leads }, { data: photos }] = await Promise.all([
+  const [{ data: views }, { data: sends }, { data: events }, { count: leads }, { data: photos }, { data: shows }] = await Promise.all([
     service.from("slideshow_views").select("viewed_at, source, session_id, duration_s, photos_seen").eq("listing_id", listingId).order("viewed_at", { ascending: true }),
     service.from("client_sends").select("id, client_email, client_name, sent_at, included_slideshow, open_count, last_opened_at, token").eq("listing_id", listingId).order("sent_at", { ascending: false }),
     service.from("slideshow_events").select("kind, photo_id, value, session_id").eq("listing_id", listingId),
     service.from("listing_leads").select("id", { count: "exact", head: true }).eq("listing_id", listingId),
     service.from("photos").select("id, category, filename").eq("listing_id", listingId),
+    // Boat shows (20261019_boat_shows). Missing table → error → no show lines.
+    service.from("boat_shows").select("key, short_name"),
   ]);
 
   const now = Date.now();
@@ -75,6 +80,19 @@ export async function buildEngagement(
   for (let i = 29; i >= 0; i--) {
     const day = new Date(now - i * 86400000).toISOString().slice(0, 10);
     byDay.push({ day, views: byDayMap.get(day) ?? 0 });
+  }
+
+  // "Scanned at FLIBS 2026: N" — distinct visits whose source is a show key.
+  const showScans: { showKey: string; label: string; scans: number }[] = [];
+  for (const sh of (shows ?? []) as { key: string; short_name: string }[]) {
+    const sess = new Set<string>();
+    let anon = 0;
+    for (const v of vs) {
+      if (v.source !== sh.key) continue;
+      if (v.session_id) sess.add(v.session_id); else anon++;
+    }
+    const scans = sess.size + anon;
+    if (scans > 0) showScans.push({ showKey: sh.key, label: sh.short_name, scans });
   }
 
   const photoMeta = new Map((photos ?? []).map((p) => [p.id, p]));
@@ -120,6 +138,7 @@ export async function buildEngagement(
     videoPlays,
     detailsViews,
     leads: leads ?? 0,
+    showScans,
     firstViewAt: vs.length ? vs[0].viewed_at : null,
     lastViewAt: vs.length ? vs[vs.length - 1].viewed_at : null,
   };

@@ -6,8 +6,10 @@ import ListingsBrowser from "./_components/ListingsBrowser";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { signDerivatives } from "@/lib/photoDerivatives";
+import { getCurrentShows } from "@/lib/boatShows";
+import ShowBanner from "./_components/ShowBanner";
 
-export default async function ListingsPage() {
+export default async function ListingsPage({ searchParams = {} }: { searchParams?: { show?: string } }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/auth/login");
@@ -19,7 +21,7 @@ export default async function ListingsPage() {
   // Row-level security decides what this user can see: their own boats, the
   // boats of brokers they assist / manage, plus any listing individually shared
   // into their brokerage. We just read listings and let RLS do the filtering.
-  const [{ data: profile }, { data }, { data: coRows }] = await Promise.all([
+  const [{ data: profile }, { data }, { data: coRows }, currentShows] = await Promise.all([
     supabase
       .from("profiles")
       .select("role")
@@ -33,6 +35,8 @@ export default async function ListingsPage() {
       .from("listing_co_brokers")
       .select("listing_id")
       .eq("broker_id", user.id),
+    // Boat shows still to come (FLIBS 2026). [] until the migration is applied.
+    getCurrentShows(supabase),
   ]);
 
   const isAssistant = profile?.role === "assistant";
@@ -62,6 +66,26 @@ export default async function ListingsPage() {
       : p?.display_email ?? null;
     return { ...l, broker_name: brokerName };
   });
+
+  // Which listings are marked for a current show — read under the user's RLS
+  // (listing_show_entries is readable by whoever can read the listing).
+  const showChips: Record<string, string[]> = {};
+  let markedForFirstShow = 0;
+  if (currentShows.length > 0 && listings.length > 0) {
+    const { data: entryRows } = await supabase
+      .from("listing_show_entries")
+      .select("listing_id, show_key")
+      .in("show_key", currentShows.map((sh) => sh.key));
+    const visible = new Set(listings.map((l) => l.id));
+    const shortByKey = new Map(currentShows.map((sh) => [sh.key, sh.short_name] as [string, string]));
+    (entryRows ?? []).forEach((r) => {
+      const lid = r.listing_id as string;
+      if (!visible.has(lid)) return;
+      (showChips[lid] = showChips[lid] ?? []).push(shortByKey.get(r.show_key as string) ?? (r.show_key as string));
+      if (r.show_key === currentShows[0].key) markedForFirstShow++;
+    });
+  }
+  const bannerShow = currentShows[0] ?? null;
 
   // Which of these listings is the current user a co-broker on (vs. owner)?
   const coBrokerIds = new Set((coRows ?? []).map((r) => r.listing_id as string));
@@ -149,6 +173,15 @@ export default async function ListingsPage() {
         </Link>
       </div>
 
+      {bannerShow && (
+        <ShowBanner
+          showKey={bannerShow.key}
+          showShort={bannerShow.short_name}
+          marked={markedForFirstShow}
+          highlight={searchParams.show === bannerShow.key}
+        />
+      )}
+
       {listings.length === 0 ? (
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 py-16 text-center">
           <p className="text-ink-500 text-sm">No listings yet.</p>
@@ -203,6 +236,7 @@ export default async function ListingsPage() {
             coBrokerIds={Array.from(coBrokerIds)}
             lockedListingIds={lockedListingIds}
             heroes={heroes}
+            showChips={showChips}
           />
         </>
       )}

@@ -86,12 +86,16 @@ export default async function PublicSlideshowPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams: { src?: string; t?: string };
+  searchParams: { src?: string; from?: string; t?: string };
 }) {
   headers();
 
   // Where did this view come from? (qr, send, share, social… defaults to link)
-  const source = (searchParams.src ?? "link").toString().slice(0, 24).replace(/[^a-z0-9_-]/gi, "") || "link";
+  // `?from=` wins: a boat-show dock card's QR carries the show key
+  // (`?from=flibs26`), and it is recorded on the view and on every event of
+  // the visit so "Scanned at FLIBS 2026" can be counted.
+  const source =
+    (searchParams.from ?? searchParams.src ?? "link").toString().slice(0, 24).replace(/[^a-z0-9_-]/gi, "") || "link";
   // A tracked Send-to-Client link carries a token; opens get attributed to that recipient.
   const sendToken = (searchParams.t ?? "").toString().slice(0, 40).replace(/[^a-z0-9]/gi, "") || null;
 

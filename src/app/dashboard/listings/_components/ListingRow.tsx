@@ -44,7 +44,7 @@ function triggerBlobDownload(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-export default function ListingRow({ listing, showBroker, isCoBroker, locked, heroUrl = null, heroFit = "fit" }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean; locked?: boolean; heroUrl?: string | null; heroFit?: "fit" | "fill" }) {
+export default function ListingRow({ listing, showBroker, isCoBroker, locked, heroUrl = null, heroFit = "fit", shows }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean; locked?: boolean; heroUrl?: string | null; heroFit?: "fit" | "fill"; shows?: string[] }) {
   // Status dropdown state
   const [status, setStatus] = useState(listing.status);
   const [statusOpen, setStatusOpen] = useState(false);
@@ -350,6 +350,11 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
                 Co-broker
               </span>
             )}
+            {(shows ?? []).map((sh) => (
+              <span key={sh} className="text-[10px] font-medium px-1.5 py-0.5 rounded-full border border-accent-300 text-accent-700 uppercase tracking-caps shrink-0">
+                {sh}
+              </span>
+            ))}
           </p>
           {isOpening ? (
             <p className="text-xs text-accent-700 mt-0.5 flex items-center gap-1.5 font-medium">

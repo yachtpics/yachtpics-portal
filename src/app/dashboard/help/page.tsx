@@ -157,6 +157,18 @@ const sections = [
   },
   {
     num: "12",
+    title: "Boat Shows",
+    steps: [
+      "When a boat show is coming up (the Fort Lauderdale International Boat Show is the first), a Boat shows card appears near the top of each listing, and My Listings shows a one-line reminder with how many of your boats are marked.",
+      "Tick 'At FLIBS 2026' to mark the boat, then add her dock or slip and click Save. The note is for YachtPics: arrival day, in the water or on land. Untick it to take her off. Marked boats carry a FLIBS 2026 tag on My Listings.",
+      "Assistants can mark boats for the brokers they work for, and brokerage admins for the brokers in their brokerage.",
+      "Dock card (PDF): a print-ready card, 5 × 7 in or Letter, with her cover photograph, year, length, make and model, her dock or slip, your logo, name, brokerage, phone and email, and a QR code. It needs a published slideshow; until then the button stays off and reads 'Publish the slideshow first'.",
+      "The QR code opens her full slideshow on the buyer's phone, starting on the video when she has one. Nothing to install and no login.",
+      "Engagement on the listing shows 'Scanned at FLIBS 2026' with the number of visits that came from the dock card, and those visits appear as their own line under Where views come from.",
+    ],
+  },
+  {
+    num: "13",
     title: "Recently Photographed",
     steps: [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
@@ -167,7 +179,7 @@ const sections = [
     ],
   },
   {
-    num: "13",
+    num: "14",
     title: "Tips & Tricks",
     steps: [
       "Tips (in the sidebar) is a browsable library of short how-tos for getting more out of the portal.",
@@ -177,7 +189,7 @@ const sections = [
     ],
   },
   {
-    num: "14",
+    num: "15",
     title: "Industry News",
     steps: [
       "News (in the sidebar) gathers what the yachting trade press is reporting, every morning, kept short.",
@@ -235,6 +247,8 @@ const quickRef = [
   ["Change your login email", "My Profile → Change Login Email"],
   ["Manage billing & download receipts", "Billing → Manage billing & invoices"],
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
+  ["Mark a boat for a boat show", "My Listings → listing → Boat shows → tick the show, add the dock / slip, Save"],
+  ["Download a boat show dock card", "My Listings → listing → Boat shows → Dock card (PDF)"],
   ["Keep a boat out of the showcase and off yachtpics.com", "My Listings → listing → 'Keep this a pocket listing'"],
   ["Install the portal on your phone", "Open it in your phone's browser → Add to Home Screen"],
   ["Read the industry news", "Sidebar → News"],
@@ -250,7 +264,7 @@ const quickRef = [
  * build_user_guide.py reads those two arrays) never lists it for everyone.
  */
 const REEL_SERVICE_SECTION = {
-  num: "15",
+  num: "16",
   title: "Your Reels",
   steps: [
     "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you from your current listings, newest first. We email you when new ones are ready.",

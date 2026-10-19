@@ -1,7 +1,7 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import {
-  ANNOUNCEMENT_CAMPAIGNS, announcementApproveKey, type AnnouncementCampaign,
+  ANNOUNCEMENT_CAMPAIGNS, ANNOUNCEMENT_EARLY_TYPE, ANNOUNCEMENT_TYPE, announcementApproveKey, type AnnouncementCampaign,
 } from "@/lib/announcementEmail";
 import { planAnnouncement } from "@/lib/sendAnnouncement";
 import { DEPTH_LOOKS_OPEN_AT, DEPTH_LOOKS_SUBSCRIBER_OPEN_AT } from "@/lib/depthLooksRelease";
@@ -43,6 +43,8 @@ function scheduleLabelFor(c: AnnouncementCampaign): string {
  * jump the gun.
  */
 function sendNowWarningFor(c: AnnouncementCampaign): string | null {
+  // Only the two Walkthrough campaigns announce something that unlocks later.
+  if (c.type !== ANNOUNCEMENT_TYPE && c.type !== ANNOUNCEMENT_EARLY_TYPE) return null;
   const opensAt = Date.parse(c.audience === "subscribers" ? DEPTH_LOOKS_SUBSCRIBER_OPEN_AT : DEPTH_LOOKS_OPEN_AT);
   if (Date.now() >= opensAt) return null;
   const who = c.audience === "subscribers" ? "Subscribers" : "Brokers";

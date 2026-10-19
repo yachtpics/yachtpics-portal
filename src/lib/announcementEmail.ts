@@ -2,10 +2,11 @@
 // Marketing-class email: it carries the unsubscribe footer and is sent only to
 // recipients who haven't opted out. Styling mirrors the welcome/trial emails.
 //
-// This file holds the CURRENT campaigns — the general Walkthrough launch and,
-// alongside it, the subscriber-only early-access note (ANNOUNCEMENT_CAMPAIGNS
-// at the bottom lists both; the cron and /admin/announce run each on its own
-// window, approval key and email_log dedup). The previous ones — the reel
+// This file holds the CURRENT campaigns — the FLIBS 2026 "mark your show
+// boats" note (Oct 19), plus the general Walkthrough launch and the
+// subscriber-only early-access note (ANNOUNCEMENT_CAMPAIGNS at the bottom
+// lists all three; the cron and /admin/announce run each on its own window,
+// approval key and email_log dedup). The previous ones — the reel
 // generator (`announcement_reel_2026_09`) and the yachtpics.com listing pages
 // (`announcement_website_2026_10`, sent to all 150 on Oct 2) — are in git
 // history. The reel one's type lives in reelPromo.ts as REEL_ANNOUNCEMENT_TYPE
@@ -176,8 +177,56 @@ export const GENERAL_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
   html: announcementHtml,
 };
 
-/** In send order: the early one first (their windows don't overlap anyway). */
-export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
+/* ------------------------------------------------------------------ *
+ * FLIBS 2026 — "mark the boats you are bringing to the show".
+ * Brokers AND assistants (audience "all"). Opens as soon as it's approved on
+ * /admin/announce (the window is already open) and goes out on the next daily
+ * run (~13:00 UTC, 9am ET); the window closes Tue Oct 27 13:00 UTC, the day
+ * before the show opens, so the Oct 26 run is the last that can send it.
+ * The button lands on My Listings with the boat-show banner highlighted
+ * (signed-out readers sign in first and are returned there).
+ * ------------------------------------------------------------------ */
+export const ANNOUNCEMENT_FLIBS26_TYPE = "announcement_flibs26_mark_boats";
+export const ANNOUNCEMENT_FLIBS26_SUBJECT = "Showing at Fort Lauderdale? Tell your Portal.";
+export const ANNOUNCEMENT_FLIBS26_SEND_AFTER = "2026-10-19T00:00:00Z";
+export const ANNOUNCEMENT_FLIBS26_SEND_BEFORE = "2026-10-27T13:00:00Z";
+const FLIBS26_BUTTON_URL = "https://portal.yachtpics.com/dashboard/listings?show=flibs26";
+
+/** The dark call-to-action button, in the email header's colour. */
+const button = (href: string, label: string) => `<div style="margin:4px 0 28px;">
+        <a href="${href}" style="display:inline-block;background:#050b14;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:12px 22px;border-radius:8px;">${label}</a>
+      </div>`;
+
+export function announcementFlibs26Html(opts: { firstName: string; unsubToken?: string }): string {
+  const { firstName, unsubToken } = opts;
+  return announcementShell({
+    eyebrow: "Fort Lauderdale International Boat Show &middot; October 28 &ndash; November 1",
+    headline: "Mark the boats you are bringing to the show.",
+    unsubToken,
+    body: [
+      p(`Hi ${firstName},`),
+      p(`Mark each boat you are showing in your Portal and add her dock or slip. We will have a dock card ready for her: cover photograph, specifications, your brand, and a QR code that opens the full slideshow and video on a buyer’s phone.`),
+      p(`It takes a minute a boat. Assistants can mark boats for their brokers.`),
+      button(FLIBS26_BUTTON_URL, "Mark my show boats"),
+    ].join("\n\n      "),
+  });
+}
+
+export const FLIBS26_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
+  type: ANNOUNCEMENT_FLIBS26_TYPE,
+  subject: ANNOUNCEMENT_FLIBS26_SUBJECT,
+  sendAfter: ANNOUNCEMENT_FLIBS26_SEND_AFTER,
+  sendBefore: ANNOUNCEMENT_FLIBS26_SEND_BEFORE,
+  audience: "all",
+  excludeSentTypes: [],
+  label: "FLIBS 2026 — mark your show boats",
+  description: "Asks every broker and assistant to mark the boats they are bringing to FLIBS (Oct 28 – Nov 1) and add the dock or slip, so dock cards are ready. Button opens My Listings with the show banner highlighted.",
+  html: announcementFlibs26Html,
+};
+
+/** In send order. The FLIBS note is the live one; the two Walkthrough
+ * campaigns' windows closed Oct 16 and stay listed for their counts. */
+export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [FLIBS26_ANNOUNCEMENT_CAMPAIGN, EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
 
 export function getAnnouncementCampaign(type: string | null | undefined): AnnouncementCampaign | null {
   if (!type) return null;

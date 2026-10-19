@@ -31,12 +31,15 @@ export default function ListingsBrowser({
   coBrokerIds,
   lockedListingIds = [],
   heroes = {},
+  showChips = {},
 }: {
   listings: ListingItem[];
   currentUserId: string;
   coBrokerIds: string[];
   lockedListingIds?: string[];
   heroes?: HeroMap;
+  /** listing id → short names of the current boat shows it's marked for. */
+  showChips?: Record<string, string[]>;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -80,6 +83,7 @@ export default function ListingsBrowser({
       locked={lockedSet.has(l.id)}
       heroUrl={heroes[l.id]?.url ?? null}
       heroFit={heroes[l.id]?.fit ?? "fit"}
+      shows={showChips[l.id]}
     />
   );
 

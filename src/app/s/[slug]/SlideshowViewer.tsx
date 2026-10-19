@@ -235,7 +235,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   // know. Events queue up and flush every few seconds, and on the way out
   // via sendBeacon so the last dwell isn't lost.
   const sessionIdRef = useRef<string>("");
-  const queueRef = useRef<{ kind: EventKind; photoId?: string; videoId?: string; value?: number }[]>([]);
+  const queueRef = useRef<{ kind: EventKind; photoId?: string; videoId?: string; value?: number; source?: string }[]>([]);
   const startedAtRef = useRef<number>(0);
   const seenRef = useRef<Set<string>>(new Set());
   const slideEnteredAtRef = useRef<number>(0);
@@ -263,10 +263,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     fetch("/api/slideshow/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
   }, [listingId, slug, sendToken]);
 
+  // Every event carries where the visit came from when it isn't a plain link
+  // (e.g. "flibs26" from a boat-show dock card), so each one is attributable.
+  const eventSource = source && source !== "link" ? source : undefined;
   const track = useCallback((e: { kind: EventKind; photoId?: string; videoId?: string; value?: number }) => {
-    queueRef.current.push(e);
+    queueRef.current.push(eventSource ? { ...e, source: eventSource } : e);
     if (queueRef.current.length >= 20) flush();
-  }, [flush]);
+  }, [flush, eventSource]);
 
   useEffect(() => {
     sessionIdRef.current = getSessionId(slug);

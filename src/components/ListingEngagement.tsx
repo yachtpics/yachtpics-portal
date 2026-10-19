@@ -33,6 +33,12 @@ export default function ListingEngagement({ listingId, thumbs, reloadKey = 0 }: 
     return () => { cancelled = true; };
   }, [listingId, reloadKey]);
 
+  // A boat show's key as a source ("flibs26") reads as its dock card.
+  const showLabel = (src: string) => {
+    const sc = data?.showScans?.find((x) => x.showKey === src);
+    return sc ? `${sc.label} dock card` : null;
+  };
+
   const maxDay = data ? Math.max(1, ...data.byDay.map((d) => d.views)) : 1;
 
   return (
@@ -126,11 +132,18 @@ export default function ListingEngagement({ listingId, thumbs, reloadKey = 0 }: 
               <ul className="text-sm">
                 {data.bySource.map((s) => (
                   <li key={s.source} className="flex justify-between py-1.5 border-b border-hairline">
-                    <span className="text-ink-700">{SOURCE_LABEL[s.source] ?? s.source}</span>
+                    <span className="text-ink-700">{SOURCE_LABEL[s.source] ?? showLabel(s.source) ?? s.source}</span>
                     <span className="text-ink-900 font-medium tabular-nums">{s.views}</span>
                   </li>
                 ))}
               </ul>
+              {(data.showScans?.length ?? 0) > 0 && (
+                <div className="mt-3 text-xs text-ink-500 space-y-1">
+                  {data.showScans.map((sc) => (
+                    <p key={sc.showKey}>Scanned at {sc.label}: <span className="font-semibold text-ink-800 tabular-nums">{sc.scans}</span></p>
+                  ))}
+                </div>
+              )}
               {(data.videoPlays > 0 || data.tourClicks > 0 || data.detailsViews > 0) && (
                 <div className="mt-3 text-xs text-ink-500 space-y-1">
                   {data.videoPlays > 0 && <p>Video played <span className="font-semibold text-ink-800">{data.videoPlays}</span> {data.videoPlays === 1 ? "time" : "times"}</p>}

@@ -17,7 +17,7 @@ export const runtime = "nodejs";
  * token (if present) is what ties a session to a named recipient.
  *
  * Body: { listingId, slug, sessionId?, sendToken?,
- *         events?: [{ kind, photoId?, videoId?, value? }],
+ *         events?: [{ kind, photoId?, videoId?, value?, source? }],
  *         session?: { durationS?, photosSeen? } }
  *
  * Never fails loudly — the viewer must never be interrupted by analytics.
@@ -72,6 +72,9 @@ export async function POST(req: NextRequest) {
         if (!KINDS.has(kind)) return null;
         const photoId = clean(e.photoId, 40, /[^a-f0-9-]/gi);
         const videoId = clean(e.videoId, 40, /[^a-f0-9-]/gi);
+        // Where the visit came from when it isn't a plain link — e.g.
+        // "flibs26" for a boat-show dock card QR (slideshow_events.source).
+        const source = clean(e.source, 24, /[^a-z0-9_-]/gi);
         const value = Number.isFinite(Number(e.value)) ? Math.max(0, Math.min(3600, Math.round(Number(e.value)))) : null;
         return {
           listing_id: listingId,
@@ -82,11 +85,19 @@ export async function POST(req: NextRequest) {
           video_id: videoId,
           kind,
           value,
+          ...(source ? { source } : {}),
         };
       })
       .filter(Boolean);
 
-    if (rows.length) await supabase.from("slideshow_events").insert(rows);
+    if (rows.length) {
+      const { error } = await supabase.from("slideshow_events").insert(rows);
+      // Until migration 20261019_boat_shows adds slideshow_events.source, a
+      // batch carrying it is refused — keep the events, drop the attribution.
+      if (error && rows.some((r: any) => r.source)) {
+        await supabase.from("slideshow_events").insert(rows.map((r: any) => { const { source: _s, ...rest } = r; void _s; return rest; }));
+      }
+    }
 
     // Session summary — update the view row this session opened with.
     const sess = body.session;

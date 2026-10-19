@@ -17,6 +17,7 @@ import { reelPromoActive } from "@/lib/reelPromo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
+import BoatShowCard from "@/components/BoatShowCard";
 import SortableVideoList from "@/components/SortableVideoList";
 // Photo management (grid, upload, replace, delete, order, categories, cover,
 // lightbox, downloads) is shared with the admin listing page.
@@ -867,6 +868,10 @@ export default function BrokerListingPage() {
           {message}
         </div>
       )}
+
+      {/* Boat shows — only while a show is coming up (FLIBS 2026). Mark the boat,
+          add her dock / slip, download the dock card. Messages use the banner above. */}
+      <BoatShowCard listingId={id} onMessage={(text, kind) => flash(text, kind, kind === "error" ? 8000 : 4000)} />
 
       {/* Pocket-listing veto — keep this boat out of the Recently Photographed showcase */}
       <label className="mb-5 flex items-start gap-3 px-4 py-3 rounded-lg bg-white border border-hairline cursor-pointer">
