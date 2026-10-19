@@ -214,13 +214,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const deckPlanUrl = liveUrls.deckPlanUrl ?? initialDeckPlanUrl;
   const altFor = (category: string | null) => photoAlt(category, listing.vessel_name);
 
-  // Videos first, then photos — unified slide array
+  // Photos first, then videos — a buyer opening the link should see a slideshow,
+  // not a video player (Oct 19). Videos stay in the sequence and the filmstrip.
   const slides = useMemo<Slide[]>(() => [
-    ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
     ...photos.map(p => ({ type: "photo" as const, ...p })),
+    ...videos.filter(v => v.url).map(v => ({ type: "video" as const, ...v })),
   ], [videos, photos]);
 
-  const videoCount = videos.filter(v => v.url).length;
 
   const [view, setView] = useState<"slideshow" | "grid" | "details">("slideshow");
   const [current, setCurrent] = useState(0);
@@ -752,7 +752,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                 key={photo.id}
                 type="button"
                 onClick={() => {
-                  setCurrent(videoCount + i);
+                  setCurrent(i);
                   setView("slideshow");
                 }}
                 aria-label={`Open photo ${i + 1}${photo.category ? ` — ${photo.category}` : ""}`}
