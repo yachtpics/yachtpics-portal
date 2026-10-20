@@ -23,6 +23,20 @@ export function pagePicture(pageId: string) {
   return `https://graph.facebook.com/${encodeURIComponent(pageId)}/picture?type=square&width=80&height=80`;
 }
 
+/** Help page entry on where the Portal can post (section id on the Help page). */
+const HELP_WHERE_TO_POST = "/dashboard/help#where-can-the-portal-post";
+
+/** Quiet note under a Page that has no Instagram account linked to it. */
+function NoInstagramNote() {
+  return (
+    <p className="text-xs text-ink-500 mt-1 leading-relaxed">
+      No Instagram account is linked to this Page yet. If your Instagram is a personal account, switch it to Creator
+      (free, two minutes) and link it to this Page. Then click Connect Facebook &amp; Instagram again.{" "}
+      <a href={HELP_WHERE_TO_POST} className="underline hover:text-ink-700">Show me how</a>
+    </p>
+  );
+}
+
 export default function SocialAccounts() {
   const [s, setS] = useState<State | null>(null);
   const [busy, setBusy] = useState("");
@@ -122,7 +136,14 @@ export default function SocialAccounts() {
             <div className="mb-5 border border-accent-300 bg-accent-50 rounded-card p-4">
               <p className="text-sm font-semibold text-ink-900 mb-1">Pick the Page to connect</p>
               {s.pending.length === 0 ? (
-                <p className="text-sm text-ink-600">Facebook didn&rsquo;t share any Pages. Click Connect again and tick your Page when Facebook asks which Pages to allow.</p>
+                <div className="text-sm text-ink-600 space-y-1.5">
+                  <p>
+                    Facebook did not show any Pages for this login. The Portal can post to a Facebook Page, not to a personal
+                    profile. Create a Page for your business (free, five minutes), then try again.{" "}
+                    <a href="https://www.facebook.com/pages/create" target="_blank" rel="noopener noreferrer" className="underline hover:text-ink-800">Create a Page</a>
+                  </p>
+                  <p className="text-xs text-ink-500">Already have a Page? Click Connect again and tick it when Facebook asks which Pages to allow.</p>
+                </div>
               ) : (
                 <ul className="divide-y divide-hairline mt-2">
                   {s.pending.map((p) => (
@@ -133,7 +154,9 @@ export default function SocialAccounts() {
                       <img src={pagePicture(p.id)} alt="" className="h-8 w-8 rounded-full bg-ink-100 object-cover" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium text-ink-900 truncate">{p.name}{p.connected && <span className="text-xs font-normal text-ink-500"> &middot; already connected</span>}</p>
-                        <p className="text-xs text-ink-500">{p.ig_username ? `Instagram @${p.ig_username}` : "No Instagram account linked to this Page"}</p>
+                        {p.ig_user_id
+                          ? <p className="text-xs text-ink-500">{p.ig_username ? `Instagram @${p.ig_username}` : "Instagram linked"}</p>
+                          : <NoInstagramNote />}
                       </div>
                     </li>
                   ))}
@@ -158,7 +181,9 @@ export default function SocialAccounts() {
                   <img src={pagePicture(c.page_id)} alt="" className="h-10 w-10 rounded-full bg-ink-100 object-cover" />
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-ink-900 truncate">{c.page_name ?? "Facebook Page"}</p>
-                    <p className="text-xs text-ink-500">{c.ig_username ? `@${c.ig_username}` : "No Instagram account linked — Facebook only"}</p>
+                    {c.ig_user_id
+                      ? <p className="text-xs text-ink-500">{c.ig_username ? `@${c.ig_username}` : "Instagram linked"}</p>
+                      : <><p className="text-xs text-ink-500">Facebook only for now</p><NoInstagramNote /></>}
                   </div>
                   <button onClick={() => void disconnect(c)} disabled={!!busy}
                     className="text-xs text-danger-600 hover:text-danger-700 disabled:opacity-50">
@@ -173,7 +198,8 @@ export default function SocialAccounts() {
             {s.connections.length ? "Connect another Page" : "Connect Facebook & Instagram"}
           </a>
           <p className="text-ink-500 text-xs mt-2">
-            Instagram posting needs an Instagram professional (Business or Creator) account linked to the Facebook Page.{" "}
+            To post to Instagram, your Instagram must be a business or creator account (not a personal one) and be linked to the Page.{" "}
+            <a href={HELP_WHERE_TO_POST} className="underline hover:text-ink-700">Show me how</a>{" · "}
             <a href="/privacy" className="underline hover:text-ink-700">Privacy</a>
           </p>
         </>

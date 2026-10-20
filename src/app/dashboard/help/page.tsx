@@ -144,7 +144,31 @@ const sections = [
     ],
   },
   {
+    id: "where-can-the-portal-post",
     num: "11",
+    title: "Where can the Portal post your reels?",
+    steps: [
+      "Your reel is made for you. Posting it is one tap from your phone: press Send to my phone, open Instagram or Facebook, and post.",
+      "Facebook Page (a business page): the Portal can post for you. This is coming to brokers soon. YachtPics posts this way today.",
+      "Instagram business or creator account: the Portal can post for you, the same way.",
+      "Personal Facebook profile (the one in your own name): no app can post to a personal profile. Facebook does not allow it. Post the reel to your Page, then tap Share, then Share to your feed.",
+      "Personal Instagram: switch it to a Creator account. It is free and you keep all your followers. A Creator account is public, like a business account, so anyone can see your posts. Then the Portal can post for you. The steps are in the next card.",
+    ],
+  },
+  {
+    num: "12",
+    title: "Switch Instagram to Creator (2 minutes)",
+    steps: [
+      "Open Instagram and go to your profile.",
+      "Tap the three lines at the top right, then Settings and activity.",
+      "Scroll down to For professionals. Tap Account type and tools, then Switch to professional account.",
+      "Pick a category (Real Estate is fine). Tap Creator, then Next. You can skip the extra screens. If your account was private, Instagram makes it public.",
+      "Link your Facebook Page: on your profile, tap Edit profile, then Page (under Public business information). Tap Continue, sign in to Facebook, pick your Page and tap Next.",
+      "These steps are for iPhone. Android is the same, the wording may differ slightly.",
+    ],
+  },
+  {
+    num: "13",
     title: "Buyer Inquiries",
     steps: [
       "Your published slideshow has a Request Info button buyers can use to reach out.",
@@ -156,7 +180,7 @@ const sections = [
     ],
   },
   {
-    num: "12",
+    num: "14",
     title: "Boat Shows",
     steps: [
       "When a boat show is coming up (the Fort Lauderdale International Boat Show is the first), a Boat shows card appears near the top of each listing, and My Listings shows a one-line reminder with how many of your boats are marked.",
@@ -168,7 +192,7 @@ const sections = [
     ],
   },
   {
-    num: "13",
+    num: "15",
     title: "Recently Photographed",
     steps: [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
@@ -179,7 +203,7 @@ const sections = [
     ],
   },
   {
-    num: "14",
+    num: "16",
     title: "Tips & Tricks",
     steps: [
       "Tips (in the sidebar) is a browsable library of short how-tos for getting more out of the portal.",
@@ -189,7 +213,7 @@ const sections = [
     ],
   },
   {
-    num: "15",
+    num: "17",
     title: "Industry News",
     steps: [
       "News (in the sidebar) gathers what the yachting trade press is reporting, every morning, kept short.",
@@ -228,6 +252,8 @@ const quickRef = [
   ["Choose a Marquee reel's top photos", "My Listings → listing → Reel → Marquee → tap Top / Bottom"],
   ["Write a caption from the reel's photos", "My Listings → listing → Reel → Write with AI"],
   ["Get a reel onto your phone to post", "My Listings → listing → Reel → Send to my phone"],
+  ["See where the Portal can post your reels", "Help → Where can the Portal post your reels?"],
+  ["Switch your Instagram to a Creator account", "Instagram → profile → three lines → Settings and activity → Account type and tools"],
   ["Label photos automatically", "My Listings → listing → Label photos"],
   ["Draft a description", "My Listings → listing → Edit → Draft with AI"],
   ["Add a 360° tour or deck plan", "My Listings → listing → Edit → Virtual tour & deck plan"],
@@ -264,7 +290,7 @@ const quickRef = [
  * build_user_guide.py reads those two arrays) never lists it for everyone.
  */
 const REEL_SERVICE_SECTION = {
-  num: "16",
+  num: "18",
   title: "Your Reels",
   steps: [
     "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you from your current listings, newest first. We email you when new ones are ready.",
@@ -342,7 +368,7 @@ export default async function HelpPage() {
       {/* Section cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-10">
         {shown.map((s) => (
-          <div key={s.num} className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
+          <div key={s.num} id={s.id} className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 scroll-mt-6">
             <div className="flex items-center gap-3 mb-3">
               <span className="text-xs font-bold text-accent-700 bg-accent-50 px-2 py-0.5 rounded-full">
                 {s.num}
