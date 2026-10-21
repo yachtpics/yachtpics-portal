@@ -727,18 +727,6 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           >
             Seller Report ↗
           </a>
-          {photoState.aiConfigured && (
-            <button
-              type="button"
-              onClick={() => photoActions.labelWithAi(undefined, photos.every((ph) => ph.category && ph.category !== "Other"))}
-              disabled={photoActions.labeling}
-              className="mt-2 ml-2 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
-              title={photos.some((ph) => !ph.category || ph.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo not set by hand"}
-            >
-              {photoActions.labeling ? "Labelling…" : photos.some((ph) => !ph.category || ph.category === "Other") ? "Label photos" : "Re-label photos"}
-            </button>
-          )}
-          {photoActions.labelNote && <span className="ml-2 text-xs text-ink-500">{photoActions.labelNote}</span>}
           {/* Straight through to the broker. Reading a listing and wanting the
               person behind it is constant — their other boats, their contact
               details, whether they are subscribed — and the old route was
@@ -1185,6 +1173,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                 {photoActions.sorting ? "Sorting…" : "Sort to standard order"}
               </button>
             )}
+            {photoState.aiConfigured && photos.length > 0 && !photoActions.selectMode && (
+              <button
+                type="button"
+                onClick={() => photoActions.labelWithAi(undefined, photos.every((ph) => ph.category && ph.category !== "Other"))}
+                disabled={photoActions.labeling}
+                className="text-sm font-medium px-3 py-2 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast ease-quiet"
+                title={photos.some((ph) => !ph.category || ph.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo not set by hand"}
+              >
+                {photoActions.labeling ? "Labelling…" : photos.some((ph) => !ph.category || ph.category === "Other") ? "Label photos" : "Re-label photos"}
+              </button>
+            )}
+            {photoActions.labelNote && <span className="text-xs text-ink-500">{photoActions.labelNote}</span>}
             <button
               onClick={() => photoActions.fileInputRef.current?.click()}
               className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
