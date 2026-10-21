@@ -126,8 +126,45 @@ export function usePhotoActions(opts: {
 
   function handleFiles(files: FileList | File[] | null) {
     if (!files || uploadingRef.current) return;
-    const fileArr = Array.from(files);
-    if (fileArr.length === 0) return;
+    const picked = Array.from(files);
+    if (picked.length === 0) return;
+    if (picked.some(isZip)) {
+      void expandZips(picked).then((all) => { if (all.length > 0) handleImageFiles(all); });
+      return;
+    }
+    handleImageFiles(picked);
+  }
+
+  function isZip(f: File) {
+    return /\.zip$/i.test(f.name) || f.type === "application/zip" || f.type === "application/x-zip-compressed";
+  }
+
+  /** Unpack any zips in the browser; keep only image files, in name order. */
+  async function expandZips(picked: File[]): Promise<File[]> {
+    const { default: JSZip } = await import("jszip");
+    const out: File[] = [];
+    for (const f of picked) {
+      if (!isZip(f)) { out.push(f); continue; }
+      try {
+        const zip = await JSZip.loadAsync(f);
+        const entries = Object.values(zip.files)
+          .filter((e) => !e.dir && /\.(jpe?g|png|webp|heic|heif|tiff?)$/i.test(e.name) && !/(^|\/)(__MACOSX|\.)/.test(e.name))
+          .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+        for (const e of entries) {
+          const blob = await e.async("blob");
+          const name = e.name.split("/").pop() ?? e.name;
+          const ext = name.split(".").pop()?.toLowerCase();
+          const type = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "heic" || ext === "heif" ? "image/heic" : ext === "tif" || ext === "tiff" ? "image/tiff" : "image/jpeg";
+          out.push(new File([blob], name, { type }));
+        }
+      } catch {
+        // An unreadable zip is skipped; the images picked alongside it still upload.
+      }
+    }
+    return out;
+  }
+
+  function handleImageFiles(fileArr: File[]) {
     // If any files can't be auto-categorized, prompt before uploading — unless
     // the model can label them after upload, in which case just go.
     if (caps.promptForUncategorized && !state.aiConfigured && fileArr.some((f) => guessCategory(f.name) === "Other")) {

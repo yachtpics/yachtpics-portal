@@ -13,7 +13,11 @@ import type { PhotoActions } from "./usePhotoActions";
 export function PhotoFileInputs({ actions }: { actions: PhotoActions }) {
   return (
     <>
-      <input ref={actions.fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => actions.handleFiles(e.target.files)} />
+      {/* ".zip" is deliberate: Android only offers the Files picker (Downloads,
+          folders, zips) when the accepted types aren't all images — with
+          "image/*" alone it shows the Gallery picker, which can't see a folder
+          extracted from a download. A zip is unpacked in the browser. */}
+      <input ref={actions.fileInputRef} type="file" accept="image/*,.zip,application/zip" multiple className="hidden" onChange={(e) => actions.handleFiles(e.target.files)} />
       <input
         ref={actions.replaceInputRef}
         type="file"
