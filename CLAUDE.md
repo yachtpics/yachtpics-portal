@@ -4,6 +4,18 @@
 > handoff note — what just shipped, what's waiting to be pushed, and which
 > threads are still open. Keep it current when you finish something notable.
 
+## Who does the work — hand off by default
+
+To keep Charlie's usage manageable, the top model (Fable) is for judgement:
+design decisions, copy, security calls, reviewing a subagent's report, and
+talking with Charlie. **Everything mechanical goes to an Opus subagent**:
+builds and features, patches, refactors, typechecks and lint, file moves,
+PDF rebuilds, migrations written to disk, audits and code reviews. Fable
+reads the subagent's report, verifies what matters (typecheck, a curl, a
+SELECT), then commits and pushes itself — subagents never run git writes.
+If a task is small enough that delegating costs more than doing it (a
+one-line copy change, a grep), do it directly; otherwise delegate.
+
 ## Conventions
 
 - `docs/where-we-are.md` is the hand-off note — read it first, keep it updated
