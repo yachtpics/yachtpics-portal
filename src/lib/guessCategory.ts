@@ -65,17 +65,26 @@ function escapeRegExp(s: string): string {
 //      matched as optional.
 // The outer \b guards stay, so "head" still won't match inside "overhead", and
 // longest-category-first ordering keeps the specific names winning.
-function matchesCategory(name: string, cat: string): boolean {
-  const words = cat
-    .toLowerCase()
-    .split(/\s+/)
-    .map((w) => (w === "stateroom" ? "(?:stateroom)?" : escapeRegExp(w)));
+type CategoryMatch = { index: number; exact: boolean };
+
+function matchesCategory(name: string, cat: string): CategoryMatch | null {
+  const words = cat.toLowerCase().split(/\s+/);
+  const build = (optionalStateroom: boolean) =>
+    new RegExp(
+      `\\b${words
+        .map((w) => (optionalStateroom && w === "stateroom" ? "(?:stateroom)?" : escapeRegExp(w)))
+        .join("\\s*")}(?![a-z])`
+    );
   // Leading \b still guards the front, so "head" can't match inside "overhead".
   // The trailing guard is (?![a-z]) rather than \b so a frame number glued
   // straight onto the word still matches — cameras produce "Profiles01.jpg" and
   // "AftDeck12.jpg" constantly, and a trailing \b rejected every one of them.
   // Letters are still refused, so "head" won't match "header".
-  return new RegExp(`\\b${words.join("\\s*")}(?![a-z])`).test(name);
+  const exact = build(false).exec(name);
+  if (exact) return { index: exact.index, exact: true };
+  if (!words.includes("stateroom")) return null;
+  const loose = build(true).exec(name);
+  return loose ? { index: loose.index, exact: false } : null;
 }
 
 /**
@@ -95,12 +104,28 @@ export function guessCategory(filename: string): string {
     .replace(/[_\-\.]+/g, " ")   // separators → spaces
     .trim();
 
-  // Sort longest categories first so specific names beat short ones
-  // ("Skylounge Aft Deck" wins over "Aft Deck").
-  const sorted = [...PHOTO_CATEGORIES].sort((a, b) => b.length - a.length);
-  for (const cat of sorted) {
-    if (matchesCategory(name, cat)) return cat;
+  // Every category that matches, then the best one:
+  //   1. the match that starts earliest in the name ("crew head" is about the
+  //      crew area, not a head — the first word says what the photo is of);
+  //   2. at the same start, a name written out in full beats one that only
+  //      matched because "stateroom" was treated as optional — so "crew"
+  //      stays "Crew" rather than becoming "Crew Stateroom";
+  //   3. then the longer, more specific name ("Skylounge Aft Deck" over
+  //      "Aft Deck"; "Crew Stateroom Head" over "Crew Stateroom").
+  let best: { cat: string; m: CategoryMatch } | null = null;
+  for (const cat of PHOTO_CATEGORIES) {
+    const m = matchesCategory(name, cat);
+    if (!m) continue;
+    if (
+      !best ||
+      m.index < best.m.index ||
+      (m.index === best.m.index && m.exact && !best.m.exact) ||
+      (m.index === best.m.index && m.exact === best.m.exact && cat.length > best.cat.length)
+    ) {
+      best = { cat, m };
+    }
   }
+  if (best) return best.cat;
 
   // Fall back to aliases (whole-word match on each alias key)
   for (const [alias, cat] of Object.entries(ALIASES)) {
