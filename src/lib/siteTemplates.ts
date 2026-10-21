@@ -89,7 +89,7 @@ function nav(depth: number): string {
         <li><a href="${b}index.html">Home</a></li>
         <li><a href="${b}gallery.html">Gallery</a></li>
         <li><a href="${b}video.html">Video</a></li>
-        <li><a href="${b}yacht-photos.html">Clients</a></li>
+        <li><a href="${b}yacht-photos.html">Boats</a></li>
         <li><a href="${b}team.html">Team</a></li>
         <li><a href="${b}marine-news.php">Marine Blog</a></li>
         <li><a href="${b}portal.html">Portal</a></li>
