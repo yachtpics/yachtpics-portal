@@ -116,6 +116,30 @@ function foot(): string {
 </html>`;
 }
 
+/**
+ * Display names. The portal's brokerage label and a boat's "make" are stored
+ * as entered; these map them to how they should read on the public site.
+ *
+ * Valhalla is two things: Valhalla Boatworks (the builder, Viking's center
+ * console line) and Valhalla Yacht Sales (the brokerage — legally Valhalla Boat
+ * Sales, but "Yacht Sales" is what's on the building and what they go by).
+ */
+const BROKERAGE_DISPLAY: Record<string, string> = {
+  valhalla_boat_sales: "Valhalla Yacht Sales",
+};
+const BROKERAGE_NOTE: Record<string, string> = {
+  valhalla_boat_sales:
+    "Valhalla Yacht Sales (legally Valhalla Boat Sales) is part of the Viking Yachts family.",
+};
+
+export function brokerageDisplayName(sitePage: string, label: string): string {
+  return BROKERAGE_DISPLAY[sitePage] ?? label;
+}
+
+export function displayMake(make: string | null): string | null {
+  return make && /^valhalla$/i.test(make.trim()) ? "Valhalla Boatworks" : make;
+}
+
 export type BoatPageData = {
   label: string;
   slug: string;
@@ -154,9 +178,10 @@ export type SiteVideo = {
 
 /** One boat: the portal slideshow, rendered static, inside the website's chrome. */
 export function boatPage(d: BoatPageData): string {
+  const make = displayMake(d.make);
   const specs = [
     d.year ? String(d.year) : null,
-    d.make,
+    make,
     d.model,
     d.lengthFt ? `${d.lengthFt}′` : null,
     d.vesselType,
@@ -168,14 +193,14 @@ export function boatPage(d: BoatPageData): string {
   // boat page genuine, keyword-relevant text so it's worth indexing.
   const specPairs = ([
     d.year ? ["Year", String(d.year)] : null,
-    d.make ? ["Builder", d.make] : null,
+    make ? ["Builder", make] : null,
     d.model ? ["Model", d.model] : null,
     d.lengthFt ? ["Length", `${d.lengthFt}′`] : null,
     d.vesselType ? ["Type", d.vesselType] : null,
     d.location ? ["Location", d.location] : null,
   ].filter(Boolean)) as [string, string][];
 
-  const nameish = [d.year ? String(d.year) : null, d.make, d.model].filter(Boolean).join(" ");
+  const nameish = [d.year ? String(d.year) : null, make, d.model].filter(Boolean).join(" ");
   const nPhotos = d.photos.length;
   const vt = (d.vesselType ?? "").toLowerCase();
   const coverage =
@@ -527,7 +552,8 @@ export function brokeragePage(d: BrokeragePageData): string {
     `YachtPics produces professional listing photography for ${d.brokerageName}` +
     (total ? `, with ${total} yacht photo shoot${total === 1 ? "" : "s"} delivered to date` : "") +
     `. Each gallery below is a full shoot for one vessel, photographed to the standard the yacht ` +
-    `brokerage market expects. Browse ${d.brokerageName}'s boats below, or get in touch to book a shoot.`;
+    `brokerage market expects. Browse ${d.brokerageName}'s boats below, or get in touch to book a shoot.` +
+    (BROKERAGE_NOTE[d.sitePage] ? ` ${BROKERAGE_NOTE[d.sitePage]}` : "");
 
   const newList = d.boats.length
     ? `<ul class="client-cols">

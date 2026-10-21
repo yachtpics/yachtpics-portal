@@ -1,5 +1,5 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, type BoatPageData } from "@/lib/siteTemplates";
+import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, brokerageDisplayName, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
 import { includesPhotos, includesVideo, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
 import { r2Configured, r2Exists, r2Put, r2PublicUrl, r2Delete } from "@/lib/r2";
@@ -230,7 +230,7 @@ export async function renderBoatsIndex(): Promise<SiteFile | null> {
   if (!pages || pages.length === 0) return null;
 
   const listed = pages
-    .map((p) => ({ label: p.label as string, filename: p.filename as string }))
+    .map((p) => ({ label: brokerageDisplayName(p.filename as string, p.label as string), filename: p.filename as string }))
     .sort((a, b) => a.label.localeCompare(b.label, "en", { sensitivity: "base" }));
   return { path: "yacht-photos.html", content: boatsIndexPage(listed) };
 }
@@ -373,7 +373,7 @@ export async function renderSitePage(sitePage: string): Promise<SiteFile | null>
 
   const html = brokeragePage({
     sitePage: page.filename,
-    brokerageName: page.label,
+    brokerageName: brokerageDisplayName(page.filename, page.label),
     boats: (published ?? [])
       .filter((b) => b.site_slug)
       .map((b) => ({
@@ -496,7 +496,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     .maybeSingle();
   if (!page) return { error: `"${sitePage}" isn't a known website page.` };
 
-  const brokerage = { name: page.label, site_page: page.filename };
+  const brokerage = { name: brokerageDisplayName(page.filename, page.label), site_page: page.filename };
 
   const label = boatLabel({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
   const slug = l.site_slug || boatSlug({ lengthFt: l.length_ft, make: l.make, vesselName: l.vessel_name });
