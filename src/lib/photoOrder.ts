@@ -65,6 +65,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Foyer",
   "Main Deck Foyer",
   "Pilothouse",
+  "Wheelhouse",
   "Helm",
   "Console",
   "Navigation Station",
