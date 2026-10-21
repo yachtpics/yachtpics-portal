@@ -176,17 +176,22 @@ export function boatPage(d: BoatPageData): string {
   ].filter(Boolean)) as [string, string][];
 
   const nameish = [d.year ? String(d.year) : null, d.make, d.model].filter(Boolean).join(" ");
-  const typeWord = d.vesselType ? d.vesselType.toLowerCase() : "yacht";
   const nPhotos = d.photos.length;
+  const vt = (d.vesselType ?? "").toLowerCase();
+  const coverage =
+    /center console|open|walkaround|bay/.test(vt)
+      ? "from the helm and leaning post to the cockpit, rigging and engine package"
+      : /sportfish|convertible|express fish/.test(vt)
+        ? "covering the cockpit, tower and helm, and the interior"
+        : /motor|yacht|trawler|cruiser|explorer|flybridge|sedan|express/.test(vt)
+          ? "from the exterior lines through the helm, salon, galley and accommodations"
+          : "covering the exterior and the spaces that matter to a buyer";
   const bodyText =
-    `YachtPics photographed ${d.vesselName}` +
-    (nameish ? `, ${nameish}` : "") +
-    (d.lengthFt ? `, a ${d.lengthFt}-foot ${typeWord}` : ` ${typeWord}`) +
-    (d.location ? ` based in ${d.location}` : "") +
-    `, listed for sale with ${d.brokerageName}. ` +
-    `This gallery presents ${nPhotos} professional photograph${nPhotos !== 1 ? "s" : ""} of the vessel — ` +
-    `exterior profiles, deck spaces, the helm and flybridge, salon, galley and staterooms — ` +
-    `captured to brokerage marketing standard by YachtPics, yacht photography specialists.`;
+    (nameish ? `${nameish} ` : "") + `"${d.vesselName}"` +
+    (d.lengthFt ? `, ${d.lengthFt} feet` : "") +
+    (d.location ? `, photographed in ${d.location}` : ", photographed") +
+    ` for ${d.brokerageName}. ` +
+    `${nPhotos} image${nPhotos !== 1 ? "s" : ""} ${coverage}.`;
 
   // Video is worth saying out loud in the page text — it's a differentiator for
   // the broker and it gives the page something to be indexed on beyond photos.
@@ -521,8 +526,7 @@ export function brokeragePage(d: BrokeragePageData): string {
   const introText =
     `YachtPics produces professional listing photography for ${d.brokerageName}` +
     (total ? `, with ${total} yacht photo shoot${total === 1 ? "" : "s"} delivered to date` : "") +
-    `. Each gallery below presents a vessel's exterior profiles, deck spaces, helm and ` +
-    `flybridge, salon, galley and staterooms — shot to the marketing standard the yacht ` +
+    `. Each gallery below is a full shoot for one vessel, photographed to the standard the yacht ` +
     `brokerage market expects. Browse ${d.brokerageName}'s boats below, or get in touch to book a shoot.`;
 
   const newList = d.boats.length
