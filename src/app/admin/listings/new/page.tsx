@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { guessCategory } from "@/lib/guessCategory";
+import { expandPickedFiles } from "@/lib/pickedImages";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
 import { runPool, uploadListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
@@ -50,6 +51,7 @@ export default function NewListingPage() {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const anyFileInputRef = useRef<HTMLInputElement>(null);
   // Indices (into `photos`) that failed to upload after the listing was
   // created — Retry re-runs just these, into the same listing and slots.
   const [failedPhotoIdx, setFailedPhotoIdx] = useState<number[]>([]);
@@ -96,9 +98,13 @@ export default function NewListingPage() {
       .then(({ data }) => setBrokers((data as Broker[]) ?? []));
   }, []);
 
-  function handleFiles(files: FileList | null) {
+  function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
-    const newPhotos = Array.from(files).map((file) => ({
+    void expandPickedFiles(files).then((picked) => { if (picked.length > 0) addPhotoFiles(picked); });
+  }
+
+  function addPhotoFiles(files: File[]) {
+    const newPhotos = files.map((file) => ({
       file,
       category: guessCategory(file.name),
       preview: URL.createObjectURL(file),
@@ -469,11 +475,17 @@ export default function NewListingPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/*"
+              accept="image/*,.zip,application/zip"
               multiple
               className="hidden"
               onChange={(e) => handleFiles(e.target.files)}
             />
+            <input ref={anyFileInputRef} type="file" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
+            <button type="button" onClick={(e) => { e.stopPropagation(); anyFileInputRef.current?.click(); }}
+              className="mt-3 text-xs text-ink-400 hover:text-ink-900 underline underline-offset-2 transition-colors duration-fast"
+              title="Pick from your Files app — Downloads, folders or a zip">
+              From files / zip
+            </button>
           </div>
 
           {photos.length > 0 && (
