@@ -105,6 +105,8 @@ export function usePhotoActions(opts: {
 
   // ── Upload ───────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
+  /** Same handler, but the input has no `accept`, so Android opens the Files app (Downloads, zips) instead of its Gallery picker. */
+  const anyFileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const uploadingRef = useRef(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -164,7 +166,9 @@ export function usePhotoActions(opts: {
     return out;
   }
 
-  function handleImageFiles(fileArr: File[]) {
+  function handleImageFiles(picked: File[]) {
+    const fileArr = picked.filter((f) => f.type.startsWith("image/") || /\.(jpe?g|png|webp|heic|heif|tiff?)$/i.test(f.name));
+    if (fileArr.length === 0) return;
     // If any files can't be auto-categorized, prompt before uploading — unless
     // the model can label them after upload, in which case just go.
     if (caps.promptForUncategorized && !state.aiConfigured && fileArr.some((f) => guessCategory(f.name) === "Other")) {
@@ -567,7 +571,7 @@ export function usePhotoActions(opts: {
     // AI labels
     labeling, labelNote, labelWithAi,
     // upload
-    fileInputRef, uploading, uploadProgress, uploadFailed, setUploadFailed, retryFailedUploads,
+    fileInputRef, anyFileInputRef, uploading, uploadProgress, uploadFailed, setUploadFailed, retryFailedUploads,
     pendingFiles, setPendingFiles, pendingCategory, setPendingCategory, handleFiles, doUpload,
     // per-photo
     toggleVisibility, updateCategory, setHero,

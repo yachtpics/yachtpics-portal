@@ -48,7 +48,7 @@ const sections = [
       "Downloading several photos gives you one zip with a folder named for the boat, the photos numbered in listing order (\"01 Salon.jpg\"). If any photo can't be added, you'll be told how many so you can download those on their own.",
       "Switch to Select mode to bulk-download, bulk-hide, bulk-delete, or bulk-assign categories to multiple photos at once.",
       "In Select mode, choose photos then pick a category from the dropdown and click Apply to update them all at once.",
-      "Got the photos as a zip? Pick the zip itself in Add Photos and the Portal unpacks it for you — no need to extract it first. On a phone, the picker opens your Files app, so look in Downloads.",
+      "Got the photos as a zip, or a folder in Downloads on your phone? Tap From files / zip (next to Add Photos). It opens your Files app instead of the Gallery, so you can pick the zip itself or the folder's photos. A zip is unpacked for you.",
       "When uploading photos from a mobile device, a prompt will appear if categories can't be detected automatically — just pick the category before uploading.",
       "A File Missing warning on a photo means the original file is gone — click Replace on it and upload the file again.",
     ],

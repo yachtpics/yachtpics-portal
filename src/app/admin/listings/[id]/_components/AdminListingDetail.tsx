@@ -1191,6 +1191,13 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             >
               + Add Photos
             </button>
+            <button
+              onClick={() => photoActions.anyFileInputRef.current?.click()}
+              className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 transition-colors duration-fast"
+              title="Pick from your Files app — Downloads, folders or a zip"
+            >
+              From files / zip
+            </button>
           </div>
           <PhotoFileInputs actions={photoActions} />
         </div>

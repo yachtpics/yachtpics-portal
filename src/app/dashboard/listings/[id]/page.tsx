@@ -821,10 +821,17 @@ export default function BrokerListingPage() {
           />
 
           {hasAccess(accessStatus) ? (
-            <button onClick={() => requireRights(() => photoActions.fileInputRef.current?.click())}
-              className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
-              + Add Photos
-            </button>
+            <span className="inline-flex items-center gap-3">
+              <button onClick={() => requireRights(() => photoActions.fileInputRef.current?.click())}
+                className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors">
+                + Add Photos
+              </button>
+              <button onClick={() => requireRights(() => photoActions.anyFileInputRef.current?.click())}
+                className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 transition-colors"
+                title="Pick from your Files app — Downloads, folders or a zip">
+                From files / zip
+              </button>
+            </span>
           ) : (
             <Link href="/dashboard/billing"
               className="bg-ink-100 text-ink-400 text-sm font-semibold px-4 py-2.5 rounded-lg cursor-not-allowed border border-hairline-strong"

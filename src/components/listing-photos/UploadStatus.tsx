@@ -18,6 +18,10 @@ export function PhotoFileInputs({ actions }: { actions: PhotoActions }) {
           "image/*" alone it shows the Gallery picker, which can't see a folder
           extracted from a download. A zip is unpacked in the browser. */}
       <input ref={actions.fileInputRef} type="file" accept="image/*,.zip,application/zip" multiple className="hidden" onChange={(e) => actions.handleFiles(e.target.files)} />
+      {/* No `accept` at all: on phones this is the only way to be sure the
+          Files app opens (Downloads, folders, a zip) rather than the Gallery.
+          Non-image files are dropped in handleFiles. */}
+      <input ref={actions.anyFileInputRef} type="file" multiple className="hidden" onChange={(e) => actions.handleFiles(e.target.files)} />
       <input
         ref={actions.replaceInputRef}
         type="file"
