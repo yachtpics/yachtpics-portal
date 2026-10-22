@@ -32,7 +32,16 @@ export async function GET(req: NextRequest) {
     const { data: conns } = await viewer.svc.from("social_connections").select("page_id, page_name").in("page_id", pageIds);
     (conns ?? []).forEach((c: { page_id: string; page_name: string | null }) => { if (c.page_name) names[c.page_id] = c.page_name; });
   }
-  return NextResponse.json({ posts: posts.map((p) => ({ ...p, page_name: names[p.page_id] ?? null })) });
+  // How a chosen cover went (migration 20261018g), read on its own and best
+  // effort — kept out of POST_COLUMNS so a database without the column still
+  // lists posts.
+  const coverNotes: Record<string, string> = {};
+  const reelIds = posts.filter((p) => p.source_kind === "listing_reel").map((p) => p.id);
+  if (reelIds.length) {
+    const { data: notes, error: notesError } = await viewer.svc.from("social_posts").select("id, cover_note").in("id", reelIds);
+    if (!notesError) (notes ?? []).forEach((n: { id: string; cover_note: string | null }) => { if (n.cover_note) coverNotes[n.id] = n.cover_note; });
+  }
+  return NextResponse.json({ posts: posts.map((p) => ({ ...p, page_name: names[p.page_id] ?? null, cover_note: coverNotes[p.id] ?? null })) });
 }
 
 /**

@@ -157,6 +157,37 @@ export async function uploadVideoToPrivateBucket(args: {
   return { ok: true, path: ticket.path, playbackUrl: (ticket.playbackUrl as string) ?? null };
 }
 
+/**
+ * Admin: the chosen cover frame (a JPEG, ≤ 10 MB) for a listing reel going to
+ * Facebook / Instagram. Lands next to the reel's MP4 at
+ * social-uploads/{listing}/{uuid}.jpg — the server picks the key, and signs
+ * the type and exact size, so this is always one PUT (never in pieces).
+ */
+export async function uploadSocialCoverToPrivateBucket(args: {
+  file: File;
+  listingId: string;
+  onProgress?: (percent: number) => void;
+}): Promise<PrivateBucketUploadResult> {
+  const { file, listingId, onProgress } = args;
+  const ticketRes = await fetch("/api/videos/upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ listingId, socialUpload: true, socialCover: true, filename: file.name, contentType: "image/jpeg", totalBytes: file.size }),
+  });
+  const ticket = await ticketRes.json().catch(() => ({}));
+  if (!ticketRes.ok || !ticket.url || !ticket.path) {
+    return { ok: false, error: String(ticket.error ?? "Couldn't start the cover upload.") };
+  }
+  const put = await putWithRetry(
+    ticket.url,
+    file,
+    String(ticket.contentType ?? "image/jpeg"),
+    (loaded) => onProgress?.(Math.round((loaded / file.size) * 100))
+  );
+  if (!put.ok) return { ok: false, error: describePutFailure(put.status) };
+  return { ok: true, path: ticket.path, playbackUrl: null };
+}
+
 /** The large-file path: numbered pieces, each retried on its own. */
 async function uploadInPieces(
   file: File,

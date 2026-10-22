@@ -234,6 +234,17 @@ export async function r2VideoCopy(fromKey: string, toKey: string, contentType = 
   }));
 }
 
+/**
+ * Read one small private object into memory, server side. Only for small
+ * files — a reel's cover JPEG (≤ 10 MB) that has to be sent to Facebook as an
+ * upload rather than a link. Never use it for video.
+ */
+export async function r2VideoGetBytes(key: string): Promise<Uint8Array> {
+  const res = await r2().send(new GetObjectCommand({ Bucket: R2_VIDEO_BUCKET, Key: key }));
+  if (!res.Body) throw new Error("The file is empty.");
+  return res.Body.transformToByteArray();
+}
+
 /** Size in bytes, or null if it isn't there. Used to verify a migrated copy. */
 export async function r2VideoSize(key: string): Promise<number | null> {
   try {

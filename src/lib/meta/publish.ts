@@ -1,5 +1,5 @@
 import { RUPLOAD_BASE } from "./config";
-import { GraphError, graphDelete, graphGet, graphPost, metaFetch } from "./graph";
+import { GraphError, graphDelete, graphGet, graphPost, graphPostForm, metaFetch } from "./graph";
 
 /**
  * Meta publishing primitives — Facebook Page Reels and Instagram Reels.
@@ -49,6 +49,29 @@ export async function publishFacebookReel(opts: {
   return { videoId, permalink: await facebookPermalink(videoId, pageToken) };
 }
 
+/**
+ * Set a Facebook video's (reel's) cover image: POST /{video_id}/thumbnails
+ * with the JPEG as `source` and is_preferred=true. There's no cover field on
+ * the video_reels finish step, so this runs after it — it works for both a
+ * published and a natively scheduled reel. ≤ 10 MB, same shape as the video.
+ */
+export async function setFacebookVideoThumbnail(opts: {
+  videoId: string;
+  pageToken: string;
+  image: { bytes: Uint8Array; contentType: "image/jpeg"; filename: string };
+}): Promise<void> {
+  const { videoId, pageToken, image } = opts;
+  const form = new FormData();
+  // Copied into a fresh ArrayBuffer: a Buffer/Uint8Array view can sit on a
+  // larger shared pool, and Blob would otherwise take the whole pool.
+  const bytes = new Uint8Array(image.bytes.byteLength);
+  bytes.set(image.bytes);
+  form.set("source", new Blob([bytes.buffer], { type: image.contentType }), image.filename);
+  form.set("is_preferred", "true");
+  const r = await graphPostForm<{ success?: boolean }>(`${videoId}/thumbnails`, form, pageToken);
+  if (r && r.success === false) throw new GraphError("Facebook didn't accept the cover image.", 400);
+}
+
 /** The reel's public link; falls back to the standard /reel/{id} URL. */
 export async function facebookPermalink(videoId: string, pageToken: string): Promise<string> {
   try {
@@ -82,10 +105,12 @@ export async function createInstagramReelContainer(opts: {
   pageToken: string;
   videoUrl: string;
   caption: string;
+  /** A public HTTPS link to a JPEG for the reel's cover (our signed R2 link); omitted = Instagram picks. */
+  coverUrl?: string | null;
 }): Promise<string> {
   const r = await graphPost<{ id: string }>(
     `${opts.igUserId}/media`,
-    { media_type: "REELS", video_url: opts.videoUrl, caption: opts.caption, share_to_feed: true },
+    { media_type: "REELS", video_url: opts.videoUrl, caption: opts.caption, share_to_feed: true, cover_url: opts.coverUrl ?? undefined },
     opts.pageToken
   );
   if (!r.id) throw new GraphError("Instagram didn't return a container id.", 500);

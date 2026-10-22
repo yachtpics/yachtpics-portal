@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
-import { uploadListingVideo, uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
+import { uploadListingVideo, uploadSocialCoverToPrivateBucket, uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
 import QRCode from "qrcode";
 import {
   ease,
@@ -544,6 +544,9 @@ export default function ReelMaker({
   const [socialReady, setSocialReady] = useState(false);
   const [socialOpen, setSocialOpen] = useState(false);
   const socialUploadRef = useRef<{ renderId: string; path: string } | null>(null);
+  // The chosen cover frame's upload, remembered per render AND time — posting
+  // the same reel again with the same cover doesn't upload it twice.
+  const socialCoverRef = useRef<{ key: string; path: string } | null>(null);
   // Admin: "Save to showcase" (the public /see page's reels).
   const [showcaseMenu, setShowcaseMenu] = useState(false);
   const [showcaseBusy, setShowcaseBusy] = useState<{ look: ShowcaseLook; pct: number } | null>(null);
@@ -3138,6 +3141,22 @@ export default function ReelMaker({
   }
 
   /**
+   * Admin: the cover frame picked in the post dialog, as a JPEG next to the
+   * reel (social-uploads/{listing}/{uuid}.jpg, key chosen by the server).
+   * Once per render and chosen time.
+   */
+  async function uploadCoverForSocial(cover: Blob, atSec: number, onProgress: (pct: number) => void): Promise<string> {
+    if (!result || !listingId) throw new Error("Make the reel first.");
+    const key = `${result.renderId}@${atSec.toFixed(2)}`;
+    if (socialCoverRef.current?.key === key) { onProgress(100); return socialCoverRef.current.path; }
+    const file = new File([cover], `${safeName(listing.vessel_name)}-cover.jpg`, { type: "image/jpeg" });
+    const up = await uploadSocialCoverToPrivateBucket({ file, listingId, onProgress });
+    if (!up.ok) throw new Error(up.error);
+    socialCoverRef.current = { key, path: up.path };
+    return up.path;
+  }
+
+  /**
    * Admin: save this render as one of the /see page's showcase reels. Uploads
    * through the same private-bucket path as Facebook / Instagram (reused if
    * already uploaded for this render), then the server copies it to the fixed
@@ -4060,6 +4079,7 @@ export default function ReelMaker({
                 source={{
                   kind: "listing_reel", id: listingId, upload: uploadForSocial,
                   durationSec: socialSeconds, width: SPEC[result.format].w, height: SPEC[result.format].h,
+                  blob: result.blob, renderId: result.renderId, uploadCover: uploadCoverForSocial,
                 }}
                 title={`${listing.vessel_name ?? "Listing"} \u00b7 Reel \u00b7 ${result.seconds}s`}
                 defaultCaption={socialCaption(listing, broker)}

@@ -66,6 +66,22 @@ export async function graphPost<T>(path: string, params: Params = {}, token?: st
   return parse<T>(res);
 }
 
+/**
+ * POST {GRAPH_BASE}/{path} as multipart/form-data — for endpoints that take a
+ * file upload (a video's cover image). The token and appsecret_proof ride in
+ * the form like any other field. No Content-Type header is set on purpose:
+ * fetch writes the multipart boundary itself, and a hand-set one breaks it.
+ */
+export async function graphPostForm<T>(path: string, form: FormData, token?: string): Promise<T> {
+  if (token) {
+    form.set("access_token", token);
+    const p = proof(token);
+    if (p && !token.includes("|")) form.set("appsecret_proof", p);
+  }
+  const res = await fetch(`${GRAPH_BASE}/${path}`, { method: "POST", body: form, cache: "no-store" });
+  return parse<T>(res);
+}
+
 export async function graphDelete<T>(path: string, params: Params = {}, token?: string): Promise<T> {
   const res = await fetch(`${GRAPH_BASE}/${path}?${toSearch(params, token)}`, { method: "DELETE", cache: "no-store" });
   return parse<T>(res);

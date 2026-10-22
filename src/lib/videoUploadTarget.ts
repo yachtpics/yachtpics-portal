@@ -16,7 +16,12 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
  * separate folder. Gallery videos are admin-only.
  */
 export type VideoUploadTarget =
-  | { path: string; prefix: string }
+  /**
+   * `contentType` / `maxBytes` are set only for a non-video target (a reel's
+   * cover JPEG): the upload route signs that type instead of the client's,
+   * and refuses anything bigger.
+   */
+  | { path: string; prefix: string; contentType?: string; maxBytes?: number }
   | NextResponse;
 
 export function sanitizeVideoFilename(raw: unknown): string {
@@ -44,10 +49,17 @@ export const REEL_SERVICE_PREFIX = "reel-service/";
  */
 export const SOCIAL_UPLOAD_PREFIX = "social-uploads/";
 
+/**
+ * The chosen cover frame for a listing reel going to Facebook / Instagram:
+ * social-uploads/{listing_id}/{uuid}.jpg, next to its MP4 (and swept with it).
+ * 10 MB is Facebook's limit for a video thumbnail.
+ */
+export const SOCIAL_COVER_MAX_BYTES = 10 * 1024 * 1024;
+
 export async function resolveVideoUploadTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown }
+  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown; socialCover?: unknown }
 ): Promise<VideoUploadTarget> {
   const filename = sanitizeVideoFilename(body?.filename);
 
@@ -74,6 +86,11 @@ export async function resolveVideoUploadTarget(
     const { data: listing } = await svc.from("listings").select("id").eq("id", body.listingId).maybeSingle();
     if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
     const prefix = `${SOCIAL_UPLOAD_PREFIX}${listing.id}/`;
+    // The reel's cover frame (Oct 18, g): same folder, a JPEG, and the server
+    // — not the browser — decides it's image/jpeg and how big it may be.
+    if (body?.socialCover === true) {
+      return { prefix, path: `${prefix}${crypto.randomUUID()}.jpg`, contentType: "image/jpeg", maxBytes: SOCIAL_COVER_MAX_BYTES };
+    }
     return { prefix, path: `${prefix}${crypto.randomUUID()}.mp4` };
   }
 
@@ -121,7 +138,7 @@ export async function resolveVideoUploadTarget(
 export async function assertPathBelongsToTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown },
+  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown; socialCover?: unknown },
   path: unknown
 ): Promise<NextResponse | { path: string }> {
   if (typeof path !== "string" || !path) {

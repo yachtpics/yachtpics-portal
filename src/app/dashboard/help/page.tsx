@@ -152,6 +152,7 @@ const sections = [
       "Your reel is made for you. Posting it is one tap from your phone: press Send to my phone, open Instagram or Facebook, and post.",
       "Facebook Page (a business page): the Portal can post for you. This is coming to brokers soon. YachtPics posts this way today.",
       "Instagram business or creator account: the Portal can post for you, the same way.",
+      "When the Portal posts a reel, you pick the cover frame. That is the picture Facebook and Instagram show before anyone taps the reel.",
       "Personal Facebook profile (the one in your own name): no app can post to a personal profile. Facebook does not allow it. Post the reel to your Page, then tap Share, then Share to your feed.",
       "Personal Instagram: switch it to a Creator account. It is free and you keep all your followers. A Creator account is public, like a business account, so anyone can see your posts. Then the Portal can post for you. The steps are in the next card.",
     ],

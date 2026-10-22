@@ -10,6 +10,9 @@ export const runtime = "nodejs";
  * POST /api/videos/upload-url
  *   { listingId, filename, contentType }  — listing video (broker/assistant/co-broker/admin)
  *   { galleryId, filename, contentType }  — gallery video (admin only)
+ *   { listingId, socialUpload: true, socialCover: true, totalBytes }
+ *                                          — a listing reel's cover JPEG (admin
+ *                                            only, ≤ 10 MB; type and size signed)
  *
  * → { url, path, playbackUrl }
  *
@@ -45,8 +48,24 @@ export async function POST(req: NextRequest) {
   if (target instanceof NextResponse) return target;
   const path = target.path;
 
+  // A non-video target (a reel's cover JPEG) brings its own type and size cap.
+  // The cap is checked here on the declared size and again, on the real
+  // object, when the post is created — it isn't signed into the URL, because
+  // a signed Content-Length fails as a bare 403 on some browsers.
+  let signedType = contentType;
+  if (target.contentType) {
+    signedType = target.contentType;
+    const totalBytes = Number(body?.totalBytes);
+    if (!Number.isFinite(totalBytes) || totalBytes <= 0) {
+      return NextResponse.json({ error: "Missing file size" }, { status: 400 });
+    }
+    if (target.maxBytes && totalBytes > target.maxBytes) {
+      return NextResponse.json({ error: "That image is too large to upload." }, { status: 413 });
+    }
+  }
+
   const [url, playbackUrl] = await Promise.all([
-    r2SignedPutUrl(path, contentType),
+    r2SignedPutUrl(path, signedType),
     r2SignedGetUrl(path, { expiresIn: 60 * 60 * 6 }),
   ]);
 
@@ -54,5 +73,5 @@ export async function POST(req: NextRequest) {
   // the signature covers EXACTLY. The browser's idea of the file's type can
   // differ from what was signed (some machines report .mp4 files as
   // application/octet-stream), and a mismatch fails as a baffling 403.
-  return NextResponse.json({ url, path, playbackUrl, contentType });
+  return NextResponse.json({ url, path, playbackUrl, contentType: signedType });
 }

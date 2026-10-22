@@ -67,6 +67,11 @@ export async function POST(req: NextRequest) {
   if (action === "start") {
     const target = await resolveVideoUploadTarget(svc, user.id, body);
     if (target instanceof NextResponse) return target;
+    // A cover image is tiny and must go through the single signed PUT, where
+    // its type and size are signed; never in pieces.
+    if (target.contentType) {
+      return NextResponse.json({ error: "That file goes up in one piece." }, { status: 400 });
+    }
 
     const totalBytes = Number(body?.totalBytes);
     if (!Number.isFinite(totalBytes) || totalBytes <= 0) {

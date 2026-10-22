@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { MAX_CAPTION, SOCIAL_PLATFORMS, SOCIAL_PUBLISHING_FOR_BROKERS, metaConfigured, type SocialPlatform } from "@/lib/meta/config";
 import { POST_COLUMNS, loadConnection, loadReelSource, socialViewer, startPost, type SocialPostRow, type SocialSourceKind } from "@/lib/meta/server";
 import { r2VideoConfigured, r2VideoSize } from "@/lib/r2";
-import { SOCIAL_UPLOAD_PREFIX } from "@/lib/videoUploadTarget";
+import { SOCIAL_COVER_MAX_BYTES, SOCIAL_UPLOAD_PREFIX } from "@/lib/videoUploadTarget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,14 +37,15 @@ function reelShapeProblem(durationSec: number, width: number, height: number): s
 /**
  * POST /api/social/publish
  *   { jobId, connectionId, platforms: ["facebook","instagram"], caption, scheduledFor? }
- *   { sourceKind: "listing_reel", listingId, videoPath, durationSec, width, height,
+ *   { sourceKind: "listing_reel", listingId, videoPath, coverPath?, durationSec, width, height,
  *     connectionId, platforms, caption, scheduledFor? }
  *
  * Posts a finished Reel Service reel — or a listing reel the admin just made
  * in the listing's Reel Maker and uploaded to social-uploads/{listing}/ — to a
  * connected Facebook Page and/or its Instagram account, one social_posts row
  * per platform. Listing reels are admin only (whatever
- * SOCIAL_PUBLISHING_FOR_BROKERS says) and keep their file key in video_path.
+ * SOCIAL_PUBLISHING_FOR_BROKERS says) and keep their file key in video_path —
+ * and, if the admin picked a cover frame, its JPEG's key in cover_path.
  *  - Now: runs inline (Facebook and Instagram in parallel).
  *  - Scheduled (15 min – 29 days out): Facebook holds the reel and publishes
  *    it itself at that exact time; Instagram has no scheduling API, so its
@@ -62,6 +63,7 @@ export async function POST(req: NextRequest) {
   const jobId = String(body?.jobId ?? "");
   const listingId = String(body?.listingId ?? "");
   const videoPath = String(body?.videoPath ?? "");
+  const coverPath = String(body?.coverPath ?? "");
   const connectionId = String(body?.connectionId ?? "");
   const caption = String(body?.caption ?? "").trim();
   const platforms: SocialPlatform[] = (Array.isArray(body?.platforms) ? body.platforms : [])
@@ -83,7 +85,7 @@ export async function POST(req: NextRequest) {
 
   // What's being posted: whose it is (social_posts.broker_id), its id, and —
   // for a listing reel — the uploaded file's key.
-  let source: { brokerId: string; sourceId: string; videoPath: string | null };
+  let source: { brokerId: string; sourceId: string; videoPath: string | null; coverPath: string | null };
   if (sourceKind === "listing_reel") {
     // Admin only for now, even once brokers can post their Reel Service reels.
     if (!viewer.isAdmin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -98,7 +100,17 @@ export async function POST(req: NextRequest) {
     if (!r2VideoConfigured()) return NextResponse.json({ error: "Video storage isn't configured." }, { status: 500 });
     const size = await r2VideoSize(videoPath);
     if (!size) return NextResponse.json({ error: "The reel didn't finish uploading. Try again." }, { status: 400 });
-    source = { brokerId: listing.broker_id, sourceId: listing.id, videoPath };
+    // The chosen cover frame, held to the same rules as the reel: this
+    // listing's social-uploads/ folder, a .jpg, really there, ≤ 10 MB.
+    if (coverPath) {
+      if (!coverPath.startsWith(`${SOCIAL_UPLOAD_PREFIX}${listing.id}/`) || coverPath.indexOf("..") >= 0 || !/\.jpg$/.test(coverPath)) {
+        return NextResponse.json({ error: "That cover image doesn't belong to this listing." }, { status: 400 });
+      }
+      const coverSize = await r2VideoSize(coverPath);
+      if (!coverSize) return NextResponse.json({ error: "The cover image didn't finish uploading. Try again." }, { status: 400 });
+      if (coverSize > SOCIAL_COVER_MAX_BYTES) return NextResponse.json({ error: "The cover image is over 10 MB." }, { status: 400 });
+    }
+    source = { brokerId: listing.broker_id, sourceId: listing.id, videoPath, coverPath: coverPath || null };
   } else {
     const job = await loadReelSource(viewer.svc, jobId);
     if ("error" in job) return NextResponse.json({ error: job.error }, { status: 400 });
@@ -108,7 +120,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
-    source = { brokerId: job.broker_id, sourceId: job.id, videoPath: null };
+    source = { brokerId: job.broker_id, sourceId: job.id, videoPath: null, coverPath: null };
   }
 
   const conn = connectionId ? await loadConnection(viewer.svc, connectionId) : null;
@@ -120,13 +132,15 @@ export async function POST(req: NextRequest) {
   }
 
   const now = new Date().toISOString();
-  const rows = platforms.map((platform) => ({
+  const makeRows = (withCover: boolean) => platforms.map((platform) => ({
     broker_id: source.brokerId,
     source_kind: sourceKind,
     source_id: source.sourceId,
     // Only listing reels carry a file key (and only they need migration
     // 20261018b) — Reel Service rows are inserted exactly as before.
     ...(source.videoPath ? { video_path: source.videoPath } : {}),
+    // Likewise the cover (migration 20261018g) — only sent when one was picked.
+    ...(withCover && source.coverPath ? { cover_path: source.coverPath } : {}),
     platform,
     page_id: conn.page_id,
     connection_id: conn.id,
@@ -139,7 +153,12 @@ export async function POST(req: NextRequest) {
     created_at: now,
     updated_at: now,
   }));
-  const { data: inserted, error } = await viewer.svc.from("social_posts").insert(rows).select(POST_COLUMNS);
+  let { data: inserted, error } = await viewer.svc.from("social_posts").insert(makeRows(true)).select(POST_COLUMNS);
+  // A cover must never cost the post: if the database doesn't have cover_path
+  // yet (20261018g not run), post without it.
+  if (error && source.coverPath && /cover_path/.test(error.message)) {
+    ({ data: inserted, error } = await viewer.svc.from("social_posts").insert(makeRows(false)).select(POST_COLUMNS));
+  }
   if (error) {
     const hint = sourceKind === "listing_reel" && /video_path/.test(error.message)
       ? " (the database update 20261018b_social_listing_reels.sql hasn't been run yet)" : "";

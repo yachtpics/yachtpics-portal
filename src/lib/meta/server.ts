@@ -1,12 +1,12 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
+import { r2SignedGetUrl, r2VideoConfigured, r2VideoGetBytes } from "@/lib/r2";
 import { SOCIAL_PUBLISHING_FOR_BROKERS, metaAppIdConfigured, type SocialPlatform, type SocialPostStatus } from "./config";
 import { decryptToken } from "./crypto";
 import { graphErrorMessage } from "./graph";
 import {
   createInstagramReelContainer, facebookPermalink, facebookVideoStatus, publishFacebookReel,
-  publishInstagramContainer, waitForInstagramContainer,
+  publishInstagramContainer, setFacebookVideoThumbnail, waitForInstagramContainer,
 } from "./publish";
 
 /**
@@ -101,6 +101,25 @@ export async function postVideoUrl(svc: SupabaseClient, post: SocialPostRow): Pr
   return reelVideoUrl(job);
 }
 
+/**
+ * A listing reel's chosen cover (social_posts.cover_path, migration
+ * 20261018g), or null. Read on its own — like video_path, never via
+ * POST_COLUMNS — and a read error counts as "no cover": the cover is a
+ * nicety, so a database without the column still posts, just with Meta's
+ * own pick.
+ */
+async function postCoverPath(svc: SupabaseClient, post: SocialPostRow): Promise<string | null> {
+  if (post.source_kind !== "listing_reel") return null;
+  const { data, error } = await svc.from("social_posts").select("cover_path").eq("id", post.id).maybeSingle();
+  if (error) return null;
+  return (data as { cover_path?: string | null } | null)?.cover_path ?? null;
+}
+
+/** Record how the cover went ('set', or why not). Best effort — never fails a post. */
+async function setCoverNote(svc: SupabaseClient, id: string, note: string): Promise<void> {
+  await svc.from("social_posts").update({ cover_note: note.slice(0, 300) }).eq("id", id).then(() => undefined, () => undefined);
+}
+
 export async function loadConnection(svc: SupabaseClient, id: string): Promise<SocialConnectionRow | null> {
   const { data } = await svc.from("social_connections")
     .select("id, broker_id, fb_user_id, page_id, page_name, page_token_enc, ig_user_id, ig_username").eq("id", id).maybeSingle();
@@ -137,6 +156,9 @@ async function connectionFor(svc: SupabaseClient, post: SocialPostRow): Promise<
  *  - Instagram: creates the container and waits until `deadlineMs`; if it's
  *    still processing, the row stays 'posting' with the container id in
  *    external_id and advancePost() finishes it later.
+ * A listing reel with a chosen cover (cover_path) sends it too — Facebook as
+ * an upload once the reel is in, Instagram as cover_url on the container. A
+ * cover Meta refuses is noted in cover_note; the post itself carries on.
  */
 export async function startPost(svc: SupabaseClient, post: SocialPostRow, opts: { deadlineMs: number; fbScheduleAt?: number | null }): Promise<SocialPostRow | null> {
   try {
@@ -145,9 +167,21 @@ export async function startPost(svc: SupabaseClient, post: SocialPostRow, opts: 
     const token = decryptToken(conn.page_token_enc);
     const videoUrl = await postVideoUrl(svc, post);
     const caption = post.caption ?? "";
+    const coverPath = await postCoverPath(svc, post);
 
     if (post.platform === "facebook") {
       const r = await publishFacebookReel({ pageId: conn.page_id, pageToken: token, fileUrl: videoUrl, description: caption, scheduleAt: opts.fbScheduleAt ?? null });
+      // The reel is in (published or held for its time); now the cover. Any
+      // failure here is noted and the post still counts as posted/scheduled.
+      if (coverPath) {
+        try {
+          const bytes = await r2VideoGetBytes(coverPath);
+          await setFacebookVideoThumbnail({ videoId: r.videoId, pageToken: token, image: { bytes, contentType: "image/jpeg", filename: "cover.jpg" } });
+          await setCoverNote(svc, post.id, "set");
+        } catch (e) {
+          await setCoverNote(svc, post.id, graphErrorMessage(e));
+        }
+      }
       if (opts.fbScheduleAt) {
         return update(svc, post.id, { status: "scheduled", external_id: r.videoId, permalink: r.permalink, error: null });
       }
@@ -155,7 +189,22 @@ export async function startPost(svc: SupabaseClient, post: SocialPostRow, opts: 
     }
 
     if (!conn.ig_user_id) throw new Error("This Page has no linked Instagram professional account.");
-    const containerId = await createInstagramReelContainer({ igUserId: conn.ig_user_id, pageToken: token, videoUrl, caption });
+    let containerId: string;
+    if (coverPath) {
+      // Signed like the video (~2 h): Instagram fetches the cover while it
+      // processes. If the container is refused WITH a cover, try once more
+      // without it — a bad cover must not cost the post.
+      try {
+        const coverUrl = await r2SignedGetUrl(coverPath, { expiresIn: 2 * 60 * 60 });
+        containerId = await createInstagramReelContainer({ igUserId: conn.ig_user_id, pageToken: token, videoUrl, caption, coverUrl });
+        await setCoverNote(svc, post.id, "set");
+      } catch (e) {
+        await setCoverNote(svc, post.id, graphErrorMessage(e));
+        containerId = await createInstagramReelContainer({ igUserId: conn.ig_user_id, pageToken: token, videoUrl, caption });
+      }
+    } else {
+      containerId = await createInstagramReelContainer({ igUserId: conn.ig_user_id, pageToken: token, videoUrl, caption });
+    }
     await update(svc, post.id, { external_id: containerId });
     const ready = await waitForInstagramContainer(containerId, token, opts.deadlineMs);
     if (!ready) return update(svc, post.id, { status: "posting", external_id: containerId, error: null });
