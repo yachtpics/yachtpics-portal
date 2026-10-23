@@ -41,6 +41,13 @@ export const OFFICE_PLAN = {
   priceId: "price_1TkUDuK5G1w3hzIsSBIAigXP",
 };
 
+// Reel Service (Oct 23, 2026): per boat per month, up to 4 reels; billed
+// outside the app (Zoho Invoice), so there is no Stripe price. A broker's
+// subscription row can override the price (price_per_listing_cents) for a
+// special deal — this is the default and the label brokers are quoted.
+export const REEL_SERVICE_PRICE = 149;
+export const REEL_SERVICE_REELS_PER_BOAT = 4;
+
 /**
  * Look up the plan a Stripe price ID belongs to, including the Office plan.
  * Returns null for an unknown or missing price — e.g. a comped account, or

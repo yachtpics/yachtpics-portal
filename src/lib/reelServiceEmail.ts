@@ -68,8 +68,8 @@ export function reelServiceEmailHtml(opts: { firstName: string; jobs: JobForEmai
         ${g.jobs.map(reelBlock).join("")}
       </div>`).join("");
   const intro = forBroker
-    ? `${n === 1 ? "A new reel is" : `${n} new reels are`} ready for ${esc(forBroker)}, made from their current listings.`
-    : `${n === 1 ? "Your new reel is" : `Your ${n} new reels are`} ready, made from your current listings.`;
+    ? `${n === 1 ? "A new reel is" : `${n} new reels are`} ready for ${esc(forBroker)}, made for their boats in the Reel Service.`
+    : `${n === 1 ? "Your new reel is" : `Your ${n} new reels are`} ready, made for your boats in the Reel Service.`;
   return `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>

@@ -45,6 +45,15 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     .select("enabled, reels_per_listing, note, started_at")
     .eq("broker_id", params.id)
     .maybeSingle();
+  // Per-boat enrolment and price (Oct 23). Separate reads so the card still
+  // works before 20261023_reel_service_listings.sql is applied.
+  const [{ data: reelPrice }, { data: reelBoats, error: reelBoatsErr }] = await Promise.all([
+    supabase.from("reel_service_subscriptions").select("price_per_listing_cents").eq("broker_id", params.id).maybeSingle(),
+    supabase.from("reel_service_listings").select("listing_id, ended_at").eq("broker_id", params.id),
+  ]);
+  const reelListings = (listings ?? []).filter((l) => l.status === "active")
+    .map((l) => ({ id: l.id, name: l.vessel_name || "Untitled listing", detail: [l.year, l.length_ft ? `${Math.round(Number(l.length_ft))}'` : null, l.make].filter(Boolean).join(" ") }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const name = profile.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : profile.display_email ?? "Broker";
 
@@ -224,7 +233,13 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       <AssistantsPanel brokerId={params.id} initialAssistants={assistantList} />
 
       {/* Reel Service */}
-      <ReelServiceCard brokerId={params.id} initial={reelService ?? null} />
+      <ReelServiceCard
+        brokerId={params.id}
+        initial={reelService ?? null}
+        priceCents={(reelPrice as { price_per_listing_cents?: number } | null)?.price_per_listing_cents ?? null}
+        listings={reelListings}
+        enrolledRows={reelBoatsErr ? null : ((reelBoats ?? []) as { listing_id: string; ended_at: string | null }[])}
+      />
 
       {/* Listings */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 mb-6">

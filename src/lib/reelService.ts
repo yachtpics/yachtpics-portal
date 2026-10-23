@@ -753,10 +753,46 @@ async function attachShots(admin: SupabaseClient, videos: VideoRow[]): Promise<V
   }
 }
 
-async function loadListingPacks(admin: SupabaseClient, brokerId: string): Promise<ListingPack[]> {
-  const { data: listings } = await admin.from("listings")
+/**
+ * Which boats of each broker are in the Reel Service (Oct 23 — priced per
+ * boat). `legacy` = the broker has no rows in reel_service_listings at all,
+ * so every active listing is planned, as before per-boat enrolment; that
+ * keeps brokers enrolled before Oct 23 running until an admin picks boats.
+ * If the table can't be read (migration not applied yet) everyone is legacy,
+ * with a logged warning, so the cron keeps working.
+ */
+export type ReelServiceEnrolment = { legacy: boolean; listingIds: string[] };
+
+export async function loadReelServiceEnrolment(admin: SupabaseClient, brokerIds: string[]): Promise<Record<string, ReelServiceEnrolment>> {
+  const out: Record<string, ReelServiceEnrolment> = {};
+  brokerIds.forEach((b) => { out[b] = { legacy: true, listingIds: [] }; });
+  if (brokerIds.length === 0) return out;
+  const { data, error } = await admin.from("reel_service_listings")
+    .select("listing_id, broker_id, ended_at")
+    .in("broker_id", brokerIds);
+  if (error) {
+    console.warn(`[reel-service] reel_service_listings unreadable (${error.message}); planning all active listings (legacy).`);
+    return out;
+  }
+  ((data ?? []) as { listing_id: string; broker_id: string; ended_at: string | null }[]).forEach((r) => {
+    const e = out[r.broker_id];
+    if (!e) return;
+    // Any row — even an ended one — means this broker is on per-boat
+    // enrolment: taking their last boat off must stop the plan, not fall
+    // back to every listing.
+    e.legacy = false;
+    if (!r.ended_at) e.listingIds.push(r.listing_id);
+  });
+  return out;
+}
+
+async function loadListingPacks(admin: SupabaseClient, brokerId: string, onlyListingIds?: string[]): Promise<ListingPack[]> {
+  if (onlyListingIds && onlyListingIds.length === 0) return [];
+  let lq = admin.from("listings")
     .select("id, broker_id, vessel_name, vessel_type, year, make, model, length_ft, location, hero_photo_id, photo_order_manual, created_at")
     .eq("broker_id", brokerId).eq("status", "active");
+  if (onlyListingIds) lq = lq.in("id", onlyListingIds);
+  const { data: listings } = await lq;
   const rows = (listings ?? []) as ListingRow[];
   if (rows.length === 0) return [];
   const ids = rows.map((l) => l.id);
@@ -976,7 +1012,9 @@ export type PlanResult = { brokers: number; listings: number; created: number; s
 
 /**
  * Plan a month. For every enabled subscription (or just `brokerIds`), and
- * every active listing of that broker with enough photos, make sure the
+ * every active listing of that broker that is enrolled in the Reel Service
+ * (reel_service_listings, not ended — or all of them for a broker with no
+ * enrolment rows yet; see loadReelServiceEnrolment) with enough photos, make sure the
  * listing has `reels_per_listing` jobs for `period` — creating only the
  * missing ones (so a listing that goes active mid-month gets its full set).
  * New jobs take the lowest free slot numbers. Safe to run any number of times.
@@ -992,12 +1030,21 @@ export async function planReelServiceMonth(
   if (error) throw new Error(error.message);
 
   const result: PlanResult = { brokers: 0, listings: 0, created: 0, skipped: [] };
-  for (const sub of (subs ?? []) as { broker_id: string; reels_per_listing: number }[]) {
+  const subRows = (subs ?? []) as { broker_id: string; reels_per_listing: number }[];
+  const enrolment = await loadReelServiceEnrolment(admin, subRows.map((s) => s.broker_id));
+  for (const sub of subRows) {
     result.brokers++;
     const perListing = Math.max(1, Math.min(10, sub.reels_per_listing ?? 4));
-    const packs = await loadListingPacks(admin, sub.broker_id);
+    const en = enrolment[sub.broker_id] ?? { legacy: true, listingIds: [] };
+    if (!en.legacy && en.listingIds.length === 0) {
+      result.skipped.push({ brokerId: sub.broker_id, reason: "No boats enrolled in the Reel Service." });
+      continue;
+    }
+    // Jobs already planned this month for a boat taken off the service are
+    // left alone — unchecking only stops future planning.
+    const packs = await loadListingPacks(admin, sub.broker_id, en.legacy ? undefined : en.listingIds);
     if (packs.length === 0) {
-      result.skipped.push({ brokerId: sub.broker_id, reason: `No active listing with ${MIN_LISTING_PHOTOS}+ photos.` });
+      result.skipped.push({ brokerId: sub.broker_id, reason: en.legacy ? `No active listing with ${MIN_LISTING_PHOTOS}+ photos.` : `No enrolled active boat with ${MIN_LISTING_PHOTOS}+ photos.` });
       continue;
     }
     const { data: hist } = await admin.from("reel_service_jobs")
@@ -1046,7 +1093,16 @@ export async function planReelServiceMonth(
  * month and plan them again — used after measuring video lengths, so the
  * segments and the video-led decision use the real footage.
  */
-export async function replanUnmade(admin: SupabaseClient, period: string, listingIds: string[]): Promise<PlanResult & { removed: number }> {
+export async function replanUnmade(admin: SupabaseClient, period: string, requestedIds: string[]): Promise<PlanResult & { removed: number }> {
+  // Only boats still in the service: a boat taken off keeps the jobs already
+  // planned for this month (the planner wouldn't re-create deleted ones).
+  let listingIds = requestedIds;
+  if (requestedIds.length) {
+    const { data: owners } = await admin.from("listings").select("id, broker_id").in("id", requestedIds);
+    const rows = (owners ?? []) as { id: string; broker_id: string }[];
+    const en = await loadReelServiceEnrolment(admin, rows.map((r) => r.broker_id).filter((b, i, a) => a.indexOf(b) === i));
+    listingIds = rows.filter((r) => { const e = en[r.broker_id]; return !e || e.legacy || e.listingIds.indexOf(r.id) >= 0; }).map((r) => r.id);
+  }
   if (listingIds.length === 0) return { brokers: 0, listings: 0, created: 0, skipped: [], removed: 0 };
   const { data: gone, error } = await admin.from("reel_service_jobs")
     .delete()

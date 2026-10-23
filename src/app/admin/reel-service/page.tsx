@@ -1,6 +1,6 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { isPeriod, periodET } from "@/lib/reelService";
+import { isPeriod, loadReelServiceEnrolment, periodET } from "@/lib/reelService";
 import { parseShotInfo } from "@/lib/reelClips";
 import { metaAppIdConfigured } from "@/lib/meta/config";
 import ReelServiceBoard, { type BoardJob, type BoardSub, type BoardVideo } from "./ReelServiceBoard";
@@ -29,15 +29,30 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
       .order("slot", { ascending: true }),
   ]);
 
-  const boardSubs: BoardSub[] = ((subs ?? []) as unknown as {
+  const subRows = ((subs ?? []) as unknown as {
     broker_id: string; enabled: boolean; reels_per_listing: number; note: string | null; started_at: string;
     profiles: { first_name: string | null; last_name: string | null; display_email: string | null } | null;
-  }[]).map((s) => ({
+  }[]);
+  // Which boats each broker has in the service (Oct 23, per-boat pricing);
+  // a broker with no per-boat rows still gets every active boat ("legacy").
+  const enrolment = await loadReelServiceEnrolment(admin, subRows.map((s) => s.broker_id));
+  const enrolledIds = Object.keys(enrolment).reduce((acc: string[], b) => acc.concat(enrolment[b].listingIds), []);
+  const boatNames: Record<string, string> = {};
+  if (enrolledIds.length) {
+    const { data: ls } = await admin.from("listings").select("id, vessel_name, year, make, model, status").in("id", enrolledIds);
+    ((ls ?? []) as { id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; status: string }[])
+      .filter((l) => l.status === "active")
+      .forEach((l) => { boatNames[l.id] = l.vessel_name || [l.year, l.make, l.model].filter(Boolean).join(" ") || "Listing"; });
+  }
+  const boardSubs: BoardSub[] = subRows.map((s) => ({
     brokerId: s.broker_id,
     name: [s.profiles?.first_name, s.profiles?.last_name].filter(Boolean).join(" ") || s.profiles?.display_email || "Broker",
     enabled: s.enabled,
     reelsPerListing: s.reels_per_listing,
     note: s.note,
+    boats: enrolment[s.broker_id]?.legacy
+      ? null
+      : (enrolment[s.broker_id]?.listingIds ?? []).filter((id) => boatNames[id]).map((id) => boatNames[id]).sort((a, b) => a.localeCompare(b)),
   }));
 
   const boardJobs = ((jobs ?? []) as unknown as BoardJob[]);
@@ -68,7 +83,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <h1 className="text-display text-ink-900">Reel Service</h1>
       <p className="text-ink-500 mt-1 text-sm max-w-2xl">
-        Monthly social reels for enrolled brokers, planned from their active listings. Enrol a broker on their broker page.
+        Monthly social reels for the boats enrolled in the Reel Service. Enrol a broker, and choose their boats, on their broker page.
         Reels render here in this browser, one at a time &mdash; keep this tab open and in front while they make.
       </p>
       {subErr && (

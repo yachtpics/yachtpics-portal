@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
-import { ANGLE_LABEL, type ReelServiceAngle } from "@/lib/reelService";
+import { ANGLE_LABEL, loadReelServiceEnrolment, type ReelServiceAngle } from "@/lib/reelService";
 import ReelList, { type DeliveredReel } from "./ReelList";
 
 export const dynamic = "force-dynamic";
@@ -66,13 +66,45 @@ export default async function YourReelsPage() {
     }));
   }
 
+  // The boats in the Reel Service (Oct 23 — enrolment is per boat). A broker
+  // with no boats chosen yet still has every active listing planned, so those
+  // are listed. No price here: quotes are handled by email.
+  let enrolledBoats: string[] = [];
+  if (brokerIds !== null && brokerIds.length > 0) {
+    try {
+      const { data: subs } = await svc.from("reel_service_subscriptions").select("broker_id").in("broker_id", brokerIds).eq("enabled", true);
+      const active = ((subs ?? []) as { broker_id: string }[]).map((x) => x.broker_id);
+      if (active.length) {
+        const en = await loadReelServiceEnrolment(svc, active);
+        const legacy = active.filter((b) => en[b]?.legacy);
+        const ids = active.reduce((acc: string[], b) => acc.concat(en[b]?.listingIds ?? []), []);
+        const reads = [];
+        if (ids.length) reads.push(svc.from("listings").select("vessel_name, year, make, model").in("id", ids).eq("status", "active"));
+        if (legacy.length) reads.push(svc.from("listings").select("vessel_name, year, make, model").in("broker_id", legacy).eq("status", "active"));
+        const res = await Promise.all(reads);
+        enrolledBoats = res.reduce((acc: string[], r) => acc.concat(((r.data ?? []) as { vessel_name: string | null; year: number | null; make: string | null; model: string | null }[])
+          .map((l) => l.vessel_name || [l.year, l.make, l.model].filter(Boolean).join(" ") || "Listing")), [])
+          .filter((x, i, a) => a.indexOf(x) === i)
+          .sort((a, b) => a.localeCompare(b));
+      }
+    } catch {
+      enrolledBoats = [];
+    }
+  }
+
   return (
     <div className="px-6 py-8 max-w-4xl mx-auto">
       <h1 className="text-display text-ink-900">Your reels</h1>
       <p className="text-ink-500 mt-1 text-sm max-w-2xl">
-        Social reels made for you by YachtPics from your current listings. Each is silent on purpose &mdash; add a trending track when you post.
+        Social reels made for you by YachtPics for the boats enrolled in the Reel Service. Each is silent on purpose &mdash; add a trending track when you post.
         On a phone, <strong>Save or share</strong> sends it straight to Instagram or your camera roll.
       </p>
+      {enrolledBoats.length > 0 && (
+        <p className="text-ink-600 mt-3 text-sm max-w-2xl">
+          <span className="font-medium text-ink-900">Boats in the Reel Service:</span> {enrolledBoats.join(", ")}.
+          {" "}To add or remove a boat, just email us.
+        </p>
+      )}
       <ReelList reels={reels} />
     </div>
   );

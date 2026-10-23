@@ -8,12 +8,14 @@ import { MUSIC_CHOICES, MUSIC_LABEL, moodForLook } from "@/lib/reelMusic";
 import { detectShots, probeClip, rememberShots, type ShotInfo } from "@/lib/reelClips";
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
 import SocialPostDialog from "@/components/SocialPostDialog";
+import ReelServiceBilling from "./ReelServiceBilling";
 
 /** A listing video, for the footage badge and "Measure videos". */
 /** `shots`: how many shots were detected (videos.shot_cuts); null = not yet (or the column isn't there). */
 export type BoardVideo = { id: string; listing_id: string; duration_sec: number | null; title: string | null; shots?: number | null };
 
-export type BoardSub = { brokerId: string; name: string; enabled: boolean; reelsPerListing: number; note: string | null };
+/** `boats`: names of the active boats in the service; null = no boats chosen yet, every active listing is planned (legacy). */
+export type BoardSub = { brokerId: string; name: string; enabled: boolean; reelsPerListing: number; note: string | null; boats: string[] | null };
 export type BoardJob = {
   id: string; broker_id: string; listing_id: string; period: string; slot: number; angle: string; look: string;
   settings: ReelServiceSettings | null; status: string; video_path: string | null; caption: string | null; error: string | null;
@@ -272,6 +274,8 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
       </div>
       {msg && <p className="mt-3 text-sm text-ink-700">{msg}</p>}
 
+      <ReelServiceBilling />
+
       {currentJob && (
         <div className="mt-5 bg-white border border-hairline rounded-card shadow-elev-1 p-4 flex gap-4 items-start">
           <div className="w-[135px] shrink-0">
@@ -302,7 +306,9 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
               <div>
                 <a href={`/admin/brokers/${s.brokerId}`} className="text-h2 text-ink-900 hover:underline">{s.name}</a>
                 <p className="text-xs text-ink-500 mt-0.5">
-                  {s.enabled ? `${s.reelsPerListing} reels per listing a month` : "Paused"} &middot; {mine.length} planned for {periodLabel(period)} &middot; {mine.filter((j) => j.status === "ready" || j.status === "delivered").length} made{s.note ? ` · ${s.note}` : ""}
+                  {s.enabled ? `${s.reelsPerListing} reels per boat a month` : "Paused"} &middot; {s.boats === null
+                    ? <span className="text-warn-800" title="No boats chosen on the broker page yet, so every active listing is planned.">all boats (legacy)</span>
+                    : <span title={s.boats.join(", ")}>{s.boats.length} boat{s.boats.length === 1 ? "" : "s"} in service{s.boats.length ? `: ${s.boats.join(", ")}` : ""}</span>} &middot; {mine.length} planned for {periodLabel(period)} &middot; {mine.filter((j) => j.status === "ready" || j.status === "delivered").length} made{s.note ? ` · ${s.note}` : ""}
                 </p>
               </div>
               <div className="flex gap-2 flex-wrap">

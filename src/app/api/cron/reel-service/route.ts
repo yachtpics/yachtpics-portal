@@ -10,9 +10,10 @@ export const maxDuration = 60;
  * Reel Service planner, called daily by /api/cron/daily.
  *
  * Plans the current month (Eastern time). On the 1st that writes the whole
- * month's jobs for every active listing of every enrolled broker; every other day it is a no-op
+ * month's jobs for every boat enrolled in the Reel Service (reel_service_listings;
+ * all active listings for a broker with no boats chosen yet); every other day it is a no-op
  * unless something is missing — a broker enrolled (or re-enabled) mid-month,
- * a listing that went active mid-month (it gets its full set), or
+ * a boat enrolled or a listing that went active mid-month (it gets its full set), or
  * reels_per_listing raised. Idempotent: it only fills missing slots.
  * Renders nothing and emails no one.
  */
