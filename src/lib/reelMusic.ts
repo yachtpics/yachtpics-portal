@@ -407,8 +407,10 @@ const STUDIO_MIX: Record<MusicMood, Partial<Record<StudioBus, number>>> = {
   groove: { keys: -2.4, bed: -10, bass: -4.7, kit: 0.4, perc: 3.2 },
   lift: { keys: -0.5, bed: -12.8, strings: -4.5, kit: -1.6, perc: 0.9, bells: 12.7 },
   // Lead: the vibes; the guitars 2 LU under, the Rhodes bed 6.
-  coastal: { keys: 4.3, guitar: 3.1, bed: -0.5, bass: -1.8, kit: 2.9, perc: 10.1 },
-  coastal_drive: { keys: 5.9, guitar: 1.9, bed: -0.3, bass: -0.4, kit: 1.7, perc: 10.5 },
+  // Oct 23, owner's ear ("a little tinny"): finger bass +2.5 dB, Rhodes +1.5 dB,
+  // Coastal's kick +1.5 dB (and the guitar bus EQ'd warmer — see makeStudio).
+  coastal: { keys: 4.3, guitar: 3.1, bed: 1, bass: 0.7, kit: 4.4, perc: 10.1 },
+  coastal_drive: { keys: 5.9, guitar: 1.9, bed: 1.2, bass: 2.1, kit: 1.7, perc: 10.5 },
 };
 
 /** The keys/guitar (and bed) dip under each kick: about -1.5 dB for ~120 ms. */
@@ -495,7 +497,7 @@ function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, 
 
   const ducked: GainNode[] = [];
   const duckTimes = new Map<GainNode, number[]>();
-  const bus = (o: { hp?: number; lp?: number; dip?: boolean; subShelf?: number; trim: number; room?: number; hall?: number; delay?: number; duck?: boolean }) => {
+  const bus = (o: { hp?: number; lp?: number; dip?: boolean; subShelf?: number; shelves?: [BiquadFilterType, number, number][]; trim: number; room?: number; hall?: number; delay?: number; duck?: boolean }) => {
     const input = c.createGain();
     let head: AudioNode = input;
     if (o.hp) { const f = filt("highpass", o.hp); head.connect(f); head = f; }
@@ -503,6 +505,7 @@ function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, 
     if (o.lp) { const f = filt("lowpass", o.lp, 0.5); head.connect(f); head = f; }
     // A gentle presence dip where a voice-over lives, so the music sits under it.
     if (o.dip) { const f = filt("peaking", 2600, 0.8, -2.5); head.connect(f); head = f; }
+    (o.shelves ?? []).forEach(([type, f0, db]) => { const f = filt(type, f0, 0.7, db); head.connect(f); head = f; });
     const out = c.createGain(); out.gain.value = o.trim;
     head.connect(out);
     let tail: AudioNode = out;
@@ -530,7 +533,11 @@ function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, 
     bedIn, bedOut, bedDuck, hall, rand,
     strings: bus({ hp: 110, dip: true, trim: trim("strings"), hall: 0.4, room: 0.06 }),
     keys: bus({ hp: 90, trim: trim("keys"), room: 0.22, hall: 0.2, delay: 0.5, duck: true }),
-    guitar: bus({ hp: 110, trim: trim("guitar"), room: 0.3, hall: 0.12, delay: 0.3, duck: true }),
+    // Coastal moods (owner's ear, Oct 23: "a little tinny"): the nylon gets a
+    // 120 Hz high-pass, +1.5 dB of low-mid warmth at 250 Hz and -2 dB above 6 kHz.
+    guitar: mood === "coastal" || mood === "coastal_drive"
+      ? bus({ hp: 120, shelves: [["lowshelf", 250, 1.5], ["highshelf", 6000, -2]], trim: trim("guitar"), room: 0.3, hall: 0.12, delay: 0.3, duck: true })
+      : bus({ hp: 110, trim: trim("guitar"), room: 0.3, hall: 0.12, delay: 0.3, duck: true }),
     bells: bus({ hp: 250, trim: trim("bells"), hall: 0.5, delay: 0.25 }),
     bass: bus({ lp: 2500, trim: trim("bass") }),
     // The sampled kicks carry ~9 dB more energy around 50 Hz than the classic
@@ -698,7 +705,8 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       // (about 1 dB off the peaks: glue, not grit), then a slow, soft-kneed
       // compressor. The level pass after rendering sets the loudness.
       const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 30; hp.Q.value = 0.7;
-      const low = c.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 100; low.gain.value = 1;
+      // +2 dB of weight for the Coastal moods (owner's ear, Oct 23), +1 elsewhere.
+      const low = c.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 100; low.gain.value = coastal ? 2 : 1;
       const air = c.createBiquadFilter(); air.type = "highshelf"; air.frequency.value = 10000; air.gain.value = 1.5;
       const drive = c.createGain(); drive.gain.value = Math.pow(10, STUDIO_DRIVE_DB[opts.mood] / 20) * 0.5; // the shaper's ±1 is ±2 of signal
       const shaper = c.createWaveShaper(); shaper.curve = saturationCurve(); shaper.oversample = "2x";
@@ -2034,7 +2042,9 @@ function composeCoastalLayers(g: {
   const bassDuck = c.createGain(); bassDuck.gain.value = 1;
   const bassLp = c.createBiquadFilter(); bassLp.type = "lowpass"; bassLp.frequency.value = 900; bassLp.Q.value = 0.5;
   // Studio: the finger bass leads; a little of the sine bass stays under it for weight.
-  const bassOut = c.createGain(); bassOut.gain.value = (drive ? BASS_OUT_DRIVE : BASS_OUT_COASTAL) * (mixer ? 0.35 : 1);
+  // (Oct 23: on Coastal it's raised ~4.7 dB, to about Drive's level, so its
+  // 2nd/3rd harmonics read on a phone under the finger bass.)
+  const bassOut = c.createGain(); bassOut.gain.value = (drive ? BASS_OUT_DRIVE : BASS_OUT_COASTAL) * (mixer ? (drive ? 0.35 : 0.6) : 1);
   bassDuck.connect(bassLp); bassLp.connect(bassOut); bassOut.connect(master);
   const leadBus = c.createGain(); leadBus.gain.value = LEAD_OUT;
   const leadLp = c.createBiquadFilter(); leadLp.type = "lowpass"; leadLp.frequency.value = 6500; leadLp.Q.value = 0.5;
@@ -2329,7 +2339,8 @@ function composeCoastalLayers(g: {
         let len = Math.min(next, sg.end, E) - t - 0.05;
         // A note never rings into a breath.
         breaths.forEach((b) => { if (b.from > t && b.from < t + len) len = b.from - t - 0.03; });
-        const up = drive && mod(k, 4) === 3 && rand() < 0.3 ? 12 : 0; // the odd octave lift
+        let up = drive && mod(k, 4) === 3 && rand() < 0.3 ? 12 : 0; // the odd octave lift
+        if (mixer && (bt === 0 || bt === 2)) up = 0; // studio: beats 1 and 3 stay on the root octave
         bassNote(m + up, t, len, drive ? (mod(bt, 1) > 0 ? 1 : 0.85) : k === 0 ? 1 : 0.85);
       });
     }
@@ -2349,8 +2360,12 @@ function composeCoastalLayers(g: {
 
   // ── Studio: a second guitar strumming — down on 1, a lighter up on the and-of-3 ──
   /** A strum: 5 strings low→high (down) or the top 3 high→low (up), 15–30 ms apart. */
+  // The strumming guitar sits 2 dB under the picked one (owner's ear, Oct 23).
+  let strumBus: GainNode | null = null;
   const strum = (ch: Chord, t: number, down: boolean, vel: number, hold: number) => {
     if (!mixer) return;
+    if (!strumBus) { strumBus = c.createGain(); strumBus.gain.value = Math.pow(10, -2 / 20); strumBus.connect(mixer.guitar); }
+    const dest = strumBus;
     const rootPc = mod(tonicPc + ch.root, 12);
     const low = 40 + mod(rootPc - 40, 12);
     const third = ch.pad[0] === 3 ? 3 : 4;
@@ -2358,7 +2373,7 @@ function composeCoastalLayers(g: {
     const notes = down ? shape : shape.slice(2).reverse();
     let at = Math.max(0, t);
     notes.forEach((m, k) => {
-      playNote(c, mixer.guitar, { instrument: "nylon", midi: m, at, duration: Math.max(0.1, hold - (at - t)), velocity: vel * (down ? 1 - 0.04 * k : 0.85), release: 0.3, pan: -0.4 + 0.06 * k });
+      playNote(c, dest, { instrument: "nylon", midi: m, at, duration: Math.max(0.1, hold - (at - t)), velocity: vel * (down ? 1 - 0.04 * k : 0.85), release: 0.3, pan: -0.4 + 0.06 * k });
       at += 0.015 + mixer.rand() * 0.015;
     });
   };
