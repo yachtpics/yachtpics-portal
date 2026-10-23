@@ -330,7 +330,16 @@ function makeImpulse(ctx: BaseAudioContext, sec: number, rand: () => number): Au
 // ── The studio engine: instruments, rooms, buses (Oct 23) ────────────────
 
 /**
- * What each mood plays in the studio engine (only these packs are fetched):
+ * What each mood plays in the studio engine (only these packs are fetched).
+ * Oct 23, from the owner's ear: no vibes or glockenspiel anywhere (they made
+ * it sound like a child's toy) — a cut is marked by one soft piano note two
+ * octaves over the chord root in the hall (a quiet strings swell in
+ * Cinematic) — and every track develops instead of looping (makePlan,
+ * developHarmony): a second progression in the middle, keys/guitar patterns
+ * and register that keep changing, answered motifs, drop-outs, a light →
+ * full → thinning arc, and drums that vary every 4 bars. Older notes below
+ * still describe the voices; where they mention vibes or glockenspiel, read
+ * the above.
  *   • Calm — the bed is the warm pad with the string ensemble a little
  *     quieter, detuned and 30 ms behind it (panned the other way, for width);
  *     piano for the sparse arpeggio, with the ping-pong delay; the sub bass
@@ -353,21 +362,30 @@ function makeImpulse(ctx: BaseAudioContext, sec: number, rand: () => number): Au
  *     glockenspiel sparkle, drums joining in stages (soft kick; then hats
  *     and a snare roll; then the full kit), crash on the drop and end card.
  *     The clean synth bass stays.
- *   • Coastal / Coastal Drive — nylon guitar arpeggios, with strums (down on
- *     1, up on the and-of-3) on a second guitar; Rhodes chords as the bed;
- *     vibes for the lead; finger bass over a little of the sine bass; kick,
- *     shaker and rim (Drive: snare + snap, open hats, a harder kick).
+ *   • Coastal — a picked nylon guitar (below C5) and Rhodes chords, a short
+ *     answered Rhodes motif as the top line, finger bass over the sine bass;
+ *     kick, swung shaker and rim. (The strums and the vibes lead went Oct 23.)
+ *   • Coastal Drive (reworked Oct 23 — the owner heard "a sample song on a
+ *     child's toy"): fewer voices, more space. Held Rhodes chords over a quiet
+ *     pad; ONE picked nylon guitar, kept below C5; finger bass + sub; a few
+ *     short Rhodes motifs an octave over the chords (one phrase in four bars)
+ *     instead of the vibes lead; a relaxed kit — kick, swung shaker, rim on 2
+ *     and 4, a very quiet hat, a soft snare on beat 4 of every other bar. Its
+ *     tempo stays within ~6 BPM of Coastal's: the drive is the kick and bass.
+ *   Both Coastal moods are humanized (makeFeel): seeded ±6–10 ms timing, ±12%
+ *   velocity with a downbeat accent, ~55% swing on guitar and shaker 8ths, and
+ *   guitar notes of different lengths, some ringing over the next.
  * Every mood keeps the noise riser into the end card and its sub bloom.
  */
 const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
-  calm: ["pad", "strings", "piano", "bass", "glock"],
+  calm: ["pad", "strings", "piano", "bass"],
   cinematic: ["strings", "pad", "piano", "drums"],
   elegant: ["epiano", "piano", "nylon", "bass", "drums"],
-  upbeat: ["epiano", "piano", "bass", "vibes", "drums"],
+  upbeat: ["epiano", "piano", "bass", "drums"],
   groove: ["pad", "epiano", "bass", "drums"],
-  lift: ["pad", "piano", "strings", "glock", "drums"],
-  coastal: ["epiano", "nylon", "bass", "vibes", "drums"],
-  coastal_drive: ["epiano", "nylon", "bass", "vibes", "drums"],
+  lift: ["pad", "piano", "strings", "drums"],
+  coastal: ["epiano", "nylon", "bass", "drums"],
+  coastal_drive: ["epiano", "nylon", "bass", "pad", "drums"],
 };
 
 /**
@@ -402,15 +420,18 @@ const STUDIO_MIX: Record<MusicMood, Partial<Record<StudioBus, number>>> = {
   // Lead: the strings; piano 4 LU under, the pulse far back.
   cinematic: { bed: -1.4, keys: 2.9, kit: 2, bells: 8.8 },
   elegant: { keys: 4.3, bed: -1.4, guitar: 0.5, bass: -2.7, kit: 3.6, perc: 7.1, bells: 14.4 },
-  upbeat: { keys: 1.1, bed: -5.6, bass: -4.1, kit: -0.3, perc: 2.9, bells: 3.4 },
+  // (bells: the cut's piano note now, set at Calm's ratio to the keys)
+  upbeat: { keys: 1.1, bed: -5.6, bass: -4.1, kit: -0.3, perc: 2.9, bells: 9.5 },
   // Lead: the Rhodes motif — with the 808 (unchanged) about 2 LU over it, as in the classic mix.
   groove: { keys: -2.4, bed: -10, bass: -4.7, kit: 0.4, perc: 3.2 },
-  lift: { keys: -0.5, bed: -12.8, strings: -4.5, kit: -1.6, perc: 0.9, bells: 12.7 },
+  lift: { keys: -0.5, bed: -12.8, strings: -4.5, kit: -1.6, perc: 0.9, bells: 8.6 },
   // Lead: the vibes; the guitars 2 LU under, the Rhodes bed 6.
   // Oct 23, owner's ear ("a little tinny"): finger bass +2.5 dB, Rhodes +1.5 dB,
   // Coastal's kick +1.5 dB (and the guitar bus EQ'd warmer — see makeStudio).
   coastal: { keys: 4.3, guitar: 3.1, bed: 1, bass: 0.7, kit: 4.4, perc: 10.1 },
-  coastal_drive: { keys: 5.9, guitar: 1.9, bed: 1.2, bass: 2.1, kit: 1.7, perc: 10.5 },
+  // Drive v3 (Oct 23): keys now carries only the sparse Rhodes motifs (-2 dB, just
+  // under the chords when they play); the kick +1.5 dB — the drive is kick and bass.
+  coastal_drive: { keys: 3.9, guitar: 1.9, bed: 1.2, bass: 2.1, kit: 3.2, perc: 10.5 },
 };
 
 /** The keys/guitar (and bed) dip under each kick: about -1.5 dB for ~120 ms. */
@@ -473,9 +494,11 @@ type StudioMix = {
   duck: (t: number) => void;
   /** The studio's own seeded stream (strum timing, small velocity variations). */
   rand: () => number;
+  /** The arrangement plan (patterns, register, drum variants, drop-outs, arc). */
+  plan: DevPlan;
 };
 
-function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, rand: () => number, hallSec: number, duckBed: boolean, mood: MusicMood): StudioMix {
+function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, rand: () => number, hallSec: number, duckBed: boolean, mood: MusicMood, plan: DevPlan): StudioMix {
   const trim = (b: StudioBus) => STUDIO_TRIM[b] * Math.pow(10, (STUDIO_MIX[mood][b] ?? 0) / 20);
   const filt = (type: BiquadFilterType, f: number, q = 0.7, gainDb = 0) => {
     const b = c.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = q; b.gain.value = gainDb; return b;
@@ -530,7 +553,7 @@ function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, 
   if (duckBed) ducked.push(bedDuck);
 
   const mix: StudioMix = {
-    bedIn, bedOut, bedDuck, hall, rand,
+    bedIn, bedOut, bedDuck, hall, rand, plan,
     strings: bus({ hp: 110, dip: true, trim: trim("strings"), hall: 0.4, room: 0.06 }),
     keys: bus({ hp: 90, trim: trim("keys"), room: 0.22, hall: 0.2, delay: 0.5, duck: true }),
     // Coastal moods (owner's ear, Oct 23: "a little tinny"): the nylon gets a
@@ -559,6 +582,146 @@ function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, 
     },
   };
   return mix;
+}
+
+// ── Development: so a track grows instead of looping (studio, Oct 23) ──────
+
+/** Borrowed chords for the major keys' second progression. */
+const MAJ_X: Record<string, Chord> = {
+  iv:   { root: 5,  pad: [3, 7, 10, 14], arp: [0, 3, 7, 10] },
+  bVII: { root: 10, pad: [4, 7, 11, 14], arp: [0, 4, 7, 11] },
+};
+/** Second progressions (the middle section): relative minor, IV-based, or a borrowed iv / ♭VII turn. */
+const MAJ_B = [["vi", "iii", "ii", "Vsus"], ["IV", "iv", "I", "vi"], ["ii", "IV", "bVII", "Vsus"], ["vi", "ii", "IV", "iv"]];
+const MIN_B = [["iv", "VI", "III", "VIIsus"], ["VI", "iv", "i", "VIIsus"], ["III", "iv", "VI", "VIIsus"]];
+const CO_B = [["iv", "VI", "i", "VII"], ["VI", "iv", "III", "VII"], ["iv", "i", "VI", "VII"]];
+
+/**
+ * The middle section moves to a second, related progression for 4–8 bars
+ * from segment `from`, then the opening progression returns for the bars
+ * before the cadence (which, with the end card, is left alone).
+ */
+function developHarmony(segs: Seg[], from: number, kind: "maj" | "min" | "co", rand: () => number, harmonic: number) {
+  const end = segs.length - 3; // the cadence's first chord
+  const avail = end - from;
+  if (from < 1 || avail < 2) return;
+  const lenB = clamp(Math.round(avail * 0.6), 2, Math.min(avail, harmonic === 2 ? 4 : 8));
+  const table: Record<string, Chord> = kind === "maj" ? { ...MAJ, ...MAJ_X } : kind === "min" ? MIN : CO;
+  const opts = kind === "maj" ? MAJ_B : kind === "min" ? MIN_B : CO_B;
+  const prog = opts[Math.floor(rand() * opts.length)].map((k) => table[k]);
+  for (let k = 0; k < lenB; k++) segs[from + k].chord = prog[k % prog.length];
+}
+
+/** Keys / arpeggio / guitar patterns: an order through the chord and which 8ths of the bar play. */
+const STUDIO_PATTERNS: { order: number[]; mask: number[] }[] = [
+  { order: [0, 1, 2, 3, 2, 1, 2, 3], mask: [1, 1, 1, 1, 1, 1, 1, 1] }, // rolling up and back
+  { order: [0, 1, 2, 3, 4, 3, 2, 1], mask: [1, 0, 1, 1, 0, 1, 1, 0] }, // rising, with space
+  { order: [4, 3, 2, 1, 3, 2, 1, 0], mask: [1, 1, 0, 1, 1, 0, 1, 0] }, // falling
+  { order: [0, 2, 1, 3, 0, 2, 4, 2], mask: [1, 0, 0, 1, 0, 1, 1, 0] }, // broken, sparse
+];
+/** Register per 4-bar block: an inversion, and sometimes the octave below. */
+const VOICINGS = [{ inv: 0, oct: 0 }, { inv: 1, oct: 0 }, { inv: 2, oct: -12 }, { inv: 1, oct: -12 }];
+
+/** Chord tones re-voiced: `inv` lowest notes moved up an octave, the lot shifted by `oct`, kept at or under `max`. */
+function voiceTones(tones: number[], v: { inv: number; oct: number }, max = 96): number[] {
+  const t = tones.slice();
+  for (let i = 0; i < v.inv && i < t.length - 1; i++) t.push((t.shift() as number) + 12);
+  return t.map((m) => { let x = m + v.oct; while (x > max) x -= 12; return x; });
+}
+
+/** The studio's arrangement plan for one track (seeded; see makePlan). */
+type DevPlan = {
+  /** Which STUDIO_PATTERNS entry a bar plays (never the same three bars running). */
+  pattern: (t: number) => number;
+  /** The register of the 4-bar block (always different from the block before). */
+  voicing: (t: number) => { inv: number; oct: number };
+  /** The drum variant of the 4-bar block, 0–3 (always different from the block before). */
+  drums: (t: number) => number;
+  /** 4-bar block number, and the bar's place in it (0–3). */
+  block: (t: number) => number;
+  barInBlock: (t: number) => number;
+  /** The arc: ~0.65 → 1 over the first third, 1 through the middle, thinning to ~0.72 into the end card. */
+  fullness: (t: number) => number;
+  /** Inside a 2-bar drop-out of that kind (drums out, or keys/guitar out leaving pad and bass). */
+  out: (kind: "drums" | "keys", t: number) => boolean;
+};
+
+function makePlan(rand: () => number, o: { firstBar: number; bar: number; dur: number; E: number; introEnd: number; cuts: number[]; drums: boolean }): DevPlan {
+  const { firstBar, bar, dur, E, introEnd } = o;
+  const n = Math.ceil((dur - firstBar) / bar) + 2;
+  const barOf = (t: number) => clamp(Math.floor((t - firstBar) / bar + 1e-6), 0, n - 1);
+  const count = STUDIO_PATTERNS.length;
+  const pats: number[] = [];
+  for (let k = 0; k < n; k++) {
+    let p = k === 0 ? Math.floor(rand() * count) : pats[k - 1];
+    if (k > 0 && rand() < 0.55) p = Math.floor(rand() * count);
+    if (k >= 2 && pats[k - 1] === pats[k - 2] && p === pats[k - 1]) p = (p + 1 + Math.floor(rand() * (count - 1))) % count;
+    pats.push(p);
+  }
+  const pick = (prev: number | undefined, m: number) => {
+    let x = Math.floor(rand() * m);
+    if (x === prev) x = (x + 1 + Math.floor(rand() * (m - 1))) % m;
+    return x;
+  };
+  const voi: number[] = [], drm: number[] = [];
+  for (let b = 0; b < Math.ceil(n / 4) + 1; b++) {
+    voi.push(b === 0 ? 0 : pick(voi[b - 1], VOICINGS.length));
+    drm.push(b === 0 ? 0 : pick(drm[b - 1], 4));
+  }
+  // Drop-outs: one in a short reel, two in a longer one, each 2 bars, back on a cut when one is near.
+  const outs: { kind: "drums" | "keys"; from: number; to: number }[] = [];
+  const span = E - introEnd;
+  const want = span >= 16 * bar ? 2 : span >= 7 * bar ? 1 : 0;
+  const room = span - 5 * bar;
+  for (let i = 0; i < want; i++) {
+    const lo = introEnd + 2 * bar + (want === 2 && i === 1 ? room / 2 : 0);
+    const hi = introEnd + 2 * bar + (want === 2 && i === 0 ? room / 2 : room);
+    const r = rand();
+    if (!(hi > lo)) continue;
+    const from = firstBar + Math.round((lo + r * (hi - lo) - firstBar) / bar) * bar;
+    let to = from + 2 * bar;
+    let best = Infinity;
+    o.cuts.forEach((ct) => { const d = Math.abs(ct - to); if (d <= bar * 0.5 && d < best && ct < E - bar) { best = d; to = ct; } });
+    if (from < introEnd || to > E - bar) continue;
+    const kind: "drums" | "keys" = !o.drums ? "keys" : outs.length && outs[0].kind === "drums" ? "keys" : outs.length ? "drums" : rand() < 0.5 ? "drums" : "keys";
+    outs.push({ kind, from, to });
+  }
+  return {
+    pattern: (t) => pats[barOf(t)],
+    voicing: (t) => VOICINGS[voi[Math.floor(barOf(t) / 4)]],
+    drums: (t) => drm[Math.floor(barOf(t) / 4)],
+    block: (t) => Math.floor(barOf(t) / 4),
+    barInBlock: (t) => barOf(t) % 4,
+    fullness: (t) => {
+      if (t < introEnd) return 0.6;
+      if (t >= E - 1e-3) return 1;
+      const x = (t - introEnd) / Math.max(1e-3, E - introEnd);
+      return x < 0.33 ? 0.65 + 0.35 * (x / 0.33) : x < 0.75 ? 1 : 1 - 0.28 * ((x - 0.75) / 0.25);
+    },
+    out: (kind, t) => outs.some((w) => w.kind === kind && t >= w.from - 1e-3 && t < w.to - 1e-3),
+  };
+}
+
+/**
+ * Studio feel for the Coastal moods (Oct 23). Busy, perfectly quantized,
+ * equal-velocity parts are what make General-MIDI arrangements sound like a
+ * toy's demo song; a player is a little early or late, leans on the downbeat
+ * and swings the off-beats. Seeded (the studio's own stream), so a seed still
+ * gives the same performance every time.
+ */
+function makeFeel(rand: () => number, phase: number, beat: number, swing = 0.55) {
+  const bar = 4 * beat;
+  return {
+    /** An off-beat 8th moved late: `swing` of the beat instead of half (0.5 = straight). */
+    swing: (t: number) => (Math.abs(mod((t - phase) / beat, 1) - 0.5) < 0.01 ? t + (swing - 0.5) * beat : t),
+    /** 6–10 ms early or late. */
+    time: (t: number) => Math.max(0, t + (rand() < 0.5 ? -1 : 1) * (0.006 + rand() * 0.004)),
+    /** ±12%, and an accent on the bar's downbeat. */
+    vel: (v: number, t: number) => {
+      const down = mod(t - phase + 0.02, bar) < 0.04;
+      return clamp(v * (1 + (rand() - 0.5) * 0.24) * (down ? 1.12 : 1), 0.05, 1);
+    },
+  };
 }
 
 // ── The composer ──────────────────────────────────────────────────────────
@@ -596,7 +759,9 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   const SR = MUSIC_SAMPLE_RATE;
   const dur = Math.max(2, opts.durationSec);
   const length = Math.max(1, Math.round(dur * SR));
-  const p = MOOD[opts.mood];
+  // Studio Coastal Drive (Oct 23): its drive comes from the kick and bass, not
+  // speed — a tempo within ~6 BPM of Coastal's (118–126). Classic keeps 126–130.
+  const p: MoodParams = studio && opts.mood === "coastal_drive" ? { ...MOOD.coastal_drive, tempo: [120, 124] } : MOOD[opts.mood];
   const groove = opts.mood === "groove";
   const lift = opts.mood === "lift";
   const coastalDrive = opts.mood === "coastal_drive";
@@ -689,6 +854,16 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   segs.push({ start: E, end: dur, chord: tonic });
   // Coastal has its own harmony: minor, leaning to the relative major, resolving there.
   if (coastal) assignCoastalChords(segs, rand);
+  // Studio: the middle moves to a second, related progression, so no reel is
+  // one 4-chord loop from start to finish (after 8 bars, or at the build).
+  if (studio && segs.length >= 5) {
+    const target = Math.min(firstBar + 8 * bar, Math.max(buildStart, introEnd + bar));
+    let from = segs.findIndex((sg) => sg.start >= target - 1e-3);
+    if (lift) from = Math.max(from, segs.findIndex((sg) => sg.start >= buildStart - 1e-3) + 1); // the drop keeps its home chord
+    if (from > 0) developHarmony(segs, from, coastal ? "co" : minor ? "min" : "maj", srand, p.harmonic);
+  }
+  /** The studio's arrangement plan (null in the classic engine). */
+  const plan: DevPlan | null = studio ? makePlan(srand, { firstBar, bar, dur, E, introEnd, cuts, drums: opts.mood !== "calm" }) : null;
   const chordAt = (t: number): Chord => {
     for (let i = segs.length - 1; i >= 0; i--) if (t >= segs[i].start - 1e-4) return segs[i].chord;
     return segs[0].chord;
@@ -757,10 +932,12 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
 
     // The studio's buses and rooms (null in the classic engine). Lift and
     // Coastal already pump the bed under their kicks, so only the keys dip there.
-    const mixer = studio ? makeStudio(c, master, delayIn, srand, p.reverbSec * 1.35, !lift && !coastal, opts.mood) : null;
+    const mixer = studio ? makeStudio(c, master, delayIn, srand, p.reverbSec * 1.35, !lift && !coastal, opts.mood, plan as DevPlan) : null;
     /** Where reverb sends go: the studio's hall, or the classic room. */
     const verb: AudioNode = mixer ? mixer.hall : reverb;
     delayRet.connect(verb);
+    /** Studio: a player's timing and touch on the keys and drums (straight, no swing). */
+    const feel = mixer ? makeFeel(srand, grid.phase, beat, 0.5) : null;
 
     // ── Pad ──
     const padBus = c.createGain();
@@ -839,14 +1016,28 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       } else if (mood === "elegant" || mood === "upbeat" || coastal) {
         // A Rhodes holding the chord — struck each bar with a light roll; in
         // Upbeat's build it stabs instead.
-        const strike = (t: number, hold: number, vel: number) => tones.forEach((m, k) => playNote(c, padBus, {
-          instrument: "epiano", midi: m, at: Math.max(0, t) + k * 0.012, duration: Math.max(0.1, hold), velocity: vel * (1 - 0.05 * k), release: 0.6, pan: spread(k, 0.4),
-        }));
+        const strike = (t: number, hold: number, vel: number) => {
+          // Coastal: humanized (±12% velocity, ±8 ms) — see makeFeel.
+          const hv = coastal ? 1 + (srand() - 0.5) * 0.24 : 1;
+          const ht = coastal ? (srand() - 0.5) * 0.016 : 0;
+          tones.forEach((m, k) => playNote(c, padBus, {
+            instrument: "epiano", midi: m, at: Math.max(0, t + ht) + k * 0.012, duration: Math.max(0.1, hold), velocity: vel * hv * (1 - 0.05 * k), release: 0.6, pan: spread(k, 0.4),
+          }));
+        };
+        // Coastal Drive: a quiet pad under the Rhodes, for glue.
+        if (mood === "coastal_drive") tones.forEach((m, k) => playNote(c, padBus, { instrument: "pad", midi: m, at: start, duration: len, velocity: 0.3, attack, release: 1.4, pan: -spread(k, 0.5) }));
         if (i === segs.length - 1) { strike(sg.start, end - sg.start, 0.5); return; }
         for (let b = sg.start; b < sg.end - 1e-3; b += bar) {
           const nb = Math.min(sg.end, b + bar);
           if (mood === "upbeat" && b >= buildStart - 1e-3) {
-            ([[0, 0.9, 0.5], [1.5, 0.45, 0.4], [2.5, 0.9, 0.45]] as const).forEach(([pos, hold, vel]) => {
+            // Four stab rhythms, chosen bar by bar from the plan.
+            const STABS: [number, number, number][][] = [
+              [[0, 0.9, 0.5], [1.5, 0.45, 0.4], [2.5, 0.9, 0.45]],
+              [[0, 0.45, 0.5], [1, 0.45, 0.35], [2.5, 1.2, 0.45]],
+              [[0.5, 0.45, 0.42], [1.5, 0.45, 0.4], [3, 0.9, 0.45]],
+              [[0, 1.9, 0.5], [2.5, 0.45, 0.4]],
+            ];
+            STABS[mixer ? mixer.plan.pattern(b + 0.01) : 0].forEach(([pos, hold, vel]) => {
               const t = b + pos * beat;
               if (t < nb - 0.05) strike(t, Math.min(hold * beat, nb - t - 0.02), vel);
             });
@@ -961,7 +1152,29 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       return tones;
     };
     const keysFrom = introEnd;
-    if (!groove && !lift && !coastal) {
+    if (mixer && feel && !groove && !lift && !coastal) {
+      // Studio: the arpeggio follows the plan — its pattern bar by bar, its
+      // register every 4 bars, out in a keys drop-out, lighter early and late.
+      const sub = 0.5 * beat;
+      const plan = mixer.plan;
+      let t = grid.phase + Math.ceil((keysFrom - grid.phase) / sub - 1e-6) * sub;
+      for (; t < E - 0.02; t += sub) {
+        if (plan.out("keys", t)) continue;
+        const inBuild = t >= buildStart - 1e-3;
+        const stepBeats = inBuild ? p.keysStep[1] : p.keysStep[0];
+        const posBeats = mod(Math.round((t - grid.phase) / beat * 2) / 2, 4);
+        if (mod(posBeats, stepBeats) > 1e-3) continue;
+        const pos8 = Math.round(posBeats * 2);
+        const pat = STUDIO_PATTERNS[plan.pattern(t)];
+        if (!pat.mask[pos8]) continue;
+        const full = plan.fullness(t);
+        if (pos8 % 2 === 1 && srand() > full) continue;
+        const tones = voiceTones(keyTones(chordAt(t)), plan.voicing(t));
+        const accent = pos8 === 0 ? 1 : pos8 % 2 === 0 ? 0.85 : 0.7;
+        keyNote(tones[pat.order[pos8] % tones.length], feel.time(t), feel.vel(accent * (inBuild ? 1 : 0.85) * (0.8 + 0.2 * full), t), p.keysDecay, (srand() - 0.5) * 0.7);
+      }
+    }
+    if (!mixer && !groove && !lift && !coastal) {
       const sub = 0.5 * beat; // walk the eighth-note grid; each section plays a subset
       let t = grid.phase + Math.ceil((keysFrom - grid.phase) / sub - 1e-6) * sub;
       for (; t < E - 0.02; t += sub) {
@@ -999,9 +1212,15 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         const tones = keyTones(ch);
         const m = tones[Math.min(tones.length - 1, 2)] + 12;
         if (mixer) {
-          // Glockenspiel (Calm), vibes (Upbeat), a soft high piano note (Cinematic, Elegant).
-          const inst: SampledInstrument = opts.mood === "calm" ? "glock" : opts.mood === "upbeat" ? "vibes" : "piano";
-          playNote(c, mixer.bells, { instrument: inst, midi: m, at: ct, duration: inst === "piano" ? 0.4 : 0.25, velocity: inst === "glock" ? 0.42 : inst === "vibes" ? 0.5 : 0.38, release: inst === "piano" ? 1.6 : 1.2, pan: jitter(0.4) });
+          const pan = jitter(0.4);
+          if (opts.mood === "cinematic") {
+            // Cinematic: a quiet strings swell on the cut, not a bell.
+            playNote(c, mixer.strings, { instrument: "strings", midi: tones[1] ?? tones[0], at: ct, duration: Math.min(2.4, bar * 0.75), velocity: 0.42, attack: 0.7, release: 1.2, pan });
+          } else {
+            // One soft piano note two octaves over the chord root, in the hall.
+            const root = 48 + mod(tonicPc + ch.root - 48, 12) + 24;
+            playNote(c, mixer.bells, { instrument: "piano", midi: root, at: ct, duration: 0.3, velocity: 0.3, release: 1.8, pan });
+          }
           return;
         }
         keyNote(m, ct, 0.55, Math.min(2.2, p.keysDecay + 0.6), jitter(0.4));
@@ -1080,6 +1299,40 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       body.connect(bg); bg.connect(rhythmBus);
       body.start(s0); body.stop(Math.min(dur, s0 + 0.1));
     };
+    /**
+     * Studio rhythm: the classic parts, varied every 4 bars by the plan
+     * (shaker/hat density, the rim displaced to the and-of-4, a skipped
+     * kick), out in a drums drop-out, softer early and late.
+     */
+    const studioRhythm = (t: number, pos: number, onBeat: boolean, inBuild: boolean) => {
+      if (!mixer || !feel) return;
+      const plan = mixer.plan;
+      if (plan.out("drums", t)) return;
+      const dv = plan.drums(t), last = plan.barInBlock(t) === 3, pv = 0.7 + 0.3 * plan.fullness(t);
+      if (p.rhythm === "pulse") {
+        if (!inBuild) return;
+        if (pos === 0 && !(dv === 2 && last)) kick(t, 0.55);
+        if (dv === 1 && pos === 2) kick(t, 0.36);
+        if (dv === 3 && pos === 3.5) kick(t, 0.3);
+        return;
+      }
+      const shakerOn = dv === 1 ? !onBeat : dv === 3 ? !onBeat || pos === 0 || pos === 2 : true;
+      if (shakerOn) shaker(feel.time(t), (onBeat ? 0.6 : 1) * (inBuild ? 1 : 0.6) * (p.rhythm === "soft" ? 0.8 : 1) * pv);
+      if (dv === 2 && inBuild && !onBeat && srand() < 0.3) shaker(feel.time(t + beat / 4), 0.45 * pv);
+      if (!inBuild) return;
+      if (p.rhythm === "soft") {
+        if (pos === 0) kick(t, 0.5);
+        else if (pos === 2 && !(dv === 2 && last)) kick(t, 0.32);
+        const rims = dv === 1 || dv === 3 ? [1, 3.5] : [1, 3];
+        if (rims.indexOf(pos) >= 0) playHit(c, mixer.perc, { name: "rim", at: feel.time(t), velocity: feel.vel(0.4 * pv, t), pan: -0.15 });
+        if ((pos === 1.5 || pos === 3.5) && dv !== 1 && rims.indexOf(pos) < 0) playHit(c, mixer.perc, { name: "hat", at: feel.time(t), velocity: feel.vel(0.27 * pv, t), pan: 0.3, lowpassHz: 7000 });
+      } else {
+        if (dv !== 1 || onBeat) playHit(c, mixer.perc, { name: "hat", at: feel.time(t), velocity: feel.vel((onBeat ? 0.3 : 0.42) * pv, t), pan: 0.28 });
+        if (pos === 0 || (pos === 2 && !(dv === 0 && last))) kick(t, pos === 0 ? 0.8 : 0.65);
+        if (pos === 2.5 && (dv === 3 || (dv === 2 && last))) kick(t, 0.4);
+        if (pos === 1 || pos === 3) snap(feel.time(t), 0.9 * pv);
+      }
+    };
     if (p.rhythm !== "none" && !groove && !lift && !coastal) {
       const sub = 0.5 * beat;
       const from = p.rhythm === "full" ? introEnd : buildStart;
@@ -1089,6 +1342,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         const pos = mod(Math.round((t - grid.phase) / beat * 2) / 2, 4);
         const onBeat = mod(pos, 1) < 1e-3;
         const h = jitter(0.006);
+        if (mixer) { studioRhythm(t, pos, onBeat, inBuild); continue; }
         if (p.rhythm === "pulse") {
           if (inBuild && pos === 0) kick(t, 0.55);
           continue;
@@ -1097,14 +1351,6 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         const shVel = (onBeat ? 0.6 : 1) * (1 + jitter(0.15)) * (inBuild ? 1 : 0.6) * (p.rhythm === "soft" ? 0.8 : 1);
         shaker(t + h, shVel);
         if (!inBuild) continue;
-        if (mixer && p.rhythm === "soft") {
-          // Brushes: a rim click on 2 and 4, a soft closed hat on the and-of-2 and -4.
-          if (pos === 1 || pos === 3) playHit(c, mixer.perc, { name: "rim", at: t + h, velocity: 0.38 + srand() * 0.08, pan: -0.15 });
-          if (pos === 1.5 || pos === 3.5) playHit(c, mixer.perc, { name: "hat", at: t + h, velocity: 0.26 + srand() * 0.06, pan: 0.3, lowpassHz: 7000 });
-        }
-        if (mixer && p.rhythm === "full") {
-          playHit(c, mixer.perc, { name: "hat", at: t + h, velocity: (onBeat ? 0.3 : 0.42) + srand() * 0.06, pan: 0.28 });
-        }
         if (p.rhythm === "soft") {
           if (pos === 0) kick(t, 0.5);
           else if (pos === 2) kick(t, 0.32);
@@ -1119,10 +1365,11 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
     // Studio extras that have no classic counterpart (and so no draw on `rand`).
     if (mixer && opts.mood === "elegant") {
       // Nylon-guitar dyads on the off-beats of the build: the chord's third and fifth, low and soft.
+      const DYADS = [[0.5, 2.5], [1.5, 3.5], [0.5, 1.5, 3], [2.5]];
       for (let t = grid.phase + Math.ceil((buildStart - grid.phase) / bar - 1e-6) * bar; t < E - 0.1; t += bar) {
-        [0.5, 2.5].forEach((pos) => {
+        DYADS[mixer.plan.pattern(t + 0.01)].forEach((pos) => {
           const at = t + pos * beat;
-          if (at >= E - 0.1) return;
+          if (at >= E - 0.1 || mixer.plan.out("keys", at)) return;
           const ch = chordAt(at + 0.01);
           const rootPc = mod(tonicPc + ch.root, 12);
           [ch.arp[1], ch.arp[2]].forEach((iv, k) => playNote(c, mixer.guitar, {
@@ -1529,6 +1776,20 @@ function composeGrooveLayers(g: {
   // ── Lay it out bar by bar ──
   let prev808: number | null = null;
   const hatFrom = Math.max(0, introEnd - bar);
+  // Studio: the kick pattern pair changes every 4 bars (never the same pair
+  // twice running), and hat rolls cycle through four kinds so no fill repeats.
+  const kickBlocks: [number[], number[]][] = [];
+  if (mixer) {
+    for (let b = 0; b < barStarts.length / 4 + 2; b++) {
+      let a = Math.floor(mixer.rand() * KICKS.length), z = Math.floor(mixer.rand() * KICKS.length);
+      const prev = kickBlocks[b - 1];
+      if (prev && KICKS[a] === prev[0] && KICKS[z] === prev[1]) a = (a + 1) % KICKS.length;
+      if (b === 0) { a = KICKS.indexOf(kA); z = KICKS.indexOf(kB); }
+      kickBlocks.push([KICKS[a], KICKS[z]]);
+    }
+  }
+  const ROLLS = [8, 6, 4, 12];
+  let rollNo = mixer ? Math.floor(mixer.rand() * ROLLS.length) : 0;
   barStarts.forEach((b0) => {
     const bi = barIndex(b0);
     const second = mod(bi, 2) === 1; // the answer bar of a two-bar phrase
@@ -1536,10 +1797,15 @@ function composeGrooveLayers(g: {
     const drums = b0 >= introEnd - 1e-3;
     // Hats: 16ths (8ths in the intro), with a roll in the last beat of some answer bars.
     const rollBeat = drums && second && rand() < 0.65 ? 3 : -1;
-    const rollKind = rand() < 0.5 ? 8 : 6; // 1/32 or 16th triplets
+    let rollKind = rand() < 0.5 ? 8 : 6; // 1/32 or 16th triplets
+    if (mixer && rollBeat >= 0) rollKind = ROLLS[rollNo++ % ROLLS.length];
+    const plan = mixer ? mixer.plan : null;
+    const drumsOut = !!plan && plan.out("drums", b0 + 0.01);
+    const dv = plan ? plan.drums(b0 + 0.01) : 0;
     for (let st = 0; st < 16; st++) {
       const t = b0 + st * s16;
       if (t < hatFrom || t >= E - 0.02) continue;
+      if (drumsOut) continue;
       const beatNo = Math.floor(st / 4);
       const nearEnd = t >= E - beat - 1e-3; // the roll into the end card
       if ((beatNo === rollBeat || nearEnd) && st % 4 === 0) {
@@ -1549,19 +1815,22 @@ function composeGrooveLayers(g: {
         continue;
       }
       if (!drums && st % 2 === 1) continue;
+      // Studio: the hat pattern varies every 4 bars — 16ths; 8ths with a 16th
+      // pair on beat 4; 8ths only; 16ths with gaps.
+      if (plan && drums && ((dv === 1 && st % 2 === 1 && beatNo !== 3) || (dv === 2 && st % 2 === 1) || (dv === 3 && (st === 5 || st === 13)))) continue;
       const accent = st % 4 === 0 ? 1 : st % 2 === 0 ? 0.7 : 0.5;
       hat(t + jitter(0.003), accent * (drums ? 1 : 0.55) * (1 + jitter(0.12)), st % 2 === 0 ? 0.12 : -0.08);
     }
     if (!drums) return;
     // Studio: a quiet open hat on the and-of-2 and -4 once the build is in.
-    if (mixer && inBuild) {
+    if (mixer && inBuild && !drumsOut) {
       [6, 14].forEach((s) => {
         const t = b0 + s * s16;
         if (t < dropAt - 1e-3) playHit(c, mixer.perc, { name: "hat_open", at: t, velocity: 0.34, pan: -0.15, choke: s16 * 1.8 });
       });
     }
     // Kick + 808, locked; clap on 2 and 4.
-    const pat = second ? kB : kA;
+    const pat = plan ? kickBlocks[Math.min(kickBlocks.length - 1, plan.block(b0 + 0.01))][second ? 1 : 0] : second ? kB : kA;
     pat.forEach((st, k) => {
       const t = b0 + st * s16;
       if (t >= dropAt - 1e-3 || t < introEnd - 1e-3) return;
@@ -1571,24 +1840,43 @@ function composeGrooveLayers(g: {
       let midi = 31 + mod(tonicPc + ch.root - 31, 12);
       if (k > 0 && rand() < 0.22) midi += 12;
       const glide = prev808 !== null && prev808 !== midi && rand() < 0.35 ? prev808 : null;
-      kick(t, k === 0 ? 1 : 0.8);
+      // Studio: no kick in a drums drop-out (the 808 stays), and the last kick
+      // of some 4-bar blocks is left out.
+      const skip = !!plan && (drumsOut || (dv === 2 && plan.barInBlock(b0 + 0.01) === 3 && k === pat.length - 1));
+      if (!skip) kick(t, k === 0 ? 1 : 0.8);
       note808(midi, t, len, k === 0 ? 0.95 : 0.85, glide);
       prev808 = midi;
     });
     [4, 12].forEach((st) => {
       const t = b0 + st * s16;
-      if (t < dropAt - 1e-3) clap(t + jitter(0.003), 0.9 * (1 + jitter(0.08)));
+      if (t < dropAt - 1e-3 && !drumsOut) clap(t + jitter(0.003), 0.9 * (1 + jitter(0.08)));
     });
     // Lead: the motif (quieter and darker before the build), then its answer,
     // which slides up into a held note at the phrase end.
-    const leadVel = inBuild ? 1 : 0.7;
+    // Studio: the motif develops phrase by phrase — moved a step up or down
+    // the scale, a note dropped or held — and each answer bar ends on a
+    // different chord tone; out in a keys drop-out; lighter early and late.
+    const leadVel = (inBuild ? 1 : 0.7) * (plan ? 0.8 + 0.2 * plan.fullness(b0) : 1);
+    const phraseVar = plan ? mod(Math.floor(bi / 2), 3) : 0;
+    const keysOut = !!plan && plan.out("keys", b0 + 0.01);
     motif.forEach((m, i) => {
       const t = b0 + m.step * s16;
       if (t >= E - beat * 0.5 || (!inBuild && second && i > 2)) return;
-      let pitchIdx = m.idx;
-      if (second && i >= motif.length - 2) pitchIdx = clamp(m.idx + (i === motif.length - 1 ? 1 : -1), 0, scale.length - 1);
+      if (keysOut || (phraseVar === 1 && i === 1)) return;
+      let pitchIdx = clamp(m.idx + (phraseVar === 1 ? 1 : phraseVar === 2 ? -1 : 0), 0, scale.length - 1);
+      if (second && i >= motif.length - 2) pitchIdx = clamp(pitchIdx + (i === motif.length - 1 ? 1 : -1), 0, scale.length - 1);
+      if (plan && second && i === motif.length - 1) {
+        // The answer ends on a chord tone other than the one the statement ended on.
+        const pcs = [0].concat(chordAt(t + 0.01).pad).map((iv) => mod(tonicPc + chordAt(t + 0.01).root + iv, 12));
+        const was = mod(scale[clamp(m.idx, 0, scale.length - 1)], 12);
+        for (let d = 1; d < scale.length; d++) {
+          const up = pitchIdx + d, dn = pitchIdx - d;
+          if (up < scale.length && pcs.indexOf(mod(scale[up], 12)) >= 0 && mod(scale[up], 12) !== was) { pitchIdx = up; break; }
+          if (dn >= 0 && pcs.indexOf(mod(scale[dn], 12)) >= 0 && mod(scale[dn], 12) !== was) { pitchIdx = dn; break; }
+        }
+      }
       const midi = scale[pitchIdx];
-      const len = m.len * s16 * 0.85;
+      const len = m.len * s16 * (phraseVar === 2 && i === motif.length - 1 ? 1.8 : 0.85);
       if (m.stutter) {
         leadNote(midi, t + jitter(0.004), s16 * 0.4, leadVel * 0.9, null);
         leadNote(midi, t + s16 * 0.5, s16 * 0.4, leadVel * 0.75, null);
@@ -1596,7 +1884,7 @@ function composeGrooveLayers(g: {
         leadNote(midi, t + jitter(0.004), len, leadVel * (m.step % 4 === 0 ? 1 : 0.85), null);
       }
     });
-    if (second && inBuild) {
+    if (second && inBuild && !keysOut) {
       const t = b0 + 13 * s16;
       if (t + 3 * s16 < E - beat * 0.5) {
         const target = scale[clamp(motif[motif.length - 1].idx + 1, 1, scale.length - 1)];
@@ -1827,11 +2115,24 @@ function composeLiftLayers(g: {
     let m = tones[arp[mod(step, arp.length)] % tones.length];
     const sparkle = inDrop && mod(step, 8) === 6 && rand() < 0.5;
     if (sparkle) m += 12;
-    // Studio: the octave sparkle doubled on the glockenspiel.
-    if (sparkle && mixer) playNote(c, mixer.bells, { instrument: "glock", midi: m, at: Math.max(0, t), duration: 0.2, velocity: 0.36 + mixer.rand() * 0.08, release: 0.8, pan: 0.3 });
     const onBeat = mod(step, 2) === 0;
     const bright = inDrop ? 0.9 : t >= riserStart ? 0.35 + 0.5 * ((t - riserStart) / Math.max(0.1, drop - riserStart)) : 0.3;
     const vel = (onBeat ? 1 : 0.8) * (inDrop ? 1 : 0.65) * (1 + jitter(0.1));
+    if (mixer) {
+      // Studio: the piano's 8ths follow the plan — pattern bar by bar,
+      // register every 4 bars, out in a keys drop-out (in the drop), lighter
+      // early. The sparkle is a soft high piano note, now and then.
+      const plan = mixer.plan;
+      if (inDrop && plan.out("keys", t)) continue;
+      const pat = STUDIO_PATTERNS[plan.pattern(t)];
+      const pos8 = mod(step, 8);
+      if (!pat.mask[pos8]) continue;
+      if (pos8 % 2 === 1 && mixer.rand() > plan.fullness(t) + 0.15) continue;
+      const vt = voiceTones(tones, plan.voicing(t), 84);
+      pluck(vt[pat.order[pos8] % vt.length], t + jitter(0.004), vel * (0.8 + 0.2 * plan.fullness(t)), bright);
+      if (sparkle && mod(step, 16) === 6) playNote(c, mixer.bells, { instrument: "piano", midi: m, at: Math.max(0, t), duration: 0.25, velocity: 0.3, release: 1.4, pan: 0.3 });
+      continue;
+    }
     pluck(m, t + jitter(0.004), vel, bright);
     if (inDrop && !onBeat && rand() < 0.5) pluck(tones[arp[mod(step + 1, arp.length)] % tones.length], t + s16 + jitter(0.004), vel * 0.6, bright);
   }
@@ -1900,13 +2201,31 @@ function composeLiftLayers(g: {
   // ── The drop ──
   for (let t = drop; t < E - 0.02; t += beat) {
     const pos = mod(Math.round((t - phase) / beat), 4);
-    kick(t, 1);
-    duck(bassDuck.gain, t, 0.25);
-    // Studio: a gentler pump on the strings and pad (real strings pumping hard sound broken).
-    duck(chordDuck.gain, t, mixer ? 0.7 : 0.45);
-    duck(padOut.gain, t, mixer ? 0.75 : 0.6);
-    openHat(t + s8 + jitter(0.003), 1 + jitter(0.1));
-    if (pos === 1 || pos === 3) clap(t + jitter(0.003), 0.85);
+    if (mixer) {
+      // Studio: the kit varies every 4 bars (16th hats; open hats on 2 and 4
+      // only; a skipped kick; a ghost snare), and drops out once for 2 bars.
+      const plan = mixer.plan;
+      const dv = plan.drums(t), last = plan.barInBlock(t) === 3;
+      if (!plan.out("drums", t)) {
+        if (!(dv === 2 && last && pos === 3)) {
+          kick(t, 1);
+          duck(bassDuck.gain, t, 0.25);
+          duck(chordDuck.gain, t, 0.7);
+          duck(padOut.gain, t, 0.75);
+        }
+        if (dv !== 2 || pos === 1 || pos === 3) openHat(t + s8 + jitter(0.003), 1 + jitter(0.1));
+        if (dv === 1) [1, 3].forEach((k) => playHit(c, mixer.perc, { name: "hat", at: t + k * s16, velocity: 0.22 + mixer.rand() * 0.06, pan: -0.2 }));
+        if (pos === 1 || pos === 3) clap(t + jitter(0.003), 0.85);
+        if (dv === 3 && pos === 3) playHit(c, mixer.kit, { name: "snare", at: t + 3 * s16, velocity: 0.22, lowpassHz: 5000 });
+      }
+    } else {
+      kick(t, 1);
+      duck(bassDuck.gain, t, 0.25);
+      duck(chordDuck.gain, t, 0.45);
+      duck(padOut.gain, t, 0.6);
+      openHat(t + s8 + jitter(0.003), 1 + jitter(0.1));
+      if (pos === 1 || pos === 3) clap(t + jitter(0.003), 0.85);
+    }
     const ch = chordAt(t + s8);
     const bm = 36 + mod(tonicPc + ch.root - 36, 12);
     bassNote(bm, t + s8, s8 - 0.03, 0.9);
@@ -1922,9 +2241,9 @@ function composeLiftLayers(g: {
   const ft = arpTones(g.tonic);
   ft.slice(0, 3).forEach((m, i) => pluck(m + 12, E + i * s16, 0.8 - i * 0.12, 0.7));
   if (mixer) {
-    // Studio: the crash, and the glockenspiel doubling the last pluck.
+    // Studio: the crash, and one soft high piano note over the last pluck.
     playHit(c, mixer.perc, { name: "crash", at: E, velocity: 0.48 });
-    ft.slice(0, 3).forEach((m, i) => playNote(c, mixer.bells, { instrument: "glock", midi: m + 12, at: E + i * s16, duration: 0.3, velocity: 0.42 - i * 0.05, release: 1.2, pan: 0.3 - 0.2 * i }));
+    playNote(c, mixer.bells, { instrument: "piano", midi: ft[0] + 24, at: E + 2 * s16, duration: 0.4, velocity: 0.3, release: 1.8, pan: 0.25 });
   }
   bassNote(36 + mod(tonicPc + g.tonic.root - 36, 12), E, Math.min(1.6, dur - E - 0.1), 0.8);
 }
@@ -2001,6 +2320,8 @@ function composeCoastalLayers(g: {
   };
   const nearestBeat = (t: number) => phase + Math.round((t - phase) / beat) * beat;
   const chordPcs = (ch: Chord) => [0].concat(ch.pad).map((iv) => mod(tonicPc + ch.root + iv, 12));
+  /** Studio: the humanizing (null in the classic engine, which stays as it was). */
+  const feel = mixer ? makeFeel(mixer.rand, phase, beat) : null;
 
   // ── Breaths: before about every 2nd–3rd cut, preferring cuts that sit on a beat ──
   const cutList = g.cuts.filter((ct) => ct > introEnd + bar && ct < E - 0.3);
@@ -2308,6 +2629,33 @@ function composeCoastalLayers(g: {
     const n8 = Math.round((t - phase) / s8);
     const pos = mod(n8, 8);
     const br = inBreath(t);
+    if (mixer && feel) {
+      // Studio: relaxed, brushed — a swung shaker, the kick on the beat (the
+      // drive), a rim on 2 and 4. Drive adds a very quiet closed hat and a soft
+      // snare on beat 4 of every other bar. No snap, no open hats.
+      if (br) continue;
+      // Varied every 4 bars (plan): shaker density, the rim on 4 displaced to
+      // the and-of-4, a skipped kick, a ghost rim; out in a drums drop-out.
+      const plan = mixer.plan;
+      if (plan.out("drums", t)) continue;
+      const dv = plan.drums(t), last = plan.barInBlock(t) === 3, pv = 0.75 + 0.25 * plan.fullness(t);
+      const sw = feel.swing(t);
+      if (dv !== 2 || pos % 2 === 1) shaker(feel.time(sw), feel.vel((pos % 2 === 1 ? 0.85 : 0.55) * pv, t));
+      if (dv === 1 && pos % 2 === 1 && mixer.rand() < 0.35) shaker(feel.time(sw + s16), feel.vel(0.4 * pv, t));
+      if (drive && pos % 2 === 1 && dv !== 3) playHit(c, mixer.perc, { name: "hat", at: feel.time(sw), velocity: feel.vel(0.16 * pv, t), pan: 0.3, lowpassHz: 8000 });
+      const rimPos = dv === 1 ? [2, 7] : [2, 6];
+      if (rimPos.indexOf(pos) >= 0) playHit(c, mixer.perc, { name: "rim", at: feel.time(sw), velocity: feel.vel((drive ? 0.5 : 0.55) * pv, t), pan: -0.1 });
+      if (dv === 3 && pos === 5) playHit(c, mixer.perc, { name: "rim", at: feel.time(sw), velocity: feel.vel(0.25, t), pan: -0.1 });
+      if (pos % 2 === 0) {
+        if (!(dv === 2 && last && pos === 4)) {
+          kick(t, feel.vel(pos === 0 ? 1 : 0.88, t));
+          duck(bassDuck.gain, t, drive ? 0.5 : 0.55);
+          duck(padOut.gain, t, 0.82);
+        }
+        if (drive && pos === 6 && mod(Math.floor(n8 / 8), 2) === 1) playHit(c, mixer.kit, { name: "snare", at: feel.time(t), velocity: feel.vel(0.32, t), lowpassHz: 6000 });
+      }
+      continue;
+    }
     if (!br) {
       if (drive) {
         // 16th shaker, open hat on the off-beat 8ths.
@@ -2341,7 +2689,9 @@ function composeCoastalLayers(g: {
         breaths.forEach((b) => { if (b.from > t && b.from < t + len) len = b.from - t - 0.03; });
         let up = drive && mod(k, 4) === 3 && rand() < 0.3 ? 12 : 0; // the odd octave lift
         if (mixer && (bt === 0 || bt === 2)) up = 0; // studio: beats 1 and 3 stay on the root octave
-        bassNote(m + up, t, len, drive ? (mod(bt, 1) > 0 ? 1 : 0.85) : k === 0 ? 1 : 0.85);
+        const bv = drive ? (mod(bt, 1) > 0 ? 1 : 0.85) : k === 0 ? 1 : 0.85;
+        if (feel) bassNote(m + up, feel.time(t), len, feel.vel(bv, t));
+        else bassNote(m + up, t, len, bv);
       });
     }
   });
@@ -2355,34 +2705,28 @@ function composeCoastalLayers(g: {
     const tones = ch.arp.map((iv) => base + iv);
     const m = tones[arp[mod(n8, arp.length)] % tones.length];
     const opening = t < introEnd;
-    pluck(m, t + jitter(0.005), (mod(n8, 2) === 0 ? 1 : 0.8) * (opening ? 0.7 : 1) * (1 + jitter(0.1)));
-  }
-
-  // ── Studio: a second guitar strumming — down on 1, a lighter up on the and-of-3 ──
-  /** A strum: 5 strings low→high (down) or the top 3 high→low (up), 15–30 ms apart. */
-  // The strumming guitar sits 2 dB under the picked one (owner's ear, Oct 23).
-  let strumBus: GainNode | null = null;
-  const strum = (ch: Chord, t: number, down: boolean, vel: number, hold: number) => {
-    if (!mixer) return;
-    if (!strumBus) { strumBus = c.createGain(); strumBus.gain.value = Math.pow(10, -2 / 20); strumBus.connect(mixer.guitar); }
-    const dest = strumBus;
-    const rootPc = mod(tonicPc + ch.root, 12);
-    const low = 40 + mod(rootPc - 40, 12);
-    const third = ch.pad[0] === 3 ? 3 : 4;
-    const shape = [low, low + 7, low + 12, low + 12 + third, low + 19];
-    const notes = down ? shape : shape.slice(2).reverse();
-    let at = Math.max(0, t);
-    notes.forEach((m, k) => {
-      playNote(c, dest, { instrument: "nylon", midi: m, at, duration: Math.max(0.1, hold - (at - t)), velocity: vel * (down ? 1 - 0.04 * k : 0.85), release: 0.3, pan: -0.4 + 0.06 * k });
-      at += 0.015 + mixer.rand() * 0.015;
-    });
-  };
-  if (mixer) {
-    for (let b0 = phase + Math.ceil((introEnd - phase) / bar - 1e-6) * bar; b0 < E - 0.1; b0 += bar) {
-      if (!inBreath(b0)) strum(chordAt(b0 + 0.01), b0, true, drive ? 0.55 : 0.45, 1.6 * beat);
-      const u = b0 + 2.5 * beat;
-      if (u < E - 0.1 && !inBreath(u)) strum(chordAt(u + 0.01), u, false, drive ? 0.42 : 0.32, 0.9 * beat);
+    if (mixer && feel) {
+      // Studio: the picked guitar — swung, humanized, and the notes not all
+      // one length: some cut short, some left to ring over the next. Below C5.
+      // Its pattern follows the plan bar by bar, its register every 4 bars;
+      // out in a keys drop-out; lighter early and late.
+      const plan = mixer.plan;
+      if (plan.out("keys", t)) continue;
+      const pat = STUDIO_PATTERNS[plan.pattern(t)];
+      const pos8 = mod(n8, 8);
+      if (!opening && !pat.mask[pos8]) continue;
+      if (pos8 % 2 === 1 && mixer.rand() > plan.fullness(t) + 0.15) continue;
+      const vt = voiceTones(tones.map((x) => x - 12), { inv: plan.voicing(t).inv, oct: 0 }, 71); // register by inversion: it stays below C5
+      let mm = vt[pat.order[pos8] % vt.length];
+      while (mm > 71) mm -= 12;
+      while (mm < 45) mm += 12;
+      const r = mixer.rand();
+      const hold = r < 0.3 ? s8 * 2.6 : r < 0.75 ? s8 * 1.2 : s8 * 0.6;
+      const v = clamp(0.3 + 0.45 * (mod(n8, 2) === 0 ? 1 : 0.8) * (opening ? 0.7 : 1), 0.25, 0.85);
+      playNote(c, mixer.guitar, { instrument: "nylon", midi: mm, at: feel.time(feel.swing(t)), duration: hold, velocity: feel.vel(v, t), release: 0.35, pan: (mixer.rand() - 0.5) * 0.6 });
+      continue;
     }
+    pluck(m, t + jitter(0.005), (mod(n8, 2) === 0 ? 1 : 0.8) * (opening ? 0.7 : 1) * (1 + jitter(0.1)));
   }
 
   // ── The lead: two-bar phrases, A A' B A'' ──
@@ -2418,7 +2762,31 @@ function composeCoastalLayers(g: {
       if (t < E - 0.1) {
         const l = Math.min(dur0 - 0.02, E - t - 0.05);
         const legato = prevLead !== null && Math.abs(t - prevEnd) < 0.06 && prevLead !== m;
-        leadNote(m, t + jitter(0.006), l, (i === 0 ? 1 : 0.9) * (1 + jitter(0.06)), legato ? prevLead : null);
+        if (mixer && feel) {
+          // Studio (both Coastal moods): no vibes. A short Rhodes motif, an
+          // octave over the chords, in every other phrase with rests between;
+          // each appearance after a statement is its answer — a different
+          // rhythm (other notes of the phrase) ending on another chord tone, held.
+          const answer = mod(ph / 2, 2) === 1;
+          const picks = answer ? [0, 2, 3] : [0, 1, 2];
+          const lastPick = picks[picks.length - 1];
+          if (mod(ph, 2) === 0 && picks.indexOf(i) >= 0 && !mixer.plan.out("keys", t)) {
+            let mm = m;
+            if (answer && i === lastPick) {
+              const pcs = chordPcs(chordAt(t + 0.01));
+              for (let dm = 1; dm <= 5; dm++) {
+                if (pcs.indexOf(mod(m + dm, 12)) >= 0) { mm = m + dm; break; }
+                if (pcs.indexOf(mod(m - dm, 12)) >= 0) { mm = m - dm; break; }
+              }
+            }
+            while (mm > 79) mm -= 12;
+            while (mm < 67) mm += 12;
+            const hold = answer && i === lastPick ? 1.6 : 0.9;
+            playNote(c, mixer.keys, { instrument: "epiano", midi: mm, at: feel.time(t), duration: Math.max(0.12, l * hold), velocity: feel.vel(0.44, t), release: 0.5, pan: 0.15 });
+          }
+        } else {
+          leadNote(m, t + jitter(0.006), l, (i === 0 ? 1 : 0.9) * (1 + jitter(0.06)), legato ? prevLead : null);
+        }
         prevLead = m; prevEnd = t + dur0;
       }
       t += dur0;
@@ -2428,7 +2796,7 @@ function composeCoastalLayers(g: {
   // ── Breaths: a soft swell into each landing, an airy cymbal on it ──
   breaths.forEach((b, bi) => {
     // Coastal Drive: a 1-beat 16th snare fill into every other breath landing.
-    if (drive && mod(bi, 2) === 0 && b.to - b.from >= beat * 0.95) {
+    if (drive && !mixer && mod(bi, 2) === 0 && b.to - b.from >= beat * 0.95) {
       for (let k = 0; k < 4; k++) clap(b.to - beat + k * s16, 0.35 + 0.17 * k);
     }
     const big = riserLands.indexOf(b.land) >= 0;
@@ -2443,9 +2811,17 @@ function composeCoastalLayers(g: {
   air(E, 1);
   bassNote(36 + mod(rootPc - 36, 12), E, Math.min(2.4, dur - E - 0.1), 0.9);
   const base = 60 + mod(rootPc - 60, 12);
-  home.arp.slice(0, 4).forEach((iv, i) => pluck(base + iv, E + i * 0.08, 0.9 - i * 0.1, 1.6));
-  strum(home, E, true, 0.5, Math.max(0.3, dur - E - 0.3)); // studio only
+  // (Studio: the guitar's last chord an octave down, below C5.)
+  home.arp.slice(0, 4).forEach((iv, i) => pluck(base + iv - (mixer ? 12 : 0), E + i * 0.08, 0.9 - i * 0.1, 1.6));
   let target = scale[0];
   scale.forEach((m) => { if (mod(m, 12) === rootPc || mod(m - rootPc, 12) === 4) { if (Math.abs(m - 74) < Math.abs(target - 74)) target = m; } });
-  leadNote(target, E, Math.min(2.2, dur - E - 0.3), 0.95, prevLead !== null && prevLead !== target ? prevLead : null);
+  if (mixer) {
+    // Studio: the landing note on the Rhodes, not the vibes.
+    let mm = target;
+    while (mm > 79) mm -= 12;
+    while (mm < 67) mm += 12;
+    playNote(c, mixer.keys, { instrument: "epiano", midi: mm, at: E + 0.02, duration: Math.max(0.3, Math.min(2.2, dur - E - 0.3)), velocity: 0.48, release: 1.2, pan: 0.15 });
+  } else {
+    leadNote(target, E, Math.min(2.2, dur - E - 0.3), 0.95, prevLead !== null && prevLead !== target ? prevLead : null);
+  }
 }
