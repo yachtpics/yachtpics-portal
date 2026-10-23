@@ -5,6 +5,10 @@
  *    network is unavailable. Authenticated HTML is never cached, so brokers
  *    never see a stale dashboard or a logged-out shell.
  *  - Static build assets (/_next/static, /icons, fonts): stale-while-revalidate.
+ *  - Reel music instruments (/music/index.json and the /music/*.bin sample
+ *    packs, ~5 MB in all): cache-first, cached as they're first used (never
+ *    precached). Re-rendering the samples must bump CACHE_VERSION, since the
+ *    index and the packs have to change together.
  *  - Supabase, Stripe, and /api requests: passed straight through to the
  *    network (never cached) to avoid stale data and stale auth tokens.
  *
@@ -95,6 +99,24 @@ self.addEventListener("fetch", (event) => {
             })
         )
       )
+    );
+    return;
+  }
+
+  // Reel music instruments: cache-first. The packs only change when the
+  // samples are re-rendered (and CACHE_VERSION bumped with them), so once a
+  // mood's instruments are here the composer never waits on the network.
+  if (url.pathname.startsWith("/music/") && /\.(?:bin|json)$/.test(url.pathname)) {
+    event.respondWith(
+      caches.open(RUNTIME).then(async (cache) => {
+        const cached = await cache.match(request);
+        if (cached) return cached;
+        const response = await fetch(request);
+        if (response && response.status === 200 && response.type === "basic") {
+          cache.put(request, response.clone());
+        }
+        return response;
+      })
     );
     return;
   }

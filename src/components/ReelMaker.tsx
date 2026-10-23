@@ -579,6 +579,14 @@ export default function ReelMaker({
   const [musicSeed, setMusicSeed] = useState<number>(() => (auto?.music ? auto.music.seed >>> 0 : seedFromString(listingId ?? listing?.vessel_name ?? "yachtpics")));
   const [musicNote, setMusicNote] = useState("");
   const [previewing, setPreviewing] = useState<"" | "composing" | "playing">("");
+  /**
+   * Admin A/B (Oct 23): the music is played on sampled instruments ("studio")
+   * unless this is ticked, which plays the original oscillator sound
+   * ("classic") — for the preview and the render alike.
+   */
+  const [classicSound, setClassicSound] = useState(false);
+  /** Instrument download progress (0–100) while it's worth showing; null otherwise. */
+  const [musicLoading, setMusicLoading] = useState<number | null>(null);
   const previewRef = useRef<{ ctx: AudioContext; src: AudioBufferSourceNode | null } | null>(null);
   const previewTokenRef = useRef(0);
   useEffect(() => {
@@ -1113,7 +1121,23 @@ export default function ReelMaker({
       else if (u.kind === "marquee") u.bottomStarts.forEach((b, i) => { if (i > 0) cuts.push(starts[k] + b); });
     }
     const stackGrid = REEL_STYLES[styleKey].layout === "stack" && format === "reel";
-    return { mood, opts: { durationSec: total, cutTimesSec: cuts, mood, seed: musicSeed, endCardStartSec: endAt, bpm: stackGrid ? 120 : null } };
+    const engine = isAdmin && classicSound ? "classic" : "studio";
+    return { mood, opts: { durationSec: total, cutTimesSec: cuts, mood, seed: musicSeed, endCardStartSec: endAt, bpm: stackGrid ? 120 : null, engine } };
+  }
+
+  /**
+   * Progress for composeReelMusic's instrument download. It only surfaces
+   * after ~300 ms: the instruments stay in memory after the first fetch (and
+   * the service worker keeps them), so usually it never shows at all.
+   */
+  function instrumentProgress(): { onLoadProgress: (fraction: number) => void; done: () => void } {
+    let last = 0;
+    let shown = false;
+    const timer = window.setTimeout(() => { shown = true; if (last < 1) setMusicLoading(Math.round(last * 100)); }, 300);
+    return {
+      onLoadProgress: (f) => { last = f; if (shown) setMusicLoading(f >= 1 ? null : Math.round(f * 100)); },
+      done: () => { window.clearTimeout(timer); setMusicLoading(null); },
+    };
   }
 
   function stopPreview() {
@@ -1142,8 +1166,11 @@ export default function ReelMaker({
     previewRef.current = { ctx, src: null };
     setPreviewing("composing");
     setMusicNote("");
+    // The same options as the render (engine included), so what's heard is what's baked in.
+    const prog = instrumentProgress();
     try {
-      const buf = await composeReelMusic(plan.opts);
+      const buf = await composeReelMusic({ ...plan.opts, onLoadProgress: prog.onLoadProgress });
+      prog.done();
       if (token !== previewTokenRef.current) return;
       const src = ctx.createBufferSource();
       src.buffer = buf;
@@ -1153,6 +1180,7 @@ export default function ReelMaker({
       src.start();
       setPreviewing("playing");
     } catch {
+      prog.done();
       if (token === previewTokenRef.current) { stopPreview(); setMusicNote("Couldn\u2019t make the preview."); }
     }
   }
@@ -1171,6 +1199,13 @@ export default function ReelMaker({
     setMusicChoice(v);
     setMusicNote("");
     try { window.localStorage.setItem(MUSIC_STORE_KEY, v); } catch { /* not remembered: fine */ }
+    setResult(null);
+    setPhase("idle");
+  }
+
+  function chooseClassicSound(on: boolean) {
+    stopPreview();
+    setClassicSound(on);
     setResult(null);
     setPhase("idle");
   }
@@ -1600,12 +1635,15 @@ export default function ReelMaker({
         if (!aacOk || !musicCanCompose()) {
           setMusicNote("This browser can\u2019t add music to a video, so this one is silent. Chrome or Edge on a computer can.");
         } else {
+          const prog = instrumentProgress();
           try {
-            music = await composeReelMusic(plan.opts);
+            music = await composeReelMusic({ ...plan.opts, onLoadProgress: prog.onLoadProgress });
             musicLabel = MUSIC_LABEL[plan.mood];
           } catch (e) {
             console.warn("Reel music failed; rendering silent.", e);
             setMusicNote("The music couldn\u2019t be made, so this video is silent.");
+          } finally {
+            prog.done();
           }
         }
       }
@@ -3597,7 +3635,7 @@ export default function ReelMaker({
               <div className="flex flex-wrap gap-2 mt-2">
                 {previewing ? (
                   <button onClick={stopPreview} className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-ink-900 bg-ink-900 text-white">
-                    {previewing === "composing" ? "Composing\u2026 (stop)" : "\u25a0 Stop"}
+                    {previewing === "composing" ? (musicLoading !== null ? `Loading instruments\u2026 ${musicLoading}% (stop)` : "Composing\u2026 (stop)") : "\u25a0 Stop"}
                   </button>
                 ) : (
                   <button onClick={() => void previewMusic()} disabled={busy || photoCount === 0} className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-800 hover:border-ink-400 disabled:opacity-40">
@@ -3613,6 +3651,19 @@ export default function ReelMaker({
                 return shown ? <p className="text-xs text-ink-600 mt-1.5">{MUSIC_LABEL[shown]} &mdash; {MUSIC_BLURB[shown]}.</p> : null;
               })()}
               <p className="text-xs text-ink-400 mt-1">Original YachtPics music, made for this reel and timed to its cuts &mdash; free to post anywhere, no copyright claims.</p>
+              {/* Admin only: A/B the sampled instruments against the original synth sound. */}
+              {isAdmin && (
+                <label className="mt-2 flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={classicSound}
+                    disabled={busy}
+                    onChange={(e) => chooseClassicSound(e.target.checked)}
+                    className="h-4 w-4 rounded border-hairline-strong text-accent-600 focus:ring-accent-500 disabled:opacity-40"
+                  />
+                  <span className="text-xs text-ink-500">Classic sound (oscillators)</span>
+                </label>
+              )}
             </>
           )}
           {musicNote && <p className="text-xs text-ink-600 mt-1.5">{musicNote}</p>}
@@ -3948,7 +3999,7 @@ export default function ReelMaker({
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <p className="text-sm font-semibold text-ink-900">{result ? "Your video is ready" : phase === "rendering" ? "Rendering…" : phase === "loading" ? (depthReading ? "Reading depth…" : "Loading photos…") : "Ready to make"}</p>
+            <p className="text-sm font-semibold text-ink-900">{result ? "Your video is ready" : phase === "rendering" ? "Rendering…" : phase === "loading" ? (musicLoading !== null ? "Loading instruments…" : depthReading ? "Reading depth…" : "Loading photos…") : "Ready to make"}</p>
             <p className="text-xs text-ink-400 mt-0.5">
               {result ? `${SPEC[result.format].label} · ${result.seconds}s · ${result.music ? `original YachtPics music (${result.music}) \u2014 free to post anywhere` : "silent (add trending audio when you post)"}` : "Renders right here in your browser — usually under a minute."}
             </p>
@@ -3968,9 +4019,9 @@ export default function ReelMaker({
         {busy && (
           <div className="mt-4">
             <div className="h-1.5 w-full bg-ink-100 rounded-full overflow-hidden">
-              <div className="h-full bg-accent-500 transition-[width] duration-200" style={{ width: `${progress}%` }} />
+              <div className="h-full bg-accent-500 transition-[width] duration-200" style={{ width: `${musicLoading ?? progress}%` }} />
             </div>
-            <p className="text-xs text-ink-400 mt-1.5">{phase === "loading" ? (depthReading ? "Reading depth" : "Loading photos") : "Encoding frames"} · {progress}%</p>
+            <p className="text-xs text-ink-400 mt-1.5">{musicLoading !== null ? "Loading instruments" : phase === "loading" ? (depthReading ? "Reading depth" : "Loading photos") : "Encoding frames"} · {musicLoading ?? progress}%</p>
           </div>
         )}
 
