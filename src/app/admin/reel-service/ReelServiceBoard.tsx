@@ -75,6 +75,9 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
   const [outcomes, setOutcomes] = useState<Record<string, RenderOutcome>>({});
   /** The reel the "Post to Facebook / Instagram" dialog is open for. */
   const [posting, setPosting] = useState<BoardJob | null>(null);
+  /** Captions rewritten on this page, by job id (until the next refresh brings them back from the server). */
+  const [captions, setCaptions] = useState<Record<string, string>>({});
+  const [rewriting, setRewriting] = useState<string | null>(null);
 
   const jobById = useMemo(() => {
     const m: Record<string, BoardJob> = {};
@@ -113,6 +116,24 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
       return null;
     } finally {
       setBusy("");
+    }
+  }
+
+  /** A fresh caption for one job — AI from its photos, or the next templated one. */
+  async function rewriteCaption(id: string) {
+    setRewriting(id);
+    setMsg("");
+    try {
+      const res = await fetch(`/api/admin/reel-service/jobs/${id}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "caption_rewrite" }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || typeof d?.caption !== "string") throw new Error(d?.error ?? "Couldn’t rewrite the caption.");
+      setCaptions((c) => ({ ...c, [id]: d.caption }));
+    } catch (e) {
+      setMsg(e instanceof Error ? e.message : "Couldn’t rewrite the caption.");
+    } finally {
+      setRewriting(null);
     }
   }
 
@@ -454,10 +475,15 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
                           </button>
                         )}
                       </div>
-                      {j.caption && (
+                      {(captions[j.id] ?? j.caption) && (
                         <details className="w-full">
                           <summary className="text-xs text-ink-500 cursor-pointer">Caption</summary>
-                          <p className="text-xs text-ink-700 whitespace-pre-line mt-1">{j.caption}</p>
+                          <p className="text-xs text-ink-700 whitespace-pre-line mt-1">{captions[j.id] ?? j.caption}</p>
+                          <button onClick={() => void rewriteCaption(j.id)} disabled={rewriting === j.id}
+                            title="Write a fresh caption for this reel (AI when configured, otherwise the next templated one)"
+                            className="mt-1 text-xs font-medium px-2.5 py-1 rounded-ctl border border-hairline-strong text-ink-700 disabled:opacity-40">
+                            {rewriting === j.id ? "Writing…" : "Rewrite"}
+                          </button>
                         </details>
                       )}
                     </li>

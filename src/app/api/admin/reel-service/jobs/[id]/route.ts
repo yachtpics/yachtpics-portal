@@ -4,8 +4,10 @@ import { replanReelServiceJob, setReelServiceJobLook, setReelServiceJobMusic } f
 import { isMusicChoice } from "@/lib/reelMusic";
 import { REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 import { REEL_SERVICE_PREFIX } from "@/lib/videoUploadTarget";
+import { rewriteReelServiceCaption } from "@/lib/reelServiceCaption";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 /**
  * POST /api/admin/reel-service/jobs/[id] — admin only.
@@ -15,6 +17,7 @@ export const runtime = "nodejs";
  *   { action: "rendering" }              → the browser has started rendering it
  *   { action: "rendered", path }         → MP4 uploaded to R2 at `path`: status 'ready'
  *   { action: "failed", error }          → status 'failed' with the reason
+ *   { action: "caption_rewrite" }        → a fresh caption, saved (any status) → { caption }
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin();
@@ -34,6 +37,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (typeof look !== "string" || !REEL_STYLES[look]) return NextResponse.json({ error: "Unknown look." }, { status: 400 });
     const r = await setReelServiceJobLook(admin, id, look);
     return r.ok ? NextResponse.json({ ok: true }) : NextResponse.json({ error: r.error }, { status: 400 });
+  }
+
+  if (action === "caption_rewrite") {
+    const r = await rewriteReelServiceCaption(admin, id);
+    return r.ok ? NextResponse.json({ caption: r.caption }) : NextResponse.json({ error: r.error }, { status: r.status });
   }
 
   if (action === "music") {

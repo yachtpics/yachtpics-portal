@@ -297,7 +297,7 @@ const REEL_SERVICE_SECTION = {
   steps: [
     "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you for the boats enrolled in the Reel Service, newest first. We email you when new ones are ready.",
     "Watch any reel right on the page, then Download it — or on a phone, tap Save or share to send it straight to Instagram or your camera roll.",
-    "Each reel comes with a caption: tap Copy and paste it when you post. Reels come with original YachtPics music, free to post anywhere with no copyright claims — or ask us for silent versions if you'd rather add a trending sound in Instagram.",
+    "Each reel comes with a caption: tap Copy and paste it when you post. Don't like the caption? Rewrite gives you a fresh one. Reels come with original YachtPics music, free to post anywhere with no copyright claims — or ask us for silent versions if you'd rather add a trending sound in Instagram.",
     "Your assistants see Your Reels too, and get the same emails.",
   ],
 };

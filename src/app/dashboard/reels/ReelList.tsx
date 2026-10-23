@@ -20,6 +20,8 @@ function ReelCard({ reel }: { reel: DeliveredReel }) {
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState("");
   const [copied, setCopied] = useState(false);
+  const [caption, setCaption] = useState(reel.caption);
+  const [rewriting, setRewriting] = useState(false);
   // Read after mount so the server's markup and the browser's agree.
   const [touch, setTouch] = useState(false);
   useEffect(() => { setTouch(isTouchDevice()); }, []);
@@ -81,11 +83,30 @@ function ReelCard({ reel }: { reel: DeliveredReel }) {
 
   async function copy() {
     try {
-      await navigator.clipboard.writeText(reel.caption);
+      await navigator.clipboard.writeText(caption);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       setErr("Couldn’t copy — select the caption and copy it by hand.");
+    }
+  }
+
+  /** A fresh caption, saved on the reel — AI from the reel's photos, or the next templated one. */
+  async function rewrite() {
+    setErr("");
+    setRewriting(true);
+    try {
+      const res = await fetch(`/api/reel-service/jobs/${reel.id}/caption`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "rewrite" }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || typeof d?.caption !== "string") throw new Error(d?.error ?? "Couldn’t rewrite the caption.");
+      setCaption(d.caption);
+      setCopied(false);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Couldn’t rewrite the caption.");
+    } finally {
+      setRewriting(false);
     }
   }
 
@@ -122,13 +143,20 @@ function ReelCard({ reel }: { reel: DeliveredReel }) {
             Download
           </button>
         </div>
-        {reel.caption && (
+        {caption && (
           <div className="mt-4">
             <div className="flex items-center justify-between">
               <p className="label-caps text-ink-500">Caption</p>
-              <button onClick={() => void copy()} className="text-xs font-semibold text-accent-700 hover:underline">{copied ? "Copied" : "Copy"}</button>
+              <div className="flex items-center gap-3">
+                <button onClick={() => void rewrite()} disabled={rewriting}
+                  title="Write a fresh caption for this reel"
+                  className="text-xs font-semibold text-accent-700 hover:underline disabled:opacity-50 disabled:no-underline">
+                  {rewriting ? "Writing…" : "Rewrite"}
+                </button>
+                <button onClick={() => void copy()} className="text-xs font-semibold text-accent-700 hover:underline">{copied ? "Copied" : "Copy"}</button>
+              </div>
             </div>
-            <p className="mt-1 text-sm text-ink-700 whitespace-pre-line bg-ink-50 rounded-ctl p-3 select-all">{reel.caption}</p>
+            <p className="mt-1 text-sm text-ink-700 whitespace-pre-line bg-ink-50 rounded-ctl p-3 select-all">{caption}</p>
           </div>
         )}
         {err && <p className="mt-3 text-xs text-danger-700">{err}</p>}
