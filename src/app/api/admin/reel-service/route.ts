@@ -4,6 +4,7 @@ import { isPeriod, loadReelServiceEnrolment, periodET, planReelServiceMonth, pre
 import { REEL_SERVICE_PRICE } from "@/lib/plans";
 import { deliverReelServiceJobs } from "@/lib/reelServiceEmail";
 import { parseShotInfo } from "@/lib/reelClips";
+import { extendReelService } from "@/lib/reelServiceStripe";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -24,13 +25,27 @@ export async function GET(req: NextRequest) {
   const p = sp.get("period");
   const period = isPeriod(p) ? p : periodET();
   const periods = [period, previousPeriod(period)];
-  const { data, error } = await admin.from("reel_service_jobs")
-    .select("id, broker_id, listing_id, period, slot, angle, look, settings, status, created_at, listings:listing_id(vessel_name, year, make, model)")
+  // Paid boats' reels carry a due date (Oct 24b): soonest due first, so a
+  // just-bought boat's first reel is made right away; then the rest, oldest first.
+  const cols = "id, broker_id, listing_id, period, slot, angle, look, settings, status, created_at, listings:listing_id(vessel_name, year, make, model)";
+  let res = await admin.from("reel_service_jobs")
+    .select(`${cols}, due_at`)
     .in("period", periods)
     .eq("status", "planned")
+    .order("due_at", { ascending: true, nullsFirst: false })
     .order("created_at", { ascending: true })
     .order("slot", { ascending: true })
     .limit(500);
+  if (res.error && /due_at/.test(res.error.message)) {
+    res = await admin.from("reel_service_jobs")
+      .select(cols)
+      .in("period", periods)
+      .eq("status", "planned")
+      .order("created_at", { ascending: true })
+      .order("slot", { ascending: true })
+      .limit(500) as typeof res;
+  }
+  const { data, error } = res;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ jobs: data ?? [], periods }, { headers: { "Cache-Control": "no-store" } });
 }
@@ -46,6 +61,7 @@ export async function GET(req: NextRequest) {
  *   { action: "replan_unmade", period, listingIds }                      → re-plan those listings' planned/failed jobs
  *   { action: "shots", shots: { videoId: ShotInfo } }                    → store detected edit points (videos.shot_cuts)
  *   { action: "replan_listing", period, listingId }                      → re-plan ALL of a listing's reels that month (delivered too)
+ *   { action: "extend", listingId, days }                                → paid boat: push the next Stripe charge out 1–30 days (Queue)
  */
 export async function POST(req: NextRequest) {
   const auth = await requireAdmin();
@@ -216,6 +232,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, period, ...r });
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Re-planning failed." }, { status: 500 });
+    }
+  }
+
+  if (action === "extend") {
+    const listingId = typeof body?.listingId === "string" ? body.listingId : "";
+    const days = Math.round(Number(body?.days));
+    if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    const { data: me } = await admin.from("profiles").select("first_name, last_name").eq("id", userId).maybeSingle();
+    const name = [me?.first_name, me?.last_name].filter(Boolean).join(" ") || "admin";
+    try {
+      const r = await extendReelService(admin, listingId, days, name);
+      return r.ok ? NextResponse.json(r) : NextResponse.json({ error: r.error }, { status: 400 });
+    } catch (e) {
+      return NextResponse.json({ error: e instanceof Error ? e.message : "Stripe refused the change." }, { status: 500 });
     }
   }
 

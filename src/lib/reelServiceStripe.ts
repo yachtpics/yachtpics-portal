@@ -41,10 +41,28 @@ export type ReelServiceListingRow = {
   current_period_end: string | null;
   cancel_at_period_end: boolean;
   started_by: string | null;
+  /** Start of the paid period (migration 20261024b; absent before). */
+  current_period_start?: string | null;
+  note?: string | null;
 };
 
 export const RS_ROW_SELECT =
   "listing_id, broker_id, enrolled_at, ended_at, stripe_subscription_id, stripe_customer_id, billing_status, current_period_end, cancel_at_period_end, started_by";
+
+/** One boat's row, with the paid-period columns when 20261024b is applied. `error` = the table isn't ready. */
+export async function readReelServiceRow(service: SupabaseClient, listingId: string): Promise<{ row: ReelServiceListingRow | null; error: string | null; periodColumns: boolean }> {
+  const wide = await service.from("reel_service_listings").select(`${RS_ROW_SELECT}, current_period_start, note`).eq("listing_id", listingId).maybeSingle();
+  if (!wide.error) return { row: (wide.data as ReelServiceListingRow | null) ?? null, error: null, periodColumns: true };
+  const base = await service.from("reel_service_listings").select(RS_ROW_SELECT).eq("listing_id", listingId).maybeSingle();
+  return { row: (base.data as ReelServiceListingRow | null) ?? null, error: base.error?.message ?? null, periodColumns: false };
+}
+
+/** A paid boat that is running and planned per paid period (start known). */
+export function paidPeriodStart(row: ReelServiceListingRow | null): string | null {
+  if (!row || row.ended_at || !row.stripe_subscription_id) return null;
+  if (row.billing_status !== "active" && row.billing_status !== "past_due") return null;
+  return row.current_period_start ?? null;
+}
 
 // ── Readiness ────────────────────────────────────────────────────────────────
 
@@ -127,17 +145,17 @@ export type ListingReelServiceState = {
   row: ReelServiceListingRow | null;
   /** The broker is enrolled with no per-boat rows: every active boat is planned (comped). */
   legacy: boolean;
-  /** Reels delivered for this listing in this calendar month (Eastern). */
+  /** Reels delivered for this listing this service month: the paid period for a paid boat, else the calendar month (Eastern). */
   deliveredThisMonth: number;
 };
 
 export async function loadListingReelService(service: SupabaseClient, listingId: string, brokerId: string): Promise<ListingReelServiceState> {
-  const period = periodET();
-  const { count } = await service.from("reel_service_jobs")
-    .select("id", { count: "exact", head: true })
-    .eq("listing_id", listingId).eq("period", period).eq("status", "delivered");
+  const { row: data, error } = await readReelServiceRow(service, listingId);
+  const start = paidPeriodStart(data);
+  let q = service.from("reel_service_jobs").select("id", { count: "exact", head: true }).eq("listing_id", listingId).eq("status", "delivered");
+  q = start ? q.eq("service_period_start", new Date(start).toISOString()) : q.eq("period", periodET());
+  const { count } = await q;
   const deliveredThisMonth = count ?? 0;
-  const { data, error } = await service.from("reel_service_listings").select(RS_ROW_SELECT).eq("listing_id", listingId).maybeSingle();
   if (error) return { ready: false, row: null, legacy: false, deliveredThisMonth };
   let legacy = false;
   if (!data) {
@@ -161,6 +179,13 @@ export function rowBlocksCheckout(row: ReelServiceListingRow | null): boolean {
 
 export function isReelServiceSubscription(sub: Stripe.Subscription | null | undefined): boolean {
   return sub?.metadata?.kind === REEL_SERVICE_KIND;
+}
+
+function periodStartIso(subscription: Stripe.Subscription): string | null {
+  const raw = (subscription as unknown as { current_period_start?: number }).current_period_start
+    ?? (subscription as unknown as { items?: { data?: { current_period_start?: number }[] } }).items?.data?.[0]?.current_period_start
+    ?? null;
+  return raw ? new Date(raw * 1000).toISOString() : null;
 }
 
 function periodEndIso(subscription: Stripe.Subscription): string | null {
@@ -195,7 +220,8 @@ function customerId(subscription: Stripe.Subscription): string | null {
   return typeof c === "string" ? c : c.id;
 }
 
-type SyncResult = { ok: boolean; listingId: string | null; brokerId: string | null; status: ReelBillingStatus | null; reason?: string };
+/** `advanced`: a (new) paid period started with this event — plan its reels. */
+type SyncResult = { ok: boolean; listingId: string | null; brokerId: string | null; status: ReelBillingStatus | null; reason?: string; advanced?: boolean };
 
 /**
  * Write a Reel Service subscription's current state onto its boat's row.
@@ -217,12 +243,12 @@ export async function syncReelServiceSubscription(
   const status: ReelBillingStatus | null = opts.deleted ? "canceled" : mapStatus(subscription.status);
   if (!status) return { ok: true, listingId, brokerId, status: null, reason: `ignored status ${subscription.status}` };
 
-  const { data: existing, error: readErr } = await service.from("reel_service_listings").select(RS_ROW_SELECT).eq("listing_id", listingId).maybeSingle();
+  const { row: existing, error: readErr } = await readReelServiceRow(service, listingId);
   if (readErr) {
-    console.warn(`[reel-service] reel_service_listings not ready (${readErr.message}); Stripe event for ${subscription.id} skipped. Apply 20261024_reel_service_stripe.sql.`);
+    console.warn(`[reel-service] reel_service_listings not ready (${readErr}); Stripe event for ${subscription.id} skipped. Apply 20261024_reel_service_stripe.sql.`);
     return { ok: false, listingId, brokerId, status, reason: "not_ready" };
   }
-  const row = existing as ReelServiceListingRow | null;
+  const row = existing;
   if (row && row.stripe_subscription_id !== subscription.id) {
     // The row is about something else: another (newer) subscription, or a
     // comp. Only a live subscription may take over a row that isn't live.
@@ -251,17 +277,31 @@ export async function syncReelServiceSubscription(
     cancel_at_period_end: !!subscription.cancel_at_period_end,
     ended_at: endedAt,
   };
+  // The paid period. A "trialing" subscription here only comes from an admin
+  // Extend (trial_end pushed out): that stretches the CURRENT period, so its
+  // start stays put and no new reels are planned until the real renewal.
+  const sameSub = !!row && row.stripe_subscription_id === subscription.id;
+  let periodStart = periodStartIso(subscription);
+  if (subscription.status === "trialing" && sameSub && row?.current_period_start) periodStart = row.current_period_start;
+  update.current_period_start = periodStart;
+  const advanced = (status === "active" || status === "past_due") && !!periodStart
+    && (!sameSub || !row?.current_period_start || Date.parse(row.current_period_start) !== Date.parse(periodStart));
   const newlyLive = (status === "active" || status === "past_due") &&
     (!row || row.stripe_subscription_id !== subscription.id || !!row.ended_at);
   if (newlyLive) update.enrolled_at = now;
   if (!row || row.stripe_subscription_id !== subscription.id) update.started_by = opts.startedBy ?? "broker";
 
-  const { error } = await service.from("reel_service_listings").upsert(update, { onConflict: "listing_id" });
+  let { error } = await service.from("reel_service_listings").upsert(update, { onConflict: "listing_id" });
+  if (error && /current_period_start/.test(error.message)) {
+    // 20261024b not applied yet: save without the period start (calendar-month planning).
+    delete update.current_period_start;
+    ({ error } = await service.from("reel_service_listings").upsert(update, { onConflict: "listing_id" }));
+  }
   if (error) {
     console.warn(`[reel-service] couldn't save ${subscription.id} on listing ${listingId}: ${error.message}`);
     return { ok: false, listingId, brokerId, status, reason: error.message };
   }
-  return { ok: true, listingId, brokerId, status };
+  return { ok: true, listingId, brokerId, status, advanced: advanced && "current_period_start" in update };
 }
 
 async function vesselName(service: SupabaseClient, listingId: string): Promise<string> {
@@ -443,7 +483,47 @@ export async function handleReelServiceSubscriptionChanged(service: SupabaseClie
   // Always the subscription as it is now, so out-of-order events can't regress it.
   const subscription = await stripe.subscriptions.retrieve(subscriptionId);
   if (!isReelServiceSubscription(subscription)) return;
-  await syncReelServiceSubscription(service, subscription);
+  const r = await syncReelServiceSubscription(service, subscription);
+  // A new paid period began (renewal): plan its reels, due weekly from the start.
+  if (r.ok && r.advanced && r.listingId && r.brokerId) {
+    try {
+      await planReelServiceMonth(service, periodET(), { brokerIds: [r.brokerId], listingIds: [r.listingId] });
+    } catch (e) {
+      console.warn(`[reel-service] planning the new period of ${r.listingId} failed (the daily cron will fill it): ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+}
+
+/**
+ * Admin "Extend by N days" (1–30): push the boat's next charge out by N days
+ * without charging or crediting anything. Stripe's documented way to move the
+ * next billing date of an active subscription is to give it a trial that ends
+ * at the new date: subscriptions.update(id, { trial_end, proration_behavior:
+ * "none" }). The subscription reads "trialing" until then (we keep it 'active'
+ * and keep the period start, so no extra reels are planned); at trial_end
+ * Stripe charges the normal $179 and the next paid period starts there.
+ * Logged on the row's note.
+ */
+export async function extendReelService(service: SupabaseClient, listingId: string, days: number, adminName: string): Promise<{ ok: true; nextCharge: string } | { ok: false; error: string }> {
+  if (!Number.isInteger(days) || days < 1 || days > 30) return { ok: false, error: "Extend by 1–30 days." };
+  const { row, error } = await readReelServiceRow(service, listingId);
+  if (error) return { ok: false, error: "Reel Service billing isn’t set up yet (migration)." };
+  if (!row?.stripe_subscription_id || row.ended_at) return { ok: false, error: "This boat has no running paid Reel Service." };
+  const sub = await stripe.subscriptions.retrieve(row.stripe_subscription_id);
+  if (sub.status !== "active" && sub.status !== "trialing") {
+    return { ok: false, error: `Stripe says this subscription is ${sub.status}; only a subscription in good standing can be extended.` };
+  }
+  const endRaw = (sub as unknown as { current_period_end?: number }).current_period_end
+    ?? (sub as unknown as { items?: { data?: { current_period_end?: number }[] } }).items?.data?.[0]?.current_period_end;
+  if (!endRaw) return { ok: false, error: "Stripe didn’t return the current period end." };
+  const trialEnd = endRaw + days * 86400;
+  const updated = await stripe.subscriptions.update(sub.id, { trial_end: trialEnd, proration_behavior: "none" });
+  await syncReelServiceSubscription(service, updated);
+  const nextCharge = new Date(trialEnd * 1000).toISOString();
+  const line = `${new Date().toISOString().slice(0, 10)}: extended ${days} day${days === 1 ? "" : "s"} by ${adminName} — next charge ${nextCharge.slice(0, 10)}`;
+  const note = row.note ? `${row.note}\n${line}` : line;
+  await service.from("reel_service_listings").update({ note: note.slice(-2000) }).eq("listing_id", listingId);
+  return { ok: true, nextCharge };
 }
 
 /** invoice.payment_failed: past due (Stripe keeps retrying; the boat stays in service until it gives up). */

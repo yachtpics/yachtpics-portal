@@ -56,19 +56,34 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
       : (enrolment[s.broker_id]?.listingIds ?? []).filter((id) => boatNames[id]).map((id) => boatNames[id]).sort((a, b) => a.localeCompare(b)),
   }));
 
-  const boardJobs = ((jobs ?? []) as unknown as BoardJob[]);
+  let boardJobs = ((jobs ?? []) as unknown as BoardJob[]);
+  // Due dates of paid boats' reels (Oct 24b) — a separate read so the board
+  // works before 20261024b_reel_service_period.sql is applied.
+  {
+    const { data: dues, error: dueErr } = await admin.from("reel_service_jobs").select("id, due_at").eq("period", period).not("due_at", "is", null);
+    if (!dueErr && dues && dues.length) {
+      const byId: Record<string, string> = {};
+      (dues as { id: string; due_at: string }[]).forEach((d) => { byId[d.id] = d.due_at; });
+      boardJobs = boardJobs.map((j) => ({ ...j, due_at: byId[j.id] ?? null }));
+    }
+  }
 
   // ── Queue (Oct 24): every boat on the service this month, paid + comped,
   // plus paid boats that are past due or paused. Billing columns come from
   // 20261024_reel_service_stripe.sql; before it, every row reads as comped.
   const thisPeriod = periodET();
-  type RsRow = { listing_id: string; broker_id: string; ended_at: string | null; billing_status?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean | null };
+  type RsRow = { listing_id: string; broker_id: string; ended_at: string | null; billing_status?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean | null; current_period_start?: string | null; stripe_subscription_id?: string | null };
   let billingReady = true;
   let rsRows: RsRow[] = [];
   const brokerIdsAll = subRows.map((s) => s.broker_id);
   if (brokerIdsAll.length) {
     let r = await admin.from("reel_service_listings")
-      .select("listing_id, broker_id, ended_at, billing_status, current_period_end, cancel_at_period_end").in("broker_id", brokerIdsAll);
+      .select("listing_id, broker_id, ended_at, billing_status, current_period_end, cancel_at_period_end, current_period_start, stripe_subscription_id").in("broker_id", brokerIdsAll);
+    if (r.error) {
+      // 20261024b not applied: no paid periods yet.
+      r = await admin.from("reel_service_listings")
+        .select("listing_id, broker_id, ended_at, billing_status, current_period_end, cancel_at_period_end").in("broker_id", brokerIdsAll) as typeof r;
+    }
     if (r.error) {
       billingReady = false;
       r = await admin.from("reel_service_listings").select("listing_id, broker_id, ended_at").in("broker_id", brokerIdsAll) as typeof r;
@@ -103,6 +118,10 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
   const queueIds = Object.keys(boatStatus);
   let queueRows: QueueRow[] = [];
   if (queueIds.length) {
+    // Paid boats count their reels per PAID period (Oct 24b), with due dates.
+    const { data: paidJobs } = await admin.from("reel_service_jobs")
+      .select("listing_id, status, due_at, service_period_start").in("listing_id", queueIds).not("service_period_start", "is", null);
+    const pj = ((paidJobs ?? []) as { listing_id: string; status: string; due_at: string | null; service_period_start: string }[]);
     const [{ data: qListings }, { data: lastJobs }] = await Promise.all([
       admin.from("listings").select("id, broker_id, vessel_name, year, make, model, status").in("id", queueIds),
       admin.from("reel_service_jobs").select("listing_id, delivered_at").in("listing_id", queueIds).eq("status", "delivered")
@@ -117,13 +136,23 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
       .filter((l) => l.status === "active" || boatStatus[l.id] !== "comped")
       .map((l) => {
         const row = rsRows.find((x) => x.listing_id === l.id);
+        const start = row?.stripe_subscription_id && row.current_period_start && (boatStatus[l.id] === "paid" || boatStatus[l.id] === "past_due")
+          ? Date.parse(row.current_period_start) : null;
+        const inPeriod = start !== null ? pj.filter((j) => j.listing_id === l.id && Date.parse(j.service_period_start) === start) : [];
+        const nextDue = inPeriod.filter((j) => j.status !== "delivered" && j.due_at).map((j) => j.due_at as string)
+          .sort((a, b) => Date.parse(a) - Date.parse(b))[0] ?? null;
         return {
           listingId: l.id,
           boat: l.vessel_name || [l.year, l.make, l.model].filter(Boolean).join(" ") || "Listing",
           brokerId: l.broker_id,
           broker: brokerName[l.broker_id] ?? "Broker",
           status: boatStatus[l.id],
-          delivered: mj.filter((j) => j.listing_id === l.id && j.status === "delivered").length,
+          delivered: start !== null
+            ? inPeriod.filter((j) => j.status === "delivered").length
+            : mj.filter((j) => j.listing_id === l.id && j.status === "delivered").length,
+          paidPeriod: start !== null,
+          nextDueAt: nextDue,
+          canExtend: !!row?.stripe_subscription_id && boatStatus[l.id] === "paid" && !row?.cancel_at_period_end,
           renewsAt: row?.current_period_end ?? null,
           cancelAtPeriodEnd: !!row?.cancel_at_period_end,
           lastDeliveredAt: last[l.id] ?? null,

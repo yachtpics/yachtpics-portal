@@ -727,7 +727,30 @@ export function reelServiceCaption(l: Pick<ListingRow, "year" | "length_ft" | "m
 type JobRow = {
   id: string; broker_id: string; listing_id: string; period: string; slot: number;
   angle: string; look: string; status: string; settings: ReelServiceSettings | null;
+  /** Paid boats (Oct 24b): the paid period this job belongs to, and its target date. Null/absent = calendar month. */
+  service_period_start?: string | null; due_at?: string | null;
 };
+
+const JOB_HISTORY_SELECT = "id, broker_id, listing_id, period, slot, angle, look, status, settings";
+
+/** Job history for the planner, with the paid-period columns when migration 20261024b is applied. */
+async function loadJobHistory(admin: SupabaseClient, listingIds: string[]): Promise<JobRow[]> {
+  if (listingIds.length === 0) return [];
+  const wide = await admin.from("reel_service_jobs").select(`${JOB_HISTORY_SELECT}, service_period_start, due_at`).in("listing_id", listingIds);
+  if (!wide.error) return (wide.data ?? []) as JobRow[];
+  const { data } = await admin.from("reel_service_jobs").select(JOB_HISTORY_SELECT).in("listing_id", listingIds);
+  return (data ?? []) as JobRow[];
+}
+
+/** Reels of a paid period are due at period start + 0, 7, 14, 21 … days. */
+export const PAID_DUE_STEP_DAYS = 7;
+const DAY_MS = 86_400_000;
+
+/** Same instant? (timestamps come back from Postgres in a different text form than Stripe's.) */
+function sameInstant(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return Date.parse(a) === Date.parse(b);
+}
 
 type ListingPack = { listing: ListingRow; ordered: PhotoRow[]; videos: VideoRow[] };
 
@@ -762,7 +785,13 @@ async function attachShots(admin: SupabaseClient, videos: VideoRow[]): Promise<V
  * If the table can't be read (migration not applied yet) everyone is legacy,
  * with a logged warning, so the cron keeps working.
  */
-export type ReelServiceEnrolment = { legacy: boolean; listingIds: string[] };
+/**
+ * `paid`: listing id → its current paid period, for boats paid through Stripe
+ * and running (active / past_due) whose period start is known (migration
+ * 20261024b). Those are planned per paid period; every other boat per
+ * calendar month.
+ */
+export type ReelServiceEnrolment = { legacy: boolean; listingIds: string[]; paid?: Record<string, { start: string; end: string | null }> };
 
 /**
  * Billing states (Oct 24, Stripe — reel_service_listings.billing_status) in
@@ -784,10 +813,19 @@ export async function loadReelServiceEnrolment(admin: SupabaseClient, brokerIds:
   const out: Record<string, ReelServiceEnrolment> = {};
   brokerIds.forEach((b) => { out[b] = { legacy: true, listingIds: [] }; });
   if (brokerIds.length === 0) return out;
-  type Row = { listing_id: string; broker_id: string; ended_at: string | null; billing_status?: string | null };
+  type Row = {
+    listing_id: string; broker_id: string; ended_at: string | null; billing_status?: string | null;
+    stripe_subscription_id?: string | null; current_period_start?: string | null; current_period_end?: string | null;
+  };
   let res = await admin.from("reel_service_listings")
-    .select("listing_id, broker_id, ended_at, billing_status")
+    .select("listing_id, broker_id, ended_at, billing_status, stripe_subscription_id, current_period_start, current_period_end")
     .in("broker_id", brokerIds);
+  if (res.error && /current_period_start/.test(res.error.message)) {
+    // 20261024b not applied yet: paid boats plan by calendar month.
+    res = await admin.from("reel_service_listings")
+      .select("listing_id, broker_id, ended_at, billing_status")
+      .in("broker_id", brokerIds) as typeof res;
+  }
   if (res.error && /billing_status/.test(res.error.message)) {
     // 20261024_reel_service_stripe.sql not applied yet: every row is comped.
     res = await admin.from("reel_service_listings")
@@ -806,7 +844,13 @@ export async function loadReelServiceEnrolment(admin: SupabaseClient, brokerIds:
     // enrolment: taking their last boat off must stop the plan, not fall
     // back to every listing.
     e.legacy = false;
-    if (reelServiceRowInService(r)) e.listingIds.push(r.listing_id);
+    if (reelServiceRowInService(r)) {
+      e.listingIds.push(r.listing_id);
+      if (r.stripe_subscription_id && r.current_period_start && REEL_SERVICE_PAID_STATUSES.indexOf(r.billing_status ?? "") >= 0) {
+        e.paid = e.paid ?? {};
+        e.paid[r.listing_id] = { start: r.current_period_start, end: r.current_period_end ?? null };
+      }
+    }
   });
   return out;
 }
@@ -1036,6 +1080,55 @@ function planOne(pack: ListingPack, ctx: PlanContext, opts: { excludeJobId?: str
 export type PlanResult = { brokers: number; listings: number; created: number; skipped: { brokerId: string; reason: string }[] };
 
 /**
+ * Paid boat (Oct 24b): make sure its CURRENT paid period, starting `start`,
+ * has `perListing` reels, due at start + 0, 7, 14, 21 days. Jobs carry
+ * period = the calendar month (Eastern) the paid period starts in, and take
+ * the lowest slots free in that month. Idempotent.
+ */
+async function planPaidPeriod(
+  admin: SupabaseClient, brokerId: string, pack: ListingPack, ctx: PlanContext, start: string, perListing: number,
+): Promise<{ created: number; error?: string }> {
+  const startMs = Date.parse(start);
+  if (!Number.isFinite(startMs)) return { created: 0, error: "bad period start" };
+  const calPeriod = periodET(new Date(startMs));
+  const onListing = ctx.history.filter((j) => j.listing_id === pack.listing.id);
+  const current = onListing.filter((j) => sameInstant(j.service_period_start, start));
+  const missing = Math.max(0, perListing - current.length);
+  if (missing === 0) return { created: 0 };
+  const usedSteps = current.map((j) => (j.due_at ? Math.round((Date.parse(j.due_at) - startMs) / (PAID_DUE_STEP_DAYS * DAY_MS)) : -1));
+  const taken = onListing.filter((j) => j.period === calPeriod).map((j) => j.slot);
+  const pctx: PlanContext = { history: ctx.history, period: calPeriod, perListing };
+  let created = 0;
+  let step = 0;
+  for (let s = 0; s < missing; s++) {
+    while (usedSteps.indexOf(step) >= 0) step++;
+    usedSteps.push(step);
+    let slot = 1;
+    while (taken.indexOf(slot) >= 0) slot++;
+    taken.push(slot);
+    const plan = planOne(pack, pctx, { slot });
+    const row = {
+      broker_id: brokerId,
+      listing_id: pack.listing.id,
+      period: calPeriod,
+      slot,
+      angle: plan.angle,
+      look: plan.look,
+      settings: plan.settings,
+      caption: plan.caption,
+      status: "planned" as const,
+      service_period_start: new Date(startMs).toISOString(),
+      due_at: new Date(startMs + step * PAID_DUE_STEP_DAYS * DAY_MS).toISOString(),
+    };
+    const { data: ins, error } = await admin.from("reel_service_jobs").insert(row).select("id").single();
+    if (error || !ins) return { created, error: error?.message ?? "insert failed" };
+    ctx.history.push({ ...row, id: ins.id as string });
+    created++;
+  }
+  return { created };
+}
+
+/**
  * Plan a month. For every enabled subscription (or just `brokerIds`), and
  * every active listing of that broker that is enrolled in the Reel Service
  * (reel_service_listings, not ended — or all of them for a broker with no
@@ -1064,8 +1157,12 @@ export async function planReelServiceMonth(
     // `listingIds` narrows the run to those boats (a just-paid Reel Service
     // boat is planned on its own, straight from the Stripe webhook).
     const en = opts.listingIds
-      ? { legacy: false, listingIds: (en0.legacy ? opts.listingIds : en0.listingIds.filter((id) => opts.listingIds!.indexOf(id) >= 0)) }
+      ? { legacy: false, listingIds: (en0.legacy ? opts.listingIds : en0.listingIds.filter((id) => opts.listingIds!.indexOf(id) >= 0)), paid: en0.paid }
       : en0;
+    const paid = en0.paid ?? {};
+    // Paid boats are planned for their CURRENT paid period only, by a run for
+    // the current month (the daily cron, the webhook, "Plan" on this month).
+    const currentRun = period === periodET();
     if (!en.legacy && en.listingIds.length === 0) {
       result.skipped.push({ brokerId: sub.broker_id, reason: "No boats enrolled in the Reel Service." });
       continue;
@@ -1077,12 +1174,20 @@ export async function planReelServiceMonth(
       result.skipped.push({ brokerId: sub.broker_id, reason: en.legacy ? `No active listing with ${MIN_LISTING_PHOTOS}+ photos.` : `No enrolled active boat with ${MIN_LISTING_PHOTOS}+ photos.` });
       continue;
     }
-    const { data: hist } = await admin.from("reel_service_jobs")
-      .select("id, broker_id, listing_id, period, slot, angle, look, status, settings")
-      .in("listing_id", packs.map((p) => p.listing.id));
-    const ctx: PlanContext = { history: ((hist ?? []) as JobRow[]).slice(), period, perListing };
+    const hist = await loadJobHistory(admin, packs.map((p) => p.listing.id));
+    const ctx: PlanContext = { history: hist.slice(), period, perListing };
 
     for (const pack of packs) {
+      const pp = paid[pack.listing.id];
+      if (pp) {
+        // (Or a run for the month its paid period started in — e.g. "Re-plan" on last month's board.)
+        if (!currentRun && periodET(new Date(Date.parse(pp.start))) !== period) continue;
+        result.listings++;
+        const r = await planPaidPeriod(admin, sub.broker_id, pack, ctx, pp.start, perListing);
+        result.created += r.created;
+        if (r.error) result.skipped.push({ brokerId: sub.broker_id, reason: `${pack.listing.vessel_name ?? pack.listing.id}: ${r.error}` });
+        continue;
+      }
       result.listings++;
       const current = ctx.history.filter((j) => j.listing_id === pack.listing.id && j.period === period);
       const missing = Math.max(0, perListing - current.length);

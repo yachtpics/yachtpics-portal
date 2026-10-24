@@ -23,6 +23,8 @@ export type BoardJob = {
   id: string; broker_id: string; listing_id: string; period: string; slot: number; angle: string; look: string;
   settings: ReelServiceSettings | null; status: string; video_path: string | null; caption: string | null; error: string | null;
   rendered_at: string | null; delivered_at: string | null;
+  /** Paid boats (Oct 24b): when this reel is due; null/absent = calendar-month job. */
+  due_at?: string | null;
   listings: { vessel_name: string | null; year: number | null; make: string | null; model: string | null } | null;
 };
 
@@ -198,7 +200,9 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
     router.refresh();
   }
 
-  const allRenderable = jobs.filter((j) => renderable(j.status)).map((j) => j.id);
+  // Soonest due first (paid boats' reels have due dates), then the rest in board order.
+  const dueMs = (j: BoardJob) => (j.due_at ? Date.parse(j.due_at) : Number.POSITIVE_INFINITY);
+  const allRenderable = jobs.filter((j) => renderable(j.status)).slice().sort((a, b) => dueMs(a) - dueMs(b)).map((j) => j.id);
   const allReady = jobs.filter((j) => j.status === "ready").map((j) => j.id);
   const allNextRound = nextRound(jobs);
   // Needs measuring: no length yet, or (when it can be stored) no shots yet.
@@ -423,7 +427,7 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
                     <li key={j.id} className="px-5 py-3 flex items-start gap-4 flex-wrap">
                       <div className="flex-1 min-w-[14rem]">
                         <p className="text-sm font-semibold text-ink-900">
-                          #{j.slot} {ANGLE_LABEL[j.angle as ReelServiceAngle] ?? j.angle}{st?.launch ? <span className="font-normal text-accent-700"> &middot; launch</span> : null}
+                          #{j.slot} {ANGLE_LABEL[j.angle as ReelServiceAngle] ?? j.angle}{st?.launch ? <span className="font-normal text-accent-700"> &middot; launch</span> : null}{j.due_at ? <span className={`font-normal ${j.status !== "delivered" && Date.parse(j.due_at) < Date.now() ? "text-danger-700" : "text-ink-500"}`}> &middot; due {new Date(j.due_at).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}</span> : null}
                         </p>
                         <p className="text-xs text-ink-500 mt-0.5">
                           <span className={st?.videoLed ? "font-semibold text-ink-700" : ""}>{st?.videoLed ? "Video-led" : "Photo-led"}</span>
