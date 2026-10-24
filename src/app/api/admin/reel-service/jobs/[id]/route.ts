@@ -15,6 +15,8 @@ export const maxDuration = 60;
  *   { action: "look", look }             → change only the look
  *   { action: "music", mood?, reroll? }  → music mood (off/auto/calm/…) and/or a new track
  *   { action: "rendering" }              → the browser has started rendering it
+ *   { action: "rendering", claim: true } → the same, but only if it is still planned
+ *                                          (or `retry: true`: failed) → 409 if someone else has it
  *   { action: "rendered", path }         → MP4 uploaded to R2 at `path`: status 'ready'
  *   { action: "failed", error }          → status 'failed' with the reason
  *   { action: "caption_rewrite" }        → a fresh caption, saved (any status) → { caption }
@@ -56,6 +58,16 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
   if (action === "rendering") {
     if (job.status === "delivered") return NextResponse.json({ error: "Already delivered." }, { status: 400 });
+    if (body?.claim === true) {
+      // The render station: take the job only if nobody else has (one atomic
+      // update on the status it saw), so two tabs never render the same reel.
+      const from = body?.retry === true ? ["failed"] : ["planned"];
+      const { data: took, error } = await admin.from("reel_service_jobs")
+        .update({ status: "rendering", error: null }).eq("id", id).in("status", from).select("id");
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (!took || took.length === 0) return NextResponse.json({ error: `Not ${from[0]} any more (now ${job.status}).` }, { status: 409 });
+      return NextResponse.json({ ok: true });
+    }
     await admin.from("reel_service_jobs").update({ status: "rendering", error: null }).eq("id", id);
     return NextResponse.json({ ok: true });
   }

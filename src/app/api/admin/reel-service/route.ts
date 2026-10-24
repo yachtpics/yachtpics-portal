@@ -1,12 +1,39 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
-import { isPeriod, loadReelServiceEnrolment, periodET, planReelServiceMonth, replanListingMonth, replanUnmade } from "@/lib/reelService";
+import { isPeriod, loadReelServiceEnrolment, periodET, planReelServiceMonth, previousPeriod, replanListingMonth, replanUnmade } from "@/lib/reelService";
 import { REEL_SERVICE_PRICE } from "@/lib/plans";
 import { deliverReelServiceJobs } from "@/lib/reelServiceEmail";
 import { parseShotInfo } from "@/lib/reelClips";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
+export const dynamic = "force-dynamic";
+
+/**
+ * GET /api/admin/reel-service?planned=1[&period=YYYY-MM] — admin only.
+ *   → { jobs, periods }: the planned reels of that month (default: this month,
+ *   Eastern) and the month before, oldest first. The render station
+ *   (/admin/reel-service/render) polls this and renders them one at a time.
+ */
+export async function GET(req: NextRequest) {
+  const auth = await requireAdmin();
+  if (auth.error) return auth.error;
+  const { admin } = auth;
+  const sp = req.nextUrl.searchParams;
+  if (sp.get("planned") !== "1") return NextResponse.json({ error: "Use ?planned=1" }, { status: 400 });
+  const p = sp.get("period");
+  const period = isPeriod(p) ? p : periodET();
+  const periods = [period, previousPeriod(period)];
+  const { data, error } = await admin.from("reel_service_jobs")
+    .select("id, broker_id, listing_id, period, slot, angle, look, settings, status, created_at, listings:listing_id(vessel_name, year, make, model)")
+    .in("period", periods)
+    .eq("status", "planned")
+    .order("created_at", { ascending: true })
+    .order("slot", { ascending: true })
+    .limit(500);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ jobs: data ?? [], periods }, { headers: { "Cache-Control": "no-store" } });
+}
 
 /**
  * POST /api/admin/reel-service — admin only.

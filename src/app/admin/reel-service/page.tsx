@@ -84,7 +84,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
       <h1 className="text-display text-ink-900">Reel Service</h1>
       <p className="text-ink-500 mt-1 text-sm max-w-2xl">
         Monthly social reels for the boats enrolled in the Reel Service. Enrol a broker, and choose their boats, on their broker page.
-        Reels render here in this browser, one at a time &mdash; keep this tab open and in front while they make.
+        Reels render in the browser, one at a time &mdash; leave the render station open to make every planned reel, or use Make here and keep this tab open and in front while they make.
       </p>
       {subErr && (
         <p className="mt-4 text-sm text-danger-700">

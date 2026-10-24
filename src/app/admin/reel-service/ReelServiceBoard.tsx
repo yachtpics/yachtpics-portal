@@ -9,6 +9,7 @@ import { detectShots, probeClip, rememberShots, type ShotInfo } from "@/lib/reel
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
 import SocialPostDialog from "@/components/SocialPostDialog";
 import ReelServiceBilling from "./ReelServiceBilling";
+import { LEASE_REFRESH_MS, ago, leaseFresh, readLease, type StationLease } from "./stationLease";
 
 /** A listing video, for the footage badge and "Measure videos". */
 /** `shots`: how many shots were detected (videos.shot_cuts); null = not yet (or the column isn't there). */
@@ -78,6 +79,19 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
   /** Captions rewritten on this page, by job id (until the next refresh brings them back from the server). */
   const [captions, setCaptions] = useState<Record<string, string>>({});
   const [rewriting, setRewriting] = useState<string | null>(null);
+  /** The render station's lease, when one is open in this browser (and the time it was read). */
+  const [station, setStation] = useState<{ lease: StationLease; now: number } | null>(null);
+
+  useEffect(() => {
+    const read = () => {
+      const l = readLease();
+      const t = Date.now();
+      setStation(leaseFresh(l, t) ? { lease: l, now: t } : null);
+    };
+    read();
+    const iv = window.setInterval(read, LEASE_REFRESH_MS);
+    return () => window.clearInterval(iv);
+  }, []);
 
   const jobById = useMemo(() => {
     const m: Record<string, BoardJob> = {};
@@ -248,6 +262,11 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
 
   return (
     <div className="mt-6">
+      {station && (
+        <p className="-mt-3 mb-4 text-xs text-ink-500">
+          Render station: {station.lease.running === false ? "open, paused" : "active"} (last seen {ago(station.now - station.lease.at)} ago)
+        </p>
+      )}
       {posting && (
         <SocialPostDialog
           source={{ kind: "reel_service_job", id: posting.id }}
@@ -278,6 +297,11 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
           className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl">
           Make all ready-to-render ({allRenderable.length})
         </button>
+        <a href="/admin/reel-service/render?auto=1" target="_blank" rel="noopener"
+          title="A tab that renders every planned reel (this month and last), one at a time, until you close it"
+          className="text-sm font-medium px-4 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400">
+          Open render station
+        </a>
         <button onClick={() => void deliver(allReady)} disabled={allReady.length === 0 || !!busy || rendering}
           className="text-sm font-semibold px-4 py-2 rounded-ctl bg-ink-950 text-white disabled:opacity-40">
           {busy === "deliver" ? "Delivering…" : `Deliver all ready (${allReady.length})`}
