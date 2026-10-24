@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import DashboardNav from "./_components/DashboardNav";
 import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
-import { getAccessStatus } from "@/lib/subscriptionAccess";
+import { getAccessStatus, trialDaysFor } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
 import { paidReelServiceBrokerIds, reelServiceGivesAccess } from "@/lib/brokerAccess";
 
@@ -24,7 +24,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .select("first_name, last_name, role, welcomed_at, is_brokerage_admin, brokerage_id")
       .eq("id", user.id)
       .single(),
-    supabase.from("subscriptions").select("status, trial_ends_at, stripe_subscription_id").eq("broker_id", user.id).single(),
+    supabase.from("subscriptions").select("status, trial_ends_at, stripe_subscription_id, created_at").eq("broker_id", user.id).single(),
   ]);
 
   // Gallery clients don't belong in the broker dashboard
@@ -56,8 +56,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const subscription = role === "broker" ? brokerSubscription : null;
 
-  // Start the 30-day trial on first login: if this broker's trial hasn't been
-  // seeded yet (trial_ends_at is null) and they aren't already paying, start it now.
+  // Start the trial on first login: if this broker's trial hasn't been seeded
+  // yet (trial_ends_at is null) and they aren't already paying, start it now.
+  // Length by cohort (trialDaysFor): 14 days for accounts opened from Oct 24
+  // 2026, 30 for accounts opened before.
   let trialEndsAt = subscription?.trial_ends_at ?? null;
   if (
     role === "broker" &&
@@ -66,7 +68,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     subscription.status !== "active" &&
     !subscription.stripe_subscription_id
   ) {
-    const newEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+    const newEnd = new Date(Date.now() + trialDaysFor(subscription) * 24 * 60 * 60 * 1000).toISOString();
     const serviceClient = createServiceClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!

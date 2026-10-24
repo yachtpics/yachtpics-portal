@@ -105,7 +105,7 @@ export default async function AdminTrialsPage() {
       <div className="mb-8">
         <h1 className="text-display text-ink-900">Trials &amp; Conversion</h1>
         <p className="text-ink-500 mt-1 text-sm">
-          Where every broker stands. Brokers in the final 3 days and just-lapsed trials are emailed automatically — this is your follow-up call list.
+          Where every broker stands. Trial brokers are emailed automatically on day 7 (their listings&apos; numbers), two days before the end, and once it has ended — this is your follow-up call list.
         </p>
       </div>
 

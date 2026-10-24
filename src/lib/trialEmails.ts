@@ -1,11 +1,42 @@
-// Branded HTML for trial lifecycle emails. Styling mirrors the welcome email:
-// ink header bar, brass accent, single clear call to action.
+// The free-trial email sequence (owner decision, Oct 24 2026). Three emails,
+// sent by /api/cron/trial-reminders (daily, 9am ET) at offsets from each
+// broker's own trial — 14 days for accounts opened from Oct 24 2026, 30 for
+// accounts opened before (trialDaysFor in subscriptionAccess.ts):
+//
+//   trial_day7    day 7          their own Seller Report numbers for the week
+//   trial_ending  2 days left    what stops, what stays, one button to Billing
+//   trial_ended   first run after the trial ends — photos still free, Starter $29
+//
+// Style follows the other broker emails: ink header, brass accent, short,
+// understated, no exclamation marks, no emoji.
 
 import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
 
 const PORTAL = "https://portal.yachtpics.com";
 
-function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: string, unsubToken?: string): string {
+/** email_log types — one per email, so each dedups on its own. */
+export const TRIAL_EMAIL_TYPE = {
+  day7: "trial_day7",
+  ending: "trial_ending",
+  ended: "trial_ended",
+} as const;
+
+/** Types the earlier (pre-Oct 24) reminders logged; counted as already sent. */
+export const LEGACY_TRIAL_EMAIL_TYPE = {
+  ending: "trial_expiring",
+  ended: "trial_lapsed",
+} as const;
+
+/** The Starter plan price quoted in the ended email (src/lib/plans.ts). */
+const STARTER_PRICE = 29;
+
+export type TrialEmail = { subject: string; html: string };
+
+function esc(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function shell(inner: string, unsubToken?: string): string {
   const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
   return `<!DOCTYPE html>
 <html>
@@ -15,13 +46,7 @@ function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: st
     <div style="background:#050b14;padding:32px 40px;">
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
     </div>
-    <div style="padding:40px;">
-      <h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111827;">${headline}</h1>
-      ${bodyHtml}
-      <div style="margin:32px 0 8px;">
-        <a href="${ctaHref}" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">${ctaLabel}</a>
-      </div>
-    </div>
+    <div style="padding:40px;">${inner}</div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
       <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Questions? Just reply to this email.</p>
     </div>${unsubFooter}
@@ -30,51 +55,180 @@ function shell(headline: string, bodyHtml: string, ctaLabel: string, ctaHref: st
 </html>`;
 }
 
-function p(text: string): string {
-  return `<p style="margin:0 0 16px;font-size:15px;color:#374151;line-height:1.6;">${text}</p>`;
-}
+const kicker = (t: string) =>
+  `<p style="margin:0 0 8px;font-size:12px;font-weight:700;color:#84662a;text-transform:uppercase;">${t}</p>`;
+const h1 = (t: string) => `<h1 style="margin:0 0 14px;font-size:22px;font-weight:700;color:#111827;">${t}</h1>`;
+const p = (html: string, muted = false) =>
+  `<p style="margin:0 0 18px;font-size:15px;color:${muted ? "#6b7280" : "#374151"};line-height:1.6;">${html}</p>`;
+const cta = (label: string, href: string) =>
+  `<div style="margin:26px 0;">
+    <a href="${href}" style="display:inline-block;background:#c39e4e;color:#050b14;font-size:15px;font-weight:700;text-decoration:none;padding:13px 28px;border-radius:8px;">${label}</a>
+  </div>`;
+const signoff = `<p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">&mdash; Charlie &amp; Samantha<br><span style="color:#9ca3af;">YachtPics</span></p>`;
 
-// Soft "what you'd be setting down" list — benefit-led, no hard sell.
-function featureList(intro: string): string {
-  const items: [string, string][] = [
-    ["Branded client slideshows", "your logo on a clean, full-screen gallery buyers open on any device — no login."],
-    ["Know the moment they look", "we email you the instant a buyer opens your slideshow — perfect timing for a follow-up."],
-    ["Add walkthrough videos", "let a buyer feel the boat before they ever step aboard."],
-    ["Upload any listing", "keep your whole portfolio camera-ready, not just the boats we shoot."],
-    ["One-tap send to clients", "a polished presentation in their inbox in seconds."],
-  ];
+function list(items: string[]): string {
   const rows = items
     .map(
-      ([h, t]) => `
-        <tr>
-          <td style="width:16px;vertical-align:top;padding:7px 0 0;"><span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:#c39e4e;"></span></td>
-          <td style="padding:5px 0;font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">${h}</strong> — ${t}</td>
-        </tr>`
+      (t) => `<tr>
+    <td style="padding:0 10px 10px 0;vertical-align:top;color:#c39e4e;font-size:15px;line-height:1.6;">&mdash;</td>
+    <td style="padding:0 0 10px;font-size:15px;color:#374151;line-height:1.6;">${t}</td>
+  </tr>`
     )
     .join("");
-  return `<p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;">${intro}</p>
-      <table style="width:100%;border-collapse:collapse;margin:0 0 20px;">${rows}</table>`;
+  return `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;margin:0 0 18px;">${rows}</table>`;
 }
 
-/** Sent in the final days of a broker's free trial. */
-export function trialExpiringHtml(opts: { firstName: string; daysLeft: number; unsubToken?: string }): string {
-  const { firstName, daysLeft, unsubToken } = opts;
-  const dayWord = daysLeft === 1 ? "day" : "days";
-  const headline = daysLeft <= 1 ? `Your trial ends tomorrow, ${firstName}` : `${daysLeft} ${dayWord} left on your trial, ${firstName}`;
-  const body =
-    p(`Your free trial of the YachtPics Portal wraps up in <strong style="color:#111827;">${daysLeft} ${dayWord}</strong> — and with it, the tools that make your listings stand out.`) +
-    featureList("What stays in your hands with a plan") +
-    p(`Your delivered photos always stay free to download. A plan simply keeps the presentation tools above switched on.`);
-  return shell(headline, body, "Choose a plan", `${PORTAL}/dashboard/billing`, unsubToken);
+const label = (t: string) =>
+  `<p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;">${t}</p>`;
+
+// What a trial unlocks that stops at the end, and what stays — checked
+// against the code: slideshows go private (publicSlideshow.ts), Send to
+// Client is refused (send-to-client route), reels fall back to two per
+// listing (reelAllowance.ts), Seller Reports lock (report page); photo
+// downloads stay free.
+const STOPS = [
+  "<strong style=\"color:#111827;\">Your slideshow links go private.</strong> Buyers who open one won&rsquo;t see the boat.",
+  "<strong style=\"color:#111827;\">Send to Client stops.</strong>",
+  "<strong style=\"color:#111827;\">Reels go back to two per listing.</strong>",
+  "<strong style=\"color:#111827;\">Seller Reports lock.</strong>",
+];
+// The same four, as they stand once the trial has ended.
+const STOPPED = [
+  "<strong style=\"color:#111827;\">Your slideshow links are private.</strong> Buyers who open one see that it&rsquo;s unavailable.",
+  "<strong style=\"color:#111827;\">Send to Client is off.</strong>",
+  "<strong style=\"color:#111827;\">Reels are back to two per listing.</strong>",
+  "<strong style=\"color:#111827;\">Seller Reports are locked.</strong>",
+];
+const STAYS = [
+  "<strong style=\"color:#111827;\">Every photograph we delivered</strong>, free to download, always.",
+  "<strong style=\"color:#111827;\">Two reels per listing.</strong>",
+];
+
+// ── Day 7 ─────────────────────────────────────────────────────────────────
+
+export type WeekRow = {
+  listingId: string;
+  vesselName: string | null;
+  views: number;
+  uniqueVisitors: number;
+  photoLooks: number;
+  sends: number;
+};
+
+/**
+ * Day 7: the broker's own Seller Report numbers for the last seven days, one
+ * row per listing (max 5, busiest first). With no activity: no slideshow
+ * published → "publish a slideshow"; published but unopened → "send it to one
+ * buyer".
+ */
+export function trialDay7Email(opts: {
+  firstName: string;
+  endsOn: string; // e.g. "Friday, November 7"
+  rows: WeekRow[]; // published listings, busiest first
+  firstListingId: string | null; // most recently updated listing, if any
+  unsubToken?: string;
+}): TrialEmail {
+  const { firstName, endsOn, firstListingId, unsubToken } = opts;
+  const rows = opts.rows.slice(0, 5);
+  const active = rows.filter((r) => r.views + r.uniqueVisitors + r.photoLooks + r.sends > 0);
+
+  if (active.length > 0) {
+    const th = (t: string, left = false) =>
+      `<th style="padding:8px 6px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;text-align:${left ? "left" : "right"};border-bottom:1px solid #e5e7eb;">${t}</th>`;
+    const td = (t: string | number, left = false) =>
+      `<td style="padding:10px 6px;font-size:14px;color:#374151;text-align:${left ? "left" : "right"};border-bottom:1px solid #f3f4f6;font-variant-numeric:tabular-nums;">${t}</td>`;
+    const body = active
+      .map(
+        (r) => `<tr>
+        ${td(`<a href="${PORTAL}/report/listing/${r.listingId}" style="color:#84662a;font-weight:600;text-decoration:none;">${esc(r.vesselName ?? "Untitled vessel")}</a>`, true)}
+        ${td(r.views)}${td(r.uniqueVisitors)}${td(r.photoLooks)}${td(r.sends)}
+      </tr>`
+      )
+      .join("");
+    const table = `<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:0 0 10px;">
+      <tr>${th("Listing", true)}${th("Views")}${th("Visitors")}${th("Photo looks")}${th("Sent")}</tr>
+      ${body}
+    </table>`;
+    const inner = `
+      ${kicker("One week in")}
+      ${h1("Here&rsquo;s what your listings did this week")}
+      ${p(`Hi ${esc(firstName)},`)}
+      ${p("This is your Seller Report in short &mdash; what buyers did with your listings over the last seven days.")}
+      ${table}
+      ${p("Views are slideshow opens, visitors are different people, photo looks are photographs a buyer stopped on, and sent is how many times you sent it to a client.", true)}
+      ${p("Each name opens that listing&rsquo;s full Seller Report &mdash; one page, ready to forward to the owner.")}
+      ${cta("Open the Seller Report", `${PORTAL}/report/listing/${active[0].listingId}`)}
+      ${p(`Your free trial runs until ${esc(endsOn)}.`, true)}
+      ${signoff}`;
+    return { subject: "Here's what your listings did this week", html: shell(inner, unsubToken) };
+  }
+
+  const published = rows.length > 0;
+  const target = published
+    ? `${PORTAL}/dashboard/listings/${rows[0].listingId}`
+    : firstListingId
+      ? `${PORTAL}/dashboard/listings/${firstListingId}`
+      : `${PORTAL}/dashboard/listings`;
+  const inner = `
+      ${kicker("One week in")}
+      ${h1(published ? "Your slideshow is ready for its first buyer" : "Your Seller Report starts with one slideshow")}
+      ${p(`Hi ${esc(firstName)},`)}
+      ${p("Every listing in the Portal has a Seller Report: how many buyers opened the slideshow, how long they stayed, which photographs they stopped on, and who you sent it to. It&rsquo;s the page you forward when an owner asks what you&rsquo;re doing for their boat.")}
+      ${published
+        ? p("Your slideshow is live, but no one has opened it this week. Send it to one buyer and the report starts filling in.")
+        : p("Publish a slideshow and the report starts filling in. Open a listing, press <strong style=\"color:#111827;\">Create Slideshow</strong>, then send it to one buyer.")}
+      ${cta(published ? "Send it to a buyer" : "Publish a slideshow", target)}
+      ${p(`Your free trial runs until ${esc(endsOn)}.`, true)}
+      ${signoff}`;
+  return {
+    subject: published ? "Your slideshow is ready for its first buyer" : "Your Seller Report starts with one slideshow",
+    html: shell(inner, unsubToken),
+  };
 }
 
-/** Sent shortly after a broker's free trial has ended without subscribing. */
-export function trialLapsedHtml(opts: { firstName: string; unsubToken?: string }): string {
-  const { firstName, unsubToken } = opts;
-  const headline = `Your trial has ended, ${firstName}`;
-  const body =
-    p(`Your free trial of the YachtPics Portal has wrapped up. Your photos are safe and still free to download anytime.`) +
-    featureList("What switches back on the moment you upgrade") +
-    p(`Pick a plan whenever you're ready — it takes about a minute. Have a question first? Just reply to this email and we'll help.`);
-  return shell(headline, body, "Reactivate my tools", `${PORTAL}/dashboard/billing`, unsubToken);
+// ── Two days left ─────────────────────────────────────────────────────────
+
+export function trialEndingEmail(opts: {
+  firstName: string;
+  endsOn: string; // e.g. "Friday, November 7"
+  daysLeft: number; // 2 normally; 1 if the run was a day late
+  unsubToken?: string;
+}): TrialEmail {
+  const { firstName, endsOn, daysLeft, unsubToken } = opts;
+  const when = daysLeft <= 1 ? "tomorrow" : "in two days";
+  const inner = `
+      ${kicker("Your free trial")}
+      ${h1(`Your trial ends ${when}`)}
+      ${p(`Hi ${esc(firstName)},`)}
+      ${p(`Your free trial of the YachtPics Portal ends on <strong style="color:#111827;">${esc(endsOn)}</strong>.`)}
+      ${label("What stops")}
+      ${list(STOPS)}
+      ${label("What stays")}
+      ${list(STAYS)}
+      ${p(`Plans start at $${STARTER_PRICE} a month. Choose one now and nothing changes.`)}
+      ${cta("Choose a plan", `${PORTAL}/dashboard/billing`)}
+      ${signoff}`;
+  return { subject: `Your trial ends ${when}`, html: shell(inner, unsubToken) };
+}
+
+// ── Ended ─────────────────────────────────────────────────────────────────
+
+export function trialEndedEmail(opts: {
+  firstName: string;
+  endedOn: string; // e.g. "Friday, November 7"
+  unsubToken?: string;
+}): TrialEmail {
+  const { firstName, endedOn, unsubToken } = opts;
+  const inner = `
+      ${kicker("Your free trial")}
+      ${h1("Your trial has ended")}
+      ${p(`Hi ${esc(firstName)},`)}
+      ${p(`Your free trial of the YachtPics Portal ended on ${esc(endedOn)}. Your photographs are still yours &mdash; every image we delivered stays free to download, and each listing keeps two reels.`)}
+      ${label("What you lose without a plan")}
+      ${list(STOPPED)}
+      ${p(`Starter brings it all back for $${STARTER_PRICE} a month, for up to five active listings. Your slideshows, sends and reports are where you left them.`)}
+      ${cta(`Choose Starter &middot; $${STARTER_PRICE}/month`, `${PORTAL}/dashboard/billing`)}
+      ${p("Have a question first? Just reply to this email.", true)}
+      ${signoff}`;
+  return { subject: "Your trial has ended. Your photos are still free.", html: shell(inner, unsubToken) };
 }

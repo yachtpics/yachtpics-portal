@@ -1,5 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getAccessStatus, type AccessStatus } from "@/lib/subscriptionAccess";
+import { getAccessStatus, trialDaysFor, type AccessStatus } from "@/lib/subscriptionAccess";
+
+// Trial length by cohort lives in subscriptionAccess.ts (client-safe, used by
+// the billing page too); re-exported here so server code can find it with the
+// rest of the access rules.
+export { trialDaysFor, TRIAL_DAYS, TRIAL_DAYS_LEGACY, TRIAL_CUTOVER } from "@/lib/subscriptionAccess";
 
 /** True when a brokerage's office plan is currently paying or trialing. */
 export function officePlanActive(
@@ -58,16 +63,18 @@ export async function paidReelServiceBrokerIds(service: SupabaseClient, brokerId
 export async function getEffectiveAccessStatus(
   service: SupabaseClient,
   brokerId: string
-): Promise<{ status: AccessStatus; trialEndsAt: string | null; officeCovered: boolean; reelServiceCovered?: boolean }> {
+): Promise<{ status: AccessStatus; trialEndsAt: string | null; trialDays: number; officeCovered: boolean; reelServiceCovered?: boolean }> {
   const { data: ownSub } = await service
     .from("subscriptions")
-    .select("status, stripe_subscription_id, trial_ends_at")
+    .select("status, stripe_subscription_id, trial_ends_at, created_at")
     .eq("broker_id", brokerId)
     .single();
+  // This broker's trial length (14 or 30 by cohort) — for "your N-day trial" copy.
+  const trialDays = trialDaysFor(ownSub ?? null);
 
   const own = getAccessStatus(ownSub ?? null);
   if (own === "active") {
-    return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: false };
+    return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false };
   }
 
   const { data: prof } = await service.from("profiles").select("brokerage_id").eq("id", brokerId).single();
@@ -78,13 +85,13 @@ export async function getEffectiveAccessStatus(
       .eq("id", prof.brokerage_id)
       .single();
     if (officePlanActive(office ?? null)) {
-      return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: true };
+      return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: true };
     }
   }
 
   if (await reelServiceGivesAccess(service, brokerId)) {
-    return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: false, reelServiceCovered: true };
+    return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false, reelServiceCovered: true };
   }
 
-  return { status: own, trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: false };
+  return { status: own, trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false };
 }

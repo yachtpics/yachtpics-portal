@@ -96,6 +96,39 @@ export function planLabel(sub: BillingSubRow | null): string {
   return "Free";
 }
 
+/* ------------------------------------------------------------------ *
+ * Trial length by cohort (owner decision, Oct 24 2026).
+ *
+ * Accounts opened from the cutover on get a 14-day trial. Accounts opened
+ * before it keep 30 days — nobody already in a trial (or invited with a
+ * 30-day promise and not yet signed in) is shortened.
+ *
+ * The trial itself still starts on first sign-in (dashboard layout seeds
+ * subscriptions.trial_ends_at); once seeded, that stored end date is what
+ * every screen shows. This function decides the LENGTH: when the trial is
+ * seeded, in "your N-day trial" copy, and for the trial email day offsets.
+ *
+ * Cohort key = subscriptions.created_at, which the signup trigger writes
+ * when the account is created (always on or before the first sign-in).
+ * ------------------------------------------------------------------ */
+
+/** Trial length for accounts opened on or after TRIAL_CUTOVER. */
+export const TRIAL_DAYS = 14;
+/** Trial length for accounts opened before TRIAL_CUTOVER. */
+export const TRIAL_DAYS_LEGACY = 30;
+/** Midnight Eastern (EDT, UTC-4) at the start of Oct 24 2026. */
+export const TRIAL_CUTOVER = "2026-10-24T04:00:00Z";
+
+/**
+ * Trial length in days for a broker's subscription row. Pass the row's
+ * created_at (account creation). Unknown → the current (14-day) length.
+ */
+export function trialDaysFor(row: { created_at?: string | null } | null | undefined): number {
+  const created = row?.created_at ? Date.parse(row.created_at) : NaN;
+  if (Number.isFinite(created) && created < Date.parse(TRIAL_CUTOVER)) return TRIAL_DAYS_LEGACY;
+  return TRIAL_DAYS;
+}
+
 export function trialDaysRemaining(trialEndsAt: string | null): number {
   if (!trialEndsAt) return 0;
   return Math.max(

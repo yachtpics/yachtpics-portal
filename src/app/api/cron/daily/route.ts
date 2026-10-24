@@ -12,7 +12,9 @@ export const maxDuration = 60;
 // instead of one cron per task we run ONE cron daily (13:00 UTC) and fan out to
 // the individual cron routes based on the Eastern day of week — reproducing the
 // original per-task schedules:
-//   • trial-reminders  — every day
+//   • trial-reminders  — every day (the trial email sequence since Oct 24 2026:
+//                        day 7 Seller Report numbers, 2 days left, ended —
+//                        src/lib/trialEmails.ts; email_log dedup)
 //   • news-fetch       — every day
 //   • storage-report   — Monday & Thursday
 //   • announce         — EVERY DAY (self-gated by approval + send window)

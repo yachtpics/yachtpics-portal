@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { PLANS, REEL_SERVICE_PRICE, REEL_SERVICE_REELS_PER_BOAT } from "@/lib/plans";
 import HelpTip from "@/components/HelpTip";
 import { Badge } from "@/components/ui";
-import { getAccessStatus } from "@/lib/subscriptionAccess";
+import { getAccessStatus, trialDaysFor } from "@/lib/subscriptionAccess";
 
 type Subscription = {
   status: string | null;
@@ -13,6 +13,7 @@ type Subscription = {
   stripe_subscription_id: string | null;
   current_period_end: string | null;
   trial_ends_at: string | null;
+  created_at: string | null;
 };
 
 export default function BillingPage() {
@@ -35,7 +36,7 @@ export default function BillingPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-      const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at").eq("broker_id", user.id).single();
+      const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at, created_at").eq("broker_id", user.id).single();
       setSub(data ?? null);
       setLoading(false);
     }
@@ -57,6 +58,8 @@ export default function BillingPage() {
       ? new Date(sub.trial_ends_at)
       : null;
   const trialDeferrable = !!inAppTrialEnd && inAppTrialEnd.getTime() - Date.now() >= 49 * 60 * 60 * 1000;
+  // This broker's trial length: 14 days, or 30 for accounts opened before Oct 24 2026.
+  const trialDays = trialDaysFor(sub);
 
   async function startCheckout(priceId: string) {
     setCheckoutLoading(priceId);
@@ -214,9 +217,9 @@ export default function BillingPage() {
         </div>
         <p className="text-xs text-ink-500 mb-5">
           {inAppTrialEnd && trialDeferrable
-            ? `Your free trial runs until ${fmtDate(inAppTrialEnd)}. Choose a plan now and you won't be charged until then. Cancel anytime.`
+            ? `Your ${trialDays}-day free trial runs until ${fmtDate(inAppTrialEnd)}. Choose a plan now and you won't be charged until then. Cancel anytime.`
             : inAppTrialEnd
-              ? `Your free trial ends ${fmtDate(inAppTrialEnd)}. Choosing a plan now starts billing today. Cancel anytime.`
+              ? `Your ${trialDays}-day free trial ends ${fmtDate(inAppTrialEnd)}. Choosing a plan now starts billing today. Cancel anytime.`
               : "Billed monthly. Cancel anytime."}
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

@@ -321,14 +321,35 @@ export default async function DashboardPage() {
       })()}
 
       {/* Only during an active trial (6+ days). The expiring/ended states are
-          owned by the top TrialBanner, so this no longer duplicates it. */}
+          owned by the top TrialBanner, so this no longer duplicates it.
+          Trial onboarding (Oct 24) leads with the Seller Report on the
+          broker's first listing (most recently updated). */}
       {!planCovered && subscription?.status === "trialing" && trialDaysLeft !== null && trialDaysLeft > 5 && (
         <div className="bg-accent-50 border border-accent-200 rounded-card px-5 py-4 mb-6 flex items-center justify-between gap-4 flex-wrap">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-accent-800 font-medium text-sm">
+              Start with your first listing: publish the slideshow, send it to one buyer, and read its Seller Report tomorrow.
+            </p>
+            <p className="text-ink-500 text-xs mt-1">
+              {listings && listings.length > 0 ? (
+                <>
+                  <Link href={`/dashboard/listings/${listings[0].id}`} className="font-medium text-accent-700 hover:text-accent-600">
+                    Open {listings[0].vessel_name ?? "your listing"}
+                  </Link>
+                  {" · "}
+                  <Link href={`/report/listing/${listings[0].id}`} className="font-medium text-accent-700 hover:text-accent-600">
+                    Seller Report
+                  </Link>
+                  {" · "}
+                </>
+              ) : (
+                <>
+                  <Link href="/dashboard/listings" className="font-medium text-accent-700 hover:text-accent-600">My Listings</Link>
+                  {" · "}
+                </>
+              )}
               Your free trial ends in {trialDaysLeft} days.
             </p>
-            <p className="text-ink-500 text-xs mt-0.5">Upgrade to keep building slideshows and sharing listings.</p>
           </div>
           <Link href="/dashboard/billing" className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2">
             Upgrade

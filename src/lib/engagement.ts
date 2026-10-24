@@ -143,3 +143,44 @@ export async function buildEngagement(
     lastViewAt: vs.length ? vs[vs.length - 1].viewed_at : null,
   };
 }
+
+/**
+ * One listing's last-N-days totals, for the trial day-7 email ("here's what
+ * your listings did this week"). Same definitions as buildEngagement / the
+ * Seller Report: views = slideshow_views rows, unique visitors = distinct
+ * session ids plus sessionless views, photo looks = 'dwell' events, sends =
+ * client_sends rows. Counts use head requests so a busy listing isn't capped
+ * at the API's 1,000-row page.
+ */
+export type ListingPeriodTotals = {
+  listingId: string;
+  views: number;
+  uniqueVisitors: number;
+  photoLooks: number;
+  sends: number;
+};
+
+export async function listingPeriodTotals(
+  service: SupabaseClient,
+  listingId: string,
+  sinceIso: string
+): Promise<ListingPeriodTotals> {
+  const [{ count: views }, { data: sessions }, { count: looks }, { count: sends }] = await Promise.all([
+    service.from("slideshow_views").select("id", { count: "exact", head: true }).eq("listing_id", listingId).gte("viewed_at", sinceIso),
+    service.from("slideshow_views").select("session_id").eq("listing_id", listingId).gte("viewed_at", sinceIso).limit(1000),
+    service.from("slideshow_events").select("id", { count: "exact", head: true }).eq("listing_id", listingId).eq("kind", "dwell").gte("created_at", sinceIso),
+    service.from("client_sends").select("id", { count: "exact", head: true }).eq("listing_id", listingId).gte("sent_at", sinceIso),
+  ]);
+  const seen: Record<string, true> = {};
+  let anonymous = 0;
+  for (const r of (sessions ?? []) as { session_id: string | null }[]) {
+    if (r.session_id) seen[r.session_id] = true; else anonymous++;
+  }
+  return {
+    listingId,
+    views: views ?? 0,
+    uniqueVisitors: Object.keys(seen).length + anonymous,
+    photoLooks: looks ?? 0,
+    sends: sends ?? 0,
+  };
+}

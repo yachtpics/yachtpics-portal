@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { trialDaysFor } from "@/lib/subscriptionAccess";
 
 export async function POST(req: NextRequest) {
   // Internal-only: called from the dashboard layout on first login.
@@ -32,6 +33,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No email on file" }, { status: 400 });
     }
 
+    // Trial length for this account (14 days, or 30 if opened before Oct 24 2026).
+    const { data: subRow } = await supabase
+      .from("subscriptions")
+      .select("created_at")
+      .eq("broker_id", userId)
+      .maybeSingle();
+    const trialDays = trialDaysFor(subRow ?? null);
+
     const { data: listings } = await supabase
       .from("listings")
       .select("id, vessel_name")
@@ -48,6 +57,10 @@ export async function POST(req: NextRequest) {
     const photosLine = vesselName
       ? `Your photos for <strong style="color:#111827;">${vesselName}</strong> are already in your portal, ready to share.`
       : "As soon as your photos are delivered, you'll find them waiting here.";
+    // Trial onboarding (Oct 24): lead with the Seller Report on the first listing.
+    const firstListingUrl = hasListing
+      ? `https://portal.yachtpics.com/dashboard/listings/${listings[0].id}`
+      : "https://portal.yachtpics.com/dashboard/listings";
 
     const html = `<!DOCTYPE html>
 <html>
@@ -59,7 +72,9 @@ export async function POST(req: NextRequest) {
     </div>
     <div style="padding:40px;">
       <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">You're all set, ${firstName}</h1>
-      <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">${photosLine}</p>
+      <p style="margin:0 0 20px;font-size:15px;color:#6b7280;line-height:1.6;">${photosLine}</p>
+
+      <p style="margin:0 0 28px;padding:16px 20px;background:#f8f3ea;border:1px solid #eaddc1;border-radius:8px;font-size:15px;color:#4a3d17;line-height:1.6;">Start with your first listing: publish the slideshow, send it to one buyer, and read its Seller Report tomorrow. <a href="${firstListingUrl}" style="color:#84662a;font-weight:600;text-decoration:none;">Open ${hasListing && vesselName ? vesselName : "your listings"} &rarr;</a></p>
 
       <p style="margin:0 0 16px;font-size:14px;font-weight:600;color:#111827;text-transform:uppercase;">Quick Start</p>
 
@@ -104,7 +119,7 @@ export async function POST(req: NextRequest) {
 
       <a href="${portalUrl}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:32px;">Open My Portal &rarr;</a>
 
-      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Downloading your photos is always free.</strong> You also have a 30-day free trial of the publishing tools above — slideshows, walkthrough video, and uploads — so you can put them to work right away.</p>
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Downloading your photos is always free.</strong> You also have a ${trialDays}-day free trial of the publishing tools above — slideshows, walkthrough video, and uploads — so you can put them to work right away.</p>
 
       <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">Questions or need anything adjusted? Just reply to this email — we're here.</p>
     </div>

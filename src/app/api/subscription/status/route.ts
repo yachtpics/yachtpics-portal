@@ -41,8 +41,10 @@ export async function GET(req: NextRequest) {
   );
 
   // Effective status accounts for the broker's own plan OR their office plan.
-  const { status, trialEndsAt, officeCovered, reelServiceCovered } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
+  const { status, trialEndsAt, trialDays, officeCovered, reelServiceCovered } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
   const daysLeft = trialDaysRemaining(trialEndsAt);
 
-  return NextResponse.json({ status, daysLeft, trialEndsAt, officeCovered, reelServiceCovered: !!reelServiceCovered });
+  // trialDays: this broker's trial length (14, or 30 for accounts opened
+  // before Oct 24 2026) — see trialDaysFor in subscriptionAccess.ts.
+  return NextResponse.json({ status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered });
 }
