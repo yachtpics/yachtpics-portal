@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
-import { ANGLE_LABEL, loadReelServiceEnrolment, type ReelServiceAngle } from "@/lib/reelService";
+import { ANGLE_LABEL, loadReelServiceEnrolment, plannedListingIds, type ReelServiceAngle } from "@/lib/reelService";
+import { paidReelServiceBrokerIds } from "@/lib/brokerAccess";
 import ReelList, { type DeliveredReel } from "./ReelList";
 import { REEL_SERVICE_PRICE } from "@/lib/plans";
 
@@ -73,12 +74,18 @@ export default async function YourReelsPage() {
   let enrolledBoats: string[] = [];
   if (brokerIds !== null && brokerIds.length > 0) {
     try {
-      const { data: subs } = await svc.from("reel_service_subscriptions").select("broker_id").in("broker_id", brokerIds).eq("enabled", true);
-      const active = ((subs ?? []) as { broker_id: string }[]).map((x) => x.broker_id);
+      // "Enabled" governs comped boats only (Oct 24): paid boats count for every broker.
+      const { data: subs } = await svc.from("reel_service_subscriptions").select("broker_id, enabled").in("broker_id", brokerIds);
+      const subList = (subs ?? []) as { broker_id: string; enabled: boolean }[];
+      const paidOwners = await paidReelServiceBrokerIds(svc, brokerIds);
+      const active = subList.filter((x) => x.enabled).map((x) => x.broker_id)
+        .concat(paidOwners).filter((b, i, a) => a.indexOf(b) === i);
       if (active.length) {
         const en = await loadReelServiceEnrolment(svc, active);
-        const legacy = active.filter((b) => en[b]?.legacy);
-        const ids = active.reduce((acc: string[], b) => acc.concat(en[b]?.listingIds ?? []), []);
+        const enabledOf = (b: string) => subList.some((x) => x.broker_id === b && x.enabled);
+        const scoped = (b: string) => plannedListingIds(en[b] ?? { legacy: true, listingIds: [] }, enabledOf(b));
+        const legacy = active.filter((b) => scoped(b).legacy);
+        const ids = active.reduce((acc: string[], b) => acc.concat(scoped(b).listingIds), []);
         const reads = [];
         if (ids.length) reads.push(svc.from("listings").select("vessel_name, year, make, model").in("id", ids).eq("status", "active"));
         if (legacy.length) reads.push(svc.from("listings").select("vessel_name, year, make, model").in("broker_id", legacy).eq("status", "active"));

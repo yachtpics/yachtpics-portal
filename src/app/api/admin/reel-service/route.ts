@@ -94,6 +94,10 @@ export async function POST(req: NextRequest) {
       ({ data, error } = await admin.from("reel_service_subscriptions").upsert(row, { onConflict: "broker_id" }).select("*").single());
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    // "Comped reels on" (Oct 24): off ends this broker's comped boats (so the
+    // listing card reads "not enrolled" and the broker can buy it); on brings
+    // back exactly the ones the switch ended. Paid boats are never touched.
+    try { await applyCompSwitch(admin, brokerId, enabled); } catch { /* migration not applied: rows stay as they are */ }
     // Enrolling mid-month plans the rest of this month straight away.
     let planned = 0;
     if (enabled) {
@@ -150,6 +154,17 @@ export async function POST(req: NextRequest) {
     if (toEnd.length) {
       const { error } = await admin.from("reel_service_listings").update({ ended_at: now }).in("listing_id", toEnd);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    // A boat the comped-reels switch had ended, now unchecked: drop the mark so
+    // switching comps on again won't bring it back. (While comps are off, the
+    // card's follow-up "subscription" save re-ends any checked comped boat.)
+    if (billingCols) {
+      const { data: marked } = await admin.from("reel_service_listings").select("listing_id, note")
+        .eq("broker_id", brokerId).not("ended_at", "is", null).like("note", `%${COMP_SWITCH_MARK}%`);
+      for (const m of (marked ?? []) as { listing_id: string; note: string | null }[]) {
+        if (keep.indexOf(m.listing_id) >= 0) continue;
+        await admin.from("reel_service_listings").update({ note: stripMark(m.note) }).eq("listing_id", m.listing_id);
+      }
     }
     // A legacy broker (no rows: every boat planned) saved with nothing
     // checked: record the boats shown as off the service, so the planner
@@ -340,4 +355,40 @@ async function billingSummary(admin: Admin, period: string): Promise<{ brokers: 
     };
   }).sort((a, b) => a.name.localeCompare(b.name));
   return { brokers, totalCents: brokers.reduce((a, b) => a + b.amountCents, 0) };
+}
+
+/** Marks, in reel_service_listings.note, a comped boat ended by the "Comped reels on" switch. */
+const COMP_SWITCH_MARK = "[ended: comped reels switched off]";
+
+function stripMark(note: string | null): string | null {
+  const out = (note ?? "").split("\n").filter((l) => l.trim() !== COMP_SWITCH_MARK).join("\n").trim();
+  return out || null;
+}
+
+/**
+ * Off: every comped boat of the broker still in service gets ended_at = now
+ * and the mark (so the card reads "not enrolled" and checkout is open).
+ * On: the boats carrying the mark come back (ended_at cleared, mark removed).
+ * Paid boats are never touched. Throws if the billing columns aren't there.
+ */
+async function applyCompSwitch(admin: Admin, brokerId: string, enabled: boolean): Promise<void> {
+  if (!enabled) {
+    const { data, error } = await admin.from("reel_service_listings").select("listing_id, note")
+      .eq("broker_id", brokerId).eq("billing_status", "comped").is("ended_at", null);
+    if (error) throw new Error(error.message);
+    const now = new Date().toISOString();
+    for (const r of (data ?? []) as { listing_id: string; note: string | null }[]) {
+      const note = r.note && r.note.indexOf(COMP_SWITCH_MARK) >= 0 ? r.note : (r.note ? `${r.note}\n${COMP_SWITCH_MARK}` : COMP_SWITCH_MARK);
+      await admin.from("reel_service_listings").update({ ended_at: now, note }).eq("listing_id", r.listing_id).eq("billing_status", "comped");
+    }
+    return;
+  }
+  const { data, error } = await admin.from("reel_service_listings").select("listing_id, note")
+    .eq("broker_id", brokerId).eq("billing_status", "comped").not("ended_at", "is", null).like("note", `%${COMP_SWITCH_MARK}%`);
+  if (error) throw new Error(error.message);
+  const now = new Date().toISOString();
+  for (const r of (data ?? []) as { listing_id: string; note: string | null }[]) {
+    await admin.from("reel_service_listings").update({ ended_at: null, enrolled_at: now, note: stripMark(r.note) })
+      .eq("listing_id", r.listing_id).eq("billing_status", "comped");
+  }
 }

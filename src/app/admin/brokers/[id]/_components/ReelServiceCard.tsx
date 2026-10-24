@@ -9,11 +9,13 @@ type Sub = { enabled: boolean; reels_per_listing: number; note: string | null; s
 /** An active listing of this broker, for the "In the Reel Service" checkboxes. */
 export type ReelCardListing = { id: string; name: string; detail: string };
 /** A reel_service_listings row; billing fields absent before migration 20261024. */
-export type ReelCardRow = { listing_id: string; ended_at: string | null; billing_status?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean | null };
+export type ReelCardRow = { listing_id: string; ended_at: string | null; billing_status?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean | null; note?: string | null };
 
 const money = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`;
 const shortDate = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" });
 /** Paid through Stripe and still running — not the admin's to switch off here. */
+/** Ended by the "Comped reels on" switch (the API's COMP_SWITCH_MARK); comes back when it's switched on. */
+const offBySwitch = (r: ReelCardRow | undefined) => !!r && !!r.ended_at && r.billing_status === "comped" && (r.note ?? "").indexOf("[ended: comped reels switched off]") >= 0;
 const isPaid = (r: ReelCardRow | undefined) => !!r && !r.ended_at && (r.billing_status === "active" || r.billing_status === "past_due" || r.billing_status === "paused");
 
 /**
@@ -47,7 +49,7 @@ export default function ReelServiceCard({ brokerId, initial, listings, enrolledR
     // Legacy brokers have every active boat planned today — show that.
     if (legacy) return listings.map((l) => l.id);
     return enrolledRows.filter((r) => !r.ended_at && r.billing_status !== "canceled" && r.billing_status !== "paused").map((r) => r.listing_id)
-      .concat(enrolledRows.filter((r) => isPaid(r)).map((r) => r.listing_id))
+      .concat(enrolledRows.filter((r) => isPaid(r) || offBySwitch(r)).map((r) => r.listing_id))
       .filter((x, i, a) => a.indexOf(x) === i);
   });
   const [saving, setSaving] = useState(false);
@@ -81,7 +83,7 @@ export default function ReelServiceCard({ brokerId, initial, listings, enrolledR
       }
       const d = await post({ action: "subscription", brokerId, enabled: nextEnabled, reelsPerListing: Number(rpm), note });
       setEnabled(nextEnabled);
-      setMsg(nextEnabled && enrolledRows && boats === 0 ? "Saved — no boats checked, so nothing is planned." : nextEnabled ? (d.planned ? `Saved — ${d.planned} reel${d.planned === 1 ? "" : "s"} planned for this month across their boats.` : "Saved.") : "Paused.");
+      setMsg(nextEnabled && enrolledRows && boats === 0 ? "Saved — no boats checked, so nothing is planned." : nextEnabled ? (d.planned ? `Saved — ${d.planned} reel${d.planned === 1 ? "" : "s"} planned for this month across their boats.` : "Saved.") : paidCount > 0 ? "Comped reels off. Paid boats keep running." : "Comped reels off.");
       router.refresh();
     } catch (e) {
       setMsg(e instanceof Error ? e.message : "Couldn’t save.");
@@ -107,10 +109,13 @@ export default function ReelServiceCard({ brokerId, initial, listings, enrolledR
         <Link href="/admin/reel-service" className="text-accent-700 hover:text-accent-800 text-sm font-medium">Open Reel Service &rarr;</Link>
       </div>
       <div className="mt-4 flex items-end gap-4 flex-wrap">
-        <label className="flex items-center gap-2 text-sm text-ink-700">
-          <input type="checkbox" checked={enabled} disabled={saving} onChange={(e) => void save(e.target.checked)} />
-          Enabled
-        </label>
+        <div>
+          <label className="flex items-center gap-2 text-sm text-ink-700">
+            <input type="checkbox" checked={enabled} disabled={saving} onChange={(e) => void save(e.target.checked)} />
+            Comped reels on
+          </label>
+          <p className="text-[11px] text-ink-500 mt-0.5">Paid boats run until the broker cancels or payment fails.</p>
+        </div>
         <label className="text-xs text-ink-500">
           Reels per boat each month
           <input type="number" min={1} max={10} value={rpm} onChange={(e) => setRpm(e.target.value)}
@@ -163,6 +168,8 @@ export default function ReelServiceCard({ brokerId, initial, listings, enrolledR
                           {r?.billing_status === "active" ? "Paid" : r?.billing_status === "past_due" ? "Past due" : "Paused"}
                           {r?.cancel_at_period_end && r.current_period_end ? ` · ends ${shortDate(r.current_period_end)}` : r?.current_period_end && r.billing_status === "active" ? ` · renews ${shortDate(r.current_period_end)}` : ""}
                         </span>
+                      ) : on && !enabled ? (
+                        <span className="text-[11px] text-ink-500">comped &mdash; off while comped reels are off</span>
                       ) : on ? (
                         <span className="text-[11px] text-ink-500">comped &mdash; no charge</span>
                       ) : null}

@@ -6,7 +6,7 @@ import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
-import { reelServiceGivesAccess } from "@/lib/brokerAccess";
+import { paidReelServiceBrokerIds, reelServiceGivesAccess } from "@/lib/brokerAccess";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -131,7 +131,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
           svc.from("reel_service_subscriptions").select("broker_id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("enabled", true),
           svc.from("reel_service_jobs").select("id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("status", "delivered"),
         ]);
-        showReels = (subs ?? 0) > 0 || (delivered ?? 0) > 0;
+        showReels = (subs ?? 0) > 0 || (delivered ?? 0) > 0
+          || (await paidReelServiceBrokerIds(svc, brokerIds)).length > 0;
       }
     } catch { /* hidden */ }
   }

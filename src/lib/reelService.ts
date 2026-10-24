@@ -791,7 +791,24 @@ async function attachShots(admin: SupabaseClient, videos: VideoRow[]): Promise<V
  * 20261024b). Those are planned per paid period; every other boat per
  * calendar month.
  */
-export type ReelServiceEnrolment = { legacy: boolean; listingIds: string[]; paid?: Record<string, { start: string; end: string | null }> };
+export type ReelServiceEnrolment = {
+  legacy: boolean; listingIds: string[]; paid?: Record<string, { start: string; end: string | null }>;
+  /** Boats paid through Stripe and running (active / past_due, not ended) — planned whatever the broker's "enabled" switch says. */
+  paidListingIds?: string[];
+};
+
+/**
+ * The boats to plan for a broker (Oct 24, owner): the broker-level
+ * "enabled" switch governs COMPED boats only. Enabled → every boat in the
+ * service (or all active boats for a legacy broker). Disabled → only the
+ * paid boats; a legacy broker gets nothing (legacy stays tied to enabled).
+ */
+export function plannedListingIds(en: ReelServiceEnrolment, enabled: boolean): { legacy: boolean; listingIds: string[] } {
+  if (enabled) return { legacy: en.legacy, listingIds: en.listingIds };
+  if (en.legacy) return { legacy: false, listingIds: [] };
+  const paid = en.paidListingIds ?? [];
+  return { legacy: false, listingIds: en.listingIds.filter((id) => paid.indexOf(id) >= 0) };
+}
 
 /**
  * Billing states (Oct 24, Stripe — reel_service_listings.billing_status) in
@@ -823,7 +840,7 @@ export async function loadReelServiceEnrolment(admin: SupabaseClient, brokerIds:
   if (res.error && /current_period_start/.test(res.error.message)) {
     // 20261024b not applied yet: paid boats plan by calendar month.
     res = await admin.from("reel_service_listings")
-      .select("listing_id, broker_id, ended_at, billing_status")
+      .select("listing_id, broker_id, ended_at, billing_status, stripe_subscription_id")
       .in("broker_id", brokerIds) as typeof res;
   }
   if (res.error && /billing_status/.test(res.error.message)) {
@@ -846,6 +863,14 @@ export async function loadReelServiceEnrolment(admin: SupabaseClient, brokerIds:
     e.legacy = false;
     if (reelServiceRowInService(r)) {
       e.listingIds.push(r.listing_id);
+      if (r.stripe_subscription_id !== undefined || r.billing_status) {
+        // stripe_subscription_id is only selected with 20261024b; before it, an active/past_due row is a paid one.
+        const hasSub = r.stripe_subscription_id === undefined ? true : !!r.stripe_subscription_id;
+        if (hasSub && REEL_SERVICE_PAID_STATUSES.indexOf(r.billing_status ?? "") >= 0) {
+          e.paidListingIds = e.paidListingIds ?? [];
+          e.paidListingIds.push(r.listing_id);
+        }
+      }
       if (r.stripe_subscription_id && r.current_period_start && REEL_SERVICE_PAID_STATUSES.indexOf(r.billing_status ?? "") >= 0) {
         e.paid = e.paid ?? {};
         e.paid[r.listing_id] = { start: r.current_period_start, end: r.current_period_end ?? null };
@@ -1142,18 +1167,37 @@ export async function planReelServiceMonth(
   period: string,
   opts: { brokerIds?: string[]; listingIds?: string[] } = {},
 ): Promise<PlanResult> {
-  let q = admin.from("reel_service_subscriptions").select("broker_id, reels_per_listing").eq("enabled", true);
+  // Every broker row, enabled or not: "enabled" governs comped boats only;
+  // paid boats are planned regardless (Oct 24, owner).
+  let q = admin.from("reel_service_subscriptions").select("broker_id, reels_per_listing, enabled");
   if (opts.brokerIds && opts.brokerIds.length) q = q.in("broker_id", opts.brokerIds);
   const { data: subs, error } = await q;
   if (error) throw new Error(error.message);
 
   const result: PlanResult = { brokers: 0, listings: 0, created: 0, skipped: [] };
-  const subRows = (subs ?? []) as { broker_id: string; reels_per_listing: number }[];
+  const subRows = (subs ?? []) as { broker_id: string; reels_per_listing: number; enabled: boolean }[];
+  // A broker with a paid boat but no reel_service_subscriptions row (shouldn't
+  // happen — the webhook creates one — but never leave a paid boat unplanned).
+  {
+    let pq = admin.from("reel_service_listings").select("broker_id")
+      .is("ended_at", null).in("billing_status", REEL_SERVICE_PAID_STATUSES);
+    if (opts.brokerIds && opts.brokerIds.length) pq = pq.in("broker_id", opts.brokerIds);
+    const { data: paidOwners, error: pErr } = await pq;
+    if (!pErr) {
+      ((paidOwners ?? []) as { broker_id: string }[]).forEach((r) => {
+        if (!subRows.some((x) => x.broker_id === r.broker_id)) subRows.push({ broker_id: r.broker_id, reels_per_listing: 4, enabled: false });
+      });
+    }
+  }
   const enrolment = await loadReelServiceEnrolment(admin, subRows.map((s) => s.broker_id));
   for (const sub of subRows) {
+    const enAll = enrolment[sub.broker_id] ?? { legacy: true, listingIds: [] };
+    const scoped = plannedListingIds(enAll, sub.enabled !== false);
+    // Disabled with no paid boat: nothing to plan, and not worth a "skipped" line.
+    if (sub.enabled === false && scoped.listingIds.length === 0) continue;
     result.brokers++;
     const perListing = Math.max(1, Math.min(10, sub.reels_per_listing ?? 4));
-    const en0 = enrolment[sub.broker_id] ?? { legacy: true, listingIds: [] };
+    const en0: ReelServiceEnrolment = { ...enAll, legacy: scoped.legacy, listingIds: scoped.listingIds };
     // `listingIds` narrows the run to those boats (a just-paid Reel Service
     // boat is planned on its own, straight from the Stripe webhook).
     const en = opts.listingIds

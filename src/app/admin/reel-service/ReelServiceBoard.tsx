@@ -18,7 +18,8 @@ import { LEASE_REFRESH_MS, ago, leaseFresh, readLease, type StationLease } from 
 export type BoardVideo = { id: string; listing_id: string; duration_sec: number | null; title: string | null; shots?: number | null };
 
 /** `boats`: names of the active boats in the service; null = no boats chosen yet, every active listing is planned (legacy). */
-export type BoardSub = { brokerId: string; name: string; enabled: boolean; reelsPerListing: number; note: string | null; boats: string[] | null };
+/** `enabled` = comped reels on (Oct 24: paid boats run regardless); `paidBoats` = active boats paid through Stripe. */
+export type BoardSub = { brokerId: string; name: string; enabled: boolean; reelsPerListing: number; note: string | null; boats: string[] | null; paidBoats?: number };
 export type BoardJob = {
   id: string; broker_id: string; listing_id: string; period: string; slot: number; angle: string; look: string;
   settings: ReelServiceSettings | null; status: string; video_path: string | null; caption: string | null; error: string | null;
@@ -263,7 +264,7 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
     }
   }
 
-  const shownSubs = subs.filter((s) => s.enabled || jobs.some((j) => j.broker_id === s.brokerId));
+  const shownSubs = subs.filter((s) => s.enabled || (s.paidBoats ?? 0) > 0 || jobs.some((j) => j.broker_id === s.brokerId));
   const currentJob = current ? jobById[current] : null;
 
   return (
@@ -358,7 +359,7 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
               <div>
                 <a href={`/admin/brokers/${s.brokerId}`} className="text-h2 text-ink-900 hover:underline">{s.name}</a>
                 <p className="text-xs text-ink-500 mt-0.5">
-                  {s.enabled ? `${s.reelsPerListing} reels per boat a month` : "Paused"} &middot; {s.boats === null
+                  {s.enabled ? `${s.reelsPerListing} reels per boat a month` : (s.paidBoats ?? 0) > 0 ? `Comped reels off · ${s.paidBoats} paid boat${s.paidBoats === 1 ? "" : "s"} running` : "Paused"} &middot; {s.boats === null
                     ? <span className="text-warn-800" title="No boats chosen on the broker page yet, so every active listing is planned.">all boats (legacy)</span>
                     : <span title={s.boats.join(", ")}>{s.boats.length} boat{s.boats.length === 1 ? "" : "s"} in service{s.boats.length ? `: ${s.boats.join(", ")}` : ""}</span>} &middot; {mine.length} planned for {periodLabel(period)} &middot; {mine.filter((j) => j.status === "ready" || j.status === "delivered").length} made{s.note ? ` · ${s.note}` : ""}
                 </p>

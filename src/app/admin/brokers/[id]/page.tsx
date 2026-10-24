@@ -50,7 +50,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   // 20261023_reel_service_listings.sql / 20261024_reel_service_stripe.sql
   // are applied. The Zoho per-broker price is retired (no price field).
   let reelBoatsRead = await supabase.from("reel_service_listings")
-    .select("listing_id, ended_at, billing_status, current_period_end, cancel_at_period_end").eq("broker_id", params.id);
+    .select("listing_id, ended_at, billing_status, current_period_end, cancel_at_period_end, note").eq("broker_id", params.id);
   if (reelBoatsRead.error && /billing_status|current_period_end|cancel_at_period_end/.test(reelBoatsRead.error.message)) {
     reelBoatsRead = await supabase.from("reel_service_listings").select("listing_id, ended_at").eq("broker_id", params.id) as typeof reelBoatsRead;
   }

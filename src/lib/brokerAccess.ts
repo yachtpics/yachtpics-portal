@@ -29,6 +29,27 @@ export async function reelServiceGivesAccess(service: SupabaseClient, brokerId: 
 }
 
 /**
+ * Which of these brokers have a paid Reel Service boat running (active /
+ * past_due, not ended). Used where "Your Reels" is shown: a paid boat counts
+ * whatever the broker's comped-reels switch says. [] on any error.
+ */
+export async function paidReelServiceBrokerIds(service: SupabaseClient, brokerIds: string[]): Promise<string[]> {
+  if (brokerIds.length === 0) return [];
+  try {
+    const { data, error } = await service
+      .from("reel_service_listings")
+      .select("broker_id")
+      .in("broker_id", brokerIds)
+      .is("ended_at", null)
+      .in("billing_status", ["active", "past_due"]);
+    if (error) return [];
+    return ((data ?? []) as { broker_id: string }[]).map((r) => r.broker_id).filter((b, i, a) => a.indexOf(b) === i);
+  } catch {
+    return [];
+  }
+}
+
+/**
  * A broker is unlocked if THEIR OWN plan is active/trialing, OR their brokerage
  * carries an active Office plan, OR they pay for the Reel Service on at least
  * one boat (Starter-level access, `reelServiceCovered`). Use a service-role

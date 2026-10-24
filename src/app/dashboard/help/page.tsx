@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { paidReelServiceBrokerIds } from "@/lib/brokerAccess";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 // Rendered on every request: "Your Reels" is shown per viewer (Reel Service
@@ -343,7 +344,7 @@ async function reelServiceForViewer(): Promise<boolean> {
       svc.from("reel_service_subscriptions").select("broker_id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("enabled", true),
       svc.from("reel_service_jobs").select("id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("status", "delivered"),
     ]);
-    return (subs ?? 0) > 0 || (delivered ?? 0) > 0;
+    return (subs ?? 0) > 0 || (delivered ?? 0) > 0 || (await paidReelServiceBrokerIds(svc, brokerIds)).length > 0;
   } catch {
     return false;
   }

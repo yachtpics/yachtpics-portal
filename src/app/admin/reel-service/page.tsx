@@ -1,6 +1,6 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { isPeriod, loadReelServiceEnrolment, periodET, periodLabel } from "@/lib/reelService";
+import { isPeriod, loadReelServiceEnrolment, periodET, periodLabel, plannedListingIds } from "@/lib/reelService";
 import { parseShotInfo } from "@/lib/reelClips";
 import { metaAppIdConfigured } from "@/lib/meta/config";
 import ReelServiceBoard, { type BoardJob, type BoardSub, type BoardVideo } from "./ReelServiceBoard";
@@ -37,7 +37,9 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
   // Which boats each broker has in the service (Oct 23, per-boat pricing);
   // a broker with no per-boat rows still gets every active boat ("legacy").
   const enrolment = await loadReelServiceEnrolment(admin, subRows.map((s) => s.broker_id));
-  const enrolledIds = Object.keys(enrolment).reduce((acc: string[], b) => acc.concat(enrolment[b].listingIds), []);
+  // "Enabled" governs comped boats only (Oct 24): a disabled broker's paid boats still count.
+  const scopedFor = (s: { broker_id: string; enabled: boolean }) => plannedListingIds(enrolment[s.broker_id] ?? { legacy: true, listingIds: [] }, s.enabled);
+  const enrolledIds = subRows.reduce((acc: string[], s) => acc.concat(scopedFor(s).listingIds), []);
   const boatNames: Record<string, string> = {};
   if (enrolledIds.length) {
     const { data: ls } = await admin.from("listings").select("id, vessel_name, year, make, model, status").in("id", enrolledIds);
@@ -51,9 +53,10 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
     enabled: s.enabled,
     reelsPerListing: s.reels_per_listing,
     note: s.note,
-    boats: enrolment[s.broker_id]?.legacy
+    boats: scopedFor(s).legacy
       ? null
-      : (enrolment[s.broker_id]?.listingIds ?? []).filter((id) => boatNames[id]).map((id) => boatNames[id]).sort((a, b) => a.localeCompare(b)),
+      : scopedFor(s).listingIds.filter((id) => boatNames[id]).map((id) => boatNames[id]).sort((a, b) => a.localeCompare(b)),
+    paidBoats: (enrolment[s.broker_id]?.paidListingIds ?? []).filter((id) => boatNames[id]).length,
   }));
 
   let boardJobs = ((jobs ?? []) as unknown as BoardJob[]);

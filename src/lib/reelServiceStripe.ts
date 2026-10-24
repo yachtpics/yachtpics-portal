@@ -311,8 +311,8 @@ async function vesselName(service: SupabaseClient, listingId: string): Promise<s
 }
 
 /**
- * The broker is enrolled for reels at all (reel_service_subscriptions,
- * enabled). A broker enrolled before per-boat rows existed ("legacy", every
+ * The broker has a reel_service_subscriptions row — created enabled on the
+ * first purchase (an existing row's "enabled" is left as the admin set it). A broker enrolled before per-boat rows existed ("legacy", every
  * active boat planned) gets those boats recorded as comped first, so paying
  * for one boat doesn't quietly stop the others.
  */
@@ -323,10 +323,9 @@ async function ensureBrokerEnrolled(service: SupabaseClient, brokerId: string, p
     await service.from("reel_service_subscriptions").insert({ broker_id: brokerId, enabled: true, started_at: now, updated_at: now });
     return;
   }
-  if (!sub.enabled) {
-    await service.from("reel_service_subscriptions").update({ enabled: true, started_at: now, updated_at: now }).eq("broker_id", brokerId);
-    return;
-  }
+  // A broker whose comped reels an admin switched off stays that way: the
+  // switch governs comped boats only, and nothing paid depends on it (Oct 24).
+  if (!sub.enabled) return;
   // Enabled already — legacy (no rows other than the one just written)?
   const { data: rows } = await service.from("reel_service_listings").select("listing_id").eq("broker_id", brokerId);
   const others = ((rows ?? []) as { listing_id: string }[]).filter((r) => r.listing_id !== paidListingId);
