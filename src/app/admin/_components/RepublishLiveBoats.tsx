@@ -1,23 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import JobProgress, { fetchActiveJob, startJob } from "@/components/admin/JobProgress";
+import type { JobRow } from "@/lib/jobs/types";
 
 type Phase = "idle" | "running" | "done";
 
-// Re-publishes every boat currently live on yachtpics.com, one at a time from
-// the browser. Each boat is its own request to the normal publish pipeline, so
-// there's no serverless time limit to hit and a single boat failing doesn't
-// stop the rest. Used to roll out a change to how pages are generated — e.g.
-// refreshing photo order after the ordering rules changed.
+// Re-publishes every boat currently live on yachtpics.com. Runs as a server
+// background job (`republish_site`, src/lib/jobs/) so it finishes even if this
+// tab is closed; the card shows its progress. Until the jobs table exists it
+// falls back to the old way: one request per boat from this tab. Used to roll
+// out a change to how pages are generated — e.g. refreshing photo order after
+// the ordering rules changed.
 export default function RepublishLiveBoats() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [total, setTotal] = useState(0);
   const [done, setDone] = useState(0);
   const [current, setCurrent] = useState("");
   const [failed, setFailed] = useState<string[]>([]);
+  const [job, setJob] = useState<JobRow | null>(null);
+  const [note, setNote] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+
+  // A run started earlier (maybe from another tab) is still going: show it.
+  useEffect(() => {
+    fetchActiveJob("republish_site").then((j) => { if (j) setJob(j); });
+  }, []);
 
   async function run() {
-    if (phase === "running") return;
+    if (phase === "running" || starting) return;
     if (
       !confirm(
         "Re-publish every boat currently on yachtpics.com? This refreshes each page (e.g. photo order). Boats you've hand-arranged keep their order."
@@ -25,6 +36,24 @@ export default function RepublishLiveBoats() {
     )
       return;
 
+    setNote(null);
+    setStarting(true);
+    const r = await startJob("republish_site");
+    setStarting(false);
+    if (r.job) {
+      setPhase("idle");
+      setJob(r.job);
+      return;
+    }
+    if (!r.notReady) {
+      setNote(r.error);
+      return;
+    }
+    setNote("Background jobs aren't set up yet, so this runs in this tab — keep it open until it's done.");
+    await runInTab();
+  }
+
+  async function runInTab() {
     setPhase("running");
     setDone(0);
     setFailed([]);
@@ -81,12 +110,20 @@ export default function RepublishLiveBoats() {
         </div>
         <button
           onClick={run}
-          disabled={phase === "running"}
+          disabled={phase === "running" || starting || (!!job && (job.status === "queued" || job.status === "running"))}
           className="shrink-0 bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet"
         >
-          {phase === "running" ? "Working…" : "Re-publish all"}
+          {phase === "running" || starting || (job && (job.status === "queued" || job.status === "running")) ? "Working…" : "Re-publish all"}
         </button>
       </div>
+
+      {job && (
+        <div className="mt-4 border-t border-hairline pt-4">
+          <JobProgress job={job} compact onFinished={(j) => setJob(j)} />
+        </div>
+      )}
+
+      {note && <p className="mt-3 text-xs text-warn-700">{note}</p>}
 
       {phase === "running" && (
         <div className="mt-4">

@@ -1,15 +1,19 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import JobProgress, { fetchActiveJob, startJob } from "@/components/admin/JobProgress";
+import type { JobRow } from "@/lib/jobs/types";
 
 type Phase = "idle" | "running" | "done" | "stopped";
 
 /**
  * Backfills the stored photo thumbnails (600 / 2000 px WebP copies) for every
- * photo that doesn't have them yet. Calls /api/admin/derivatives/run over and
- * over — each call works ~45 s — until nothing is left. Closing the tab or
- * pressing Stop just pauses it; pressing the button again carries on, and the
- * daily cron chips away at whatever is left too.
+ * photo that doesn't have them yet. Runs as a server background job
+ * (`derivatives_backfill`, src/lib/jobs/), so closing the tab doesn't stop it;
+ * Cancel on the progress card does. Until the jobs table exists it falls back
+ * to the old in-tab loop: /api/admin/derivatives/run over and over (each call
+ * ~45 s) — Stop or closing the tab pauses that. The daily cron chips away at
+ * whatever is left either way.
  */
 export default function GenerateThumbnails({ initialRemaining }: { initialRemaining: number }) {
   const [phase, setPhase] = useState<Phase>("idle");
@@ -20,12 +24,48 @@ export default function GenerateThumbnails({ initialRemaining }: { initialRemain
   const [note, setNote] = useState<string | null>(null);
   const [startTotal, setStartTotal] = useState(initialRemaining);
   const stopRef = useRef(false);
+  const [job, setJob] = useState<JobRow | null>(null);
+  const [starting, setStarting] = useState(false);
+  const jobActive = !!job && (job.status === "queued" || job.status === "running");
+
+  // A backfill started earlier (maybe from another tab) is still going: show it.
+  useEffect(() => {
+    fetchActiveJob("derivatives_backfill").then((j) => { if (j) setJob(j); });
+  }, []);
+
+  async function refreshRemaining() {
+    try {
+      const res = await fetch("/api/admin/derivatives/run", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && typeof data.remaining === "number") setRemaining(data.remaining);
+    } catch {
+      // Leave the old number.
+    }
+  }
 
   async function run() {
+    if (phase === "running" || starting || jobActive) return;
+    setNote(null);
+    setStarting(true);
+    const r = await startJob("derivatives_backfill");
+    setStarting(false);
+    if (r.job) {
+      setPhase("idle");
+      setJob(r.job);
+      return;
+    }
+    if (!r.notReady) {
+      setNote(r.error);
+      return;
+    }
+    await runInTab("Background jobs aren't set up yet, so this runs in this tab — keep it open while it works.");
+  }
+
+  async function runInTab(firstNote: string | null = null) {
     if (phase === "running") return;
     stopRef.current = false;
     setPhase("running");
-    setNote(null);
+    setNote(firstNote);
     setMade(0);
     setSkipped(0);
     setFailed(0);
@@ -79,7 +119,7 @@ export default function GenerateThumbnails({ initialRemaining }: { initialRemain
           <p className="text-ink-500 text-sm">
             Makes the stored small and large copies of each photo, so listing pages and slideshows load
             without resizing on the fly. New uploads get them automatically; this catches up older photos.
-            Keep this tab open while it runs — Stop or closing the tab pauses it.
+            It runs on the server — you can close this tab and come back to check on it.
           </p>
         </div>
         {phase === "running" ? (
@@ -92,13 +132,30 @@ export default function GenerateThumbnails({ initialRemaining }: { initialRemain
         ) : (
           <button
             onClick={run}
-            disabled={remaining <= 0}
+            disabled={remaining <= 0 || starting || jobActive}
             className="shrink-0 bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
           >
-            {remaining > 0 ? `Generate thumbnails (remaining: ${remaining.toLocaleString("en-US")})` : "All thumbnails made"}
+            {jobActive || starting
+              ? "Working…"
+              : remaining > 0
+                ? `Generate thumbnails (remaining: ${remaining.toLocaleString("en-US")})`
+                : "All thumbnails made"}
           </button>
         )}
       </div>
+
+      {job && (
+        <div className="mt-4 border-t border-hairline pt-4">
+          <JobProgress
+            job={job}
+            compact
+            onFinished={(j) => {
+              setJob(j);
+              refreshRemaining();
+            }}
+          />
+        </div>
+      )}
 
       {(phase === "running" || phase === "stopped") && (
         <div className="mt-4">

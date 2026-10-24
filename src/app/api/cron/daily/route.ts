@@ -24,6 +24,7 @@ export const maxDuration = 60;
 //   • reel-service     — EVERY DAY (plans the month's missing Reel Service jobs)
 //   • social           — EVERY DAY (due Instagram posts + unfinished IG reels)
 //   • derivatives      — EVERY DAY (~50 s of photo thumbnail backfill)
+//   • jobs/work        — EVERY DAY (POST; wakes the background job worker)
 const PROD = "https://portal.yachtpics.com";
 
 export async function GET(req: NextRequest) {
@@ -90,8 +91,20 @@ export async function GET(req: NextRequest) {
   // starve the others (the bug that kept Tuesday tips / Monday announce from
   // ever firing when jobs ran sequentially).
   const results: Record<string, unknown> = {};
-  await Promise.allSettled(
-    jobs.map(async (path) => {
+  // Background job queue safety net (src/lib/jobs/): wake the worker once so
+  // anything queued, or left half-done by a worker that died, carries on. The
+  // worker answers at once and chains itself while there's work.
+  const wakeJobsWorker = async () => {
+    try {
+      const res = await fetch(`${PROD}/api/jobs/work`, { method: "POST", headers: { "x-jobs-secret": secret } });
+      results["/api/jobs/work"] = { status: res.status, body: await res.json().catch(() => null) };
+    } catch (e) {
+      results["/api/jobs/work"] = { error: e instanceof Error ? e.message : String(e) };
+    }
+  };
+  await Promise.allSettled([
+    wakeJobsWorker(),
+    ...jobs.map(async (path) => {
       try {
         const res = await fetch(`${PROD}${path}${secret ? `?secret=${encodeURIComponent(secret)}` : ""}`, {
           headers: secret ? { Authorization: `Bearer ${secret}` } : {},
@@ -100,8 +113,8 @@ export async function GET(req: NextRequest) {
       } catch (e) {
         results[path] = { error: e instanceof Error ? e.message : String(e) };
       }
-    })
-  );
+    }),
+  ]);
 
   return NextResponse.json({ ok: true, dayOfWeek: dow, ran: jobs, results });
 }

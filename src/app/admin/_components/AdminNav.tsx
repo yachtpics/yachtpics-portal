@@ -27,6 +27,7 @@ import {
   Share2,
   Tags,
   Anchor,
+  ListChecks,
   type LucideIcon,
 } from "lucide-react";
 
@@ -55,6 +56,7 @@ const navItems: NavItem[] = [
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
+  { label: "Jobs", href: "/admin/jobs", icon: ListChecks },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
   { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
   { label: "Showroom Loop", href: "/admin/showroom", icon: MonitorPlay, short: "Showroom" },
