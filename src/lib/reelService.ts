@@ -742,9 +742,19 @@ async function loadJobHistory(admin: SupabaseClient, listingIds: string[]): Prom
   return (data ?? []) as JobRow[];
 }
 
-/** Reels of a paid period are due at period start + 0, 7, 14, 21 … days. */
-export const PAID_DUE_STEP_DAYS = 7;
+/**
+ * Reels of a paid period are spread evenly across it: due at start + k × step
+ * days, step = floor(period days / reels), first at day 0 (4 reels in a
+ * 28–31 day month → 0, 7, 14, 21). Period length 28 days if unknown.
+ */
+export const PAID_DEFAULT_PERIOD_DAYS = 28;
 const DAY_MS = 86_400_000;
+export function paidDueStepDays(start: string, end: string | null | undefined, perListing: number): number {
+  const s = Date.parse(start);
+  const e = end ? Date.parse(end) : NaN;
+  const days = Number.isFinite(s) && Number.isFinite(e) && e > s ? Math.round((e - s) / DAY_MS) : PAID_DEFAULT_PERIOD_DAYS;
+  return Math.max(1, Math.floor(days / Math.max(1, perListing)));
+}
 
 /** Same instant? (timestamps come back from Postgres in a different text form than Stripe's.) */
 function sameInstant(a: string | null | undefined, b: string | null | undefined): boolean {
@@ -1111,7 +1121,7 @@ export type PlanResult = { brokers: number; listings: number; created: number; s
  * the lowest slots free in that month. Idempotent.
  */
 async function planPaidPeriod(
-  admin: SupabaseClient, brokerId: string, pack: ListingPack, ctx: PlanContext, start: string, perListing: number,
+  admin: SupabaseClient, brokerId: string, pack: ListingPack, ctx: PlanContext, start: string, end: string | null, perListing: number,
 ): Promise<{ created: number; error?: string }> {
   const startMs = Date.parse(start);
   if (!Number.isFinite(startMs)) return { created: 0, error: "bad period start" };
@@ -1120,7 +1130,9 @@ async function planPaidPeriod(
   const current = onListing.filter((j) => sameInstant(j.service_period_start, start));
   const missing = Math.max(0, perListing - current.length);
   if (missing === 0) return { created: 0 };
-  const usedSteps = current.map((j) => (j.due_at ? Math.round((Date.parse(j.due_at) - startMs) / (PAID_DUE_STEP_DAYS * DAY_MS)) : -1));
+  // Existing jobs keep their due dates; new ones take the free positions on the even spread.
+  const stepDays = paidDueStepDays(start, end, perListing);
+  const usedSteps = current.map((j) => (j.due_at ? Math.round((Date.parse(j.due_at) - startMs) / (stepDays * DAY_MS)) : -1));
   const taken = onListing.filter((j) => j.period === calPeriod).map((j) => j.slot);
   const pctx: PlanContext = { history: ctx.history, period: calPeriod, perListing };
   let created = 0;
@@ -1143,7 +1155,7 @@ async function planPaidPeriod(
       caption: plan.caption,
       status: "planned" as const,
       service_period_start: new Date(startMs).toISOString(),
-      due_at: new Date(startMs + step * PAID_DUE_STEP_DAYS * DAY_MS).toISOString(),
+      due_at: new Date(startMs + step * stepDays * DAY_MS).toISOString(),
     };
     const { data: ins, error } = await admin.from("reel_service_jobs").insert(row).select("id").single();
     if (error || !ins) return { created, error: error?.message ?? "insert failed" };
@@ -1227,7 +1239,7 @@ export async function planReelServiceMonth(
         // (Or a run for the month its paid period started in — e.g. "Re-plan" on last month's board.)
         if (!currentRun && periodET(new Date(Date.parse(pp.start))) !== period) continue;
         result.listings++;
-        const r = await planPaidPeriod(admin, sub.broker_id, pack, ctx, pp.start, perListing);
+        const r = await planPaidPeriod(admin, sub.broker_id, pack, ctx, pp.start, pp.end, perListing);
         result.created += r.created;
         if (r.error) result.skipped.push({ brokerId: sub.broker_id, reason: `${pack.listing.vessel_name ?? pack.listing.id}: ${r.error}` });
         continue;

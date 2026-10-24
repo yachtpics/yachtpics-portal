@@ -137,7 +137,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
     const mj = (monthJobs ?? []) as { listing_id: string; status: string }[];
     queueRows = ((qListings ?? []) as { id: string; broker_id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; status: string }[])
       .filter((l) => l.status === "active" || boatStatus[l.id] !== "comped")
-      .map((l) => {
+      .map((l): QueueRow => {
         const row = rsRows.find((x) => x.listing_id === l.id);
         const start = row?.stripe_subscription_id && row.current_period_start && (boatStatus[l.id] === "paid" || boatStatus[l.id] === "past_due")
           ? Date.parse(row.current_period_start) : null;
@@ -155,6 +155,7 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
             : mj.filter((j) => j.listing_id === l.id && j.status === "delivered").length,
           paidPeriod: start !== null,
           nextDueAt: nextDue,
+          perBoat: subRows.find((x) => x.broker_id === l.broker_id)?.reels_per_listing ?? undefined,
           canExtend: !!row?.stripe_subscription_id && boatStatus[l.id] === "paid" && !row?.cancel_at_period_end,
           renewsAt: row?.current_period_end ?? null,
           cancelAtPeriodEnd: !!row?.cancel_at_period_end,

@@ -17,7 +17,7 @@ export default function ReelServiceLanding() {
   return (
     <main className="min-h-screen bg-ink-950 text-white flex items-center justify-center px-6 py-16">
       <div className="max-w-md w-full text-center">
-        <p className="text-sm tracking-[0.2em] uppercase text-accent-400">YachtPics Portal</p>
+        <p className="text-sm tracking-[0.2em] uppercase text-accent-300">YachtPics Portal</p>
         <h1 className="mt-4 text-3xl font-semibold leading-tight">Reel Service by YachtPics</h1>
         <p className="mt-4 text-base text-ink-200 leading-relaxed">
           Four social reels a month for your listing, made from our shoot. ${REEL_SERVICE_PRICE} a month, cancel anytime.

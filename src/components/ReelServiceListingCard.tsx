@@ -27,6 +27,8 @@ type State = {
   currentPeriodEnd: string | null;
   cancelAtPeriodEnd: boolean;
   deliveredThisMonth: number;
+  /** The broker's reels per boat each month (default 4). */
+  reelsPerBoat?: number;
   isBroker: boolean;
 };
 
@@ -130,7 +132,8 @@ export default function ReelServiceListingCard({
   const badge = (text: string, tone: "ok" | "warn" | "bad" = "ok") => (
     <span className={`inline-block text-xs font-semibold px-2 py-1 rounded ${tone === "ok" ? "bg-success-50 text-success-700" : tone === "warn" ? "bg-warn-50 text-warn-800" : "bg-danger-50 text-danger-700"}`}>{text}</span>
   );
-  const countLine = `Reel Service active · ${Math.min(s.deliveredThisMonth, REEL_SERVICE_REELS_PER_BOAT)} of ${REEL_SERVICE_REELS_PER_BOAT} this month`;
+  const perBoat = s.reelsPerBoat ?? REEL_SERVICE_REELS_PER_BOAT;
+  const countLine = `Reel Service active · ${Math.min(s.deliveredThisMonth, perBoat)} of ${perBoat} this month`;
 
   if (s.state === "comped") {
     return shell(
@@ -180,6 +183,7 @@ export default function ReelServiceListingCard({
             : "Nothing renews after the month you’ve paid for. Reels already delivered stay on Your Reels."}
           confirmLabel="Cancel Reel Service"
           busyLabel="Cancelling…"
+          cancelLabel="Keep it"
           busy={busy === "cancel"}
           onConfirm={cancel}
           onCancel={() => setConfirming(false)}

@@ -120,6 +120,7 @@ export default function ReelServiceCard({ brokerId, initial, listings, enrolledR
           Reels per boat each month
           <input type="number" min={1} max={10} value={rpm} onChange={(e) => setRpm(e.target.value)}
             className="block mt-1 w-24 border border-hairline-strong rounded-ctl px-2 py-1.5 text-sm text-ink-900" />
+          <span className="block mt-0.5 text-[11px] text-ink-500 max-w-[14rem]">Default 4. More than 4 is a courtesy &mdash; the price doesn&rsquo;t change.</span>
         </label>
         <label className="text-xs text-ink-500 flex-1 min-w-[12rem]">
           Note (optional)

@@ -1,11 +1,14 @@
 import { REEL_SERVICE_REELS_PER_BOAT } from "@/lib/plans";
+import QueueExtend from "./QueueExtend";
 
 /**
  * Reel Service queue (Oct 24) — the top of the admin board, for Samantha:
  * every boat on the service (paid + comped), plus paid boats that are past
- * due or paused, with reels delivered against the 4 a month, days to the
- * Stripe renewal, the last delivery and a status chip. Fewest delivered
- * first; past-due and paused rows highlighted.
+ * due or paused, with reels delivered against the 4 a month (paid boats:
+ * this PAID period; comped: the calendar month), the next reel due and
+ * whether it's overdue, days to the Stripe renewal (+ Extend), the last
+ * delivery and a status chip. Fewest delivered first; past-due, paused and
+ * overdue rows highlighted.
  */
 
 export type QueueStatus = "paid" | "comped" | "past_due" | "paused";
@@ -19,6 +22,14 @@ export type QueueRow = {
   renewsAt: string | null;
   cancelAtPeriodEnd: boolean;
   lastDeliveredAt: string | null;
+  /** Counted per paid period (Oct 24b) rather than the calendar month. */
+  paidPeriod?: boolean;
+  /** Earliest due date of a reel not yet delivered this paid period. */
+  nextDueAt?: string | null;
+  /** The broker's reels per boat each month (default 4). */
+  perBoat?: number;
+  /** Paid, in good standing, not cancelling: the admin may push the next charge out. */
+  canExtend?: boolean;
 };
 
 export const STATUS_CHIP: Record<QueueStatus, { label: string; cls: string }> = {
@@ -44,16 +55,19 @@ function shortDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" });
 }
 
+const perBoatOf = (r: QueueRow) => r.perBoat ?? REEL_SERVICE_REELS_PER_BOAT;
+const overdue = (r: QueueRow) => !!r.nextDueAt && Date.parse(r.nextDueAt) < Date.now();
+
 export default function ReelServiceQueue({ rows, monthLabel, billingReady }: { rows: QueueRow[]; monthLabel: string; billingReady: boolean }) {
   const sorted = rows.slice().sort((a, b) => a.delivered - b.delivered || a.boat.localeCompare(b.boat));
-  const owed = rows.reduce((n, r) => n + Math.max(0, REEL_SERVICE_REELS_PER_BOAT - r.delivered), 0);
+  const owed = rows.reduce((n, r) => n + Math.max(0, perBoatOf(r) - r.delivered), 0);
   return (
     <div className="mt-6 bg-white border border-hairline rounded-card shadow-elev-1">
       <div className="px-5 py-4 border-b border-hairline flex items-baseline justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-h2 text-ink-900">Queue</h2>
           <p className="text-xs text-ink-500 mt-0.5">
-            Every boat on the service for {monthLabel} &mdash; {rows.length} boat{rows.length === 1 ? "" : "s"}, {owed} reel{owed === 1 ? "" : "s"} still to deliver. Fewest delivered first.
+            Every boat on the service &mdash; paid boats count their paid month, comped boats {monthLabel} &mdash; {rows.length} boat{rows.length === 1 ? "" : "s"}, {owed} reel{owed === 1 ? "" : "s"} still to deliver. Fewest delivered first.
           </p>
         </div>
         {!billingReady && (
@@ -71,13 +85,14 @@ export default function ReelServiceQueue({ rows, monthLabel, billingReady }: { r
                 <th className="px-3 py-2 font-medium">Broker</th>
                 <th className="px-3 py-2 font-medium">Status</th>
                 <th className="px-3 py-2 font-medium tabular-nums">Delivered</th>
+                <th className="px-3 py-2 font-medium">Next due</th>
                 <th className="px-3 py-2 font-medium">Renews in</th>
                 <th className="px-3 py-2 font-medium">Last delivery</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((r) => (
-                <tr key={r.listingId} className={`border-b border-hairline last:border-b-0 ${r.status === "past_due" ? "bg-warn-50" : r.status === "paused" ? "bg-danger-50" : ""}`}>
+                <tr key={r.listingId} className={`border-b border-hairline last:border-b-0 ${r.status === "paused" || overdue(r) ? "bg-danger-50" : r.status === "past_due" ? "bg-warn-50" : ""}`}>
                   <td className="px-5 py-2">
                     <a href={`/admin/listings/${r.listingId}`} className="text-ink-900 font-medium hover:underline">{r.boat}</a>
                   </td>
@@ -85,11 +100,15 @@ export default function ReelServiceQueue({ rows, monthLabel, billingReady }: { r
                     <a href={`/admin/brokers/${r.brokerId}`} className="text-ink-700 hover:underline">{r.broker}</a>
                   </td>
                   <td className="px-3 py-2"><StatusChip status={r.status} /></td>
-                  <td className={`px-3 py-2 tabular-nums ${r.delivered >= REEL_SERVICE_REELS_PER_BOAT ? "text-success-700" : "text-ink-900"}`}>
-                    {r.delivered} / {REEL_SERVICE_REELS_PER_BOAT}
+                  <td className={`px-3 py-2 tabular-nums ${r.delivered >= perBoatOf(r) ? "text-success-700" : "text-ink-900"}`}>
+                    {r.delivered} / {perBoatOf(r)}{r.paidPeriod ? <span className="text-[11px] text-ink-500"> paid mo.</span> : null}
+                  </td>
+                  <td className={`px-3 py-2 ${overdue(r) ? "text-danger-700 font-semibold" : "text-ink-700"}`}>
+                    {r.nextDueAt ? `${shortDate(r.nextDueAt)}${overdue(r) ? " · overdue" : ""}` : "—"}
                   </td>
                   <td className="px-3 py-2 text-ink-700">
                     {r.status === "comped" ? "—" : r.cancelAtPeriodEnd ? `ends ${shortDate(r.renewsAt)}` : days(r.renewsAt)}
+                    {r.canExtend && <QueueExtend listingId={r.listingId} boat={r.boat} />}
                   </td>
                   <td className="px-3 py-2 text-ink-700">{shortDate(r.lastDeliveredAt)}</td>
                 </tr>

@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/reel-service/listing?listingId=…[&delivered=1]
  *   → { ready, listingActive, state, billingStatus, currentPeriodEnd,
- *       cancelAtPeriodEnd, deliveredThisMonth, isBroker, delivered? }
+ *       cancelAtPeriodEnd, deliveredThisMonth, reelsPerBoat, isBroker, delivered? }
  *
  * The Reel Service card on a listing page (broker + admin) and the
  * "Delivered by YachtPics" strip on its Reel page. `state`:
@@ -57,6 +57,7 @@ export async function GET(req: NextRequest) {
     currentPeriodEnd: row?.current_period_end ?? null,
     cancelAtPeriodEnd: !!row?.cancel_at_period_end,
     deliveredThisMonth: st.deliveredThisMonth,
+    reelsPerBoat: st.perBoat,
     isBroker: userId === brokerId,
     ...(delivered ? { delivered } : {}),
   }, { headers: { "Cache-Control": "no-store" } });

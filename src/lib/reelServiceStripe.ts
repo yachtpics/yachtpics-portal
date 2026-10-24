@@ -147,16 +147,25 @@ export type ListingReelServiceState = {
   legacy: boolean;
   /** Reels delivered for this listing this service month: the paid period for a paid boat, else the calendar month (Eastern). */
   deliveredThisMonth: number;
+  /** Reels per boat each month for this broker (reel_service_subscriptions.reels_per_listing; default 4). */
+  perBoat: number;
 };
+
+/** The broker's "Reels per boat each month" (1–10), or the default 4. */
+export async function brokerReelsPerBoat(service: SupabaseClient, brokerId: string): Promise<number> {
+  const { data } = await service.from("reel_service_subscriptions").select("reels_per_listing").eq("broker_id", brokerId).maybeSingle();
+  const n = Number(data?.reels_per_listing);
+  return Number.isFinite(n) && n >= 1 ? Math.min(10, Math.round(n)) : REEL_SERVICE_REELS_PER_BOAT;
+}
 
 export async function loadListingReelService(service: SupabaseClient, listingId: string, brokerId: string): Promise<ListingReelServiceState> {
   const { row: data, error } = await readReelServiceRow(service, listingId);
   const start = paidPeriodStart(data);
   let q = service.from("reel_service_jobs").select("id", { count: "exact", head: true }).eq("listing_id", listingId).eq("status", "delivered");
   q = start ? q.eq("service_period_start", new Date(start).toISOString()) : q.eq("period", periodET());
-  const { count } = await q;
+  const [{ count }, perBoat] = await Promise.all([q, brokerReelsPerBoat(service, brokerId)]);
   const deliveredThisMonth = count ?? 0;
-  if (error) return { ready: false, row: null, legacy: false, deliveredThisMonth };
+  if (error) return { ready: false, row: null, legacy: false, deliveredThisMonth, perBoat };
   let legacy = false;
   if (!data) {
     const [{ data: sub }, { count: rows }] = await Promise.all([
@@ -165,7 +174,7 @@ export async function loadListingReelService(service: SupabaseClient, listingId:
     ]);
     legacy = !!sub?.enabled && (rows ?? 0) === 0;
   }
-  return { ready: true, row: (data as ReelServiceListingRow | null) ?? null, legacy, deliveredThisMonth };
+  return { ready: true, row: (data as ReelServiceListingRow | null) ?? null, legacy, deliveredThisMonth, perBoat };
 }
 
 /** A row that blocks a new checkout: a live Stripe subscription, or a comp still in service. */
