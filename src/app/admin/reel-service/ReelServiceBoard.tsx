@@ -9,6 +9,8 @@ import { detectShots, probeClip, rememberShots, type ShotInfo } from "@/lib/reel
 import ReelServiceRenderer, { type RenderOutcome } from "./ReelServiceRenderer";
 import SocialPostDialog from "@/components/SocialPostDialog";
 import ReelServiceBilling from "./ReelServiceBilling";
+import { StatusChip, type QueueStatus } from "./ReelServiceQueue";
+import { REEL_SERVICE_ZOHO_BILLING } from "@/lib/plans";
 import { LEASE_REFRESH_MS, ago, leaseFresh, readLease, type StationLease } from "./stationLease";
 
 /** A listing video, for the footage badge and "Measure videos". */
@@ -66,7 +68,7 @@ function byListing(list: BoardJob[]): { listingId: string; boat: string; jobs: B
 /** Planned, failed, or stuck "rendering" from a closed tab: these can be made. */
 const renderable = (s: string) => s === "planned" || s === "failed" || s === "rendering";
 
-export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColumn = false, socialEnabled = false }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[]; shotsColumn?: boolean; socialEnabled?: boolean }) {
+export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColumn = false, socialEnabled = false, boatStatus = {} }: { period: string; subs: BoardSub[]; jobs: BoardJob[]; videos: BoardVideo[]; shotsColumn?: boolean; socialEnabled?: boolean; boatStatus?: Record<string, QueueStatus> }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [msg, setMsg] = useState("");
@@ -319,7 +321,8 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
       </div>
       {msg && <p className="mt-3 text-sm text-ink-700">{msg}</p>}
 
-      <ReelServiceBilling />
+      {/* Zoho billing summary — retired Oct 24 (brokers pay through Stripe); kept, hidden. */}
+      {REEL_SERVICE_ZOHO_BILLING && <ReelServiceBilling />}
 
       {currentJob && (
         <div className="mt-5 bg-white border border-hairline rounded-card shadow-elev-1 p-4 flex gap-4 items-start">
@@ -377,6 +380,7 @@ export default function ReelServiceBoard({ period, subs, jobs, videos, shotsColu
                 <div className="px-5 pt-3 pb-2 flex items-center justify-between gap-3 bg-ink-50">
                   <p className="text-sm font-semibold text-ink-900 flex items-center gap-2 flex-wrap">
                     {g.boat}
+                    {boatStatus[g.listingId] && <StatusChip status={boatStatus[g.listingId]} />}
                     <FootageBadge videos={videos.filter((v) => v.listing_id === g.listingId)} />
                     {videos.filter((v) => v.listing_id === g.listingId).map((v) => (
                       <span key={v.id} className="text-[11px] font-normal text-ink-500">

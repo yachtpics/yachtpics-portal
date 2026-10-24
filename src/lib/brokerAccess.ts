@@ -9,13 +9,35 @@ export function officePlanActive(
 }
 
 /**
+ * Reel Service (Oct 24): a broker with at least one paid boat still running
+ * (billing_status active or past_due, not ended) gets Starter-level Portal
+ * access while it lasts. Comped boats don't count. False on any error (e.g.
+ * migration 20261024 not applied yet).
+ */
+export async function reelServiceGivesAccess(service: SupabaseClient, brokerId: string): Promise<boolean> {
+  try {
+    const { count, error } = await service
+      .from("reel_service_listings")
+      .select("listing_id", { count: "exact", head: true })
+      .eq("broker_id", brokerId)
+      .is("ended_at", null)
+      .in("billing_status", ["active", "past_due"]); // = REEL_SERVICE_PAID_STATUSES (reelService.ts, not imported to keep this light)
+    return !error && (count ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * A broker is unlocked if THEIR OWN plan is active/trialing, OR their brokerage
- * carries an active Office plan. Use a service-role client so RLS never blocks.
+ * carries an active Office plan, OR they pay for the Reel Service on at least
+ * one boat (Starter-level access, `reelServiceCovered`). Use a service-role
+ * client so RLS never blocks.
  */
 export async function getEffectiveAccessStatus(
   service: SupabaseClient,
   brokerId: string
-): Promise<{ status: AccessStatus; trialEndsAt: string | null; officeCovered: boolean }> {
+): Promise<{ status: AccessStatus; trialEndsAt: string | null; officeCovered: boolean; reelServiceCovered?: boolean }> {
   const { data: ownSub } = await service
     .from("subscriptions")
     .select("status, stripe_subscription_id, trial_ends_at")
@@ -37,6 +59,10 @@ export async function getEffectiveAccessStatus(
     if (officePlanActive(office ?? null)) {
       return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: true };
     }
+  }
+
+  if (await reelServiceGivesAccess(service, brokerId)) {
+    return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: false, reelServiceCovered: true };
   }
 
   return { status: own, trialEndsAt: ownSub?.trial_ends_at ?? null, officeCovered: false };

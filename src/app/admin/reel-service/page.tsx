@@ -1,9 +1,10 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { isPeriod, loadReelServiceEnrolment, periodET } from "@/lib/reelService";
+import { isPeriod, loadReelServiceEnrolment, periodET, periodLabel } from "@/lib/reelService";
 import { parseShotInfo } from "@/lib/reelClips";
 import { metaAppIdConfigured } from "@/lib/meta/config";
 import ReelServiceBoard, { type BoardJob, type BoardSub, type BoardVideo } from "./ReelServiceBoard";
+import ReelServiceQueue, { type QueueRow, type QueueStatus } from "./ReelServiceQueue";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,79 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
 
   const boardJobs = ((jobs ?? []) as unknown as BoardJob[]);
 
+  // ── Queue (Oct 24): every boat on the service this month, paid + comped,
+  // plus paid boats that are past due or paused. Billing columns come from
+  // 20261024_reel_service_stripe.sql; before it, every row reads as comped.
+  const thisPeriod = periodET();
+  type RsRow = { listing_id: string; broker_id: string; ended_at: string | null; billing_status?: string | null; current_period_end?: string | null; cancel_at_period_end?: boolean | null };
+  let billingReady = true;
+  let rsRows: RsRow[] = [];
+  const brokerIdsAll = subRows.map((s) => s.broker_id);
+  if (brokerIdsAll.length) {
+    let r = await admin.from("reel_service_listings")
+      .select("listing_id, broker_id, ended_at, billing_status, current_period_end, cancel_at_period_end").in("broker_id", brokerIdsAll);
+    if (r.error) {
+      billingReady = false;
+      r = await admin.from("reel_service_listings").select("listing_id, broker_id, ended_at").in("broker_id", brokerIdsAll) as typeof r;
+    }
+    rsRows = ((r.data ?? []) as RsRow[]);
+  }
+  const statusOf = (row: RsRow | undefined): QueueStatus | null => {
+    if (!row) return null;
+    const b = row.billing_status ?? "comped";
+    if (b === "paused") return "paused";
+    if (row.ended_at || b === "canceled") return null;
+    if (b === "active") return "paid";
+    if (b === "past_due") return "past_due";
+    return "comped";
+  };
+  // listing id → status, for the chips on the board and the queue.
+  const boatStatus: Record<string, QueueStatus> = {};
+  const enabledIds = subRows.filter((s) => s.enabled).map((s) => s.broker_id);
+  rsRows.forEach((row) => {
+    const st = statusOf(row);
+    if (!st) return;
+    // A comp only counts while the broker is enabled; paid boats always show.
+    if (st === "comped" && enabledIds.indexOf(row.broker_id) < 0) return;
+    boatStatus[row.listing_id] = st;
+  });
+  // Legacy brokers (no per-boat rows): their boats with reels this month count as comped.
+  const { data: monthJobs } = await admin.from("reel_service_jobs")
+    .select("listing_id, broker_id, status").eq("period", thisPeriod);
+  ((monthJobs ?? []) as { listing_id: string; broker_id: string }[]).forEach((j) => {
+    if (enrolment[j.broker_id]?.legacy && enabledIds.indexOf(j.broker_id) >= 0 && !boatStatus[j.listing_id]) boatStatus[j.listing_id] = "comped";
+  });
+  const queueIds = Object.keys(boatStatus);
+  let queueRows: QueueRow[] = [];
+  if (queueIds.length) {
+    const [{ data: qListings }, { data: lastJobs }] = await Promise.all([
+      admin.from("listings").select("id, broker_id, vessel_name, year, make, model, status").in("id", queueIds),
+      admin.from("reel_service_jobs").select("listing_id, delivered_at").in("listing_id", queueIds).eq("status", "delivered")
+        .not("delivered_at", "is", null).order("delivered_at", { ascending: false }).limit(5000),
+    ]);
+    const last: Record<string, string> = {};
+    ((lastJobs ?? []) as { listing_id: string; delivered_at: string }[]).forEach((j) => { if (!last[j.listing_id]) last[j.listing_id] = j.delivered_at; });
+    const brokerName: Record<string, string> = {};
+    boardSubs.forEach((b) => { brokerName[b.brokerId] = b.name; });
+    const mj = (monthJobs ?? []) as { listing_id: string; status: string }[];
+    queueRows = ((qListings ?? []) as { id: string; broker_id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null; status: string }[])
+      .filter((l) => l.status === "active" || boatStatus[l.id] !== "comped")
+      .map((l) => {
+        const row = rsRows.find((x) => x.listing_id === l.id);
+        return {
+          listingId: l.id,
+          boat: l.vessel_name || [l.year, l.make, l.model].filter(Boolean).join(" ") || "Listing",
+          brokerId: l.broker_id,
+          broker: brokerName[l.broker_id] ?? "Broker",
+          status: boatStatus[l.id],
+          delivered: mj.filter((j) => j.listing_id === l.id && j.status === "delivered").length,
+          renewsAt: row?.current_period_end ?? null,
+          cancelAtPeriodEnd: !!row?.cancel_at_period_end,
+          lastDeliveredAt: last[l.id] ?? null,
+        };
+      });
+  }
+
   // The videos on this month's listings: the footage badge ("Needs more
   // video") and "Measure videos" work from these, live.
   const listingIds = boardJobs.map((j) => j.listing_id).filter((x, i, a) => a.indexOf(x) === i);
@@ -91,7 +165,8 @@ export default async function ReelServicePage({ searchParams }: { searchParams: 
           Couldn&rsquo;t read the Reel Service tables ({subErr.message}). The migration <code>20261004_reel_service.sql</code> may not be applied yet.
         </p>
       )}
-      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} shotsColumn={shotsColumn} socialEnabled={metaAppIdConfigured()} />
+      {!subErr && <ReelServiceQueue rows={queueRows} monthLabel={periodLabel(thisPeriod)} billingReady={billingReady} />}
+      <ReelServiceBoard period={period} subs={boardSubs} jobs={boardJobs} videos={boardVideos} shotsColumn={shotsColumn} socialEnabled={metaAppIdConfigured()} boatStatus={boatStatus} />
     </div>
   );
 }

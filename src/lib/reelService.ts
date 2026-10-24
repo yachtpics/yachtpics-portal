@@ -7,7 +7,8 @@ import { isMusicChoice, nextMusicSeed, seedFromString, type MusicChoice } from "
 /**
  * Reel Service
  * ------------
- * A paid add-on (billed outside the app): YachtPics delivers social reels
+ * A paid add-on (Oct 24: $179 per boat a month through Stripe, see
+ * reelServiceStripe.ts; or comped by an admin): YachtPics delivers social reels
  * every month for EACH active listing of an enrolled broker —
  * `reels_per_listing` a month (default 4).
  *
@@ -763,25 +764,49 @@ async function attachShots(admin: SupabaseClient, videos: VideoRow[]): Promise<V
  */
 export type ReelServiceEnrolment = { legacy: boolean; listingIds: string[] };
 
+/**
+ * Billing states (Oct 24, Stripe — reel_service_listings.billing_status) in
+ * which a boat is still in the service. past_due stays in until Stripe's
+ * retries give up (then it turns paused or canceled); paused and canceled are
+ * out. A row with no billing_status (migration 20261024 not applied) counts
+ * as comped.
+ */
+export const REEL_SERVICE_IN_SERVICE_STATUSES = ["active", "comped", "past_due"];
+/** Paid and still running (not comped): these give Starter-level Portal access. */
+export const REEL_SERVICE_PAID_STATUSES = ["active", "past_due"];
+
+export function reelServiceRowInService(r: { ended_at: string | null; billing_status?: string | null }): boolean {
+  if (r.ended_at) return false;
+  return REEL_SERVICE_IN_SERVICE_STATUSES.indexOf(r.billing_status ?? "comped") >= 0;
+}
+
 export async function loadReelServiceEnrolment(admin: SupabaseClient, brokerIds: string[]): Promise<Record<string, ReelServiceEnrolment>> {
   const out: Record<string, ReelServiceEnrolment> = {};
   brokerIds.forEach((b) => { out[b] = { legacy: true, listingIds: [] }; });
   if (brokerIds.length === 0) return out;
-  const { data, error } = await admin.from("reel_service_listings")
-    .select("listing_id, broker_id, ended_at")
+  type Row = { listing_id: string; broker_id: string; ended_at: string | null; billing_status?: string | null };
+  let res = await admin.from("reel_service_listings")
+    .select("listing_id, broker_id, ended_at, billing_status")
     .in("broker_id", brokerIds);
+  if (res.error && /billing_status/.test(res.error.message)) {
+    // 20261024_reel_service_stripe.sql not applied yet: every row is comped.
+    res = await admin.from("reel_service_listings")
+      .select("listing_id, broker_id, ended_at")
+      .in("broker_id", brokerIds) as typeof res;
+  }
+  const { data, error } = res;
   if (error) {
     console.warn(`[reel-service] reel_service_listings unreadable (${error.message}); planning all active listings (legacy).`);
     return out;
   }
-  ((data ?? []) as { listing_id: string; broker_id: string; ended_at: string | null }[]).forEach((r) => {
+  ((data ?? []) as Row[]).forEach((r) => {
     const e = out[r.broker_id];
     if (!e) return;
     // Any row — even an ended one — means this broker is on per-boat
     // enrolment: taking their last boat off must stop the plan, not fall
     // back to every listing.
     e.legacy = false;
-    if (!r.ended_at) e.listingIds.push(r.listing_id);
+    if (reelServiceRowInService(r)) e.listingIds.push(r.listing_id);
   });
   return out;
 }
@@ -1022,7 +1047,7 @@ export type PlanResult = { brokers: number; listings: number; created: number; s
 export async function planReelServiceMonth(
   admin: SupabaseClient,
   period: string,
-  opts: { brokerIds?: string[] } = {},
+  opts: { brokerIds?: string[]; listingIds?: string[] } = {},
 ): Promise<PlanResult> {
   let q = admin.from("reel_service_subscriptions").select("broker_id, reels_per_listing").eq("enabled", true);
   if (opts.brokerIds && opts.brokerIds.length) q = q.in("broker_id", opts.brokerIds);
@@ -1035,7 +1060,12 @@ export async function planReelServiceMonth(
   for (const sub of subRows) {
     result.brokers++;
     const perListing = Math.max(1, Math.min(10, sub.reels_per_listing ?? 4));
-    const en = enrolment[sub.broker_id] ?? { legacy: true, listingIds: [] };
+    const en0 = enrolment[sub.broker_id] ?? { legacy: true, listingIds: [] };
+    // `listingIds` narrows the run to those boats (a just-paid Reel Service
+    // boat is planned on its own, straight from the Stripe webhook).
+    const en = opts.listingIds
+      ? { legacy: false, listingIds: (en0.legacy ? opts.listingIds : en0.listingIds.filter((id) => opts.listingIds!.indexOf(id) >= 0)) }
+      : en0;
     if (!en.legacy && en.listingIds.length === 0) {
       result.skipped.push({ brokerId: sub.broker_id, reason: "No boats enrolled in the Reel Service." });
       continue;

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { PLANS } from "@/lib/plans";
+import { PLANS, REEL_SERVICE_PRICE, REEL_SERVICE_REELS_PER_BOAT } from "@/lib/plans";
 import HelpTip from "@/components/HelpTip";
 import { Badge } from "@/components/ui";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
@@ -241,6 +241,21 @@ export default function BillingPage() {
               </div>
             );
           })}
+        </div>
+
+        {/* Reel Service (Oct 24) — an add-on per listing, not a plan. Bought
+            on the boat's page (or /dashboard/reel-service); includes Portal
+            access while active for a broker with no plan. */}
+        <div className="mt-4 bg-white rounded-card border border-hairline-strong shadow-elev-1 px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="font-semibold text-ink-900 text-base">Add Reel Service <span className="text-sm font-normal text-ink-500">&middot; ${REEL_SERVICE_PRICE}/mo per listing</span></p>
+            <p className="text-xs text-ink-500 mt-0.5">
+              Up to {REEL_SERVICE_REELS_PER_BOAT} social reels a month, made by YachtPics from the shoot. Per listing; pick the boat on its page. Includes Portal access while it&rsquo;s on if you don&rsquo;t have a plan.
+            </p>
+          </div>
+          <a href="/dashboard/reel-service" className="text-sm font-semibold px-4 py-2 rounded-ctl border border-hairline-strong text-ink-800 hover:border-ink-400 transition-colors">
+            Pick a boat
+          </a>
         </div>
       </div>
     </div>

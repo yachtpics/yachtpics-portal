@@ -9,7 +9,7 @@ import SetTempPasswordButton from "./_components/SetTempPasswordButton";
 import BrokerContactEditor from "./_components/BrokerContactEditor";
 import AddedByEditor from "./_components/AddedByEditor";
 import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
-import ReelServiceCard from "./_components/ReelServiceCard";
+import ReelServiceCard, { type ReelCardRow } from "./_components/ReelServiceCard";
 import { planLabel } from "@/lib/subscriptionAccess";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string; from?: string; listing?: string } }) {
@@ -45,12 +45,16 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     .select("enabled, reels_per_listing, note, started_at")
     .eq("broker_id", params.id)
     .maybeSingle();
-  // Per-boat enrolment and price (Oct 23). Separate reads so the card still
-  // works before 20261023_reel_service_listings.sql is applied.
-  const [{ data: reelPrice }, { data: reelBoats, error: reelBoatsErr }] = await Promise.all([
-    supabase.from("reel_service_subscriptions").select("price_per_listing_cents").eq("broker_id", params.id).maybeSingle(),
-    supabase.from("reel_service_listings").select("listing_id, ended_at").eq("broker_id", params.id),
-  ]);
+  // Per-boat enrolment (Oct 23) and how each boat is paid (Oct 24: Stripe
+  // or comped). Separate reads so the card still works before
+  // 20261023_reel_service_listings.sql / 20261024_reel_service_stripe.sql
+  // are applied. The Zoho per-broker price is retired (no price field).
+  let reelBoatsRead = await supabase.from("reel_service_listings")
+    .select("listing_id, ended_at, billing_status, current_period_end, cancel_at_period_end").eq("broker_id", params.id);
+  if (reelBoatsRead.error && /billing_status|current_period_end|cancel_at_period_end/.test(reelBoatsRead.error.message)) {
+    reelBoatsRead = await supabase.from("reel_service_listings").select("listing_id, ended_at").eq("broker_id", params.id) as typeof reelBoatsRead;
+  }
+  const { data: reelBoats, error: reelBoatsErr } = reelBoatsRead;
   const reelListings = (listings ?? []).filter((l) => l.status === "active")
     .map((l) => ({ id: l.id, name: l.vessel_name || "Untitled listing", detail: [l.year, l.length_ft ? `${Math.round(Number(l.length_ft))}'` : null, l.make].filter(Boolean).join(" ") }))
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -236,9 +240,8 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
       <ReelServiceCard
         brokerId={params.id}
         initial={reelService ?? null}
-        priceCents={(reelPrice as { price_per_listing_cents?: number } | null)?.price_per_listing_cents ?? null}
         listings={reelListings}
-        enrolledRows={reelBoatsErr ? null : ((reelBoats ?? []) as { listing_id: string; ended_at: string | null }[])}
+        enrolledRows={reelBoatsErr ? null : ((reelBoats ?? []) as ReelCardRow[])}
       />
 
       {/* Listings */}

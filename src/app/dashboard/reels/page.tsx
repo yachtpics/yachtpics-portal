@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
 import { ANGLE_LABEL, loadReelServiceEnrolment, type ReelServiceAngle } from "@/lib/reelService";
 import ReelList, { type DeliveredReel } from "./ReelList";
+import { REEL_SERVICE_PRICE } from "@/lib/plans";
 
 export const dynamic = "force-dynamic";
 
@@ -68,7 +69,7 @@ export default async function YourReelsPage() {
 
   // The boats in the Reel Service (Oct 23 — enrolment is per boat). A broker
   // with no boats chosen yet still has every active listing planned, so those
-  // are listed. No price here: quotes are handled by email.
+  // are listed. Boats are added and cancelled on their listing pages (Oct 24, Stripe).
   let enrolledBoats: string[] = [];
   if (brokerIds !== null && brokerIds.length > 0) {
     try {
@@ -102,7 +103,7 @@ export default async function YourReelsPage() {
       {enrolledBoats.length > 0 && (
         <p className="text-ink-600 mt-3 text-sm max-w-2xl">
           <span className="font-medium text-ink-900">Boats in the Reel Service:</span> {enrolledBoats.join(", ")}.
-          {" "}To add or remove a boat, just email us.
+          {" "}Add a boat (${REEL_SERVICE_PRICE}/mo) or cancel one from the boat&rsquo;s page &mdash; or <a href="/dashboard/reel-service" className="text-accent-700 hover:underline">pick a boat here</a>.
         </p>
       )}
       <ReelList reels={reels} />

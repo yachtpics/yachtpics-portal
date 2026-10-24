@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { periodET, planReelServiceMonth } from "@/lib/reelService";
+import { endReelServiceForInactiveListings } from "@/lib/reelServiceStripe";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ export const maxDuration = 60;
  * a boat enrolled or a listing that went active mid-month (it gets its full set), or
  * reels_per_listing raised. Idempotent: it only fills missing slots.
  * Renders nothing and emails no one.
+ *
+ * Also (Oct 24): a paid Reel Service boat whose listing is no longer active
+ * (sold / archived) is set to cancel at the end of its paid month in Stripe.
  */
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET;
@@ -29,9 +33,13 @@ export async function GET(req: NextRequest) {
   }
   const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   const period = periodET();
+  let sold: { ended: number; errors: string[] } = { ended: 0, errors: [] };
+  try { sold = await endReelServiceForInactiveListings(admin); } catch (e) {
+    sold.errors.push(e instanceof Error ? e.message : String(e));
+  }
   try {
     const result = await planReelServiceMonth(admin, period);
-    return NextResponse.json({ ok: true, period, ...result });
+    return NextResponse.json({ ok: true, period, ...result, soldEnded: sold.ended, soldErrors: sold.errors });
   } catch (e) {
     return NextResponse.json({ ok: false, period, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

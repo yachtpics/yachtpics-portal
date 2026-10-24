@@ -41,12 +41,20 @@ export const OFFICE_PLAN = {
   priceId: "price_1TkUDuK5G1w3hzIsSBIAigXP",
 };
 
-// Reel Service (Oct 23, 2026): per boat per month, up to 4 reels; billed
-// outside the app (Zoho Invoice), so there is no Stripe price. A broker's
-// subscription row can override the price (price_per_listing_cents) for a
-// special deal — this is the default and the label brokers are quoted.
-export const REEL_SERVICE_PRICE = 149;
+// Reel Service (Oct 23, 2026 evening): $179 per listing per month, up to 4
+// reels, paid by card in the Portal at the moment of ordering (Stripe
+// Checkout, recurring monthly — see src/lib/reelServiceStripe.ts). Includes
+// Starter-level Portal access while active for a broker with no paid plan.
+export const REEL_SERVICE_PRICE = 179;
 export const REEL_SERVICE_REELS_PER_BOAT = 4;
+/** The $29 plan a broker's Portal access rolls to when their Reel Service ends. */
+export const REEL_SERVICE_FALLBACK_PLAN_PRICE = 29;
+/**
+ * The Oct 23 morning Zoho billing path (monthly summary panel, per-broker
+ * price override) is retired: brokers pay through Stripe. The code is kept
+ * but hidden while this is false.
+ */
+export const REEL_SERVICE_ZOHO_BILLING = false;
 
 /**
  * Look up the plan a Stripe price ID belongs to, including the Office plan.

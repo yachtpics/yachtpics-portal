@@ -195,6 +195,18 @@ const sections = [
   },
   {
     num: "15",
+    title: "Reel Service",
+    steps: [
+      "Reel Service: YachtPics makes up to 4 social reels a month for one listing, from the shoot's photos plus any drone or video footage. Photo-only listings qualify. $179 a month per listing, paid by card in the Portal; run it on as many boats as you like.",
+      "To add it, open the listing and click Add Reel Service in the Reel Service card (or Billing → Add Reel Service → Pick a boat). Checkout takes your card; the service starts as soon as the first payment goes through, renews monthly, and tax is added where it applies. Assistants can add it for the brokers they work for.",
+      "No plan? While the Reel Service is on, it includes Portal access (Starter level). Already on a plan, nothing about it changes.",
+      "The card shows 'Reel Service active · N of 4 this month' and the renewal date. Your reels land on Your Reels, on the listing's Reel page under Delivered by YachtPics, and in your inbox.",
+      "To cancel, click Cancel Reel Service on the card. It runs to the end of the month you've paid for and nothing renews. When a listing is sold or archived, its Reel Service ends at the end of that month by itself.",
+      "If a renewal payment fails, the card says Payment problem: click update your card. Stripe tries again for a while; if it still can't charge the card, the Reel Service pauses until the card is fixed.",
+    ],
+  },
+  {
+    num: "16",
     title: "Recently Photographed",
     steps: [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
@@ -205,7 +217,7 @@ const sections = [
     ],
   },
   {
-    num: "16",
+    num: "17",
     title: "Tips & Tricks",
     steps: [
       "Tips (in the sidebar) is a browsable library of short how-tos for getting more out of the portal.",
@@ -215,7 +227,7 @@ const sections = [
     ],
   },
   {
-    num: "17",
+    num: "18",
     title: "Industry News",
     steps: [
       "News (in the sidebar) gathers what the yachting trade press is reporting, every morning, kept short.",
@@ -277,6 +289,8 @@ const quickRef = [
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
   ["Mark a boat for a boat show", "My Listings → listing → Boat shows → tick the show, add the dock / slip, Save"],
   ["Download a boat show dock card", "My Listings → listing → Boat shows → Dock card (PDF)"],
+  ["Add the Reel Service to a boat ($179/mo)", "My Listings → listing → Reel Service → Add Reel Service"],
+  ["Cancel the Reel Service on a boat", "My Listings → listing → Reel Service → Cancel Reel Service"],
   ["Keep a boat out of the showcase and off yachtpics.com", "My Listings → listing → 'Keep this a pocket listing'"],
   ["Install the portal on your phone", "Open it in your phone's browser → Add to Home Screen"],
   ["Read the industry news", "Sidebar → News"],
@@ -292,7 +306,7 @@ const quickRef = [
  * build_user_guide.py reads those two arrays) never lists it for everyone.
  */
 const REEL_SERVICE_SECTION = {
-  num: "18",
+  num: "19",
   title: "Your Reels",
   steps: [
     "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you for the boats enrolled in the Reel Service, newest first. We email you when new ones are ready.",

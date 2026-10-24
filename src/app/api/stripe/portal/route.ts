@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
+import { safeNextPath } from "@/lib/safeNext";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -19,9 +20,14 @@ export async function POST(req: NextRequest) {
 
   const origin = req.headers.get("origin") ?? "https://yachtpics-portal.vercel.app";
 
+  // Optional { returnPath } (same-site path) — e.g. the listing page a Reel
+  // Service "update your card" link came from. Default: Billing.
+  const body = await req.json().catch(() => ({}));
+  const returnPath = safeNextPath(typeof body?.returnPath === "string" ? body.returnPath : null) ?? "/dashboard/billing";
+
   const session = await stripe.billingPortal.sessions.create({
     customer: sub.stripe_customer_id,
-    return_url: `${origin}/dashboard/billing`,
+    return_url: `${origin}${returnPath}`,
   });
 
   return NextResponse.json({ url: session.url });

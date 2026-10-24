@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { loadListingReelSource } from "@/lib/listingReelSource";
 import ReelMaker, { type ReelSource } from "@/components/ReelMaker";
+import DeliveredReelStrip from "@/components/DeliveredReelStrip";
 
 /**
  * Listing Reel
@@ -38,5 +39,11 @@ export default function ListingReelPage() {
   if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading…</div>;
   if (!source) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Listing not found.</div>;
 
-  return <ReelMaker source={source} />;
+  // Reel Service reels YachtPics delivered for this boat (nothing shows if none).
+  return (
+    <>
+      <DeliveredReelStrip listingId={id} />
+      <ReelMaker source={source} />
+    </>
+  );
 }

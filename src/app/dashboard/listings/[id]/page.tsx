@@ -18,6 +18,7 @@ import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import BoatShowCard from "@/components/BoatShowCard";
+import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import SortableVideoList from "@/components/SortableVideoList";
 // Photo management (grid, upload, replace, delete, order, categories, cover,
 // lightbox, downloads) is shared with the admin listing page.
@@ -879,6 +880,10 @@ export default function BrokerListingPage() {
       {/* Boat shows — only while a show is coming up (FLIBS 2026). Mark the boat,
           add her dock / slip, download the dock card. Messages use the banner above. */}
       <BoatShowCard listingId={id} onMessage={(text, kind) => flash(text, kind, kind === "error" ? 8000 : 4000)} />
+
+      {/* Reel Service (Oct 24) — add it for this boat ($179/mo, Stripe), see
+          this month's count, cancel, or fix a failed payment. */}
+      <ReelServiceListingCard listingId={id} onMessage={(text, kind) => flash(text, kind, kind === "error" ? 8000 : 6000)} />
 
       {/* Pocket-listing veto — keep this boat out of the Recently Photographed showcase */}
       <label className="mb-5 flex items-start gap-3 px-4 py-3 rounded-lg bg-white border border-hairline cursor-pointer">

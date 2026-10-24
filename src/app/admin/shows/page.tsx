@@ -2,6 +2,7 @@ import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { getCurrentShows, showDatesLabel } from "@/lib/boatShows";
 import ShowBoard, { type ShowRow, type UnmarkedRow } from "./_components/ShowBoard";
+import ReelServiceQr from "./_components/ReelServiceQr";
 
 export const dynamic = "force-dynamic";
 
@@ -114,6 +115,8 @@ export default async function AdminShowsPage() {
           Boats brokers have marked for an upcoming show, with their dock or slip. Dock cards download from here.
         </p>
       </div>
+
+      <ReelServiceQr />
 
       {shows.length === 0 ? (
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 py-14 text-center">

@@ -21,6 +21,7 @@ export default function ConfirmDeleteDialog({
   confirmLabel = "Delete",
   busy = false,
   busyLabel = "Deleting…",
+  cancelLabel = "Cancel",
   onConfirm,
   onCancel,
 }: {
@@ -30,6 +31,8 @@ export default function ConfirmDeleteDialog({
   confirmLabel?: string;
   busy?: boolean;
   busyLabel?: string;
+  /** Label of the safe button (default "Cancel"). */
+  cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
@@ -67,7 +70,7 @@ export default function ConfirmDeleteDialog({
             disabled={busy}
             className="flex-1 bg-white border border-hairline-strong hover:bg-ink-50 disabled:opacity-50 text-ink-700 text-sm font-medium py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
           >
-            Cancel
+            {cancelLabel}
           </button>
           <button
             onClick={onConfirm}

@@ -2,6 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import {
+  REEL_SERVICE_KIND,
+  handleReelServiceCheckoutCompleted,
+  handleReelServiceDeleted,
+  handleReelServicePaymentFailed,
+  handleReelServiceSubscriptionChanged,
+  isReelServiceSubscription,
+} from "@/lib/reelServiceStripe";
+
+export const runtime = "nodejs";
+// A paid Reel Service checkout plans the boat's month right here.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
@@ -30,6 +42,8 @@ export async function POST(req: NextRequest) {
   }
 
   async function upsertSubscription(subscription: Stripe.Subscription) {
+    // Never let a Reel Service boat's subscription stand in for a Portal plan.
+    if (isReelServiceSubscription(subscription)) return;
     // Office (brokerage) subscription? Route it to the brokerages table instead.
     const brokerageId = subscription.metadata?.brokerage_id;
     if (brokerageId) {
@@ -151,11 +165,63 @@ export async function POST(req: NextRequest) {
     } catch { /* never fail the webhook over a notification */ }
   }
 
+  // Reel Service (Oct 24): one Stripe subscription per boat, metadata
+  // kind = "reel_service". Those events go to src/lib/reelServiceStripe.ts
+  // and must NEVER reach upsertSubscription below — it would write the boat's
+  // subscription over the broker's Portal plan (it falls back to a lookup by
+  // customer, and the boat shares the broker's customer).
+  try {
+    switch (event.type) {
+      case "checkout.session.completed": {
+        const session = event.data.object as Stripe.Checkout.Session;
+        if (session.metadata?.kind === REEL_SERVICE_KIND) {
+          if (session.mode === "subscription" && session.payment_status !== "unpaid") {
+            await handleReelServiceCheckoutCompleted(supabase, session);
+          }
+          return NextResponse.json({ received: true });
+        }
+        break;
+      }
+      case "customer.subscription.created":
+      case "customer.subscription.updated": {
+        const subscription = event.data.object as Stripe.Subscription;
+        if (isReelServiceSubscription(subscription)) {
+          await handleReelServiceSubscriptionChanged(supabase, subscription.id);
+          return NextResponse.json({ received: true });
+        }
+        break;
+      }
+      case "customer.subscription.deleted": {
+        const subscription = event.data.object as Stripe.Subscription;
+        if (isReelServiceSubscription(subscription)) {
+          await handleReelServiceDeleted(supabase, subscription);
+          return NextResponse.json({ received: true });
+        }
+        break;
+      }
+      case "invoice.payment_failed": {
+        const invoice = event.data.object as Stripe.Invoice;
+        const subId = typeof invoice.subscription === "string" ? invoice.subscription : invoice.subscription?.id;
+        const meta = (invoice as unknown as { subscription_details?: { metadata?: Record<string, string> } | null }).subscription_details?.metadata;
+        if (subId && meta?.kind === REEL_SERVICE_KIND) {
+          await handleReelServicePaymentFailed(supabase, subId);
+          return NextResponse.json({ received: true });
+        }
+        break;
+      }
+    }
+  } catch (err) {
+    // Answer 500 so Stripe retries; every Reel Service handler is safe to replay.
+    console.error(`[reel-service] webhook ${event.type} ${event.id} failed:`, err);
+    return NextResponse.json({ error: "Reel Service handler failed" }, { status: 500 });
+  }
+
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === "subscription" && session.subscription) {
         const subscription = await stripe.subscriptions.retrieve(session.subscription as string);
+        if (isReelServiceSubscription(subscription)) break;
         await upsertSubscription(subscription);
         // Checkout completing IS the "someone just subscribed" moment — the
         // subscription.created/updated events fire repeatedly and would spam.
@@ -197,6 +263,14 @@ export async function POST(req: NextRequest) {
       const invoice = event.data.object as Stripe.Invoice;
       if (invoice.subscription) {
         const subscription = await stripe.subscriptions.retrieve(invoice.subscription as string);
+        if (isReelServiceSubscription(subscription)) {
+          // Reached when the invoice didn't carry the metadata above.
+          try { await handleReelServicePaymentFailed(supabase, subscription.id); } catch (err) {
+            console.error(`[reel-service] payment_failed ${event.id}:`, err);
+            return NextResponse.json({ error: "Reel Service handler failed" }, { status: 500 });
+          }
+          break;
+        }
         await upsertSubscription(subscription);
       }
       break;

@@ -6,6 +6,7 @@ import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
+import { reelServiceGivesAccess } from "@/lib/brokerAccess";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -99,6 +100,15 @@ export default async function DashboardLayout({ children }: { children: React.Re
     if (office && (office.subscription_status === "active" || office.subscription_status === "trialing")) {
       accessStatus = "active";
     }
+  }
+
+  // Reel Service (Oct 24): a paid boat includes Starter-level Portal access.
+  if (role === "broker" && accessStatus !== "active") {
+    const svc = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    if (await reelServiceGivesAccess(svc, user.id)) accessStatus = "active";
   }
 
   // Reel Service (Oct 4): show "Your Reels" to a broker who is enrolled or has

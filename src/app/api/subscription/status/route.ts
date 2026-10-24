@@ -41,8 +41,8 @@ export async function GET(req: NextRequest) {
   );
 
   // Effective status accounts for the broker's own plan OR their office plan.
-  const { status, trialEndsAt, officeCovered } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
+  const { status, trialEndsAt, officeCovered, reelServiceCovered } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
   const daysLeft = trialDaysRemaining(trialEndsAt);
 
-  return NextResponse.json({ status, daysLeft, trialEndsAt, officeCovered });
+  return NextResponse.json({ status, daysLeft, trialEndsAt, officeCovered, reelServiceCovered: !!reelServiceCovered });
 }

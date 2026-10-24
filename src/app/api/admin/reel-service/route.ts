@@ -97,19 +97,38 @@ export async function POST(req: NextRequest) {
     const { data: own } = await admin.from("listings").select("id").eq("broker_id", brokerId).in("id", wanted.length ? wanted : ["00000000-0000-0000-0000-000000000000"]);
     const ownIds = new Set(((own ?? []) as { id: string }[]).map((l) => l.id));
     const keep = wanted.filter((id) => ownIds.has(id));
-    const { data: rows, error: readErr } = await admin.from("reel_service_listings").select("listing_id, ended_at").eq("broker_id", brokerId);
+    // Oct 24: boats can also be PAID through Stripe (billing_status, migration
+    // 20261024). Admin checkboxes are the comp path: what they add or restart
+    // is 'comped' / started_by 'admin'. A boat with a live paid subscription
+    // is never ended or restarted here — the broker cancels it (or it ends in
+    // Stripe), so Samantha can't stop a paid boat by mistake.
+    type ExistingRow = { listing_id: string; ended_at: string | null; billing_status?: string | null; stripe_subscription_id?: string | null };
+    let billingCols = true;
+    let read = await admin.from("reel_service_listings").select("listing_id, ended_at, billing_status, stripe_subscription_id").eq("broker_id", brokerId);
+    if (read.error && /billing_status|stripe_subscription_id/.test(read.error.message)) {
+      billingCols = false;
+      read = await admin.from("reel_service_listings").select("listing_id, ended_at").eq("broker_id", brokerId) as typeof read;
+    }
+    const { data: rows, error: readErr } = read;
     if (readErr) return NextResponse.json({ error: `Couldn’t read the boats in the service (${readErr.message}). Is 20261023_reel_service_listings.sql applied?` }, { status: 500 });
-    const existing = (rows ?? []) as { listing_id: string; ended_at: string | null }[];
+    const existing = (rows ?? []) as ExistingRow[];
+    const paidLive = (r: ExistingRow) => !!r.stripe_subscription_id && (r.billing_status === "active" || r.billing_status === "past_due" || r.billing_status === "paused") && !r.ended_at;
+    const comp = billingCols ? { billing_status: "comped", started_by: "admin" } : {};
     const now = new Date().toISOString();
     const toInsert = keep.filter((id) => !existing.some((r) => r.listing_id === id));
-    const toRestart = existing.filter((r) => r.ended_at && keep.indexOf(r.listing_id) >= 0).map((r) => r.listing_id);
-    const toEnd = existing.filter((r) => !r.ended_at && keep.indexOf(r.listing_id) < 0).map((r) => r.listing_id);
+    // A boat that is off (ended, or its paid subscription canceled / paused) and checked again comes back as a comp.
+    const isOff = (r: ExistingRow) => !!r.ended_at || (billingCols && (r.billing_status === "canceled" || (r.billing_status === "paused" && !paidLive(r))));
+    const toRestart = existing.filter((r) => isOff(r) && !paidLive(r) && keep.indexOf(r.listing_id) >= 0).map((r) => r.listing_id);
+    const toEnd = existing.filter((r) => !r.ended_at && !paidLive(r) && keep.indexOf(r.listing_id) < 0).map((r) => r.listing_id);
+    const paidKept = existing.filter((r) => paidLive(r) && keep.indexOf(r.listing_id) < 0).length;
     if (toInsert.length) {
-      const { error } = await admin.from("reel_service_listings").insert(toInsert.map((id) => ({ listing_id: id, broker_id: brokerId, enrolled_at: now })));
+      const { error } = await admin.from("reel_service_listings").insert(toInsert.map((id) => ({ listing_id: id, broker_id: brokerId, enrolled_at: now, ...comp })));
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
     if (toRestart.length) {
-      const { error } = await admin.from("reel_service_listings").update({ ended_at: null, enrolled_at: now }).in("listing_id", toRestart);
+      const restart: Record<string, unknown> = { ended_at: null, enrolled_at: now, ...comp };
+      if (billingCols) Object.assign(restart, { stripe_subscription_id: null, current_period_end: null, cancel_at_period_end: false });
+      const { error } = await admin.from("reel_service_listings").update(restart).in("listing_id", toRestart);
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
     if (toEnd.length) {
@@ -122,13 +141,13 @@ export async function POST(req: NextRequest) {
     if (existing.length === 0 && keep.length === 0) {
       const shown: string[] = Array.isArray(body?.shownListingIds) ? body.shownListingIds.filter((x: unknown) => typeof x === "string").slice(0, 500) : [];
       const { data: shownOwn } = shown.length ? await admin.from("listings").select("id").eq("broker_id", brokerId).in("id", shown) : { data: [] };
-      const off = ((shownOwn ?? []) as { id: string }[]).map((l) => ({ listing_id: l.id, broker_id: brokerId, enrolled_at: now, ended_at: now }));
+      const off = ((shownOwn ?? []) as { id: string }[]).map((l) => ({ listing_id: l.id, broker_id: brokerId, enrolled_at: now, ended_at: now, ...comp }));
       if (off.length) {
         const { error } = await admin.from("reel_service_listings").insert(off);
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
       }
     }
-    return NextResponse.json({ ok: true, enrolled: keep.length, added: toInsert.length + toRestart.length, ended: toEnd.length });
+    return NextResponse.json({ ok: true, enrolled: keep.length, added: toInsert.length + toRestart.length, ended: toEnd.length, paidKept });
   }
 
   if (action === "billing") {
