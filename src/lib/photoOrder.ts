@@ -29,6 +29,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Skylounge Aft Deck",
   "Skylounge Day Head",
   "Sun Deck",
+  "Sunbed",
   "Bow",
   "Foredeck",
   "Stern",

@@ -8,6 +8,9 @@ import { PHOTO_CATEGORIES } from "./photoCategories";
 // instead, which is the honest result.
 const ALIASES: Record<string, string> = {
   front:       "Bow",
+  sunpad:      "Sunbed",
+  sunpads:     "Sunbed",
+  sunlounge:   "Sunbed",
   interior:    "Salon",
   living:      "Salon",
   mainsalon:   "Salon",
