@@ -17,8 +17,9 @@ export const dynamic = "force-dynamic";
  * POST /api/reel-service/checkout { listingId } → { url }
  *
  * Starts a Stripe Checkout for the Reel Service on one boat ($179/month,
- * card on file, renews monthly, Stripe Tax). The broker, an assistant of the
- * broker, or an admin acting for the broker may start it; the subscription is
+ * card on file, renews monthly, Stripe Tax). The broker or an assistant of
+ * the broker may start it — never an admin on someone else's listing (they
+ * copy the pay link or comp the boat); the subscription is
  * always the listing's broker's. Nothing is written here — the boat goes on
  * the service when the webhook sees the paid checkout.
  */
@@ -28,6 +29,9 @@ export async function POST(req: NextRequest) {
   const who = await reelServiceCaller(listingId);
   if (who.error) return who.error;
   const { service, brokerId, userId } = who;
+  if (!who.canBuy) {
+    return NextResponse.json({ error: "Admins can’t buy for a broker — copy the pay link or comp the boat." }, { status: 403 });
+  }
 
   const { data: listing } = await service.from("listings").select("id, status, vessel_name").eq("id", listingId).maybeSingle();
   if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });

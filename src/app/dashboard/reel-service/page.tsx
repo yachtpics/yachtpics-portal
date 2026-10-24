@@ -12,7 +12,8 @@ export const dynamic = "force-dynamic";
  * /dashboard/reel-service — where the /rs boat-show QR lands after sign-in
  * (Oct 24). Every active listing of the broker (an assistant: of the brokers
  * they work for) with "Add — $179/mo" (→ Stripe Checkout) or a badge for the
- * boats already on the service.
+ * boats already on the service. An admin sees only their own listings, like
+ * a broker (an admin never buys for a broker).
  */
 export default async function ReelServicePickPage() {
   const supabase = await createClient();
@@ -33,7 +34,7 @@ export default async function ReelServicePickPage() {
   let listings: L[] = [];
   let ready = true;
   const status: Record<string, "paid" | "comped" | "past_due" | "paused" | "ending"> = {};
-  if (role !== "admin" && brokerIds.length) {
+  if (brokerIds.length) {
     const { data } = await svc.from("listings")
       .select("id, broker_id, vessel_name, year, length_ft, make, model")
       .in("broker_id", brokerIds).eq("status", "active").order("vessel_name");
@@ -74,8 +75,8 @@ export default async function ReelServicePickPage() {
         ${REEL_SERVICE_PRICE} a month per boat, paid by card. Cancel anytime from the boat&rsquo;s page.
       </p>
 
-      {role === "admin" ? (
-        <p className="mt-6 text-sm text-ink-600">Admins: open a listing to add the Reel Service for its broker, or comp boats on the broker&rsquo;s page.</p>
+      {role === "admin" && listings.length === 0 ? (
+        <p className="mt-6 text-sm text-ink-600">Admins see only their own listings here. For a broker&rsquo;s boat, open the listing: Copy pay link, or Comp this boat.</p>
       ) : !ready ? (
         <p className="mt-6 text-sm text-ink-500">Reel Service isn&rsquo;t available to order here yet.</p>
       ) : listings.length === 0 ? (

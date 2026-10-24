@@ -9,7 +9,11 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
  * admin (assertListingAccess — no co-brokers, no brokerage admins).
  */
 export async function reelServiceCaller(listingId: unknown): Promise<
-  { error: NextResponse } | { error: null; service: SupabaseClient; userId: string; brokerId: string; isAdmin: boolean }
+  { error: NextResponse } | {
+    error: null; service: SupabaseClient; userId: string; brokerId: string; isAdmin: boolean;
+    /** The listing's broker or one of their assistants — the only people who may pay for it (an admin never pays for a broker). */
+    canBuy: boolean;
+  }
 > {
   if (typeof listingId !== "string" || !/^[0-9a-f-]{36}$/i.test(listingId)) {
     return { error: NextResponse.json({ error: "Missing listing." }, { status: 400 }) };
@@ -21,5 +25,12 @@ export async function reelServiceCaller(listingId: unknown): Promise<
   const access = await assertListingAccess(service, listingId, user.id);
   if (access instanceof NextResponse) return { error: access };
   const { data: me } = await service.from("profiles").select("role").eq("id", user.id).maybeSingle();
-  return { error: null, service, userId: user.id, brokerId: access.brokerId, isAdmin: me?.role === "admin" };
+  const isAdmin = me?.role === "admin";
+  let canBuy = user.id === access.brokerId;
+  if (!canBuy) {
+    const { data: link } = await service.from("broker_assistants").select("broker_id")
+      .eq("broker_id", access.brokerId).eq("assistant_id", user.id).maybeSingle();
+    canBuy = !!link || !isAdmin;
+  }
+  return { error: null, service, userId: user.id, brokerId: access.brokerId, isAdmin, canBuy };
 }

@@ -61,6 +61,7 @@ export async function GET(req: NextRequest) {
  *   { action: "replan_unmade", period, listingIds }                      → re-plan those listings' planned/failed jobs
  *   { action: "shots", shots: { videoId: ShotInfo } }                    → store detected edit points (videos.shot_cuts)
  *   { action: "replan_listing", period, listingId }                      → re-plan ALL of a listing's reels that month (delivered too)
+ *   { action: "comp_listing", listingId }                                → put ONE boat on the service at no charge (listing card)
  *   { action: "extend", listingId, days }                                → paid boat: push the next Stripe charge out 1–30 days (Queue)
  */
 export async function POST(req: NextRequest) {
@@ -248,6 +249,39 @@ export async function POST(req: NextRequest) {
     } catch (e) {
       return NextResponse.json({ error: e instanceof Error ? e.message : "Re-planning failed." }, { status: 500 });
     }
+  }
+
+  if (action === "comp_listing") {
+    // The listing card's "Comp this boat (no charge)" for an admin. Same
+    // effect as checking the boat on the broker card (the "listings" action),
+    // for one boat, without having to send the broker's whole boat list.
+    const listingId = typeof body?.listingId === "string" ? body.listingId : "";
+    if (!listingId) return NextResponse.json({ error: "Missing listingId" }, { status: 400 });
+    const { data: listing } = await admin.from("listings").select("id, broker_id, status").eq("id", listingId).maybeSingle();
+    if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
+    if (listing.status !== "active") return NextResponse.json({ error: "Only active listings can go on the Reel Service." }, { status: 400 });
+    const brokerId = listing.broker_id as string;
+    const { data: sub } = await admin.from("reel_service_subscriptions").select("enabled").eq("broker_id", brokerId).maybeSingle();
+    if (sub && sub.enabled === false) {
+      return NextResponse.json({ error: "Comped reels are off for this broker. Turn “Comped reels on” on their broker page first." }, { status: 409 });
+    }
+    const { data: row, error: readErr } = await admin.from("reel_service_listings")
+      .select("listing_id, ended_at, billing_status, stripe_subscription_id").eq("listing_id", listingId).maybeSingle();
+    if (readErr) return NextResponse.json({ error: "Reel Service billing isn’t set up yet (migration 20261024)." }, { status: 503 });
+    const live = row && !row.ended_at && (row.billing_status === "comped" || (row.stripe_subscription_id && ["active", "past_due", "paused"].indexOf(row.billing_status as string) >= 0));
+    if (live) return NextResponse.json({ error: "This boat is already on the Reel Service." }, { status: 409 });
+    const now = new Date().toISOString();
+    const comp = { billing_status: "comped", started_by: "admin", ended_at: null, enrolled_at: now, stripe_subscription_id: null, current_period_end: null, cancel_at_period_end: false };
+    const { error } = row
+      ? await admin.from("reel_service_listings").update(comp).eq("listing_id", listingId)
+      : await admin.from("reel_service_listings").insert({ listing_id: listingId, broker_id: brokerId, ...comp });
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!sub) {
+      await admin.from("reel_service_subscriptions").insert({ broker_id: brokerId, enabled: true, started_at: now, updated_at: now });
+    }
+    let planned = 0;
+    try { planned = (await planReelServiceMonth(admin, periodET(), { brokerIds: [brokerId], listingIds: [listingId] })).created; } catch { /* the daily cron fills it */ }
+    return NextResponse.json({ ok: true, planned });
   }
 
   if (action === "extend") {

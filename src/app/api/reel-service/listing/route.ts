@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
   const { service, brokerId, userId } = who;
 
   const [{ data: listing }, st] = await Promise.all([
-    service.from("listings").select("status").eq("id", listingId).maybeSingle(),
+    service.from("listings").select("status, vessel_name").eq("id", listingId).maybeSingle(),
     loadListingReelService(service, listingId as string, brokerId),
   ]);
   const row = st.row;
@@ -59,6 +59,9 @@ export async function GET(req: NextRequest) {
     deliveredThisMonth: st.deliveredThisMonth,
     reelsPerBoat: st.perBoat,
     isBroker: userId === brokerId,
+    canBuy: who.canBuy,
+    vesselName: (listing?.vessel_name as string | null) ?? null,
+    isAdmin: who.isAdmin,
     ...(delivered ? { delivered } : {}),
   }, { headers: { "Cache-Control": "no-store" } });
 }

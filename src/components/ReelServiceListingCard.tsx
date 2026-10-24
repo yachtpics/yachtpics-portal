@@ -30,6 +30,10 @@ type State = {
   /** The broker's reels per boat each month (default 4). */
   reelsPerBoat?: number;
   isBroker: boolean;
+  /** The broker or their assistant — may pay. False for an admin on someone else's listing. */
+  canBuy?: boolean;
+  isAdmin?: boolean;
+  vesselName?: string | null;
 };
 
 const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York" });
@@ -47,6 +51,10 @@ export default function ReelServiceListingCard({
   const [busy, setBusy] = useState<"" | "checkout" | "cancel" | "portal">("");
   const [confirming, setConfirming] = useState(false);
   const [started, setStarted] = useState(false);
+  /** ?reel_service=add (the admin's "pay link"): open checkout once, as soon as we know the boat isn't on it. */
+  const [autoAdd, setAutoAdd] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [confirmComp, setConfirmComp] = useState(false);
 
   const load = useCallback(() => {
     fetch(`/api/reel-service/listing?listingId=${encodeURIComponent(listingId)}`, { cache: "no-store" })
@@ -59,6 +67,13 @@ export default function ReelServiceListingCard({
     load();
     if (typeof window === "undefined") return;
     const sp = new URLSearchParams(window.location.search);
+    if (sp.get("reel_service") === "add") {
+      setAutoAdd(true);
+      // Strip it so a reload or Back doesn't open checkout again.
+      sp.delete("reel_service");
+      const qs = sp.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+    }
     if (sp.get("reel_service") === "started") {
       setStarted(true);
       // The webhook may land a few seconds after Stripe sends the broker back.
@@ -76,6 +91,39 @@ export default function ReelServiceListingCard({
       window.location.href = d.url;
     } catch {
       onMessage("We couldn’t reach the billing service. Check your connection and try again.", "error");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  // Pay link: once the state is known, a broker (or assistant) whose boat isn't on the service goes straight to checkout.
+  useEffect(() => {
+    if (!autoAdd || !s) return;
+    setAutoAdd(false);
+    if (s.ready && s.listingActive && s.canBuy !== false && (s.state === "none" || s.state === "ended")) void checkout();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoAdd, s]);
+
+  const payLink = `https://portal.yachtpics.com/dashboard/listings/${listingId}?reel_service=add`;
+  async function copyPayLink() {
+    try {
+      await navigator.clipboard.writeText(payLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      onMessage(`Copy this link: ${payLink}`, "success");
+    }
+  }
+
+  async function comp() {
+    setBusy("checkout");
+    try {
+      const res = await fetch("/api/admin/reel-service", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "comp_listing", listingId }) });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) { onMessage(d.error ?? "Couldn’t comp this boat.", "error"); return; }
+      onMessage(d.planned ? `Comped — ${d.planned} reel${d.planned === 1 ? "" : "s"} planned for this month.` : "Comped — it’s on the Reel Service at no charge.", "success");
+      setConfirmComp(false);
+      load();
     } finally {
       setBusy("");
     }
@@ -218,6 +266,40 @@ export default function ReelServiceListingCard({
   // none / ended → offer it (active listings only).
   if (!s.listingActive) {
     return null;
+  }
+  // An admin on a broker's listing never pays for the broker: send them the
+  // pay link, or comp the boat.
+  if (s.canBuy === false) {
+    return shell(
+      <div className="space-y-2">
+        <p className="text-sm text-ink-700">
+          <span className="font-medium text-ink-900">Not on the Reel Service</span>
+          <span className="text-ink-500"> &middot; ${REEL_SERVICE_PRICE}/mo, paid by the broker</span>
+        </p>
+        <div className="flex flex-wrap items-center gap-2">
+          <button type="button" onClick={copyPayLink}
+            className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400">
+            {copied ? "Copied" : "Copy pay link"}
+          </button>
+          <button type="button" onClick={() => setConfirmComp(true)} disabled={!!busy}
+            className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400 disabled:opacity-50">
+            Comp this boat (no charge)
+          </button>
+        </div>
+        <p className="text-xs text-ink-500">The link opens checkout for this boat when the broker is signed in &mdash; or send them portal.yachtpics.com/rs.</p>
+        <ConfirmDeleteDialog
+          open={confirmComp}
+          title="Comp this boat?"
+          body={`Comp ${s.vesselName || "this boat"}? YachtPics makes its reels at no charge.`}
+          confirmLabel="Comp it"
+          busyLabel="Saving…"
+          cancelLabel="Not now"
+          busy={busy === "checkout"}
+          onConfirm={comp}
+          onCancel={() => setConfirmComp(false)}
+        />
+      </div>
+    );
   }
   return shell(
     <div className="flex flex-wrap items-center justify-between gap-3">
