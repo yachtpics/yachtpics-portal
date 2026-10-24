@@ -321,7 +321,7 @@ export async function POST(req: NextRequest) {
       `      <a href="${loginLink}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:20px;">Log In to Your Portal &rarr;</a>`,
       "      <p style=\"margin:0 0 20px;font-size:13px;color:#6b7280;line-height:1.6;\">Use the temporary password above to log in, then update it from your profile settings whenever you like.</p>",
       "      <p style=\"margin:0 0 16px;font-size:13px;color:#9ca3af;line-height:1.6;\">From your portal you can view and download your photos, share a professional slideshow with clients, manage your listings, and track who's viewing your content.</p>",
-      "      <p style=\"margin:0;font-size:13px;color:#6b7280;line-height:1.6;\"><strong style=\"color:#111827;\">Your photos are always free to download.</strong> You also get a " + TRIAL_DAYS + "-day free trial of the publishing tools &mdash; upload your own photos, add walkthrough videos, and build branded client slideshows.</p>",
+      "      <p style=\"margin:0;font-size:13px;color:#6b7280;line-height:1.6;\"><strong style=\"color:#111827;\">Your photos are always free to download.</strong> You also get a " + TRIAL_DAYS + "-day free trial of the publishing tools &mdash; upload your own photos, add your listing video, and build branded client slideshows.</p>",
       "    </div>",
       "    <div style=\"padding:24px 40px;border-top:1px solid #f3f4f6;\">",
       "      <p style=\"margin:0;font-size:12px;color:#c5cbd2;\">Powered by <a href=\"https://yachtpics.com\" style=\"color:#c5cbd2;text-decoration:none;\">YachtPics</a></p>",

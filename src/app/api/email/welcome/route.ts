@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
         <tr>
           <td style="padding:14px 0;border-bottom:1px solid #f3f4f6;vertical-align:top;">
             <span style="display:inline-block;background:#c39e4e;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">4</span>
-            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Add a walkthrough video</strong> — scroll to the Videos section on your listing and upload an MP4 or MOV. It plays right inside your client slideshow — the closest thing to a sea trial before a buyer steps aboard.</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">Add your listing video</strong> — scroll to the Videos section on your listing and upload an MP4 or MOV. It plays on the slideshow&rsquo;s Video tab, so a buyer sees the boat move before stepping aboard.</span>
           </td>
         </tr>
         <tr>
@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
 
       <a href="${portalUrl}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:32px;">Open My Portal &rarr;</a>
 
-      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Downloading your photos is always free.</strong> You also have a ${trialDays}-day free trial of the publishing tools above — slideshows, walkthrough video, and uploads — so you can put them to work right away.</p>
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Downloading your photos is always free.</strong> You also have a ${trialDays}-day free trial of the publishing tools above — slideshows, listing video, and uploads — so you can put them to work right away.</p>
 
       <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">Questions or need anything adjusted? Just reply to this email — we're here.</p>
     </div>
