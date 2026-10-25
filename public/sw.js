@@ -8,7 +8,11 @@
  *  - Reel music instruments (/music/index.json and the /music/*.bin sample
  *    packs, ~5 MB in all): cache-first, cached as they're first used (never
  *    precached). Re-rendering the samples must bump CACHE_VERSION, since the
- *    index and the packs have to change together.
+ *    index and the packs have to change together. (Oct 25: when
+ *    NEXT_PUBLIC_ASSETS_BASE is set the packs come from the Supabase bucket
+ *    `portal-assets` — cross-origin, so this worker passes them through and
+ *    the browser's HTTP cache (1-year Cache-Control on the .bin files) does
+ *    the caching instead. This rule then only covers the local fallback.)
  *  - Supabase, Stripe, and /api requests: passed straight through to the
  *    network (never cached) to avoid stale data and stale auth tokens.
  *

@@ -32,8 +32,18 @@
  * with the ordinary flat zoom.
  */
 
-/** Versioned, self-hosted asset folder (model, runtime, worker). */
+import { assetUrl, remoteAssets } from "./assetBase";
+
+/**
+ * Versioned asset folder. The worker and the small runtime scripts are always
+ * served same-origin from here (a module Worker must be same-origin); the two
+ * big files — the model and the runtime's .wasm — come from `assetUrl()`
+ * (the Supabase `portal-assets` bucket when NEXT_PUBLIC_ASSETS_BASE is set,
+ * otherwise this same folder). See src/lib/assetBase.ts.
+ */
 const ASSET_BASE = "/depth/v1/";
+const MODEL_FILE = "depth-anything-v2-small-q8.onnx";
+const WASM_FILE = "ort-wasm-simd-threaded.wasm";
 /**
  * Bumped whenever what the cache holds changes meaning, so a map made by an
  * older engine in the same page session is never reused.
@@ -233,8 +243,14 @@ function getWorker(): Worker | null {
   try {
     // A plain URL string, built at runtime — webpack leaves it alone, so the
     // worker and the runtime it imports are served straight from /public.
-    const url = new URL(`${ASSET_BASE}worker.mjs`, window.location.origin).href;
-    const w = new Worker(url, { type: "module" });
+    const u = new URL(`${ASSET_BASE}worker.mjs`, window.location.origin);
+    if (remoteAssets) {
+      // The big files live in the asset bucket: tell the worker where. With
+      // no remote base the worker finds them next to itself, as before.
+      u.searchParams.set("model", assetUrl(`depth/v1/${MODEL_FILE}`));
+      u.searchParams.set("wasm", assetUrl(`depth/v1/${WASM_FILE}`));
+    }
+    const w = new Worker(u.href, { type: "module" });
     w.onmessage = (e: MessageEvent) => {
       const { id, depth, width, height, error } = e.data || {};
       const p = pending.get(id);

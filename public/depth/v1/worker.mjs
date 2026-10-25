@@ -1,9 +1,16 @@
 // Depth worker for the Walkthrough reel look.
 //
 // Runs Depth Anything V2 Small (quantized) on the WebAssembly runtime, one
-// photograph at a time, entirely inside this folder: the model, the runtime
-// and this file are all served by the portal itself. Nothing goes to a third
-// party and nothing is fetched from a CDN.
+// photograph at a time. This file and the runtime's small scripts are always
+// served by the portal itself (same-origin). The two big files — the model and
+// the runtime's .wasm — come from the portal's own Supabase Storage bucket
+// (`portal-assets`) when the page passes their URLs as query parameters:
+//
+//   worker.mjs?model=<absolute .onnx URL>&wasm=<absolute .wasm URL>
+//
+// (src/lib/depthMotion.ts does that when NEXT_PUBLIC_ASSETS_BASE is set).
+// Without them, both are loaded from this folder, as before. Either way no
+// photograph leaves the browser and nothing comes from a third-party CDN.
 //
 // Message in:  { id, rgba: Uint8ClampedArray, width, height }
 //              — the photograph already resized to the model's input size
@@ -17,25 +24,58 @@
 import * as ort from "./ort.wasm.min.mjs";
 
 const HERE = new URL("./", import.meta.url).href;
-const MODEL_URL = new URL("depth-anything-v2-small-q8.onnx", HERE).href;
+const PARAMS = new URL(import.meta.url).searchParams;
+
+// Only absolute http(s) URLs are accepted from the query string.
+function remote(name) {
+  const v = PARAMS.get(name);
+  if (!v) return null;
+  try {
+    const u = new URL(v);
+    return u.protocol === "https:" || u.protocol === "http:" ? u.href : null;
+  } catch {
+    return null;
+  }
+}
+
+const MODEL_URL = remote("model") || new URL("depth-anything-v2-small-q8.onnx", HERE).href;
+const WASM_URL = remote("wasm");
 
 // Single-threaded on purpose: threads need cross-origin isolation headers the
 // portal does not send, and one photograph at a time is fast enough.
 ort.env.wasm.numThreads = 1;
 ort.env.wasm.proxy = false;
-ort.env.wasm.wasmPaths = HERE;
+// The Emscripten glue (.mjs) always comes from this folder; the .wasm from the
+// bucket when given. ORT fetches it with fetch() (CORS mode for a
+// cross-origin URL; Supabase answers with Access-Control-Allow-Origin: *).
+ort.env.wasm.wasmPaths = WASM_URL
+  ? { mjs: new URL("ort-wasm-simd-threaded.mjs", HERE).href, wasm: WASM_URL }
+  : HERE;
 
 const MEAN = [0.485, 0.456, 0.406];
 const STD = [0.229, 0.224, 0.225];
 
 let sessionPromise = null;
 
+const SESSION_OPTIONS = {
+  executionProviders: ["wasm"],
+  graphOptimizationLevel: "all",
+};
+
+// A model from the bucket is fetched here, explicitly as a CORS request, so a
+// missing or blocked file fails with a clear error. The local model is handed
+// to ORT as a URL, exactly as before.
+async function loadRemoteModel(url) {
+  const res = await fetch(url, { mode: "cors", credentials: "omit" });
+  if (!res.ok) throw new Error(`depth model: HTTP ${res.status}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
 function session() {
   if (!sessionPromise) {
-    sessionPromise = ort.InferenceSession.create(MODEL_URL, {
-      executionProviders: ["wasm"],
-      graphOptimizationLevel: "all",
-    });
+    sessionPromise = remote("model")
+      ? loadRemoteModel(MODEL_URL).then((bytes) => ort.InferenceSession.create(bytes, SESSION_OPTIONS))
+      : ort.InferenceSession.create(MODEL_URL, SESSION_OPTIONS);
   }
   return sessionPromise;
 }

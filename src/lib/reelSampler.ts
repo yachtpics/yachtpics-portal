@@ -25,6 +25,8 @@
  * Nothing here is random; the composer passes its own seeded values.
  */
 
+import { assetUrl } from "./assetBase";
+
 export type SampledInstrument = "piano" | "epiano" | "strings" | "pad" | "nylon" | "bass" | "vibes" | "glock";
 export type InstrumentName = SampledInstrument | "drums";
 export type DrumHit = "kick" | "kick2" | "snare" | "rim" | "snap" | "hat" | "hat_open" | "shaker" | "ride" | "tom_lo" | "tom_hi" | "crash" | "tamb";
@@ -70,7 +72,13 @@ type NoteEntry = { midi: number; name?: string; offset: number; length: number; 
 type InstrumentEntry = { file: string; hold: number; release: number; notes: NoteEntry[] };
 type SampleIndex = { sampleRate: number; instruments: Partial<Record<InstrumentName, InstrumentEntry>> };
 
-const MUSIC_BASE = "/music/";
+/**
+ * The instrument index and its .bin packs: the Supabase `portal-assets`
+ * bucket when NEXT_PUBLIC_ASSETS_BASE is set, otherwise same-origin /music/.
+ * The index and the packs always come from the same place, so they can't
+ * drift apart (and checkPack below still verifies every pack).
+ */
+const MUSIC_BASE = assetUrl("music/");
 
 /**
  * Default release per instrument, seconds. Not the index's `release` (that is

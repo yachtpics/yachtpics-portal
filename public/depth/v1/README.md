@@ -1,11 +1,35 @@
 # /depth/v1 — the Walkthrough look's depth model
 
-Everything the Walkthrough reel look needs to read the depth of a photograph,
-served by the portal itself. Nothing here is fetched from a third party or a
-CDN at runtime, and no photograph leaves the broker's browser.
+Everything the Walkthrough reel look needs to read the depth of a photograph.
+Nothing is fetched from a third-party CDN at runtime, and no photograph leaves
+the broker's browser.
 
 Loaded only when an (admin) Walkthrough render starts — `src/lib/depthMotion.ts`
 starts `worker.mjs` as a module Web Worker, and the worker loads the rest.
+
+## Where the files are served from (Oct 25)
+
+- **Always same-origin, from this folder:** `worker.mjs`, `ort.wasm.min.mjs`,
+  `ort-wasm-simd-threaded.mjs` (a module Worker and what it imports must be
+  same-origin).
+- **The two big files** — `depth-anything-v2-small-q8.onnx` (27 MB) and
+  `ort-wasm-simd-threaded.wasm` (14 MB) — come from the portal's public
+  Supabase Storage bucket **`portal-assets`**, at `depth/v1/<file>`, when
+  **`NEXT_PUBLIC_ASSETS_BASE`** is set (value:
+  `https://<project>.supabase.co/storage/v1/object/public/portal-assets/`).
+  `depthMotion.ts` then starts the worker as
+  `worker.mjs?model=<bucket .onnx URL>&wasm=<bucket .wasm URL>`; the worker
+  fetches the model with a CORS `fetch` and sets ORT's
+  `env.wasm.wasmPaths = { mjs: <this folder>/ort-wasm-simd-threaded.mjs, wasm: <bucket .wasm URL> }`.
+  Supabase serves public objects with `Access-Control-Allow-Origin: *`, and the
+  portal sends no COOP/COEP headers, so this works from the worker.
+- **Variable unset** (local dev, or before the upload): everything loads from
+  this folder exactly as before.
+- Upload / re-upload: `node scripts/upload-public-assets.mjs` (from the portal
+  root; reads `.env.local`). Cache-Control on the bucket copies: 1 year.
+- `.vercelignore` keeps the two big files out of deployments; they stay in the
+  repo so local dev works. A new version still goes in a new folder
+  (`depth/v2/`) — upload it to the bucket under the same new path.
 
 | File | What it is | Size | Source | Licence |
 |---|---|---|---|---|
@@ -39,13 +63,15 @@ Notes:
 - `ort.wasm.min.mjs` ends with a `sourceMappingURL` comment; the `.map` file is
   not shipped, so the browser's developer tools show a harmless 404 for it.
 - `next.config.mjs` serves `/depth/*` with `Cache-Control: public,
-  max-age=31536000, immutable`. That is only safe because the folder is
-  versioned.
+  max-age=31536000, immutable`; the upload script gives the bucket copies
+  `max-age=31536000`. That is only safe because the folder is versioned.
 
 ## Updating
 
 Never change a file in place. Make `public/depth/v2/` with the new files, point
-`ASSET_BASE` in `src/lib/depthMotion.ts` at it, update this table and the
+`ASSET_BASE` (and the `depth/v1/` paths passed to `assetUrl`) in
+`src/lib/depthMotion.ts` at it, add the new big files to the upload script and
+`.vercelignore`, run the upload, update this table and the
 hashes, and delete `v1` once nothing references it. If the runtime's file
 names change in a new release (check `dist/` for the WASM-only `.mjs` and the
 `.wasm` + `.mjs` pair it loads), update the import in `worker.mjs` too.
