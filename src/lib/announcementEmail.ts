@@ -208,6 +208,7 @@ export function announcementFlibs26Html(opts: { firstName: string; unsubToken?: 
       p(`Mark each boat you are showing in your Portal and add her dock or slip. We will have a dock card ready for her: cover photograph, the specifications from her listing, your brand, and a QR code that opens her slideshow on a buyer’s phone.`),
       p(`Check that her specifications and slideshow are up to date first; the card shows exactly what the listing does.`),
       p(`Every scan is counted on the listing, so after the show you will know exactly what the card did for her.`),
+      p(`The slideshow and dock card are part of a Portal plan. If yours has lapsed, Starter at $29 a month brings them back before the show opens.`),
       p(`It takes a minute a boat. Assistants can mark boats for their brokers.`),
       button(FLIBS26_BUTTON_URL, "Mark my show boats"),
     ].join("\n\n      "),
