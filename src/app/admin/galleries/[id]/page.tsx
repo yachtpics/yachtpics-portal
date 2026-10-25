@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import GalleryDetail from "./_components/GalleryDetail";
 import RefreshOnMount from "@/components/RefreshOnMount";
 import { withVideoUrls } from "@/lib/videoUrls";
+import { signDerivatives } from "@/lib/photoDerivatives";
 
 export const dynamic = "force-dynamic";
 
@@ -26,15 +27,25 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
   // Photos
   const { data: photos } = await supabase
     .from("photos")
-    .select("id, storage_path, filename, category, display_order, is_visible")
+    .select("id, storage_path, filename, category, display_order, is_visible, derivatives_at")
     .eq("gallery_id", params.id)
     .order("display_order");
-  const photoPaths = (photos ?? []).map((p) => p.storage_path);
-  const { data: photoSigned } = photoPaths.length > 0
-    ? await supabase.storage.from("listing-photos").createSignedUrls(photoPaths, 3600)
+  // Grid tiles use the stored 600px WebP copy (~30 KB) — signing the originals
+  // made a 239-photo gallery pull hundreds of MB. Photos without derivatives yet
+  // (just uploaded, or unresizable) fall back to their original.
+  const { urls: thumbUrls, missing: noThumb } = await signDerivatives(supabase, photos ?? [], 600, 3600);
+  const fallbackPaths = noThumb.map((p) => p.storage_path).filter(Boolean);
+  const { data: photoSigned } = fallbackPaths.length > 0
+    ? await supabase.storage.from("listing-photos").createSignedUrls(fallbackPaths, 3600)
     : { data: [] };
   const photoUrlMap = new Map((photoSigned ?? []).map((d) => [d.path, d.signedUrl]));
-  const photosWithUrls = (photos ?? []).map((p) => ({ ...p, url: photoUrlMap.get(p.storage_path) ?? null }));
+  const photosWithUrls = (photos ?? []).map((p) => ({
+    ...p,
+    url: thumbUrls[p.id] ?? photoUrlMap.get(p.storage_path) ?? null,
+  }));
+  // Still waiting for thumbnails (null — not the "unavailable" marker):
+  // GalleryDetail starts making them in the background when this is > 0.
+  const pendingThumbs = (photos ?? []).filter((p) => !p.derivatives_at).length;
 
   // Videos
   const { data: videos } = await supabase
@@ -103,6 +114,7 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
       <GalleryDetail
         gallery={gallery}
         photos={photosWithUrls}
+        pendingThumbs={pendingThumbs}
         videos={videosWithUrls}
         recipients={recipients}
         metrics={{

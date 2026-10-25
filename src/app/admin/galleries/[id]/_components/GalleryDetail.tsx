@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -37,9 +37,12 @@ export default function GalleryDetail({
   videos: initVideos,
   recipients: initRecipients,
   metrics,
+  pendingThumbs = 0,
 }: {
   gallery: Gallery;
   photos: Photo[];
+  /** Photos still without stored 600/2000 copies when the page rendered. */
+  pendingThumbs?: number;
   videos: Video[];
   recipients: Recipient[];
   metrics: Metrics;
@@ -48,6 +51,12 @@ export default function GalleryDetail({
   const supabase = createClient();
 
   const [photos, setPhotos] = useState<Photo[]>(initPhotos);
+  // Background thumbnail making — null when idle.
+  const [thumbsLeft, setThumbsLeft] = useState<number | null>(null);
+  const thumbsRunning = useRef(false);
+  const thumbsAgain = useRef(false);
+  const mounted = useRef(true);
+  const blobUrls = useRef(new Set<string>());
   const [videos, setVideos] = useState<Video[]>(initVideos);
   const [recipients, setRecipients] = useState<Recipient[]>(initRecipients);
   const [expiresAt, setExpiresAt] = useState<string | null>(gallery.expires_at);
@@ -85,6 +94,74 @@ export default function GalleryDetail({
     return new Date(s).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "America/New_York" });
   }
 
+  /**
+   * Make the 600/2000px WebP copies for this gallery's new photos, the way the
+   * listing page does after an upload: POST the derivatives route until nothing
+   * is left, swapping each finished tile from its local preview to the 600px
+   * copy. Non-blocking; anything left over is picked up by the daily cron.
+   */
+  const makeThumbs = useCallback(async () => {
+    if (thumbsRunning.current) {
+      thumbsAgain.current = true;
+      return;
+    }
+    thumbsRunning.current = true;
+    try {
+      do {
+        thumbsAgain.current = false;
+        let stalled = 0;
+        for (let i = 0; i < 40 && mounted.current; i++) {
+          let res: Response;
+          try {
+            res = await fetch(`/api/admin/galleries/${gallery.id}/photos/derivatives`, { method: "POST" });
+          } catch {
+            break;
+          }
+          if (!res.ok) break;
+          const r = (await res.json().catch(() => null)) as
+            | { done: number; unavailable: number; remaining: number; thumbs?: Record<string, string> }
+            | null;
+          if (!r || !mounted.current) break;
+          const thumbs = r.thumbs ?? {};
+          if (Object.keys(thumbs).length > 0) {
+            setPhotos((prev) =>
+              prev.map((p) => {
+                const t = thumbs[p.id];
+                if (!t) return p;
+                if (p.url?.startsWith("blob:")) {
+                  URL.revokeObjectURL(p.url);
+                  blobUrls.current.delete(p.url);
+                }
+                return { ...p, url: t };
+              })
+            );
+          }
+          setThumbsLeft(r.remaining > 0 ? r.remaining : null);
+          if (r.remaining === 0) break;
+          // Same photos failing every call — leave them to the daily cron.
+          stalled = r.done + r.unavailable === 0 ? stalled + 1 : 0;
+          if (stalled >= 2) break;
+        }
+      } while (thumbsAgain.current && mounted.current);
+    } finally {
+      thumbsRunning.current = false;
+      if (mounted.current) setThumbsLeft(null);
+    }
+  }, [gallery.id]);
+
+  useEffect(() => {
+    mounted.current = true;
+    const urls = blobUrls.current;
+    if (pendingThumbs > 0) makeThumbs();
+    return () => {
+      mounted.current = false;
+      urls.forEach((u) => URL.revokeObjectURL(u));
+      urls.clear();
+    };
+    // Once per mount — later uploads call makeThumbs themselves.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function handlePhotos(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
     setUploadingPhotos(true);
@@ -104,13 +181,17 @@ export default function GalleryDetail({
           .select("id, storage_path, filename, category, display_order, is_visible")
           .single();
         if (insErr) throw insErr;
-        const { data: signed } = await supabase.storage.from("listing-photos").createSignedUrl(path, 3600);
-        setPhotos((prev) => [...prev, { ...(row as Photo), url: signed?.signedUrl ?? null }]);
+        // Local preview until its 600px copy exists — no download of the
+        // file we just sent up.
+        const preview = URL.createObjectURL(file);
+        blobUrls.current.add(preview);
+        setPhotos((prev) => [...prev, { ...(row as Photo), url: preview }]);
       } catch (e) {
         setMsg(`Photo upload failed: ${e instanceof Error ? e.message : "error"}`);
       }
     }
     setUploadingPhotos(false);
+    makeThumbs();
   }
 
   async function handleVideos(fileList: FileList | null) {
@@ -184,6 +265,10 @@ export default function GalleryDetail({
       body: JSON.stringify({ photoIds: [p.id] }),
     });
     setPhotos((prev) => prev.filter((x) => x.id !== p.id));
+    if (p.url?.startsWith("blob:")) {
+      URL.revokeObjectURL(p.url);
+      blobUrls.current.delete(p.url);
+    }
   }
 
   async function toggleVisible(p: Photo) {
@@ -604,7 +689,12 @@ export default function GalleryDetail({
       {/* Photos */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">
         <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-          <h2 className="label-caps">Photos ({photos.length})</h2>
+          <div className="flex items-baseline gap-3">
+            <h2 className="label-caps">Photos ({photos.length})</h2>
+            {thumbsLeft !== null && thumbsLeft > 0 && (
+              <span className="text-xs text-ink-400">Making thumbnails… {thumbsLeft} left</span>
+            )}
+          </div>
           <label className="bg-ink-950 hover:bg-ink-800 text-white text-sm font-medium px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet cursor-pointer">
             {uploadingPhotos ? "Uploading…" : "Upload photos"}
             <input type="file" accept="image/*" multiple className="hidden" disabled={uploadingPhotos} onChange={(e) => handlePhotos(e.target.files)} />
