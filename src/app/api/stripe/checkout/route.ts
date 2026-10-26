@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe";
-import { PLANS } from "@/lib/plans";
+import { PLANS, planIncludesWebsite } from "@/lib/plans";
+import { ensureWebsitePrice } from "@/lib/websiteAddon";
 
 export async function POST(req: NextRequest) {
   try {
@@ -10,11 +11,18 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const { priceId } = await req.json();
+    const { priceId, withWebsite } = await req.json();
 
     // Validate priceId is one of ours
     const plan = PLANS.find((p) => p.priceId === priceId);
     if (!plan) return NextResponse.json({ error: `Invalid plan. Received: ${priceId}` }, { status: 400 });
+
+    // Portal + Website (Oct 26): the website is a second line item ($50/mo)
+    // on the same subscription. Never for Elite (included) — and the Office
+    // plan has its own checkout (/api/brokerage/checkout), never this one.
+    const addWebsite = withWebsite === true && !planIncludesWebsite(plan.name);
+    const lineItems: { price: string; quantity: number }[] = [{ price: priceId, quantity: 1 }];
+    if (addWebsite) lineItems.push({ price: await ensureWebsitePrice(), quantity: 1 });
 
     // Use service role to bypass RLS for subscription writes
     const serviceSupabase = createServiceClient(
@@ -35,6 +43,13 @@ export async function POST(req: NextRequest) {
       .select("stripe_customer_id, trial_ends_at, status, stripe_subscription_id")
       .eq("broker_id", user.id)
       .single();
+
+    // One plan subscription per broker (Oct 26): an existing subscriber
+    // changes tier on their current subscription (/api/stripe/change-plan),
+    // never through a second Checkout.
+    if (sub?.stripe_subscription_id && ["active", "trialing", "past_due"].includes(String(sub.status))) {
+      return NextResponse.json({ error: "You already have a plan — use Change plan.", useChangePlan: true }, { status: 409 });
+    }
 
     let customerId = sub?.stripe_customer_id;
 
@@ -72,8 +87,9 @@ export async function POST(req: NextRequest) {
       customer: customerId,
       mode: "subscription",
       payment_method_types: ["card"],
-      line_items: [{ price: priceId, quantity: 1 }],
-      success_url: `${origin}/dashboard/billing?success=1${trialEnd ? `&trial_end=${trialEnd}` : ""}`,
+      // Plan (+ website line when chosen); the website rides the same trial.
+      line_items: lineItems,
+      success_url: `${origin}/dashboard/billing?success=1${addWebsite ? "&website=1" : ""}${trialEnd ? `&trial_end=${trialEnd}` : ""}`,
       cancel_url: `${origin}/dashboard/billing?cancelled=1`,
       subscription_data: {
         trial_end: trialEnd,

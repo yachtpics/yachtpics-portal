@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { logEmail } from "@/lib/logEmail";
 import { rateLimited } from "@/lib/simpleRateLimit";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
-import { hasAccess } from "@/lib/subscriptionAccess";
+import { websiteEntitlement } from "@/lib/websiteAddon";
 import { getSiteBySlug, serviceClient, boatLabel } from "@/lib/brokerSiteServer";
 import { CONTACT_PREFS, INQUIRY_TYPES, LEAD_KINDS, type LeadKind } from "@/lib/brokerSite";
 
@@ -77,8 +76,8 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
     const site = await getSiteBySlug(slug);
     if (!site || !site.published) return NextResponse.json({ error: "This page isn't available." }, { status: 404 });
     const svc = serviceClient();
-    const { status } = await getEffectiveAccessStatus(svc, site.broker_id);
-    if (!hasAccess(status)) return NextResponse.json({ error: "This page isn't available." }, { status: 404 });
+    const ent = await websiteEntitlement(svc, site.broker_id);
+    if (!ent.live) return NextResponse.json({ error: "This page isn't available." }, { status: 404 });
 
     // A showing request must name one of this broker's boats on the site.
     let listing: { id: string; vessel_name: string | null; length_ft: number | string | null; make: string | null; model: string | null } | null = null;

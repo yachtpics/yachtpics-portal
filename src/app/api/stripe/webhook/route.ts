@@ -10,6 +10,7 @@ import {
   handleReelServiceSubscriptionChanged,
   isReelServiceSubscription,
 } from "@/lib/reelServiceStripe";
+import { planItemOf, syncWebsiteFromPlanSubscription } from "@/lib/websiteAddon";
 
 export const runtime = "nodejs";
 // A paid Reel Service checkout plans the boat's month right here.
@@ -34,9 +35,12 @@ export async function POST(req: NextRequest) {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
+  // Since Oct 26 a plan subscription can carry a second item (the $50
+  // website line), so per-item fields are read from the PLAN item
+  // (planItemOf), never items[0] blindly. All items share one period anyway.
   function periodEndIso(subscription: Stripe.Subscription): string | null {
     const raw = (subscription as any).current_period_end
-      ?? (subscription as any).items?.data?.[0]?.current_period_end
+      ?? (planItemOf(subscription) as any)?.current_period_end
       ?? null;
     return raw ? new Date(raw * 1000).toISOString() : null;
   }
@@ -70,13 +74,12 @@ export async function POST(req: NextRequest) {
 
     if (!userId) return;
 
-    const priceId = subscription.items.data[0]?.price.id;
+    // The PLAN item's price — not items[0]: with the website line the
+    // subscription has two items, and the plan must still read as its plan.
+    const priceId = planItemOf(subscription)?.price.id ?? null;
     const status = subscription.status; // active, trialing, past_due, canceled, etc.
     // current_period_end moved to items in newer Stripe API versions — handle both
-    const periodEndRaw = (subscription as any).current_period_end
-      ?? (subscription as any).items?.data?.[0]?.current_period_end
-      ?? null;
-    const periodEnd = periodEndRaw ? new Date(periodEndRaw * 1000).toISOString() : null;
+    const periodEnd = periodEndIso(subscription);
 
     await supabase.from("subscriptions")
       .update({
@@ -86,6 +89,12 @@ export async function POST(req: NextRequest) {
         current_period_end: periodEnd,
       })
       .eq("broker_id", userId);
+
+    // Website line (Oct 26): record on broker_sites whether this plan
+    // subscription carries the $50 website item, and mirror its status.
+    try { await syncWebsiteFromPlanSubscription(supabase, subscription, userId); } catch (e) {
+      console.warn(`[website] sync after plan event failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   /**
@@ -124,9 +133,12 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      const price = subscription.items.data[0]?.price;
-      const amount = price?.unit_amount
-        ? `$${(price.unit_amount / 100).toFixed(0)}/${price.recurring?.interval ?? "mo"}`
+      // Total across items (plan + website line), named after the plan item.
+      const price = planItemOf(subscription)?.price;
+      const cents = (subscription.items?.data ?? []).reduce((sum, i) => sum + (i.price?.unit_amount ?? 0) * (i.quantity ?? 1), 0);
+      const withWebsite = (subscription.items?.data ?? []).length > 1;
+      const amount = cents
+        ? `$${(cents / 100).toFixed(0)}/${price?.recurring?.interval ?? "mo"}${withWebsite ? " incl. website" : ""}`
         : "";
       const plan = [price?.nickname, amount].filter(Boolean).join(" — ");
 
@@ -236,6 +248,8 @@ export async function POST(req: NextRequest) {
     }
     case "customer.subscription.deleted": {
       const subscription = event.data.object as Stripe.Subscription;
+      // A Reel Service boat ending never cancels the broker's plan.
+      if (isReelServiceSubscription(subscription)) break;
       await notifyCharlie(subscription, "canceled");
       const brokerageId = subscription.metadata?.brokerage_id;
       if (brokerageId) {
@@ -256,6 +270,10 @@ export async function POST(req: NextRequest) {
           stripe_subscription_id: null,
           stripe_price_id: null,
         }).eq("broker_id", userId);
+        // The website line ends with its plan subscription (Oct 26).
+        try { await syncWebsiteFromPlanSubscription(supabase, subscription, userId, { deleted: true }); } catch (e) {
+          console.warn(`[website] sync after plan deletion failed: ${e instanceof Error ? e.message : String(e)}`);
+        }
       }
       break;
     }

@@ -16,8 +16,9 @@ import LeadForm from "./_components/LeadForm";
  * element — nothing placeholder is ever rendered.
  *
  * Not shown ("This page isn't available", noindex) when the slug is unknown,
- * the site is unpublished, or the broker's plan has lapsed — the same rule
- * that takes buyer slideshows private.
+ * the site is unpublished, or the broker isn't entitled: Portal access AND
+ * (Elite, the $50 website line on their plan, or an admin comp) — websiteEntitlement in
+ * src/lib/websiteAddon.ts.
  */
 export const revalidate = 3600;
 

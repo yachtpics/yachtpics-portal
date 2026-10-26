@@ -56,6 +56,33 @@ export const REEL_SERVICE_FALLBACK_PLAN_PRICE = 29;
  */
 export const REEL_SERVICE_ZOHO_BILLING = false;
 
+// Broker Website (owner decision, Oct 26 2026): every tier comes in two
+// versions — Portal, or Portal + Website. The website is a SECOND LINE ITEM
+// ($50/month, Stripe lookup_key website_monthly_50 — src/lib/websiteAddon.ts)
+// on the broker's own plan subscription, not a separate subscription. Elite
+// includes it. Office-plan coverage alone doesn't. A comp (admin) also works.
+export const WEBSITE_PRICE = 50;
+/** Plan names (PLANS[].name) whose price includes the website. */
+export const WEBSITE_INCLUDED_PLANS: string[] = ["Elite"];
+
+/** True when this plan (by name) already includes the website. */
+export function planIncludesWebsite(planName: string | null | undefined): boolean {
+  return !!planName && WEBSITE_INCLUDED_PLANS.includes(planName);
+}
+
+/**
+ * Monthly total for a plan WITH the website, for display: Starter 79,
+ * Growth 99, Pro 129; Elite 149 (included — same as the plan alone).
+ */
+export function planPriceWithWebsite(plan: { name: string; price: number }): number {
+  return planIncludesWebsite(plan.name) ? plan.price : plan.price + WEBSITE_PRICE;
+}
+
+/** True when this Stripe price id is one of the PLANS or the Office plan. */
+export function isPlanPriceId(priceId: string | null | undefined): boolean {
+  return !!priceId && (PLANS.some((p) => p.priceId === priceId) || OFFICE_PLAN.priceId === priceId);
+}
+
 /**
  * Look up the plan a Stripe price ID belongs to, including the Office plan.
  * Returns null for an unknown or missing price — e.g. a comped account, or

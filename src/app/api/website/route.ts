@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
-import { hasAccess } from "@/lib/subscriptionAccess";
+import { websiteEntitlement } from "@/lib/websiteAddon";
 import { signPhotosAtSize } from "@/lib/publicPhotoUrls";
 import { orderPhotos } from "@/lib/photoOrder";
 import { resolveActingBroker, serviceClient, portraitUrl } from "@/lib/brokerSiteServer";
@@ -71,6 +70,12 @@ export async function GET(req: NextRequest) {
   const svc = serviceClient();
   const brokerId = who.brokerId;
 
+  // Billing page: just the website billing state.
+  if (req.nextUrl.searchParams.get("summary") === "1") {
+    const entitlement = await websiteEntitlement(svc, brokerId).catch(() => null);
+    return NextResponse.json({ entitlement, canBuy: who.role === "broker" && who.brokerId === who.userId });
+  }
+
   // Hero picker: thumbnails of one of this broker's listings.
   const photosFor = req.nextUrl.searchParams.get("photos");
   if (photosFor) {
@@ -104,7 +109,7 @@ export async function GET(req: NextRequest) {
   const [{ data: profile }, { data: details }, access] = await Promise.all([
     svc.from("profiles").select("first_name, last_name, phone, display_email").eq("id", brokerId).maybeSingle(),
     svc.from("broker_details").select("*").eq("id", brokerId).maybeSingle(),
-    getEffectiveAccessStatus(svc, brokerId).catch(() => null),
+    websiteEntitlement(svc, brokerId).catch(() => null),
   ]);
   const d = (details ?? {}) as Record<string, string | null>;
 
@@ -145,7 +150,14 @@ export async function GET(req: NextRequest) {
     brokerId,
     role: who.role,
     brokers: who.brokers,
-    hasAccess: access ? hasAccess(access.status) : true,
+    // Whether the site can be live (owner decision Oct 26: Portal access AND
+    // Elite / the website line on their plan / comp), and whether this caller
+    // may change the broker's plan (the broker only).
+    hasAccess: access ? access.portalAccess : true,
+    entitlement: access,
+    // Plan changes are the broker's own (like the plan checkout / billing portal).
+    canBuy: who.role === "broker" && who.brokerId === who.userId,
+    isSelf: who.brokerId === who.userId,
     site,
     suggestedSlug: suggestSlug(profile?.first_name, profile?.last_name),
     broker: {

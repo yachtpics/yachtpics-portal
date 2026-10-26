@@ -2,8 +2,7 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { serviceClient, getSlideshowRows } from "@/lib/publicSlideshow";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
-import { hasAccess } from "@/lib/subscriptionAccess";
+import { websiteEntitlement } from "@/lib/websiteAddon";
 import { signDerivatives } from "@/lib/photoDerivatives";
 import { OG_TRANSFORM, FULL_TRANSFORM, signOneTransformed, signPhotosAtSize } from "@/lib/publicPhotoUrls";
 import {
@@ -222,17 +221,19 @@ export const getSiteBySlug = cache(async (slug: string): Promise<BrokerSiteRow |
 
 /**
  * Everything the public page renders, or null when the page must not show
- * (no such site, unpublished, the broker's plan has lapsed, or the tables
- * aren't there yet).
+ * (no such site, unpublished, not entitled — no Portal access, or neither
+ * Elite, the website line on their plan nor a comp — or the tables aren't there yet).
  */
 export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBrokerSite | null> => {
   const site = await getSiteBySlug(slug);
   if (!site || !site.published) return null;
   const svc = serviceClient();
 
+  // Live only with Portal access AND (Elite, the website line on their plan, or a comp) —
+  // websiteEntitlement in src/lib/websiteAddon.ts (owner decision, Oct 26).
   try {
-    const { status } = await getEffectiveAccessStatus(svc, site.broker_id);
-    if (!hasAccess(status)) return null;
+    const ent = await websiteEntitlement(svc, site.broker_id);
+    if (!ent.live) return null;
   } catch {
     return null;
   }

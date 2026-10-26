@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Check, Copy, ExternalLink, Trash2 } from "lucide-react";
+import WebsitePlanCard, { type Entitlement } from "./WebsitePlanCard";
 import {
   SITE_LIMITS,
   SITE_STATS_MAX,
@@ -33,6 +34,9 @@ type Payload = {
   role: "broker" | "assistant" | "admin";
   brokers: { id: string; name: string }[];
   hasAccess: boolean;
+  entitlement: Entitlement | null;
+  canBuy: boolean;
+  isSelf: boolean;
   site: BrokerSiteRow | null;
   suggestedSlug: string;
   broker: { name: string; firstName: string; phone: string; email: string; bio: string; logoUrl: string | null; brokerageName: string; license: string };
@@ -423,11 +427,9 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
   }
 
   const site = data.site;
-  const offlineBanner = !data.hasAccess && (
-    <div className="mb-5 px-4 py-3 rounded-card border border-warn-200 bg-warn-50 text-sm text-warn-800">
-      Your website is offline until you choose a plan.{" "}
-      <Link href="/dashboard/billing" className="font-semibold underline underline-offset-2">Go to Billing</Link>
-    </div>
+  const live = data.entitlement?.live === true;
+  const offlineBanner = (
+    <WebsitePlanCard ent={data.entitlement} role={data.role} canBuy={data.canBuy} isSelf={data.isSelf} brokerId={data.brokerId} onChanged={load} />
   );
 
   // ── No site yet: create card ──
@@ -481,8 +483,12 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
       <section className={card}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <h2 className="text-h2 text-ink-900">{site.published ? "Your website is live" : "Your website is off"}</h2>
-            <p className="text-sm text-ink-500 mt-1">{site.published ? "Anyone with the link can see it." : "Switch it on when you're happy with it."}</p>
+            <h2 className="text-h2 text-ink-900">{site.published ? (live ? "Your website is live" : "Publish is on — not live yet") : "Your website is off"}</h2>
+            <p className="text-sm text-ink-500 mt-1">
+              {site.published
+                ? live ? "Anyone with the link can see it." : "It goes live as soon as the website is included in your account (see above)."
+                : "Switch it on when you're happy with it."}
+            </p>
           </div>
           <Toggle on={site.published} onChange={setPublished} label="Publish website" disabled={publishBusy || saving} />
         </div>
@@ -499,7 +505,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
           </button>
           <span className="text-xs text-ink-500 break-all">{displayUrl}</span>
         </div>
-        {!site.published && <p className="text-xs text-ink-500 mt-3">While it&rsquo;s off, the link shows &ldquo;This page isn&rsquo;t available&rdquo;.</p>}
+        {(!site.published || !live) && <p className="text-xs text-ink-500 mt-3">Until it&rsquo;s live, the link shows &ldquo;This page isn&rsquo;t available&rdquo;.</p>}
         <div className="mt-4 pt-4 border-t border-hairline">
           {!editingSlug ? (
             <button type="button" onClick={() => { setEditingSlug(true); setSlugInput(site.slug); setSlugMsg(null); }} className="text-sm text-accent-700 hover:text-accent-800 font-medium min-h-[44px]">

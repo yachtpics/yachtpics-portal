@@ -11,6 +11,10 @@ import AddedByEditor from "./_components/AddedByEditor";
 import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
 import ReelServiceCard, { type ReelCardRow } from "./_components/ReelServiceCard";
 import { planLabel } from "@/lib/subscriptionAccess";
+import WebsiteCompToggle from "./_components/WebsiteCompToggle";
+import { websiteEntitlement, type WebsiteEntitlement } from "@/lib/websiteAddon";
+import { serviceClient } from "@/lib/brokerSiteServer";
+import { WEBSITE_PRICE } from "@/lib/plans";
 
 export default async function AdminBrokerDetailPage({ params, searchParams }: { params: { id: string }; searchParams: { invited?: string; from?: string; listing?: string } }) {
   // Role check lives in the page, not only the layout — see requireAdminPage.
@@ -45,6 +49,16 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
     .select("slug, published, updated_at")
     .eq("broker_id", params.id)
     .maybeSingle();
+  // Whether that site may be live (owner decision Oct 26: Portal access AND
+  // Elite / the $50 website line on their plan / comp).
+  const siteEnt: WebsiteEntitlement | null = brokerSiteErr ? null : await websiteEntitlement(serviceClient(), params.id).catch(() => null);
+  const ENT_LABEL: Record<WebsiteEntitlement["reason"], string> = {
+    elite: "Included with Elite",
+    website: `On their plan (+$${WEBSITE_PRICE}/mo)`,
+    comped: "Comped",
+    no_plan: "Offline — no Portal plan",
+    no_website: "Offline — website not on their plan",
+  };
 
   // Reel Service enrolment (Oct 4). Before the migration is applied the table
   // doesn't exist; the query just errors and the card shows "not enrolled".
@@ -259,6 +273,24 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             </p>
           ) : (
             <p className="text-sm text-ink-500">No website yet.</p>
+          )}
+          {siteEnt && (
+            <p className="text-xs mt-1.5">
+              <span className={`font-medium px-2 py-0.5 rounded-full border ${siteEnt.live ? "bg-success-50 text-success-700 border-success-200" : "bg-ink-100 text-ink-600 border-hairline"}`}>
+                {ENT_LABEL[siteEnt.reason]}
+              </span>
+              {siteEnt.reason === "website" && siteEnt.billingStatus === "past_due" && <span className="ml-2 text-danger-700">Payment past due</span>}
+              {siteEnt.reason === "website" && (siteEnt.endsAt ?? siteEnt.currentPeriodEnd) && (
+                <span className="ml-2 text-ink-500">
+                  {siteEnt.endsAt ? "removed — live until" : "renews"} {new Date((siteEnt.endsAt ?? siteEnt.currentPeriodEnd)!).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}
+                </span>
+              )}
+            </p>
+          )}
+          {siteEnt?.ready && (
+            <div className="mt-2">
+              <WebsiteCompToggle brokerId={params.id} comped={siteEnt.billingStatus === "comped"} paid={siteEnt.onPlan} />
+            </div>
           )}
         </div>
         {!brokerSiteErr && (
