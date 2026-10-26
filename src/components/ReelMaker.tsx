@@ -3867,7 +3867,7 @@ export default function ReelMaker({
             return (
               <div key={p.id} className="relative">
                 <button onClick={() => togglePhoto(p.id)} disabled={busy} title={p.category ?? p.filename ?? ""}
-                  className={`relative block w-full aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${on ? "border-accent-500" : "border-transparent opacity-55 hover:opacity-90"}`}>
+                  className={`relative block w-full aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${on ? "border-accent-500" : "border-transparent"}`}>
                   {p.previewUrl && <RetryImg src={p.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover" />}
                   {on && <span className="absolute top-1 left-1 text-xs font-semibold bg-ink-950/80 text-white rounded px-1.5 py-0.5">{idx + 1}</span>}
                 </button>
