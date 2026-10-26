@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { SiteCard } from "@/lib/brokerSiteServer";
 import ShowingModal from "./ShowingModal";
@@ -132,19 +133,18 @@ export default function YachtGrid({
                       Sold
                     </span>
                   )}
-                  {!sold && (c.href || c.hasVideo) && (
+                  {!sold && c.hasVideo && (
                     <span className="absolute right-3 bottom-3 flex gap-1.5">
-                      {c.href && <span className="bg-white/90 text-ink-900 text-[0.625rem] font-semibold uppercase tracking-caps px-2 py-1">Slideshow</span>}
-                      {c.hasVideo && <span className="bg-white/90 text-ink-900 text-[0.625rem] font-semibold uppercase tracking-caps px-2 py-1">Video</span>}
+                      <span className="bg-white/90 text-ink-900 text-[0.625rem] font-semibold uppercase tracking-caps px-2 py-1">Video</span>
                     </span>
                   )}
                 </div>
                 <div className="pt-5">
                   <h3 className={`${serifClass} text-[1.625rem] leading-tight text-ink-950`}>
                     {c.href ? (
-                      <a href={c.href} target="_blank" rel="noopener noreferrer" className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:underline">
+                      <Link href={c.href} className="after:absolute after:inset-0 focus-visible:outline-none focus-visible:underline">
                         {c.name}
-                      </a>
+                      </Link>
                     ) : (
                       c.name
                     )}

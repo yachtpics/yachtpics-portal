@@ -1,7 +1,8 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { serviceClient, getSlideshowRows } from "@/lib/publicSlideshow";
+import { serviceClient, LISTING_COLUMNS, type SlideshowListing } from "@/lib/publicSlideshow";
+import { orderPhotos } from "@/lib/photoOrder";
 import { websiteEntitlement } from "@/lib/websiteAddon";
 import { signDerivatives } from "@/lib/photoDerivatives";
 import { OG_TRANSFORM, FULL_TRANSFORM, signOneTransformed, signPhotosAtSize } from "@/lib/publicPhotoUrls";
@@ -10,6 +11,7 @@ import {
   isMissingSchema,
   lengthLabel,
   normaliseSiteRow,
+  normaliseSlug,
   priceLabel,
   type BrokerSiteRow,
 } from "@/lib/brokerSite";
@@ -118,8 +120,16 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// The public page
+// The public site
 // ─────────────────────────────────────────────────────────────────────────────
+//
+// WHICH BOATS SHOW (owner decision, Oct 26 — no longer tied to a published
+// slideshow): every listing of the broker that is status 'active', not sold
+// (sold_at null), has at least one visible photo, is not a pocket listing
+// (showcase_opt_out) and not switched off by the broker (listings.site_hidden,
+// migration 20261026c — a missing column reads as "not hidden"). Recent
+// sales: sold_at set, same exclusions. Each boat gets a page at
+// /b/{site}/yachts/{boatSlug} showing the buyer slideshow viewer.
 
 export type SiteCard = {
   id: string;
@@ -132,6 +142,7 @@ export type SiteCard = {
   location: string | null;
   photo: string | null;
   alt: string;
+  /** The on-site boat page (live boats only). */
   href: string | null;
   hasVideo: boolean;
   /** "March 2026" for sold boats. */
@@ -141,7 +152,8 @@ export type SiteCard = {
   priceValue: number | null;
 };
 
-export type PublicBrokerSite = {
+/** Everything the site chrome (header, nav, About, footer) needs. */
+export type SiteBase = {
   site: BrokerSiteRow;
   name: string;
   firstName: string;
@@ -154,9 +166,12 @@ export type PublicBrokerSite = {
   license: string | null;
   bio: string | null;
   accent: string;
+  portrait: string | null;
+};
+
+export type PublicBrokerSite = SiteBase & {
   hero: string | null;
   og: string | null;
-  portrait: string | null;
   yachts: SiteCard[];
   sold: SiteCard[];
 };
@@ -170,17 +185,37 @@ type ListingRow = {
   model: string | null;
   asking_price: number | string | null;
   location: string | null;
-  slideshow_slug: string | null;
-  slideshow_published: boolean | null;
   hero_photo_id: string | null;
   photo_order_manual: boolean | null;
   created_at: string | null;
   sold_at: string | null;
   showcase_opt_out?: boolean | null;
+  site_hidden?: boolean | null;
 };
 
+type SitePhoto = {
+  id: string;
+  listing_id: string;
+  storage_path: string;
+  category: string | null;
+  filename: string | null;
+  display_order: number | null;
+  derivatives_at: string | null;
+};
+
+export type SiteBoat = {
+  row: ListingRow;
+  /** URL key under /b/{site}/yachts/ — from the vessel name, unique within the broker. */
+  boatSlug: string;
+  cover: SitePhoto | null;
+  hasVideo: boolean;
+  sold: boolean;
+};
+
+export type LiveSite = SiteBase & { boats: SiteBoat[] };
+
 const LISTING_COLS =
-  "id, vessel_name, year, length_ft, make, model, asking_price, location, slideshow_slug, slideshow_published, hero_photo_id, photo_order_manual, created_at, sold_at, showcase_opt_out";
+  "id, vessel_name, year, length_ft, make, model, asking_price, location, hero_photo_id, photo_order_manual, created_at, sold_at, showcase_opt_out";
 
 const PORTAL_GOLD = "#c39e4e";
 
@@ -188,7 +223,7 @@ export function safeAccent(v: string | null | undefined): string {
   return typeof v === "string" && /^#[0-9a-f]{6}$/i.test(v.trim()) ? v.trim() : PORTAL_GOLD;
 }
 
-function boatName(l: ListingRow): string {
+function boatName(l: { vessel_name: string | null; year: number | null; make: string | null; model: string | null }): string {
   return (l.vessel_name ?? "").trim() || [l.year, l.make, l.model].filter(Boolean).join(" ") || "Yacht";
 }
 
@@ -201,11 +236,39 @@ export function boatLabel(l: { vessel_name: string | null; length_ft: number | s
   return parts || name || "Yacht";
 }
 
+/** "56′ (17.1 m) · 2019 · Riva Rivale" */
+export function boatSpecs(l: { length_ft: number | string | null; year: number | null; make: string | null; model: string | null }): string {
+  const builderModel = [l.make, l.model].filter(Boolean).join(" ");
+  return [lengthLabel(l.length_ft), l.year ? String(l.year) : null, builderModel || null].filter(Boolean).join(" · ");
+}
+
 function soldMonth(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString("en-US", { month: "long", year: "numeric", timeZone: "America/New_York" });
+}
+
+/**
+ * URL keys for the boats: the vessel name as a slug ("angelamar"); boats
+ * whose names clash (or have none) get "{name}-{first 6 of the id}". The
+ * page also accepts the listing id itself.
+ */
+export function boatSlugs(rows: { id: string; vessel_name: string | null; year: number | null; make: string | null; model: string | null }[]): Map<string, string> {
+  const base = new Map<string, string>();
+  const count = new Map<string, number>();
+  rows.forEach((r) => {
+    const b = normaliseSlug(boatName(r)).slice(0, 50) || "yacht";
+    base.set(r.id, b);
+    count.set(b, (count.get(b) ?? 0) + 1);
+  });
+  const out = new Map<string, string>();
+  rows.forEach((r) => {
+    const b = base.get(r.id)!;
+    const short = r.id.replace(/-/g, "").slice(0, 6);
+    out.set(r.id, (count.get(b) ?? 0) > 1 || b === "yacht" ? `${b}-${short}` : b);
+  });
+  return out;
 }
 
 /** Load the site row by slug with the service role. Null when missing / not migrated. */
@@ -219,18 +282,67 @@ export const getSiteBySlug = cache(async (slug: string): Promise<BrokerSiteRow |
   }
 });
 
+/** The broker's candidate listings (live or sold), with site_hidden when the column exists. */
+async function selectListings(svc: SupabaseClient, brokerId: string, kind: "live" | "sold"): Promise<ListingRow[]> {
+  const run = async (cols: string) => {
+    let q = svc.from("listings").select(cols).eq("broker_id", brokerId);
+    q = kind === "live"
+      ? q.eq("status", "active").is("sold_at", null).order("created_at", { ascending: false }).limit(200)
+      : q.not("sold_at", "is", null).order("sold_at", { ascending: false }).limit(24);
+    return q;
+  };
+  let res = await run(`${LISTING_COLS}, site_hidden`);
+  if (res.error && isMissingSchema(res.error)) res = await run(LISTING_COLS); // before 20261026c
+  if (res.error) return [];
+  return ((res.data ?? []) as unknown as ListingRow[]).filter((l) => l.showcase_opt_out !== true && l.site_hidden !== true);
+}
+
+/** Visible photos of these listings (paged past the 1,000-row cap). */
+async function visiblePhotos(svc: SupabaseClient, ids: string[]): Promise<Map<string, SitePhoto[]>> {
+  const out = new Map<string, SitePhoto[]>();
+  for (let i = 0; i < ids.length; i += 50) {
+    const chunk = ids.slice(i, i + 50);
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await svc
+        .from("photos")
+        .select("id, listing_id, storage_path, category, filename, display_order, derivatives_at")
+        .in("listing_id", chunk)
+        .eq("is_visible", true)
+        .order("id")
+        .range(from, from + 999);
+      if (error) break;
+      const rows = (data ?? []) as SitePhoto[];
+      rows.forEach((p) => {
+        const list = out.get(p.listing_id) ?? [];
+        list.push(p);
+        out.set(p.listing_id, list);
+      });
+      if (rows.length < 1000) break;
+    }
+  }
+  return out;
+}
+
+/** Listings that have at least one video shown in the slideshow. */
+async function listingsWithVideo(svc: SupabaseClient, ids: string[]): Promise<Set<string>> {
+  const out = new Set<string>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data } = await svc.from("videos").select("listing_id").in("listing_id", ids.slice(i, i + 100)).eq("in_slideshow", true);
+    ((data ?? []) as { listing_id: string }[]).forEach((v) => out.add(v.listing_id));
+  }
+  return out;
+}
+
 /**
- * Everything the public page renders, or null when the page must not show
- * (no such site, unpublished, not entitled — no Portal access, or neither
- * Elite, the website line on their plan nor a comp — or the tables aren't there yet).
+ * The site and its boats, or null when the site must not show: no such slug,
+ * unpublished, or not entitled (websiteEntitlement — Portal access AND Elite /
+ * the website line on their plan / a comp). No photo signing here; shared by
+ * the home page and every boat page (cached per request).
  */
-export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBrokerSite | null> => {
+export const getLiveSite = cache(async (slug: string): Promise<LiveSite | null> => {
   const site = await getSiteBySlug(slug);
   if (!site || !site.published) return null;
   const svc = serviceClient();
-
-  // Live only with Portal access AND (Elite, the website line on their plan, or a comp) —
-  // websiteEntitlement in src/lib/websiteAddon.ts (owner decision, Oct 26).
   try {
     const ent = await websiteEntitlement(svc, site.broker_id);
     if (!ent.live) return null;
@@ -238,100 +350,32 @@ export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBro
     return null;
   }
 
-  const [{ data: profile }, { data: details }, liveRes, soldRes] = await Promise.all([
+  const [{ data: profile }, { data: details }, live, soldAll] = await Promise.all([
     svc.from("profiles").select("first_name, last_name, phone, display_email").eq("id", site.broker_id).maybeSingle(),
     svc.from("broker_details").select("*").eq("id", site.broker_id).maybeSingle(),
-    svc
-      .from("listings")
-      .select(LISTING_COLS)
-      .eq("broker_id", site.broker_id)
-      .eq("status", "active")
-      .eq("slideshow_published", true)
-      .is("sold_at", null)
-      .order("created_at", { ascending: false })
-      .limit(60),
-    svc
-      .from("listings")
-      .select(LISTING_COLS)
-      .eq("broker_id", site.broker_id)
-      .not("sold_at", "is", null)
-      .order("sold_at", { ascending: false })
-      .limit(12),
+    selectListings(svc, site.broker_id, "live"),
+    selectListings(svc, site.broker_id, "sold"),
   ]);
-  if (liveRes.error && isMissingSchema(liveRes.error)) return null;
-
-  // Pocket listings ("Keep this a pocket listing") stay off the public site.
-  const live = ((liveRes.data ?? []) as ListingRow[]).filter((l) => l.showcase_opt_out !== true && l.slideshow_slug);
-  const sold = site.sections.sold ? ((soldRes.data ?? []) as ListingRow[]).filter((l) => l.showcase_opt_out !== true) : [];
-
-  // Covers: the same first photo the buyer slideshow opens on.
+  const sold = site.sections.sold ? soldAll : [];
   const all = live.concat(sold);
-  const rows = await Promise.all(
-    all.map((l) => getSlideshowRows(l.id, l.photo_order_manual === true, l.hero_photo_id).catch(() => ({ photos: [], videos: [] })))
-  );
-  const coverById = new Map<string, { id: string; storage_path: string; derivatives_at: string | null }>();
-  const videoById = new Map<string, boolean>();
-  all.forEach((l, i) => {
-    const c = rows[i].photos[0];
-    if (c) coverById.set(l.id, { id: c.id, storage_path: c.storage_path, derivatives_at: c.derivatives_at });
-    videoById.set(l.id, rows[i].videos.length > 0);
-  });
-  const coverUrls = await signPhotosAtSize(svc, Array.from(coverById.values()), "thumb", SITE_TTL).catch(() => ({} as Record<string, string>));
+  const ids = all.map((l) => l.id);
+  const [photos, withVideo] = await Promise.all([visiblePhotos(svc, ids), listingsWithVideo(svc, ids)]);
 
-  const toCard = (l: ListingRow, isSold: boolean): SiteCard => {
-    const cover = coverById.get(l.id);
-    const name = boatName(l);
-    const builderModel = [l.make, l.model].filter(Boolean).join(" ");
-    const specs = [lengthLabel(l.length_ft), l.year ? String(l.year) : null, builderModel || null].filter(Boolean).join(" · ");
-    const lengthFt = Number(l.length_ft);
-    const priceValue = Number(l.asking_price);
-    return {
-      id: l.id,
-      name,
-      specs,
-      label: boatLabel(l),
-      price: !isSold && site.show_prices ? priceLabel(l.asking_price) : null,
-      location: (l.location ?? "").trim() || null,
-      photo: cover ? coverUrls[cover.id] ?? null : null,
-      alt: name,
-      href: l.slideshow_published && l.slideshow_slug ? `/s/${l.slideshow_slug}` : null,
-      hasVideo: videoById.get(l.id) === true,
-      soldLabel: isSold ? soldMonth(l.sold_at) : null,
-      lengthFt: Number.isFinite(lengthFt) && lengthFt > 0 ? lengthFt : null,
-      builder: (l.make ?? "").trim() || null,
-      priceValue: Number.isFinite(priceValue) && priceValue > 0 ? priceValue : null,
-    };
-  };
-
-  // Hero: the broker's chosen photo (only if it belongs to one of their
-  // listings), else the cover of the first live listing.
-  let heroPhoto: { id: string; storage_path: string; derivatives_at: string | null } | null = null;
-  if (site.hero_photo_id) {
-    const { data: p } = await svc
-      .from("photos")
-      .select("id, storage_path, derivatives_at, listings:listing_id(broker_id)")
-      .eq("id", site.hero_photo_id)
-      .maybeSingle();
-    const owner = (p as unknown as { listings: { broker_id: string } | null } | null)?.listings?.broker_id;
-    if (p && owner === site.broker_id) heroPhoto = { id: p.id, storage_path: p.storage_path, derivatives_at: p.derivatives_at };
-  }
-  if (!heroPhoto && live.length > 0) heroPhoto = coverById.get(live[0].id) ?? null;
-
-  let hero: string | null = null;
-  let og: string | null = null;
-  if (heroPhoto) {
-    const [{ urls }, ogSigned] = await Promise.all([
-      signDerivatives(svc, [heroPhoto], 2000, SITE_TTL).catch(() => ({ urls: {} as Record<string, string>, missing: [] })),
-      signOneTransformed(svc, heroPhoto.storage_path, OG_TRANSFORM, SITE_TTL),
-    ]);
-    hero = urls[heroPhoto.id] ?? (await signOneTransformed(svc, heroPhoto.storage_path, FULL_TRANSFORM, SITE_TTL));
-    og = ogSigned;
-  }
+  // At least one visible photo; the cover is the same first photo the buyer slideshow opens on.
+  const shown = all.filter((l) => (photos.get(l.id)?.length ?? 0) > 0);
+  const slugs = boatSlugs(shown);
+  const soldIds = new Set(sold.map((l) => l.id));
+  const boats: SiteBoat[] = shown.map((l) => ({
+    row: l,
+    boatSlug: slugs.get(l.id)!,
+    cover: orderPhotos(photos.get(l.id) ?? [], { manual: l.photo_order_manual === true, heroId: l.hero_photo_id })[0] ?? null,
+    hasVideo: withVideo.has(l.id),
+    sold: soldIds.has(l.id),
+  }));
 
   const d = (details ?? {}) as Record<string, string | null>;
   const first = (profile?.first_name ?? "").trim();
   const name = [first, (profile?.last_name ?? "").trim()].filter(Boolean).join(" ") || "Yacht Broker";
-
   return {
     site,
     name,
@@ -345,10 +389,116 @@ export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBro
     license: (d.license_number ?? "").trim() || null,
     bio: (d.bio ?? "").trim() || null,
     accent: safeAccent(d.brand_accent),
+    portrait: portraitUrl(svc, site.portrait_path),
+    boats,
+  };
+});
+
+/** A live (for-sale) boat on the site by its URL key or listing id. Sold boats have no page. */
+export function findSiteBoat(live: LiveSite, key: string): SiteBoat | null {
+  const k = decodeURIComponent(key).toLowerCase();
+  return live.boats.find((b) => !b.sold && (b.boatSlug === k || b.row.id === k)) ?? null;
+}
+
+/**
+ * Light check for the boat page's link-refresh route (called several times a
+ * visit, so it doesn't load the whole site): the site is live and this
+ * listing (by id) passes the site rule. Returns the listing or null.
+ */
+export async function siteBoatListingById(slug: string, listingId: string): Promise<SlideshowListing | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(listingId)) return null;
+  const site = await getSiteBySlug(slug);
+  if (!site || !site.published) return null;
+  const svc = serviceClient();
+  try {
+    if (!(await websiteEntitlement(svc, site.broker_id)).live) return null;
+  } catch {
+    return null;
+  }
+  const run = (cols: string) => svc.from("listings").select(cols).eq("id", listingId).maybeSingle();
+  let res = await run(`${LISTING_COLUMNS}, status, sold_at, showcase_opt_out, site_hidden`);
+  if (res.error && isMissingSchema(res.error)) res = await run(`${LISTING_COLUMNS}, status, sold_at, showcase_opt_out`);
+  const l = res.data as unknown as (SlideshowListing & { status: string | null; sold_at: string | null; showcase_opt_out: boolean | null; site_hidden?: boolean | null }) | null;
+  if (!l || l.broker_id !== site.broker_id) return null;
+  if (l.status !== "active" || l.sold_at || l.showcase_opt_out === true || l.site_hidden === true) return null;
+  return l;
+}
+
+/** The full listing row the slideshow viewer needs (same columns as /s). */
+export async function getSiteBoatListing(listingId: string): Promise<SlideshowListing | null> {
+  const { data } = await serviceClient().from("listings").select(LISTING_COLUMNS).eq("id", listingId).maybeSingle();
+  return (data as SlideshowListing | null) ?? null;
+}
+
+export function siteCard(live: LiveSite, b: SiteBoat, photoUrl: string | null): SiteCard {
+  const l = b.row;
+  const name = boatName(l);
+  const lengthFt = Number(l.length_ft);
+  const priceValue = Number(l.asking_price);
+  return {
+    id: l.id,
+    name,
+    specs: boatSpecs(l),
+    label: boatLabel(l),
+    price: !b.sold && live.site.show_prices ? priceLabel(l.asking_price) : null,
+    location: (l.location ?? "").trim() || null,
+    photo: photoUrl,
+    alt: name,
+    href: b.sold ? null : `/b/${live.site.slug}/yachts/${b.boatSlug}`,
+    hasVideo: b.hasVideo,
+    soldLabel: b.sold ? soldMonth(l.sold_at) : null,
+    lengthFt: Number.isFinite(lengthFt) && lengthFt > 0 ? lengthFt : null,
+    builder: (l.make ?? "").trim() || null,
+    priceValue: Number.isFinite(priceValue) && priceValue > 0 ? priceValue : null,
+  };
+}
+
+/**
+ * Everything the home page renders (getLiveSite + signed covers and hero),
+ * or null when the site must not show.
+ */
+export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBrokerSite | null> => {
+  const live = await getLiveSite(slug);
+  if (!live) return null;
+  const svc = serviceClient();
+  const { site } = live;
+
+  const covers = live.boats.map((b) => b.cover).filter((c): c is SitePhoto => !!c);
+  const coverUrls = await signPhotosAtSize(svc, covers, "thumb", SITE_TTL).catch(() => ({} as Record<string, string>));
+  const cards = live.boats.map((b) => ({ b, card: siteCard(live, b, b.cover ? coverUrls[b.cover.id] ?? null : null) }));
+
+  // Hero: the broker's chosen photo (only if it belongs to one of their
+  // listings), else the cover of the newest live boat.
+  let heroPhoto: { id: string; storage_path: string; derivatives_at: string | null } | null = null;
+  if (site.hero_photo_id) {
+    const { data: p } = await svc
+      .from("photos")
+      .select("id, storage_path, derivatives_at, listings:listing_id(broker_id)")
+      .eq("id", site.hero_photo_id)
+      .maybeSingle();
+    const owner = (p as unknown as { listings: { broker_id: string } | null } | null)?.listings?.broker_id;
+    if (p && owner === site.broker_id) heroPhoto = { id: p.id, storage_path: p.storage_path, derivatives_at: p.derivatives_at };
+  }
+  if (!heroPhoto) heroPhoto = live.boats.find((b) => !b.sold && b.cover)?.cover ?? null;
+
+  let hero: string | null = null;
+  let og: string | null = null;
+  if (heroPhoto) {
+    const [{ urls }, ogSigned] = await Promise.all([
+      signDerivatives(svc, [heroPhoto], 2000, SITE_TTL).catch(() => ({ urls: {} as Record<string, string>, missing: [] })),
+      signOneTransformed(svc, heroPhoto.storage_path, OG_TRANSFORM, SITE_TTL),
+    ]);
+    hero = urls[heroPhoto.id] ?? (await signOneTransformed(svc, heroPhoto.storage_path, FULL_TRANSFORM, SITE_TTL));
+    og = ogSigned;
+  }
+
+  const { boats: _boats, ...base } = live;
+  void _boats;
+  return {
+    ...base,
     hero,
     og,
-    portrait: portraitUrl(svc, site.portrait_path),
-    yachts: live.map((l) => toCard(l, false)),
-    sold: sold.map((l) => toCard(l, true)),
+    yachts: cards.filter((c) => !c.b.sold).map((c) => c.card),
+    sold: cards.filter((c) => c.b.sold).map((c) => c.card),
   };
 });

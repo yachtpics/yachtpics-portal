@@ -23,9 +23,21 @@ type Boat = {
   specs: string;
   status: string;
   soldAt: string | null;
-  state: "on_site" | "unpublished" | "sold" | "pocket";
+  hidden: boolean;
+  pocket: boolean;
+  hasPhotos: boolean;
+  state: "on_site" | "hidden" | "no_photos" | "sold" | "pocket";
   slideshowSlug: string | null;
 };
+
+/** Same rule as the site (src/lib/brokerSiteServer.ts): pocket → never; sold → Recent sales; switched off; no photos. */
+function boatState(b: Pick<Boat, "pocket" | "soldAt" | "hidden" | "hasPhotos">): Boat["state"] {
+  if (b.pocket) return "pocket";
+  if (b.soldAt) return "sold";
+  if (b.hidden) return "hidden";
+  if (!b.hasPhotos) return "no_photos";
+  return "on_site";
+}
 
 type Payload = {
   ready: boolean;
@@ -42,6 +54,8 @@ type Payload = {
   broker: { name: string; firstName: string; phone: string; email: string; bio: string; logoUrl: string | null; brokerageName: string; license: string };
   portraitUrl: string | null;
   listings: Boat[];
+  /** listings.site_hidden exists (migration 20261026c). */
+  hiddenReady?: boolean;
 };
 
 type Lead = {
@@ -358,10 +372,26 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
           listings: d.listings.map((l) =>
             l.id !== boat.id
               ? l
-              : { ...l, soldAt: json.soldAt ?? null, state: json.soldAt ? "sold" : l.slideshowSlug && l.status === "active" ? "on_site" : "unpublished" }
+              : { ...l, soldAt: json.soldAt ?? null, state: boatState({ ...l, soldAt: json.soldAt ?? null }) }
           ),
         };
       });
+    } finally {
+      setBoatBusy(null);
+    }
+  };
+
+  const setHidden = async (boat: Boat, hidden: boolean) => {
+    setBoatBusy(boat.id);
+    try {
+      const res = await fetch(`/api/website${q}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_hidden", listingId: boat.id, hidden }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) { alert(json.error ?? "Couldn't update that boat."); return; }
+      setData((d) => (d ? { ...d, listings: d.listings.map((l) => (l.id !== boat.id ? l : { ...l, hidden, state: boatState({ ...l, hidden }) })) } : d));
     } finally {
       setBoatBusy(null);
     }
@@ -471,7 +501,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
 
   const siteUrl = `${origin}/b/${site.slug}`;
   const displayUrl = siteUrl.replace(/^https?:\/\//, "");
-  const pickable = data.listings.filter((l) => l.state === "on_site" || l.state === "unpublished");
+  const pickable = data.listings.filter((l) => l.state === "on_site" || l.state === "hidden");
   const unhandled = (leads ?? []).filter((l) => !l.handled_at).length;
 
   return (
@@ -724,7 +754,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
       {/* Boats */}
       <section className={card}>
         <h2 className="text-h2 text-ink-900">Your boats</h2>
-        <p className="text-sm text-ink-500 mt-1 mb-4">A boat is on your site when its slideshow is published. Mark a boat sold to move it to Recent sales.</p>
+        <p className="text-sm text-ink-500 mt-1 mb-4">Every active boat with photos shows on your site, with its own page and slideshow. Switch one off to leave it out. Pocket listings never show. Mark a boat sold to move it to Recent sales.</p>
         {data.listings.length === 0 ? (
           <p className="text-sm text-ink-500">No active listings yet.</p>
         ) : (
@@ -736,18 +766,29 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
                   {b.specs && <p className="text-xs text-ink-500">{b.specs}</p>}
                   <p className="mt-1">
                     {b.state === "on_site" && <span className="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-success-50 text-success-700 border border-success-200">On your site</span>}
-                    {b.state === "unpublished" && (
+                    {b.state === "hidden" && <span className="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 border border-hairline">Switched off — not shown</span>}
+                    {b.state === "no_photos" && (
                       <Link href={`/dashboard/listings/${b.id}`} className="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 border border-hairline hover:bg-ink-200">
-                        Not shown — publish its slideshow
+                        Not shown — no photos yet
                       </Link>
                     )}
                     {b.state === "pocket" && <span className="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-ink-100 text-ink-600 border border-hairline">Pocket listing — not shown</span>}
                     {b.state === "sold" && <span className="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-accent-50 text-accent-800 border border-accent-200">Sold{sections.sold ? " — in Recent sales" : ""}</span>}
                   </p>
                 </div>
-                <button type="button" className={quietBtn + " shrink-0"} disabled={boatBusy === b.id} onClick={() => markSold(b, !b.soldAt)}>
-                  {boatBusy === b.id ? "…" : b.soldAt ? "Back on the market" : "Mark sold"}
-                </button>
+                <div className="flex items-center gap-3 shrink-0">
+                  {!b.pocket && !b.soldAt && data.hiddenReady !== false && (
+                    <label className="inline-flex items-center gap-2 text-xs text-ink-700 min-h-[44px]">
+                      <Toggle on={!b.hidden} onChange={(v) => setHidden(b, !v)} label={`Show ${b.name} on my website`} disabled={boatBusy === b.id} />
+                      <span>Show on my website</span>
+                    </label>
+                  )}
+                  {!b.pocket && (
+                    <button type="button" className={quietBtn} disabled={boatBusy === b.id} onClick={() => markSold(b, !b.soldAt)}>
+                      {boatBusy === b.id ? "…" : b.soldAt ? "Back on the market" : "Mark sold"}
+                    </button>
+                  )}
+                </div>
               </li>
             ))}
           </ul>

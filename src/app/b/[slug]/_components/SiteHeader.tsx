@@ -11,6 +11,7 @@ export default function SiteHeader({
   phoneDisplay,
   nav,
   serifClass,
+  homeHref = "#top",
 }: {
   name: string;
   logoUrl: string | null;
@@ -18,6 +19,8 @@ export default function SiteHeader({
   phoneDisplay: string | null;
   nav: { href: string; label: string }[];
   serifClass: string;
+  /** Where the logo / name links: "#top" on the home page, "/b/{slug}" on sub-pages. */
+  homeHref?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -42,7 +45,7 @@ export default function SiteHeader({
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 sm:h-[4.5rem] flex items-center justify-between gap-6">
-        <a href="#top" className="min-h-[44px] inline-flex items-center min-w-0" aria-label={name}>
+        <a href={homeHref} className="min-h-[44px] inline-flex items-center min-w-0" aria-label={name}>
           {logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt={name} className="h-9 sm:h-10 w-auto max-w-[180px] object-contain" />

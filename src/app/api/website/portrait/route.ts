@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
   if (site.portrait_path && !/^https?:/.test(site.portrait_path) && site.portrait_path.startsWith(`${who.brokerId}/`)) {
     await svc.storage.from(PORTRAIT_BUCKET).remove([site.portrait_path]).then(() => {}, () => {});
   }
-  try { revalidatePath(`/b/${site.slug}`); } catch { /* not fatal */ }
+  try { revalidatePath(`/b/${site.slug}`, "layout"); } catch { /* not fatal */ }
   return NextResponse.json({ ok: true, url: portraitUrl(svc, path) });
 }
 
@@ -64,6 +64,6 @@ export async function DELETE(req: NextRequest) {
   if (site.portrait_path && site.portrait_path.startsWith(`${who.brokerId}/`)) {
     await svc.storage.from(PORTRAIT_BUCKET).remove([site.portrait_path]).then(() => {}, () => {});
   }
-  try { revalidatePath(`/b/${site.slug}`); } catch { /* not fatal */ }
+  try { revalidatePath(`/b/${site.slug}`, "layout"); } catch { /* not fatal */ }
   return NextResponse.json({ ok: true });
 }

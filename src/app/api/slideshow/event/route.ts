@@ -44,15 +44,22 @@ export async function POST(req: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Only accept events for a listing whose slideshow is actually public.
+    // Only accept events for a listing whose slideshow is actually public —
+    // or (Oct 26) one shown on its broker's published website (/b/{site}/
+    // yachts/…), where the slideshow itself needn't be published.
+    const site = clean(body.site, 60, /[^a-z0-9-]/g);
     const { data: listing } = await supabase
       .from("listings")
-      .select("id, slideshow_slug, slideshow_published")
+      .select("id, slideshow_slug, slideshow_published, broker_id")
       .eq("id", listingId)
       .maybeSingle();
-    if (!listing || !listing.slideshow_published || (slug && listing.slideshow_slug !== slug)) {
-      return NextResponse.json({ ok: true });
+    if (!listing) return NextResponse.json({ ok: true });
+    let accepted = !!listing.slideshow_published && (!slug || listing.slideshow_slug === slug);
+    if (!accepted && site) {
+      const { data: s } = await supabase.from("broker_sites").select("broker_id, published").eq("slug", site).maybeSingle();
+      accepted = !!s?.published && s.broker_id === listing.broker_id;
     }
+    if (!accepted) return NextResponse.json({ ok: true });
 
     let sendId: string | null = null;
     if (token) {

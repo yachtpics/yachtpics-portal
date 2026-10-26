@@ -70,6 +70,18 @@ interface Props {
   tourUrl?: string | null;
   /** Signed URL of the deck plan image, if the broker uploaded one. */
   deckPlanUrl?: string | null;
+  /**
+   * Broker Websites (Oct 26): the same viewer inside a broker's site at
+   * /b/{site}/yachts/{boat}. `urlsEndpoint` is the site-scoped link-refresh
+   * route (default /api/s/{slug}/urls); `embedded` drops the viewer's own
+   * page chrome (vessel title, broker footer, Request Info, YachtPics credit —
+   * the site page provides its own) and the full-screen height; `site` is the
+   * site's slug, sent with views/events so they're accepted for a boat whose
+   * slideshow isn't published.
+   */
+  urlsEndpoint?: string;
+  embedded?: boolean;
+  site?: string | null;
 }
 
 type EventKind = "dwell" | "favorite" | "unfavorite" | "video_play" | "tour_click" | "deck_plan_view" | "details_view";
@@ -173,7 +185,7 @@ function FadePhoto({
   );
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null }: Props) {
   // The page signs only the opening photo + first dozen tiles. The rest of
   // the display links arrive in chunks from /api/s/[slug]/urls as they're
   // about to be needed, and everything is re-signed when a tab returns after
@@ -191,7 +203,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     return { videos: videoMap, deckPlanUrl: initialDeckPlanUrl };
   }, [initialVideos, initialDeckPlanUrl]);
   const { photos: livePhotos, extras: liveUrls, want, onMediaError } = useProgressivePhotoUrls({
-    endpoint: `/api/s/${slug}/urls`,
+    endpoint: urlsEndpoint ?? `/api/s/${slug}/urls`,
     initialPhotos: initialPhotoUrls,
     initialExtras,
   });
@@ -251,6 +263,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       slug,
       sessionId: sessionIdRef.current,
       sendToken,
+      ...(site ? { site } : {}),
       events,
       session: { durationS, photosSeen: seenRef.current.size },
     });
@@ -261,7 +274,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       }
     } catch { /* fall through to fetch */ }
     fetch("/api/slideshow/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
-  }, [listingId, slug, sendToken]);
+  }, [listingId, slug, sendToken, site]);
 
   // Every event carries where the visit came from when it isn't a plain link
   // (e.g. "flibs26" from a boat-show dock card), so each one is attributable.
@@ -347,7 +360,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       fetch("/api/slideshow/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, slug, source, sendToken, sessionId: getSessionId(slug) }),
+        body: JSON.stringify({ listingId, slug, source, sendToken, sessionId: getSessionId(slug), ...(site ? { site } : {}) }),
       }).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -502,17 +515,17 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
 
   return (
-    <div className="min-h-screen bg-ink-50 flex flex-col">
+    <div className={embedded ? "bg-ink-50 flex flex-col" : "min-h-screen bg-ink-50 flex flex-col"}>
       {/* Header — one hairline between the vessel and its photographs */}
-      <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-hairline gap-4">
-        <div className="min-w-0">
+      <div className={`flex items-center ${embedded ? "justify-end" : "justify-between"} px-4 sm:px-6 py-3.5 border-b border-hairline gap-4 overflow-x-auto`}>
+        {!embedded && <div className="min-w-0">
           <h1 className="text-ink-900 font-semibold text-base sm:text-lg truncate">
             {vesselTitle || "Vessel"}
           </h1>
           {vesselDetails && (
             <p className="text-ink-600 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
           )}
-        </div>
+        </div>}
         <div className="flex items-center gap-1 shrink-0 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
           {slides.length > 0 && (
             <>
@@ -801,8 +814,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         </div>
       )}
 
-      {/* Broker footer */}
-      <div className="border-t border-hairline px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
+      {/* Broker footer (the site page has its own when embedded) */}
+      {!embedded && <div className="border-t border-hairline px-4 sm:px-6 py-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
           {broker.logoUrl && (
             <div className="shrink-0 h-10 w-24 bg-white border border-hairline rounded-ctl flex items-center justify-center p-1.5 overflow-hidden">
@@ -850,13 +863,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* YachtPics credit — below the broker's footer, never above it */}
-      <PresentedThrough className="pb-4" />
+      {!embedded && <PresentedThrough className="pb-4" />}
 
       {/* Inquiry modal */}
-      {inquireOpen && (
+      {inquireOpen && !embedded && (
         <div className="fixed inset-0 z-50 bg-ink-950/80 flex items-center justify-center p-4" onClick={() => setInquireOpen(false)}>
           <div className="bg-white rounded-surface shadow-elev-3 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 pt-6 pb-3 border-b border-hairline">

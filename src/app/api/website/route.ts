@@ -31,6 +31,7 @@ export const dynamic = "force-dynamic";
  *   POST {action:"check_slug", slug}  is this address free?
  *   POST {action:"claim_slug", slug}  create the site (or move it to a new address)
  *   POST {action:"mark_sold", listingId, sold}  set / clear listings.sold_at
+ *   POST {action:"set_hidden", listingId, hidden}  per-boat "Show on my website" (listings.site_hidden)
  *
  * Caller: the broker, their assistant, a brokerage admin of their brokerage,
  * or a Portal admin acting for ?brokerId= (resolveActingBroker). Everything
@@ -45,7 +46,7 @@ const NOT_READY = { error: "Website isn't switched on yet.", ready: false };
 function revalidateSite(...slugs: (string | null | undefined)[]) {
   slugs.forEach((s) => {
     if (s) {
-      try { revalidatePath(`/b/${s}`); } catch { /* not fatal */ }
+      try { revalidatePath(`/b/${s}`, "layout"); } catch { /* not fatal */ }
     }
   });
 }
@@ -113,28 +114,52 @@ export async function GET(req: NextRequest) {
   ]);
   const d = (details ?? {}) as Record<string, string | null>;
 
-  // Boats: every active listing plus anything marked sold.
+  // Boats: every active listing plus anything marked sold. Since Oct 26 a
+  // boat is on the site when it's active, not sold, has a visible photo, isn't
+  // a pocket listing and isn't switched off (site_hidden, 20261026c) — its
+  // slideshow needn't be published. site_hidden missing → not hidden.
   let listingRows: Record<string, unknown>[] = [];
   const cols = "id, vessel_name, year, length_ft, make, model, status, slideshow_published, slideshow_slug, showcase_opt_out, created_at, hero_photo_id";
-  if (ready) {
+  const readListings = async (extra: string) => {
     const [activeRes, soldRes] = await Promise.all([
-      svc.from("listings").select(cols + ", sold_at").eq("broker_id", brokerId).eq("status", "active").order("created_at", { ascending: false }).limit(200),
-      svc.from("listings").select(cols + ", sold_at").eq("broker_id", brokerId).neq("status", "active").not("sold_at", "is", null).order("sold_at", { ascending: false }).limit(50),
+      svc.from("listings").select(cols + extra).eq("broker_id", brokerId).eq("status", "active").order("created_at", { ascending: false }).limit(200),
+      ready
+        ? svc.from("listings").select(cols + extra).eq("broker_id", brokerId).neq("status", "active").not("sold_at", "is", null).order("sold_at", { ascending: false }).limit(50)
+        : Promise.resolve({ data: [], error: null }),
     ]);
-    listingRows = ((activeRes.data ?? []) as unknown as Record<string, unknown>[]).concat((soldRes.data ?? []) as unknown as Record<string, unknown>[]);
+    return { error: activeRes.error ?? soldRes.error, rows: ((activeRes.data ?? []) as unknown as Record<string, unknown>[]).concat((soldRes.data ?? []) as unknown as Record<string, unknown>[]) };
+  };
+  let hiddenReady = true;
+  if (ready) {
+    let r = await readListings(", sold_at, site_hidden");
+    if (r.error && isMissingSchema(r.error)) { hiddenReady = false; r = await readListings(", sold_at"); }
+    listingRows = r.rows;
   } else {
-    const { data } = await svc.from("listings").select(cols).eq("broker_id", brokerId).eq("status", "active").order("created_at", { ascending: false }).limit(200);
-    listingRows = (data ?? []) as unknown as Record<string, unknown>[];
+    hiddenReady = false;
+    listingRows = (await readListings("")).rows;
+  }
+
+  // Which boats have at least one visible photo (head counts, a few at a time).
+  const withPhotos = new Set<string>();
+  const ids = listingRows.map((l) => String(l.id));
+  for (let i = 0; i < ids.length; i += 20) {
+    const chunk = ids.slice(i, i + 20);
+    const counts = await Promise.all(chunk.map((id) =>
+      svc.from("photos").select("id", { count: "exact", head: true }).eq("listing_id", id).eq("is_visible", true).then((r) => r.count ?? 0)
+    ));
+    chunk.forEach((id, j) => { if (counts[j] > 0) withPhotos.add(id); });
   }
 
   const listings = listingRows.map((l) => {
     const soldAt = (l.sold_at as string | null) ?? null;
     const published = l.slideshow_published === true && !!l.slideshow_slug;
     const pocket = l.showcase_opt_out === true;
+    const hidden = l.site_hidden === true;
     const name = String(l.vessel_name ?? "").trim() || [l.year, l.make, l.model].filter(Boolean).join(" ") || "Untitled listing";
     const specs = [lengthLabel(l.length_ft as number | null), l.year ? String(l.year) : null, [l.make, l.model].filter(Boolean).join(" ") || null].filter(Boolean).join(" · ");
-    const state: "on_site" | "unpublished" | "sold" | "pocket" = soldAt ? "sold" : pocket ? "pocket" : published && l.status === "active" ? "on_site" : "unpublished";
-    return { id: String(l.id), name, specs, status: String(l.status ?? ""), soldAt, state, slideshowSlug: published ? String(l.slideshow_slug) : null };
+    const state: "on_site" | "hidden" | "no_photos" | "sold" | "pocket" =
+      pocket ? "pocket" : soldAt ? "sold" : hidden ? "hidden" : !withPhotos.has(String(l.id)) ? "no_photos" : "on_site";
+    return { id: String(l.id), name, specs, status: String(l.status ?? ""), soldAt, hidden, pocket, hasPhotos: withPhotos.has(String(l.id)), state, slideshowSlug: published ? String(l.slideshow_slug) : null };
   });
 
   // The chosen hero's thumbnail, for the editor's preview.
@@ -172,6 +197,7 @@ export async function GET(req: NextRequest) {
     },
     portraitUrl: site ? portraitUrl(svc, site.portrait_path) : null,
     listings,
+    hiddenReady,
   });
 }
 
@@ -305,6 +331,21 @@ export async function POST(req: NextRequest) {
     if (error) return NextResponse.json({ error: isMissingSchema(error) ? NOT_READY.error : error.message }, { status: isMissingSchema(error) ? 503 : 500 });
     revalidateSite(current?.slug);
     return NextResponse.json({ ok: true, soldAt });
+  }
+
+  if (action === "set_hidden") {
+    const listingId = String(body.listingId ?? "");
+    if (!/^[0-9a-f-]{36}$/i.test(listingId)) return NextResponse.json({ error: "Listing not found." }, { status: 400 });
+    const { data: listing } = await svc.from("listings").select("id, broker_id").eq("id", listingId).maybeSingle();
+    if (!listing || listing.broker_id !== brokerId) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
+    const hidden = body.hidden === true;
+    const { error } = await svc.from("listings").update({ site_hidden: hidden }).eq("id", listingId);
+    if (error) {
+      const missing = isMissingSchema(error);
+      return NextResponse.json({ error: missing ? "Hiding boats isn’t switched on yet." : error.message }, { status: missing ? 503 : 500 });
+    }
+    revalidateSite(current?.slug);
+    return NextResponse.json({ ok: true, hidden });
   }
 
   return NextResponse.json({ error: "Unknown action." }, { status: 400 });

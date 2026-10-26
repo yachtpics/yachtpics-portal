@@ -246,7 +246,7 @@ export async function ensureSiteRow(svc: SupabaseClient, brokerId: string): Prom
 
 export function revalidateSite(slug: string | null | undefined) {
   if (!slug) return;
-  try { revalidatePath(`/b/${slug}`); } catch { /* outside a request: fine */ }
+  try { revalidatePath(`/b/${slug}`, "layout"); } catch { /* outside a request: fine */ }
 }
 
 // ── Sync from the PLAN subscription (webhook + add/remove routes) ────────────

@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import { Cormorant_Garamond } from "next/font/google";
-import { MessageCircle, MessageSquare, Phone } from "lucide-react";
-import PresentedThrough from "@/components/PresentedThrough";
+import { MessageCircle, Phone } from "lucide-react";
 import { getPublicBrokerSite, type PublicBrokerSite } from "@/lib/brokerSiteServer";
 import { dialable, whatsappDigits } from "@/lib/brokerSite";
-import SiteHeader from "./_components/SiteHeader";
+import SiteShell, { prettyPhone, sectionsShown } from "./_components/SiteShell";
+import { serif } from "./_components/fonts";
 import YachtGrid from "./_components/YachtGrid";
 import LeadForm from "./_components/LeadForm";
+import Unavailable from "./_components/Unavailable";
 
 /**
  * /b/[slug] — a broker's personal website (Oct 26). Public (the middleware
@@ -21,27 +21,6 @@ import LeadForm from "./_components/LeadForm";
  * src/lib/websiteAddon.ts.
  */
 export const revalidate = 3600;
-
-// The display serif for the name and section titles — loaded only here.
-const serif = Cormorant_Garamond({ subsets: ["latin"], weight: ["400", "500", "600"], display: "swap" });
-
-function onAccent(hex: string): string {
-  const n = parseInt(hex.slice(1), 16);
-  const ch = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((v) => {
-    const c = v / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  });
-  const lum = 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
-  return lum > 0.35 ? "#050b14" : "#ffffff";
-}
-
-/** "(561) 602-9710" for US numbers, else as typed. */
-function prettyPhone(raw: string): string {
-  const d = raw.replace(/\D/g, "");
-  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
-  if (d.length === 11 && d.startsWith("1")) return `(${d.slice(1, 4)}) ${d.slice(4, 7)}-${d.slice(7)}`;
-  return raw.trim();
-}
 
 function description(s: PublicBrokerSite): string {
   return (
@@ -74,17 +53,6 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   };
 }
 
-function Unavailable() {
-  return (
-    <main className="min-h-screen bg-white flex items-center justify-center px-4">
-      <div className="text-center max-w-sm">
-        <p className={`${serif.className} text-[2rem] text-ink-950 leading-tight`}>This page isn&rsquo;t available</p>
-        <p className="text-ink-500 text-[0.9375rem] mt-3">The link may have changed, or the page has been taken down.</p>
-      </div>
-    </main>
-  );
-}
-
 function SectionTitle({ kicker, title, id }: { kicker?: string; title: string; id?: string }) {
   return (
     <div className="mb-10 sm:mb-14">
@@ -104,25 +72,11 @@ export default async function BrokerSitePage({ params }: { params: { slug: strin
   const phoneDisplay = s.phone ? prettyPhone(s.phone) : null;
   const wa = whatsappDigits(site.whatsapp);
   const stats = site.stats.filter((x) => x.value && x.label);
-  const showSold = site.sections.sold && s.sold.length > 0;
-  const showAbout = site.sections.about && !!(s.bio || s.portrait || site.credentials || s.brokerageName || s.license);
+  const shown = sectionsShown(s, { yachts: s.yachts.length, sold: s.sold.length });
+  const showSold = shown.sold;
+  const showAbout = shown.about;
   const showTestimonials = site.sections.testimonials && site.testimonials.length > 0;
-  const showSell = site.sections.sell;
-  const year = new Date().getFullYear();
-
-  const nav = [
-    s.yachts.length > 0 ? { href: "#yachts", label: "Yachts" } : null,
-    showSold ? { href: "#sold", label: "Sold" } : null,
-    showAbout ? { href: "#about", label: "About" } : null,
-    showSell ? { href: "#sell", label: "Sell" } : null,
-    { href: "#contact", label: "Contact" },
-  ].filter((n): n is { href: string; label: string } => !!n);
-
-  const mobileBar = [
-    phone ? { href: `tel:${phone}`, label: "Call", icon: Phone } : null,
-    phone ? { href: `sms:${phone}`, label: "Text", icon: MessageSquare } : null,
-    wa ? { href: `https://wa.me/${wa}`, label: "WhatsApp", icon: MessageCircle } : null,
-  ].filter((x): x is { href: string; label: string; icon: typeof Phone } => !!x);
+  const showSell = shown.sell;
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -138,13 +92,9 @@ export default async function BrokerSitePage({ params }: { params: { slug: strin
       : {}),
   };
 
-  const accentStyle = { "--site-accent": s.accent, "--site-on-accent": onAccent(s.accent) } as React.CSSProperties;
-
   return (
-    <div id="top" style={accentStyle} className={`min-h-screen bg-white text-ink-900 ${mobileBar.length ? "pb-20 md:pb-0" : ""}`}>
+    <SiteShell s={s} shown={shown} base="">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, "\\u003c") }} />
-
-      <SiteHeader name={s.name} logoUrl={s.logoUrl} phone={phone} phoneDisplay={phoneDisplay} nav={nav} serifClass={serif.className} />
 
       {/* Hero */}
       <section className="relative min-h-[78vh] sm:min-h-[86vh] flex items-end bg-ink-950 overflow-hidden">
@@ -324,36 +274,6 @@ export default async function BrokerSitePage({ params }: { params: { slug: strin
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t border-hairline px-4 sm:px-8 py-10">
-        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-end sm:justify-between gap-6">
-          <div className="text-sm text-ink-500 space-y-1">
-            {s.brokerageName && <p className="text-ink-700">{s.brokerageName}</p>}
-            {s.license && <p>License {s.license}</p>}
-            <p>&copy; {year} {s.name}</p>
-          </div>
-          <PresentedThrough className="sm:text-right" />
-        </div>
-      </footer>
-
-      {/* Phone action bar */}
-      {mobileBar.length > 0 && (
-        <nav aria-label="Contact" className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur border-t border-hairline pb-[env(safe-area-inset-bottom)]">
-          <div className="flex">
-            {mobileBar.map((b) => (
-              <a
-                key={b.label}
-                href={b.href}
-                {...(b.href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-                className="flex-1 min-h-[56px] flex flex-col items-center justify-center gap-1 text-[0.6875rem] font-semibold uppercase tracking-caps text-ink-900 border-r border-hairline last:border-r-0"
-              >
-                <b.icon className="w-5 h-5 text-[var(--site-accent)]" aria-hidden />
-                {b.label}
-              </a>
-            ))}
-          </div>
-        </nav>
-      )}
-    </div>
+    </SiteShell>
   );
 }

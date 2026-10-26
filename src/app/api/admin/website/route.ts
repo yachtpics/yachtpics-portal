@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
       if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }
-  if (slug) { try { revalidatePath(`/b/${slug}`); } catch { /* not fatal */ } }
+  if (slug) { try { revalidatePath(`/b/${slug}`, "layout"); } catch { /* not fatal */ } }
   const ent = await websiteEntitlement(svc, brokerId);
   return NextResponse.json({ ok: true, slug, entitlement: ent });
 }

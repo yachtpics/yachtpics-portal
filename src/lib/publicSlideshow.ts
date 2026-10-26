@@ -17,7 +17,7 @@ import { signPhotosAtSize, type PhotoSize } from "@/lib/publicPhotoUrls";
 /** How long the page's links live. The viewer re-signs before they lapse. */
 export const SLIDESHOW_TTL = 7200;
 
-const LISTING_COLUMNS =
+export const LISTING_COLUMNS =
   "id, vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, broker_id, description, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, hero_photo_id, photo_order_manual, tour_url, deck_plan_path";
 
 export type SlideshowListing = {
