@@ -41,7 +41,7 @@ export default function SiteHeader({
   return (
     <header
       className={`sticky top-0 z-50 transition-colors duration-slow ${
-        scrolled || open ? "bg-white/95 backdrop-blur border-b border-hairline" : "bg-white border-b border-transparent"
+        scrolled || open ? "bg-[var(--site-header-bg)] backdrop-blur border-b border-[var(--site-rule)]" : "bg-[var(--site-bg)] border-b border-transparent"
       }`}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 sm:h-[4.5rem] flex items-center justify-between gap-6">
@@ -50,19 +50,19 @@ export default function SiteHeader({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt={name} className="h-9 sm:h-10 w-auto max-w-[180px] object-contain" />
           ) : (
-            <span className={`${serifClass} text-[1.5rem] sm:text-[1.625rem] leading-none tracking-[0.01em] text-ink-950 truncate`}>{name}</span>
+            <span className={`${serifClass} text-[1.5rem] sm:text-[1.625rem] leading-none tracking-[0.01em] text-[var(--site-ink)] truncate`}>{name}</span>
           )}
         </a>
 
         <nav aria-label="Sections" className="hidden md:flex items-center gap-8">
           {nav.map((n) => (
-            <a key={n.href} href={n.href} className="text-[0.8125rem] font-medium uppercase tracking-caps text-ink-600 hover:text-ink-950 transition-colors duration-fast min-h-[44px] inline-flex items-center">
+            <a key={n.href} href={n.href} className="text-[0.8125rem] font-medium uppercase tracking-caps text-[var(--site-muted)] hover:text-[var(--site-ink)] transition-colors duration-fast min-h-[44px] inline-flex items-center">
               {n.label}
             </a>
           ))}
           {phone && phoneDisplay && (
-            <a href={`tel:${phone}`} className="inline-flex items-center gap-2 min-h-[44px] text-sm font-semibold text-ink-950 tabular-nums">
-              <Phone className="w-4 h-4 text-[var(--site-accent)]" aria-hidden />
+            <a href={`tel:${phone}`} className="inline-flex items-center gap-2 min-h-[44px] text-sm font-semibold text-[var(--site-ink)] tabular-nums">
+              <Phone className="w-4 h-4 text-[var(--site-accent-text)]" aria-hidden />
               {phoneDisplay}
             </a>
           )}
@@ -70,7 +70,7 @@ export default function SiteHeader({
 
         <div className="md:hidden flex items-center gap-1">
           {phone && (
-            <a href={`tel:${phone}`} aria-label={`Call ${name}`} className="inline-flex items-center justify-center w-11 h-11 rounded-full text-ink-900">
+            <a href={`tel:${phone}`} aria-label={`Call ${name}`} className="inline-flex items-center justify-center w-11 h-11 rounded-full text-[var(--site-ink)]">
               <Phone className="w-5 h-5" aria-hidden />
             </a>
           )}
@@ -80,7 +80,7 @@ export default function SiteHeader({
             aria-controls="site-menu"
             aria-label={open ? "Close menu" : "Open menu"}
             onClick={() => setOpen((v) => !v)}
-            className="inline-flex items-center justify-center w-11 h-11 rounded-full text-ink-900"
+            className="inline-flex items-center justify-center w-11 h-11 rounded-full text-[var(--site-ink)]"
           >
             {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
@@ -88,9 +88,9 @@ export default function SiteHeader({
       </div>
 
       {open && (
-        <nav id="site-menu" aria-label="Sections" className="md:hidden border-t border-hairline bg-white px-4 pb-4">
+        <nav id="site-menu" aria-label="Sections" className="md:hidden border-t border-[var(--site-rule)] bg-[var(--site-bg)] px-4 pb-4">
           {nav.map((n) => (
-            <a key={n.href} href={n.href} onClick={() => setOpen(false)} className="flex items-center min-h-[48px] border-b border-hairline text-[0.9375rem] text-ink-900">
+            <a key={n.href} href={n.href} onClick={() => setOpen(false)} className="flex items-center min-h-[48px] border-b border-[var(--site-rule)] text-[0.9375rem] text-[var(--site-ink)]">
               {n.label}
             </a>
           ))}

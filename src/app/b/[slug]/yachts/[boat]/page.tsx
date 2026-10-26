@@ -14,7 +14,8 @@ import { priceLabel } from "@/lib/brokerSite";
 import SiteShell, { sectionsShown } from "../../_components/SiteShell";
 import Unavailable from "../../_components/Unavailable";
 import ShowingButton from "../../_components/ShowingButton";
-import { serif } from "../../_components/fonts";
+import { displayFont } from "../../_components/fonts";
+import { resolveSiteStyle } from "@/lib/siteStyle";
 
 /**
  * /b/[slug]/yachts/[boat] — one boat on a broker's website (Oct 26).
@@ -69,13 +70,17 @@ export default async function SiteBoatPage({ params }: { params: { slug: string;
   const { live } = r;
   const shown = sectionsShown(live, { yachts: live.boats.filter((b) => !b.sold).length, sold: live.boats.filter((b) => b.sold).length });
   const base = `/b/${live.site.slug}`;
+  // The site's look (layout + palette + accent): chrome and headings follow it;
+  // the embedded viewer keeps its own styling.
+  const look = resolveSiteStyle(live.site);
+  const display = displayFont(look.layout);
 
   if (!r.boat || !r.listing) {
     return (
-      <SiteShell s={live} shown={shown} base={base}>
+      <SiteShell s={live} shown={shown} base={base} look={look} displayClass={display}>
         <main className="px-4 sm:px-8 py-24 text-center">
-          <p className={`${serif.className} text-[2rem] text-ink-950`}>This yacht isn&rsquo;t available</p>
-          <Link href={`${base}#yachts`} className="inline-flex items-center min-h-[44px] mt-4 text-sm font-semibold text-ink-900 border-b border-[var(--site-accent)]">
+          <p className={`${display} text-[2rem] text-[var(--site-ink)]`}>This yacht isn&rsquo;t available</p>
+          <Link href={`${base}#yachts`} className="inline-flex items-center min-h-[44px] mt-4 text-sm font-semibold text-[var(--site-ink)] border-b border-[var(--site-accent)]">
             See all yachts
           </Link>
         </main>
@@ -116,30 +121,30 @@ export default async function SiteBoatPage({ params }: { params: { slug: string;
   const viewerSlug = `site-${boat.boatSlug}`;
 
   return (
-    <SiteShell s={live} shown={shown} base={base}>
+    <SiteShell s={live} shown={shown} base={base} look={look} displayClass={display}>
       <main>
         <div className="px-4 sm:px-8 pt-8 sm:pt-12 pb-6">
           <div className="max-w-6xl mx-auto">
-            <Link href={`${base}#yachts`} className="inline-flex items-center min-h-[44px] text-sm text-ink-500 hover:text-ink-900">
+            <Link href={`${base}#yachts`} className="inline-flex items-center min-h-[44px] text-sm text-[var(--site-muted)] hover:text-[var(--site-ink)]">
               ← All yachts
             </Link>
             <div className="mt-2 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
               <div className="min-w-0">
-                <h1 className={`${serif.className} text-[2.5rem] sm:text-[3.25rem] leading-[1.02] text-ink-950`}>{vessel}</h1>
-                {specs && <p className="text-ink-600 text-[0.9375rem] mt-2">{specs}</p>}
+                <h1 className={`${display} text-[2.5rem] sm:text-[3.25rem] leading-[1.02] text-[var(--site-ink)]`}>{vessel}</h1>
+                {specs && <p className="text-[var(--site-muted)] text-[0.9375rem] mt-2">{specs}</p>}
                 <p className="mt-2 flex flex-wrap items-baseline gap-x-4 text-[0.9375rem]">
-                  <span className="text-ink-900 font-semibold tabular-nums">{price ?? "Price on request"}</span>
-                  {location && <span className="text-ink-500">{location}</span>}
+                  <span className="text-[var(--site-ink)] font-semibold tabular-nums">{price ?? "Price on request"}</span>
+                  {location && <span className="text-[var(--site-muted)]">{location}</span>}
                 </p>
               </div>
               <div className="shrink-0">
-                <ShowingButton slug={live.site.slug} firstName={live.firstName} listingId={listing.id} boatLabel={boatLabel(listing)} serifClass={serif.className} />
+                <ShowingButton slug={live.site.slug} firstName={live.firstName} listingId={listing.id} boatLabel={boatLabel(listing)} serifClass={display} />
               </div>
             </div>
           </div>
         </div>
         <div className="max-w-6xl mx-auto sm:px-8 pb-12">
-          <div className="border border-hairline overflow-hidden">
+          <div className="border border-[var(--site-rule)] overflow-hidden">
             <SlideshowViewer
               listingId={listing.id}
               slug={viewerSlug}

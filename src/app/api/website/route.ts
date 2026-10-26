@@ -3,7 +3,8 @@ import { revalidatePath } from "next/cache";
 import { websiteEntitlement } from "@/lib/websiteAddon";
 import { signPhotosAtSize } from "@/lib/publicPhotoUrls";
 import { orderPhotos } from "@/lib/photoOrder";
-import { resolveActingBroker, serviceClient, portraitUrl } from "@/lib/brokerSiteServer";
+import { resolveActingBroker, serviceClient, portraitUrl, readSiteRow } from "@/lib/brokerSiteServer";
+import { PALETTE_KEYS, cleanHex, isLayout } from "@/lib/siteStyle";
 import {
   SITE_COLUMNS,
   SITE_LIMITS,
@@ -52,12 +53,13 @@ function revalidateSite(...slugs: (string | null | undefined)[]) {
 }
 
 async function readSite(brokerId: string): Promise<{ ready: boolean; site: BrokerSiteRow | null }> {
-  const { data, error } = await serviceClient().from("broker_sites").select(SITE_COLUMNS).eq("broker_id", brokerId).maybeSingle();
+  // With the look columns when 20261026d is applied (defaults otherwise).
+  const { row, error } = await readSiteRow("broker_id", brokerId);
   if (error) {
     if (isMissingSchema(error)) return { ready: false, site: null };
     throw new Error(error.message);
   }
-  return { ready: true, site: data ? normaliseSiteRow(data as unknown as Record<string, unknown>) : null };
+  return { ready: true, site: row };
 }
 
 async function slugTaken(slug: string, brokerId: string): Promise<boolean> {
@@ -194,7 +196,10 @@ export async function GET(req: NextRequest) {
       logoUrl: d.logo_url ?? null,
       brokerageName: d.brokerage_name ?? "",
       license: d.license_number ?? "",
+      brandAccent: d.brand_accent ?? null,
     },
+    // Layouts & colours switched on (migration 20261026d)?
+    lookReady: ready ? !(await svc.from("broker_sites").select("layout").limit(1)).error : false,
     portraitUrl: site ? portraitUrl(svc, site.portrait_path) : null,
     listings,
     hiddenReady,
@@ -251,8 +256,28 @@ export async function PUT(req: NextRequest) {
     }
   }
 
-  const { data, error } = await svc.from("broker_sites").update(update).eq("broker_id", brokerId).select(SITE_COLUMNS).maybeSingle();
+  // Look (20261026d): layout, palette, accent (hex or null = the palette's).
+  const style: Record<string, unknown> = {};
+  if ("layout" in body && isLayout(body.layout)) style.layout = body.layout;
+  if ("palette" in body && typeof body.palette === "string" && PALETTE_KEYS.includes(body.palette)) style.palette = body.palette;
+  if ("accent" in body) {
+    if (body.accent === null || body.accent === "") style.accent = null;
+    else {
+      const hex = cleanHex(body.accent);
+      if (!hex) return NextResponse.json({ error: "That colour isn't a valid hex (e.g. #1f4e79).", field: "accent" }, { status: 400 });
+      style.accent = hex;
+    }
+  }
+
+  let lookWarning: string | null = null;
+  let { error } = await svc.from("broker_sites").update({ ...update, ...style }).eq("broker_id", brokerId);
+  if (error && Object.keys(style).length > 0 && isMissingSchema(error)) {
+    // 20261026d not applied yet: save everything else.
+    ({ error } = await svc.from("broker_sites").update(update).eq("broker_id", brokerId));
+    lookWarning = "Saved — but layouts and colours aren't switched on yet, so the look didn't change.";
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const { row: data } = await readSiteRow("broker_id", brokerId);
 
   // Bio lives on broker_details (the same field the slideshow uses).
   if (typeof body.bio === "string") {
@@ -261,9 +286,9 @@ export async function PUT(req: NextRequest) {
     if (bioErr) return NextResponse.json({ error: `Saved, but the bio didn't: ${bioErr.message}`, field: "bio" }, { status: 500 });
   }
 
-  const site = data ? normaliseSiteRow(data as unknown as Record<string, unknown>) : current;
+  const site = data ?? current;
   revalidateSite(site.slug);
-  return NextResponse.json({ ok: true, site, portraitUrl: portraitUrl(svc, site.portrait_path) });
+  return NextResponse.json({ ok: true, site, portraitUrl: portraitUrl(svc, site.portrait_path), ...(lookWarning ? { warning: lookWarning } : {}) });
 }
 
 export async function POST(req: NextRequest) {

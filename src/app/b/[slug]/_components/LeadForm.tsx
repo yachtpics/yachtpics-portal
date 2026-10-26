@@ -10,8 +10,8 @@ import { CONTACT_PREFS, INQUIRY_TYPES, type LeadKind } from "@/lib/brokerSite";
  */
 
 const input =
-  "w-full min-h-[44px] bg-white border border-hairline-strong text-ink-900 placeholder:text-ink-400 rounded-ctl px-3.5 py-2.5 text-[0.9375rem] focus:outline-none focus:border-ink-700 focus:ring-1 focus:ring-ink-700/30 transition-colors duration-fast";
-const label = "block text-[0.6875rem] font-semibold uppercase tracking-caps text-ink-500 mb-1.5";
+  "w-full min-h-[44px] bg-[var(--site-field)] border border-[var(--site-field-border)] text-[var(--site-ink)] placeholder:text-[var(--site-muted)] rounded-ctl px-3.5 py-2.5 text-[0.9375rem] focus:outline-none focus:border-[var(--site-accent)] focus:ring-1 focus:ring-[var(--site-accent)] transition-colors duration-fast";
+const label = "block text-[0.6875rem] font-semibold uppercase tracking-caps text-[var(--site-muted)] mb-1.5";
 
 export default function LeadForm({
   slug,
@@ -88,10 +88,10 @@ export default function LeadForm({
   if (state === "sent") {
     return (
       <div className="py-6" role="status">
-        <p className="text-ink-900 text-lg font-medium">Thank you — your message is on its way.</p>
-        <p className="text-ink-500 text-[0.9375rem] mt-2">{firstName ? `${firstName} will be in touch shortly.` : "You'll hear back shortly."}</p>
+        <p className="text-[var(--site-ink)] text-lg font-medium">Thank you — your message is on its way.</p>
+        <p className="text-[var(--site-muted)] text-[0.9375rem] mt-2">{firstName ? `${firstName} will be in touch shortly.` : "You'll hear back shortly."}</p>
         {onDone && (
-          <button type="button" onClick={onDone} className="mt-6 min-h-[44px] px-5 rounded-ctl border border-hairline-strong text-sm font-medium text-ink-800 hover:bg-ink-50 transition-colors duration-fast">
+          <button type="button" onClick={onDone} className="mt-6 min-h-[44px] px-5 rounded-ctl border border-[var(--site-field-border)] text-sm font-medium text-[var(--site-ink)] hover:bg-[var(--site-surface)] transition-colors duration-fast">
             Close
           </button>
         )}
@@ -102,8 +102,8 @@ export default function LeadForm({
   return (
     <form onSubmit={submit} noValidate className="space-y-4">
       {boatLabel && (
-        <p className="text-ink-600 text-[0.9375rem]">
-          <span className="text-ink-400">Yacht · </span>
+        <p className="text-[var(--site-muted)] text-[0.9375rem]">
+          <span className="text-[var(--site-muted)]">Yacht · </span>
           {boatLabel}
         </p>
       )}
@@ -190,7 +190,7 @@ export default function LeadForm({
       <button
         type="submit"
         disabled={state === "sending"}
-        className="w-full sm:w-auto min-h-[48px] px-7 rounded-ctl bg-[var(--site-accent)] text-[var(--site-on-accent)] text-[0.9375rem] font-semibold tracking-wide hover:opacity-90 disabled:opacity-50 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ink-900"
+        className="w-full sm:w-auto min-h-[48px] px-7 rounded-ctl bg-[var(--site-accent)] text-[var(--site-on-accent)] text-[0.9375rem] font-semibold tracking-wide hover:opacity-90 disabled:opacity-50 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--site-ink)] focus-visible:ring-offset-[var(--site-bg)]"
       >
         {state === "sending" ? "Sending…" : submitLabel ?? "Send"}
       </button>

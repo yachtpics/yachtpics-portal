@@ -8,6 +8,7 @@ import { signDerivatives } from "@/lib/photoDerivatives";
 import { OG_TRANSFORM, FULL_TRANSFORM, signOneTransformed, signPhotosAtSize } from "@/lib/publicPhotoUrls";
 import {
   SITE_COLUMNS,
+  SITE_STYLE_COLUMNS,
   isMissingSchema,
   lengthLabel,
   normaliseSiteRow,
@@ -172,6 +173,8 @@ export type SiteBase = {
 export type PublicBrokerSite = SiteBase & {
   hero: string | null;
   og: string | null;
+  /** Up to 5 live boat covers at slide size (Showroom's crossfading hero). */
+  heroSlides: string[];
   yachts: SiteCard[];
   sold: SiteCard[];
 };
@@ -271,12 +274,22 @@ export function boatSlugs(rows: { id: string; vessel_name: string | null; year: 
   return out;
 }
 
+/**
+ * One site row by slug or broker, with the look columns when 20261026d is
+ * applied (defaults otherwise). `error` = the table itself isn't there.
+ */
+export async function readSiteRow(by: "slug" | "broker_id", value: string): Promise<{ row: BrokerSiteRow | null; error: { code?: string; message?: string } | null }> {
+  const svc = serviceClient();
+  let res = await svc.from("broker_sites").select(`${SITE_COLUMNS}, ${SITE_STYLE_COLUMNS}`).eq(by, value).maybeSingle();
+  if (res.error && isMissingSchema(res.error)) res = await svc.from("broker_sites").select(SITE_COLUMNS).eq(by, value).maybeSingle();
+  if (res.error) return { row: null, error: res.error };
+  return { row: res.data ? normaliseSiteRow(res.data as unknown as Record<string, unknown>) : null, error: null };
+}
+
 /** Load the site row by slug with the service role. Null when missing / not migrated. */
 export const getSiteBySlug = cache(async (slug: string): Promise<BrokerSiteRow | null> => {
   try {
-    const { data, error } = await serviceClient().from("broker_sites").select(SITE_COLUMNS).eq("slug", slug).maybeSingle();
-    if (error || !data) return null;
-    return normaliseSiteRow(data as unknown as Record<string, unknown>);
+    return (await readSiteRow("slug", slug)).row;
   } catch {
     return null;
   }
@@ -349,6 +362,21 @@ export const getLiveSite = cache(async (slug: string): Promise<LiveSite | null> 
   } catch {
     return null;
   }
+  return buildLiveSite(site);
+});
+
+/**
+ * The site WITHOUT the published / entitlement checks — only for a preview
+ * the caller has already authorised (the owner, their assistant or an admin;
+ * see /b/[slug]/preview).
+ */
+export async function getSiteForPreview(slug: string): Promise<LiveSite | null> {
+  const site = await getSiteBySlug(slug);
+  return site ? buildLiveSite(site) : null;
+}
+
+async function buildLiveSite(site: BrokerSiteRow): Promise<LiveSite> {
+  const svc = serviceClient();
 
   const [{ data: profile }, { data: details }, live, soldAll] = await Promise.all([
     svc.from("profiles").select("first_name, last_name, phone, display_email").eq("id", site.broker_id).maybeSingle(),
@@ -392,7 +420,7 @@ export const getLiveSite = cache(async (slug: string): Promise<LiveSite | null> 
     portrait: portraitUrl(svc, site.portrait_path),
     boats,
   };
-});
+}
 
 /** A live (for-sale) boat on the site by its URL key or listing id. Sold boats have no page. */
 export function findSiteBoat(live: LiveSite, key: string): SiteBoat | null {
@@ -459,7 +487,16 @@ export function siteCard(live: LiveSite, b: SiteBoat, photoUrl: string | null): 
  */
 export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBrokerSite | null> => {
   const live = await getLiveSite(slug);
-  if (!live) return null;
+  return live ? buildPublicSite(live) : null;
+});
+
+/** getPublicBrokerSite for an authorised preview (no published / entitlement checks). */
+export async function getPreviewBrokerSite(slug: string): Promise<PublicBrokerSite | null> {
+  const live = await getSiteForPreview(slug);
+  return live ? buildPublicSite(live) : null;
+}
+
+async function buildPublicSite(live: LiveSite): Promise<PublicBrokerSite> {
   const svc = serviceClient();
   const { site } = live;
 
@@ -492,13 +529,20 @@ export const getPublicBrokerSite = cache(async (slug: string): Promise<PublicBro
     og = ogSigned;
   }
 
+  // Showroom's hero crossfades through up to 5 boat covers at slide size
+  // (one batch for stored derivatives; the per-photo fallback only for the rest).
+  const slideCovers = live.boats.filter((b) => !b.sold && b.cover).slice(0, 5).map((b) => b.cover!) as SitePhoto[];
+  const slideUrls = slideCovers.length ? await signPhotosAtSize(svc, slideCovers, "full", SITE_TTL).catch(() => ({} as Record<string, string>)) : {};
+  const heroSlides = slideCovers.map((c) => slideUrls[c.id]).filter((u): u is string => !!u);
+
   const { boats: _boats, ...base } = live;
   void _boats;
   return {
     ...base,
     hero,
     og,
+    heroSlides,
     yachts: cards.filter((c) => !c.b.sold).map((c) => c.card),
     sold: cards.filter((c) => c.b.sold).map((c) => c.card),
   };
-});
+}

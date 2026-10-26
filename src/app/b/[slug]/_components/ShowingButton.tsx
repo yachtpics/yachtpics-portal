@@ -23,7 +23,7 @@ export default function ShowingButton({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="min-h-[48px] px-7 bg-[var(--site-accent)] text-[var(--site-on-accent)] text-[0.9375rem] font-semibold tracking-wide hover:opacity-90 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-ink-900"
+        className="min-h-[48px] px-7 bg-[var(--site-accent)] text-[var(--site-on-accent)] text-[0.9375rem] font-semibold tracking-wide hover:opacity-90 transition-opacity duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-[var(--site-ink)] focus-visible:ring-offset-[var(--site-bg)]"
       >
         Request a showing
       </button>

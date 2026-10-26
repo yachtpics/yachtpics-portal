@@ -42,12 +42,22 @@ export type BrokerSiteRow = {
   show_prices: boolean;
   whatsapp: string | null;
   sections: SiteSections;
+  /** Look (migration 20261026d; defaults before it): classic | editorial | showroom. */
+  layout: string;
+  /** Palette key (src/lib/siteStyle.ts). */
+  palette: string;
+  /** Custom accent hex, or null for the palette's. */
+  accent: string | null;
+  /** Custom page ground hex (reserved), or null. */
+  ground: string | null;
   created_at?: string;
   updated_at?: string;
 };
 
 export const SITE_COLUMNS =
   "broker_id, slug, published, headline, specialty, hero_photo_id, portrait_path, stats, credentials, testimonials, show_prices, whatsapp, sections, created_at, updated_at";
+/** The look columns (20261026d) — read separately so the site works before that migration. */
+export const SITE_STYLE_COLUMNS = "layout, palette, accent, ground";
 
 /** Lowercase a–z, 0–9 and hyphens, 3–60 characters, no leading/trailing hyphen. */
 export const SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,58})[a-z0-9]$/;
@@ -137,6 +147,10 @@ export function normaliseSiteRow(row: Record<string, unknown>): BrokerSiteRow {
     show_prices: row.show_prices === true,
     whatsapp: (row.whatsapp as string | null) ?? null,
     sections: cleanSections(row.sections),
+    layout: typeof row.layout === "string" ? row.layout : "classic",
+    palette: typeof row.palette === "string" ? row.palette : "harbor",
+    accent: typeof row.accent === "string" ? row.accent : null,
+    ground: typeof row.ground === "string" ? row.ground : null,
     created_at: (row.created_at as string | undefined) ?? undefined,
     updated_at: (row.updated_at as string | undefined) ?? undefined,
   };

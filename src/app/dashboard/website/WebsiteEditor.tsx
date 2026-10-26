@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Check, Copy, ExternalLink, Trash2 } from "lucide-react";
 import WebsitePlanCard, { type Entitlement } from "./WebsitePlanCard";
+import LookPicker, { type Look } from "./LookPicker";
 import {
   SITE_LIMITS,
   SITE_STATS_MAX,
@@ -51,7 +52,9 @@ type Payload = {
   isSelf: boolean;
   site: BrokerSiteRow | null;
   suggestedSlug: string;
-  broker: { name: string; firstName: string; phone: string; email: string; bio: string; logoUrl: string | null; brokerageName: string; license: string };
+  broker: { name: string; firstName: string; phone: string; email: string; bio: string; logoUrl: string | null; brokerageName: string; license: string; brandAccent?: string | null };
+  /** Layouts & colours switched on (migration 20261026d). */
+  lookReady?: boolean;
   portraitUrl: string | null;
   listings: Boat[];
   /** listings.site_hidden exists (migration 20261026c). */
@@ -143,6 +146,8 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [heroThumb, setHeroThumb] = useState<string | null>(null);
   const [portrait, setPortrait] = useState<string | null>(null);
+  const [look, setLook] = useState<Look>({ layout: "classic", palette: "harbor", accent: null });
+  const [saveNote, setSaveNote] = useState<string | null>(null);
 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -183,6 +188,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
     setShowPrices(site?.show_prices ?? false);
     setSections(site?.sections ?? { sold: true, about: true, testimonials: true, sell: true });
     setHeroPhotoId(site?.hero_photo_id ?? null);
+    setLook({ layout: site?.layout ?? "classic", palette: site?.palette ?? "harbor", accent: site?.accent ?? null });
     if (extra && "heroThumb" in extra) setHeroThumb(extra.heroThumb ?? null);
     if (extra && "portraitUrl" in extra) setPortrait(extra.portraitUrl ?? null);
     if (extra && typeof extra.bio === "string") setBio(extra.bio);
@@ -285,6 +291,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           headline, specialty, credentials, whatsapp, bio,
+          layout: look.layout, palette: look.palette, accent: look.accent,
           stats: stats.filter((x) => x.value.trim() || x.label.trim()), testimonials, show_prices: showPrices, sections, hero_photo_id: heroPhotoId,
           ...(extra ?? {}),
         }),
@@ -299,6 +306,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
       setTestimonials((json.site?.testimonials as SiteTestimonial[] | undefined) ?? testimonials);
       setDirty(false);
       setSavedAt(Date.now());
+      setSaveNote(typeof json.warning === "string" ? json.warning : null);
       return true;
     } catch {
       setSaveError({ text: "Couldn't save — check your connection." });
@@ -508,6 +516,19 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
     <div className="px-4 sm:px-6 py-8 max-w-3xl mx-auto">
       {header}
       {offlineBanner}
+
+      {/* Look */}
+      <section className={card}>
+        <h2 className="text-h2 text-ink-900">Look</h2>
+        <p className="text-sm text-ink-500 mt-1 mb-4">Choose a layout and colours. Everything is designed to work together, so any choice looks right.</p>
+        <LookPicker
+          look={look}
+          onChange={(next) => { setLook(next); touch(); }}
+          brandAccent={data.broker.brandAccent ?? null}
+          slug={site.slug}
+          ready={data.lookReady !== false}
+        />
+      </section>
 
       {/* Publish */}
       <section className={card}>
@@ -837,7 +858,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
         <div>
           <div className="bg-white border border-hairline rounded-card shadow-elev-3 px-4 py-3 flex items-center justify-between gap-3">
             <p className={`text-sm ${saveError ? "text-danger-600" : dirty ? "text-ink-700" : "text-ink-500"}`}>
-              {saveError ? saveError.text : saving ? "Saving…" : dirty ? "You have unsaved changes." : savedAt ? "Saved." : "All changes saved."}
+              {saveError ? saveError.text : saving ? "Saving…" : dirty ? "You have unsaved changes." : savedAt ? (saveNote ?? "Saved.") : "All changes saved."}
             </p>
             <button type="button" className={inkBtn} disabled={saving || !dirty} onClick={() => save()}>
               {saving ? "Saving…" : "Save"}
