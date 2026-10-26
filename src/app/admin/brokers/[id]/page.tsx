@@ -38,6 +38,14 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
   if (!profile) notFound();
 
+  // Broker website (Oct 26). Before 20261026_broker_sites.sql is applied the
+  // table doesn't exist; the read errors and the card says so.
+  const { data: brokerSite, error: brokerSiteErr } = await supabase
+    .from("broker_sites")
+    .select("slug, published, updated_at")
+    .eq("broker_id", params.id)
+    .maybeSingle();
+
   // Reel Service enrolment (Oct 4). Before the migration is applied the table
   // doesn't exist; the query just errors and the card shows "not enrolled".
   const { data: reelService } = await supabase
@@ -235,6 +243,30 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
       {/* Assistants */}
       <AssistantsPanel brokerId={params.id} initialAssistants={assistantList} />
+
+      {/* Website */}
+      <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <p className="label-caps mb-1.5">Website</p>
+          {brokerSiteErr ? (
+            <p className="text-sm text-ink-500">Not switched on yet (migration 20261026_broker_sites.sql).</p>
+          ) : brokerSite ? (
+            <p className="text-sm text-ink-900">
+              <a href={`/b/${brokerSite.slug}`} target="_blank" rel="noopener noreferrer" className="font-medium hover:underline">/b/{brokerSite.slug}</a>
+              <span className={`ml-2 text-xs font-medium px-2 py-0.5 rounded-full border ${brokerSite.published ? "bg-success-50 text-success-700 border-success-200" : "bg-ink-100 text-ink-600 border-hairline"}`}>
+                {brokerSite.published ? "Published" : "Off"}
+              </span>
+            </p>
+          ) : (
+            <p className="text-sm text-ink-500">No website yet.</p>
+          )}
+        </div>
+        {!brokerSiteErr && (
+          <Link href={`/dashboard/website?brokerId=${params.id}`} className="text-accent-700 hover:text-accent-800 text-sm font-medium transition-colors duration-fast ease-quiet shrink-0">
+            {brokerSite ? "Edit website →" : "Create website →"}
+          </Link>
+        )}
+      </div>
 
       {/* Reel Service */}
       <ReelServiceCard

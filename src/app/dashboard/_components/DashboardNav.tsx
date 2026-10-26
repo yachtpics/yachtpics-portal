@@ -18,6 +18,7 @@ import {
   Building2,
   Clapperboard,
   MoreHorizontal,
+  Globe,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -36,6 +37,7 @@ interface NavItem {
 const brokerNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutGrid, short: "Home" },
   { label: "My Listings", href: "/dashboard/listings", icon: Ship, short: "Listings" },
+  { label: "Website", href: "/dashboard/website", icon: Globe, short: "Website" },
   { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
   { label: "Team", href: "/dashboard/team", icon: Users, short: "Team" },
   { label: "Billing", href: "/dashboard/billing", icon: CreditCard, short: "Billing" },
@@ -47,6 +49,7 @@ const brokerNavItems: NavItem[] = [
 
 const assistantNavItems: NavItem[] = [
   { label: "Listings", href: "/dashboard/listings", icon: Ship, short: "Listings" },
+  { label: "Website", href: "/dashboard/website", icon: Globe, short: "Website" },
   { label: "Recently Photographed", href: "/dashboard/showcase", icon: Camera, short: "Recent" },
   { label: "My Brokers", href: "/dashboard/brokers", icon: Users, short: "Brokers" },
   { label: "My Profile", href: "/dashboard/profile", icon: UserRound, short: "Profile" },

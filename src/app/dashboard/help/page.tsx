@@ -196,6 +196,19 @@ const sections = [
   },
   {
     num: "15",
+    title: "Your Website",
+    steps: [
+      "Every Portal subscriber gets a personal website at portal.yachtpics.com/b/your-name: a full-width photo with your name, your boats for sale, recent sales, your bio and a contact form. It fills itself from your Portal listings.",
+      "Open Website in the sidebar and click Create my website. Pick your address (you can change it later). Nothing is public until you switch Publish on; View site opens it, Copy link copies the address to share.",
+      "Edit it there: the headline under your name, the top photo (choose any photo from your listings, or leave it on your newest boat's cover), up to 4 short facts like '22 years', your portrait, bio, credentials and WhatsApp number, up to 6 client testimonials, and whether prices show. Click Save; the site updates within a minute or two. Phone, email, brokerage, license and logo come from My Profile.",
+      "How boats appear: a listing is on your site when its slideshow is published. Your boats on the Website page shows each one as On your site, or Not shown with a link to the listing so you can publish it. Pocket listings never appear.",
+      "When a boat sells, click Mark sold: it moves to Recent sales with the month it sold and no price. Back on the market undoes it.",
+      "Visitors can request a showing on any boat, send you a message, or ask what their own boat is worth. Each one is emailed to you straight away (reply to the email to answer them) and listed under Inquiries, where you can mark it handled.",
+      "Assistants can edit the website for the brokers they work for. The website stays online while your plan is active; if it lapses, the link shows 'This page isn't available' until you choose a plan.",
+    ],
+  },
+  {
+    num: "16",
     title: "Reel Service",
     steps: [
       "Reel Service: YachtPics makes up to 4 social reels a month for one listing, from the shoot's photos plus any drone or video footage. Photo-only listings qualify. $179 a month per listing, paid by card in the Portal; run it on as many boats as you like.",
@@ -207,7 +220,7 @@ const sections = [
     ],
   },
   {
-    num: "16",
+    num: "17",
     title: "Recently Photographed",
     steps: [
       "Recently Photographed (in the sidebar) is a portal-wide showcase of the latest boats YachtPics has shot — a place to see fresh inventory and connect broker-to-broker.",
@@ -218,7 +231,7 @@ const sections = [
     ],
   },
   {
-    num: "17",
+    num: "18",
     title: "Tips & Tricks",
     steps: [
       "Tips (in the sidebar) is a browsable library of short how-tos for getting more out of the portal.",
@@ -228,7 +241,7 @@ const sections = [
     ],
   },
   {
-    num: "18",
+    num: "19",
     title: "Industry News",
     steps: [
       "News (in the sidebar) gathers what the yachting trade press is reporting, every morning, kept short.",
@@ -290,6 +303,10 @@ const quickRef = [
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
   ["Mark a boat for a boat show", "My Listings → listing → Boat shows → tick the show, add the dock / slip, Save"],
   ["Download a boat show dock card", "My Listings → listing → Boat shows → Dock card (PDF)"],
+  ["Create or edit your website", "Sidebar → Website"],
+  ["Show a boat on your website", "My Listings → listing → publish its slideshow"],
+  ["Mark a boat sold on your website", "Sidebar → Website → Your boats → Mark sold"],
+  ["See messages from your website", "Sidebar → Website → Inquiries (also emailed to you)"],
   ["Add the Reel Service to a boat ($179/mo)", "My Listings → listing → Reel Service → Add Reel Service"],
   ["Cancel the Reel Service on a boat", "My Listings → listing → Reel Service → Cancel Reel Service"],
   ["Keep a boat out of the showcase and off yachtpics.com", "My Listings → listing → 'Keep this a pocket listing'"],
@@ -307,7 +324,7 @@ const quickRef = [
  * build_user_guide.py reads those two arrays) never lists it for everyone.
  */
 const REEL_SERVICE_SECTION = {
-  num: "19",
+  num: "20",
   title: "Your Reels",
   steps: [
     "As a YachtPics Reel Service client, Your Reels in the sidebar holds the social reels we make for you for the boats enrolled in the Reel Service, newest first. We email you when new ones are ready.",
