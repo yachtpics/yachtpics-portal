@@ -280,7 +280,10 @@ export function boatSlugs(rows: { id: string; vessel_name: string | null; year: 
  */
 export async function readSiteRow(by: "slug" | "broker_id", value: string): Promise<{ row: BrokerSiteRow | null; error: { code?: string; message?: string } | null }> {
   const svc = serviceClient();
-  let res = await svc.from("broker_sites").select(`${SITE_COLUMNS}, ${SITE_STYLE_COLUMNS}`).eq(by, value).maybeSingle();
+  // Newest columns first; each fallback is for a migration not applied yet
+  // (20261026e section_order, 20261026d look).
+  let res = await svc.from("broker_sites").select(`${SITE_COLUMNS}, ${SITE_STYLE_COLUMNS}, section_order`).eq(by, value).maybeSingle();
+  if (res.error && isMissingSchema(res.error)) res = await svc.from("broker_sites").select(`${SITE_COLUMNS}, ${SITE_STYLE_COLUMNS}`).eq(by, value).maybeSingle();
   if (res.error && isMissingSchema(res.error)) res = await svc.from("broker_sites").select(SITE_COLUMNS).eq(by, value).maybeSingle();
   if (res.error) return { row: null, error: res.error };
   return { row: res.data ? normaliseSiteRow(res.data as unknown as Record<string, unknown>) : null, error: null };

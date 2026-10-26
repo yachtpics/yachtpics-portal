@@ -1,7 +1,7 @@
 import { MessageCircle, MessageSquare, Phone } from "lucide-react";
 import PresentedThrough from "@/components/PresentedThrough";
 import type { SiteBase } from "@/lib/brokerSiteServer";
-import { dialable, whatsappDigits } from "@/lib/brokerSite";
+import { dialable, whatsappDigits, type SectionKey } from "@/lib/brokerSite";
 import type { ResolvedSiteStyle } from "@/lib/siteStyle";
 import SiteHeader from "./SiteHeader";
 
@@ -41,12 +41,15 @@ export default function SiteShell({
   base,
   look,
   displayClass,
+  order,
   children,
 }: {
   s: SiteBase;
   look: ResolvedSiteStyle;
   /** The layout's display serif class (fonts.ts). */
   displayClass: string;
+  /** Section order — the nav anchors follow it. */
+  order: SectionKey[];
   shown: SiteSectionsShown;
   /** "" on the home page (plain #anchors); "/b/{slug}" on sub-pages. */
   base: string;
@@ -57,13 +60,17 @@ export default function SiteShell({
   const wa = whatsappDigits(s.site.whatsapp);
   const year = new Date().getFullYear();
 
-  const nav = [
-    shown.yachts ? { href: `${base}#yachts`, label: "Yachts" } : null,
-    shown.sold ? { href: `${base}#sold`, label: "Sold" } : null,
-    shown.about ? { href: `${base}#about`, label: "About" } : null,
-    shown.sell ? { href: `${base}#sell`, label: "Sell" } : null,
-    { href: `${base}#contact`, label: "Contact" },
-  ].filter((n): n is { href: string; label: string } => !!n);
+  // Anchors in the same order as the sections on the page (max 5 with Contact).
+  const anchors: Partial<Record<SectionKey, { on: boolean; label: string }>> = {
+    yachts: { on: shown.yachts, label: "Yachts" },
+    sold: { on: shown.sold, label: "Sold" },
+    about: { on: shown.about, label: "About" },
+    sell: { on: shown.sell, label: "Sell" },
+  };
+  const nav = order
+    .map((k) => (anchors[k]?.on ? { href: `${base}#${k}`, label: anchors[k]!.label } : null))
+    .filter((n): n is { href: string; label: string } => !!n)
+    .concat([{ href: `${base}#contact`, label: "Contact" }]);
 
   const mobileBar = [
     phone ? { href: `tel:${phone}`, label: "Call", icon: Phone } : null,

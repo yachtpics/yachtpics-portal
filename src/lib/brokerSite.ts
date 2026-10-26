@@ -24,9 +24,45 @@ export const SITE_LIMITS = {
 
 export type SiteStat = { value: string; label: string };
 export type SiteTestimonial = { quote: string; name: string; place: string };
-export type SiteSections = { sold: boolean; about: boolean; testimonials: boolean; sell: boolean };
+export type SiteSections = { proof: boolean; sold: boolean; about: boolean; testimonials: boolean; sell: boolean };
 
-export const DEFAULT_SECTIONS: SiteSections = { sold: true, about: true, testimonials: true, sell: true };
+export const DEFAULT_SECTIONS: SiteSections = { proof: true, sold: true, about: true, testimonials: true, sell: true };
+
+/**
+ * Movable home-page sections (Oct 26). The hero is always first; Contact and
+ * the footer always last. Stored in broker_sites.section_order (20261026e);
+ * null = the layout's default order.
+ */
+export const SECTION_KEYS = ["proof", "yachts", "sold", "about", "testimonials", "sell"] as const;
+export type SectionKey = (typeof SECTION_KEYS)[number];
+
+export const SECTION_INFO: Record<SectionKey, { label: string; hint: string; toggle: keyof SiteSections | null }> = {
+  proof: { label: "At a glance", hint: "Your short facts, when you've added some", toggle: "proof" },
+  yachts: { label: "Yachts for sale", hint: "Always on", toggle: null },
+  sold: { label: "Recent sales", hint: "Boats you've marked sold", toggle: "sold" },
+  about: { label: "About", hint: "Portrait, bio, credentials, brokerage", toggle: "about" },
+  testimonials: { label: "Testimonials", hint: "Shown when you've added at least one", toggle: "testimonials" },
+  sell: { label: "Selling your yacht?", hint: "The “What's my boat worth?” form", toggle: "sell" },
+};
+
+/** Each layout's default order (Showroom leads with the boats). */
+export function defaultSectionOrder(layout: string | null | undefined): SectionKey[] {
+  return layout === "showroom"
+    ? ["yachts", "proof", "sold", "about", "testimonials", "sell"]
+    : ["proof", "yachts", "sold", "about", "testimonials", "sell"];
+}
+
+/** Known keys only, each once, missing keys appended in the layout's default order. */
+export function cleanSectionOrder(v: unknown, layout: string | null | undefined): SectionKey[] {
+  const raw = Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : [];
+  const out: SectionKey[] = [];
+  raw.forEach((k) => {
+    const key = typeof k === "string" ? k.trim() : "";
+    if ((SECTION_KEYS as readonly string[]).includes(key) && !out.includes(key as SectionKey)) out.push(key as SectionKey);
+  });
+  defaultSectionOrder(layout).forEach((k) => { if (!out.includes(k)) out.push(k); });
+  return out;
+}
 
 export type BrokerSiteRow = {
   broker_id: string;
@@ -50,6 +86,8 @@ export type BrokerSiteRow = {
   accent: string | null;
   /** Custom page ground hex (reserved), or null. */
   ground: string | null;
+  /** Broker's section order (20261026e), or null = the layout's default. */
+  section_order: SectionKey[] | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -128,7 +166,7 @@ export function cleanTestimonials(v: unknown): SiteTestimonial[] {
 export function cleanSections(v: unknown): SiteSections {
   const o = (v && typeof v === "object" ? v : {}) as Partial<Record<keyof SiteSections, unknown>>;
   const pick = (k: keyof SiteSections) => (typeof o[k] === "boolean" ? (o[k] as boolean) : DEFAULT_SECTIONS[k]);
-  return { sold: pick("sold"), about: pick("about"), testimonials: pick("testimonials"), sell: pick("sell") };
+  return { proof: pick("proof"), sold: pick("sold"), about: pick("about"), testimonials: pick("testimonials"), sell: pick("sell") };
 }
 
 /** Normalise a stored row (jsonb columns can hold anything). */
@@ -151,6 +189,7 @@ export function normaliseSiteRow(row: Record<string, unknown>): BrokerSiteRow {
     palette: typeof row.palette === "string" ? row.palette : "harbor",
     accent: typeof row.accent === "string" ? row.accent : null,
     ground: typeof row.ground === "string" ? row.ground : null,
+    section_order: Array.isArray(row.section_order) ? cleanSectionOrder(row.section_order, typeof row.layout === "string" ? row.layout : "classic") : null,
     created_at: (row.created_at as string | undefined) ?? undefined,
     updated_at: (row.updated_at as string | undefined) ?? undefined,
   };

@@ -406,7 +406,7 @@ export default function BillingPage() {
           <div className="max-w-2xl">
             <p className="font-semibold text-ink-900 text-base">Your own website <span className="text-sm font-normal text-ink-500">&middot; +${WEBSITE_PRICE} a month on any plan</span></p>
             <p className="text-xs text-ink-500 mt-0.5">
-              Your boats on your own site, updating themselves from the Portal. Showing requests and inquiries straight to your inbox. Recent sales, testimonials and a &lsquo;what&rsquo;s my boat worth&rsquo; form for sellers.
+              Your boats on your own site — ours and the ones you photograph yourself — updating themselves from the Portal. Showing requests and inquiries straight to your inbox. Recent sales, testimonials and a &lsquo;what&rsquo;s my boat worth&rsquo; form for sellers.
             </p>
             <p className="text-xs font-semibold text-accent-700 mt-1">Included with {WEBSITE_INCLUDED_PLANS.join(" or ")}.</p>
             {website?.onPlan && <p className="text-xs text-success-700 mt-1">On your plan{website.currentPeriodEnd ? ` · renews ${fmtDate(new Date(website.currentPeriodEnd))}` : ""}.</p>}

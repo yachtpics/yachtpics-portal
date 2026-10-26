@@ -11,6 +11,7 @@ import {
   cleanSections,
   cleanStats,
   cleanTestimonials,
+  cleanSectionOrder,
   isMissingSchema,
   lengthLabel,
   normaliseSiteRow,
@@ -200,6 +201,8 @@ export async function GET(req: NextRequest) {
     },
     // Layouts & colours switched on (migration 20261026d)?
     lookReady: ready ? !(await svc.from("broker_sites").select("layout").limit(1)).error : false,
+    // Section order switched on (migration 20261026e)?
+    orderReady: ready ? !(await svc.from("broker_sites").select("section_order").limit(1)).error : false,
     portraitUrl: site ? portraitUrl(svc, site.portrait_path) : null,
     listings,
     hiddenReady,
@@ -269,8 +272,19 @@ export async function PUT(req: NextRequest) {
     }
   }
 
+  // Section order (20261026e): known keys only, each once, missing appended.
+  const order: Record<string, unknown> = {};
+  if ("section_order" in body) {
+    order.section_order = body.section_order === null ? null : cleanSectionOrder(body.section_order, typeof style.layout === "string" ? style.layout : current.layout);
+  }
+
   let lookWarning: string | null = null;
-  let { error } = await svc.from("broker_sites").update({ ...update, ...style }).eq("broker_id", brokerId);
+  let { error } = await svc.from("broker_sites").update({ ...update, ...style, ...order }).eq("broker_id", brokerId);
+  if (error && "section_order" in order && isMissingSchema(error)) {
+    // 20261026e not applied yet: save everything else.
+    ({ error } = await svc.from("broker_sites").update({ ...update, ...style }).eq("broker_id", brokerId));
+    lookWarning = "Saved — but section order isn't switched on yet, so the order didn't change.";
+  }
   if (error && Object.keys(style).length > 0 && isMissingSchema(error)) {
     // 20261026d not applied yet: save everything else.
     ({ error } = await svc.from("broker_sites").update(update).eq("broker_id", brokerId));

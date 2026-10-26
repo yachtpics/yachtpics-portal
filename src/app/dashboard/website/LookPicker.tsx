@@ -77,12 +77,15 @@ export default function LookPicker({
   brandAccent,
   slug,
   ready,
+  order,
 }: {
   look: Look;
   onChange: (next: Look) => void;
   brandAccent: string | null;
   slug: string;
   ready: boolean;
+  /** Current (unsaved) section order, carried into Preview. */
+  order?: string[];
 }) {
   const layout: SiteLayout = isLayout(look.layout) ? look.layout : "classic";
   const palette = paletteByKey(look.palette);
@@ -98,7 +101,7 @@ export default function LookPicker({
   };
 
   const preview = () => {
-    const q = new URLSearchParams({ layout, palette: palette.key, accent: custom ?? "none" });
+    const q = new URLSearchParams({ layout, palette: palette.key, accent: custom ?? "none", ...(order ? { order: order.join(",") } : {}) });
     window.open(`/b/${encodeURIComponent(slug)}/preview?${q.toString()}`, "_blank", "noopener");
   };
 

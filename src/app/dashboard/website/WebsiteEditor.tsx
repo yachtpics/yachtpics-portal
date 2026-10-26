@@ -6,13 +6,16 @@ import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, Check, Copy, ExternalLink, Trash2 } from "lucide-react";
 import WebsitePlanCard, { type Entitlement } from "./WebsitePlanCard";
 import LookPicker, { type Look } from "./LookPicker";
+import SectionOrder from "./SectionOrder";
 import {
   SITE_LIMITS,
   SITE_STATS_MAX,
   SITE_TESTIMONIALS_MAX,
+  defaultSectionOrder,
   normaliseSlug,
   slugProblem,
   type BrokerSiteRow,
+  type SectionKey,
   type SiteSections,
   type SiteStat,
   type SiteTestimonial,
@@ -55,6 +58,8 @@ type Payload = {
   broker: { name: string; firstName: string; phone: string; email: string; bio: string; logoUrl: string | null; brokerageName: string; license: string; brandAccent?: string | null };
   /** Layouts & colours switched on (migration 20261026d). */
   lookReady?: boolean;
+  /** Section order switched on (migration 20261026e). */
+  orderReady?: boolean;
   portraitUrl: string | null;
   listings: Boat[];
   /** listings.site_hidden exists (migration 20261026c). */
@@ -84,13 +89,6 @@ const inkBtn =
   "inline-flex items-center justify-center gap-2 min-h-[44px] px-5 bg-ink-950 hover:bg-ink-800 disabled:opacity-40 disabled:pointer-events-none text-white text-sm font-medium rounded-ctl transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2";
 const quietBtn =
   "inline-flex items-center justify-center gap-2 min-h-[44px] px-4 border border-hairline-strong text-ink-800 hover:bg-ink-50 disabled:opacity-40 disabled:pointer-events-none text-sm font-medium rounded-ctl transition-colors duration-fast ease-quiet";
-
-const SECTION_LABELS: { key: keyof SiteSections; label: string; hint: string }[] = [
-  { key: "sold", label: "Recent sales", hint: "Boats you've marked sold" },
-  { key: "about", label: "About", hint: "Portrait, bio, credentials, brokerage" },
-  { key: "testimonials", label: "Testimonials", hint: "Shown when you've added at least one" },
-  { key: "sell", label: "Selling your yacht?", hint: "The “What's my boat worth?” form" },
-];
 
 function Toggle({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return (
@@ -142,12 +140,14 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
   const [stats, setStats] = useState<SiteStat[]>([]);
   const [testimonials, setTestimonials] = useState<SiteTestimonial[]>([]);
   const [showPrices, setShowPrices] = useState(false);
-  const [sections, setSections] = useState<SiteSections>({ sold: true, about: true, testimonials: true, sell: true });
+  const [sections, setSections] = useState<SiteSections>({ proof: true, sold: true, about: true, testimonials: true, sell: true });
   const [heroPhotoId, setHeroPhotoId] = useState<string | null>(null);
   const [heroThumb, setHeroThumb] = useState<string | null>(null);
   const [portrait, setPortrait] = useState<string | null>(null);
   const [look, setLook] = useState<Look>({ layout: "classic", palette: "harbor", accent: null });
   const [saveNote, setSaveNote] = useState<string | null>(null);
+  /** The broker's own section order; null = the layout's default (follows layout changes). */
+  const [customOrder, setCustomOrder] = useState<SectionKey[] | null>(null);
 
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -186,9 +186,10 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
     setStats(pad4(site?.stats));
     setTestimonials(site?.testimonials ?? []);
     setShowPrices(site?.show_prices ?? false);
-    setSections(site?.sections ?? { sold: true, about: true, testimonials: true, sell: true });
+    setSections(site?.sections ?? { proof: true, sold: true, about: true, testimonials: true, sell: true });
     setHeroPhotoId(site?.hero_photo_id ?? null);
     setLook({ layout: site?.layout ?? "classic", palette: site?.palette ?? "harbor", accent: site?.accent ?? null });
+    setCustomOrder(site?.section_order ?? null);
     if (extra && "heroThumb" in extra) setHeroThumb(extra.heroThumb ?? null);
     if (extra && "portraitUrl" in extra) setPortrait(extra.portraitUrl ?? null);
     if (extra && typeof extra.bio === "string") setBio(extra.bio);
@@ -291,7 +292,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           headline, specialty, credentials, whatsapp, bio,
-          layout: look.layout, palette: look.palette, accent: look.accent,
+          layout: look.layout, palette: look.palette, accent: look.accent, section_order: customOrder,
           stats: stats.filter((x) => x.value.trim() || x.label.trim()), testimonials, show_prices: showPrices, sections, hero_photo_id: heroPhotoId,
           ...(extra ?? {}),
         }),
@@ -526,6 +527,7 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
           onChange={(next) => { setLook(next); touch(); }}
           brandAccent={data.broker.brandAccent ?? null}
           slug={site.slug}
+          order={customOrder ?? defaultSectionOrder(look.layout)}
           ready={data.lookReady !== false}
         />
       </section>
@@ -748,36 +750,36 @@ export default function WebsiteEditor({ initialBrokerId }: { initialBrokerId: st
         )}
       </section>
 
-      {/* Options */}
+      {/* Sections — order (drag or up/down) + on/off */}
       <section className={card}>
-        <h2 className="text-h2 text-ink-900 mb-4">What&rsquo;s on the page</h2>
-        <ul className="divide-y divide-hairline">
-          <li className="py-3 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-ink-900">Show prices</p>
-              <p className="text-xs text-ink-500">Off: every boat reads &ldquo;Price on request&rdquo;.</p>
-            </div>
-            <Toggle on={showPrices} onChange={(v) => { setShowPrices(v); touch(); }} label="Show prices" />
-          </li>
-          {SECTION_LABELS.map((s) => (
-            <li key={s.key} className="py-3 flex items-center justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-ink-900">{s.label}</p>
-                <p className="text-xs text-ink-500">{s.hint}</p>
-              </div>
-              <Toggle on={sections[s.key]} onChange={(v) => { setSections({ ...sections, [s.key]: v }); touch(); }} label={s.label} />
-            </li>
-          ))}
-        </ul>
-        <p className="text-xs text-ink-500 mt-3">Yachts and Contact are always on.</p>
+        <h2 className="text-h2 text-ink-900">Sections</h2>
+        <p className="text-sm text-ink-500 mt-1 mb-4">Put the sections in the order you like and switch off any you don&rsquo;t want. Empty sections hide themselves.</p>
+        <SectionOrder
+          order={customOrder ?? defaultSectionOrder(look.layout)}
+          onOrder={(next) => { setCustomOrder(next); touch(); }}
+          sections={sections}
+          onSections={(next) => { setSections(next); touch(); }}
+          ready={data.orderReady !== false}
+        />
+        <div className="mt-5 pt-4 border-t border-hairline flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-ink-900">Show prices</p>
+            <p className="text-xs text-ink-500">Off: every boat reads &ldquo;Price on request&rdquo;.</p>
+          </div>
+          <Toggle on={showPrices} onChange={(v) => { setShowPrices(v); touch(); }} label="Show prices" />
+        </div>
       </section>
 
       {/* Boats */}
       <section className={card}>
         <h2 className="text-h2 text-ink-900">Your boats</h2>
-        <p className="text-sm text-ink-500 mt-1 mb-4">Every active boat with photos shows on your site, with its own page and slideshow. Switch one off to leave it out. Pocket listings never show. Mark a boat sold to move it to Recent sales.</p>
+        <p className="text-sm text-ink-500 mt-1">Every active boat with photos shows on your site, with its own page and slideshow. Switch one off to leave it out. Pocket listings never show. Mark a boat sold to move it to Recent sales.</p>
+        <div className="mt-3 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-ctl bg-ink-50 border border-hairline px-4 py-3">
+          <p className="text-sm text-ink-700">Boats we didn&rsquo;t shoot can be on your site too — add a listing and upload your own photos.</p>
+          <Link href="/dashboard/listings/new" className={quietBtn + " bg-white shrink-0"}>Add a listing</Link>
+        </div>
         {data.listings.length === 0 ? (
-          <p className="text-sm text-ink-500">No active listings yet.</p>
+          <p className="text-sm text-ink-500">No boats yet. Add a listing and upload your photos, and it appears here and on your site.</p>
         ) : (
           <ul className="divide-y divide-hairline">
             {data.listings.map((b) => (

@@ -1,5 +1,13 @@
 # Where we are — October 6, 2026
 
+## Oct 26 (late) — Broker Websites: section order + "your own photos" — NOT PUSHED, NOT TESTED LIVE · MIGRATION `20261026e_section_order.sql` NOT APPLIED · no new dependency
+
+- **Section order:** `broker_sites.section_order jsonb` (null = the layout's default: Classic/Editorial `proof, yachts, sold, about, testimonials, sell`; Showroom leads with `yachts`). `cleanSectionOrder` (`src/lib/brokerSite.ts`) keeps known keys once and appends missing ones in default order — used on save and on read. Hero always first, Contact + footer last. All three layouts render in that order (`SiteHome` maps keys → sections); header nav anchors follow it (`SiteShell` `order` prop; boat pages too). Preview honours `order=` (comma list). Site reads fall back without the column; saving before the migration answers "section order isn't switched on yet".
+- **Proof strip switch:** `sections.proof` (default on) so every movable section has a switch except Yachts (always on).
+- **Editor:** "What's on the page" replaced by a **Sections** card (`SectionOrder.tsx`): rows with a drag handle (native HTML5 drag and drop on desktop), up/down buttons on every row (keyboard / touch / phone), the on/off switch per row, and Show prices underneath. Unchanged order stays null so it follows a layout change; Preview carries the unsaved order.
+- **Own photos message:** Your boats card: "Boats we didn't shoot can be on your site too — add a listing and upload your own photos." + Add a listing (→ /dashboard/listings/new); empty state says the same. Help ("How boats appear") and the Billing website row ("ours and the ones you photograph yourself") updated; Help also got a Sections step + quick-ref row. PDF rebuilt.
+- **Tested:** typecheck + eslint clean.
+
 ## Oct 26 (evening) — Broker Websites: three layouts + curated colours — NOT PUSHED, NOT TESTED LIVE · MIGRATION `20261026d_site_style.sql` NOT APPLIED · no new dependency
 
 - **Data:** `broker_sites.layout` (classic | editorial | showroom, default classic), `palette` (default harbor), `accent` (hex or null = palette's), `ground` (hex or null; reserved — not in the editor, honoured only if it keeps the palette's light/dark character). Column-level grant extended to them. Before the migration everything renders Classic / Harbor (site reads retry without the look columns: `readSiteRow` in `brokerSiteServer.ts`); saving the look answers "layouts and colours aren't switched on yet".

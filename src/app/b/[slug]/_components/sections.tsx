@@ -1,7 +1,7 @@
 import { MessageCircle, Phone } from "lucide-react";
 import type { PublicBrokerSite } from "@/lib/brokerSiteServer";
 import type { SiteLayout } from "@/lib/siteStyle";
-import { dialable, whatsappDigits } from "@/lib/brokerSite";
+import { dialable, whatsappDigits, type SectionKey } from "@/lib/brokerSite";
 import YachtGrid from "./YachtGrid";
 import LeadForm from "./LeadForm";
 import ShowroomSlides from "./ShowroomSlides";
@@ -18,6 +18,8 @@ export type HomeProps = {
   layout: SiteLayout;
   display: string;
   shown: SiteSectionsShown;
+  /** Movable sections in the broker's order (cleanSectionOrder). */
+  order: SectionKey[];
 };
 
 const btnAccent =
@@ -130,7 +132,7 @@ export function Hero({ s, layout, display }: HomeProps) {
 
 export function ProofStrip({ s, layout, display }: HomeProps) {
   const stats = s.site.stats.filter((x) => x.value && x.label);
-  if (stats.length === 0) return null;
+  if (!s.site.sections.proof || stats.length === 0) return null;
   const cols = stats.length >= 4 ? "md:grid-cols-4" : stats.length === 3 ? "md:grid-cols-3" : "";
   return (
     <section aria-label="At a glance" className={`border-b border-[var(--site-rule)] ${layout === "editorial" ? "border-t" : ""}`}>
@@ -344,31 +346,28 @@ export function Contact({ s, layout, display }: HomeProps) {
   );
 }
 
-/** The whole home page body for a layout (inside SiteShell). */
+const SECTION_COMPONENTS: Record<SectionKey, (p: HomeProps) => JSX.Element | null> = {
+  proof: ProofStrip,
+  yachts: Yachts,
+  sold: Sold,
+  about: About,
+  testimonials: Testimonials,
+  sell: Sell,
+};
+
+/**
+ * The whole home page body (inside SiteShell): the hero first, then the
+ * movable sections in the broker's order (each hides itself when off or
+ * empty), then Contact last.
+ */
 export function SiteHome(props: HomeProps) {
-  if (props.layout === "showroom") {
-    return (
-      <>
-        <Hero {...props} />
-        <Yachts {...props} />
-        <ProofStrip {...props} />
-        <Sold {...props} />
-        <About {...props} />
-        <Testimonials {...props} />
-        <Sell {...props} />
-        <Contact {...props} />
-      </>
-    );
-  }
   return (
     <>
       <Hero {...props} />
-      <ProofStrip {...props} />
-      <Yachts {...props} />
-      <Sold {...props} />
-      <About {...props} />
-      <Testimonials {...props} />
-      <Sell {...props} />
+      {props.order.map((key) => {
+        const Section = SECTION_COMPONENTS[key];
+        return <Section key={key} {...props} />;
+      })}
       <Contact {...props} />
     </>
   );

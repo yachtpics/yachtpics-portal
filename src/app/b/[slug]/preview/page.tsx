@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { getPreviewBrokerSite, getPublicBrokerSite, getSiteBySlug, resolveActingBroker } from "@/lib/brokerSiteServer";
 import { PALETTE_KEYS, cleanHex, isLayout, resolveSiteStyle } from "@/lib/siteStyle";
+import { cleanSectionOrder } from "@/lib/brokerSite";
 import HomePage from "../_components/HomePage";
 import Unavailable from "../_components/Unavailable";
 
 /**
- * /b/[slug]/preview?layout=…&palette=…&accent=… — the site with UNSAVED look
+ * /b/[slug]/preview?layout=…&palette=…&accent=…&order=… — the site with UNSAVED look
  * choices, opened by the editor's Preview button (Oct 26).
  *
  * Always rendered per request (never cached). The overrides — and showing a
@@ -24,7 +25,7 @@ export default async function SitePreviewPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams: { layout?: string; palette?: string; accent?: string };
+  searchParams: { layout?: string; palette?: string; accent?: string; order?: string };
 }) {
   const site = await getSiteBySlug(params.slug);
   const who = site ? await resolveActingBroker(site.broker_id).catch(() => null) : null;
@@ -50,7 +51,7 @@ export default async function SitePreviewPage({
       <div className="bg-black text-white text-xs text-center py-2 px-4">
         Preview — only you can see this. {s.site.published ? "" : "Your site isn’t published yet. "}Close this tab to go back to the editor.
       </div>
-      <HomePage s={s} look={look} />
+      <HomePage s={s} look={look} order={cleanSectionOrder(searchParams.order ?? s.site.section_order, look.layout)} />
     </>
   );
 }

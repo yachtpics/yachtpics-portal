@@ -10,7 +10,7 @@ import {
 } from "@/lib/publicSlideshow";
 import { OG_TRANSFORM, signOneTransformed } from "@/lib/publicPhotoUrls";
 import { boatLabel, boatSpecs, findSiteBoat, getLiveSite, getSiteBoatListing } from "@/lib/brokerSiteServer";
-import { priceLabel } from "@/lib/brokerSite";
+import { cleanSectionOrder, priceLabel } from "@/lib/brokerSite";
 import SiteShell, { sectionsShown } from "../../_components/SiteShell";
 import Unavailable from "../../_components/Unavailable";
 import ShowingButton from "../../_components/ShowingButton";
@@ -74,10 +74,11 @@ export default async function SiteBoatPage({ params }: { params: { slug: string;
   // the embedded viewer keeps its own styling.
   const look = resolveSiteStyle(live.site);
   const display = displayFont(look.layout);
+  const order = cleanSectionOrder(live.site.section_order, look.layout);
 
   if (!r.boat || !r.listing) {
     return (
-      <SiteShell s={live} shown={shown} base={base} look={look} displayClass={display}>
+      <SiteShell s={live} shown={shown} base={base} look={look} displayClass={display} order={order}>
         <main className="px-4 sm:px-8 py-24 text-center">
           <p className={`${display} text-[2rem] text-[var(--site-ink)]`}>This yacht isn&rsquo;t available</p>
           <Link href={`${base}#yachts`} className="inline-flex items-center min-h-[44px] mt-4 text-sm font-semibold text-[var(--site-ink)] border-b border-[var(--site-accent)]">
@@ -121,7 +122,7 @@ export default async function SiteBoatPage({ params }: { params: { slug: string;
   const viewerSlug = `site-${boat.boatSlug}`;
 
   return (
-    <SiteShell s={live} shown={shown} base={base} look={look} displayClass={display}>
+    <SiteShell s={live} shown={shown} base={base} look={look} displayClass={display} order={order}>
       <main>
         <div className="px-4 sm:px-8 pt-8 sm:pt-12 pb-6">
           <div className="max-w-6xl mx-auto">
