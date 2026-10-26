@@ -1,5 +1,14 @@
 # Where we are — October 6, 2026
 
+## Oct 26 (late) — Listing-range nudge (no enforcement) — NOT PUSHED, NOT TESTED LIVE · no migration, no new dependency
+
+- **Rule source:** `PLANS[].minListings / maxListings` in `src/lib/plans.ts` (Starter 1–5, Growth 6–10, Pro 11–20, Elite 21+). `src/lib/listingAllowance.ts` → `listingAllowance(svc, brokerId)`: { plan, limit (null for Elite / Office-only / comped / trial / no own Stripe plan), activeCount (status active, sold_at null — pocket listings count), over, suggestedPlan (cheapest plan covering the count), suggestedTotalMonthly (with the $50 website line if it's on their plan; Elite includes it), hasWebsite }. `allowanceMessage()` builds the one line. `ENFORCE_LISTING_LIMITS = false` — when switched on, the listing-creation routes are meant to call the same function and refuse a new active listing at `activeCount >= limit`; nothing blocks today.
+- **Billing:** calm notice at the top when over — "You have {n} active boats. {Plan} covers up to {limit}. {Suggested} covers {range} — ${total}/mo." + "Upgrade to {Suggested}" through the existing change-plan flow (confirm dialog; website line kept as is). Data from new `GET /api/billing/allowance` (self only).
+- **My Listings:** the same line as a banner above the list (`PlanNudgeBanner`), dismiss = this browser session only (sessionStorage). Brokers get "Upgrade to {Suggested}" → Billing; assistants see it for each broker they work for ("{Name} has …") with "Ask {first name} to upgrade." (no billing action).
+- **Admin broker page:** "Over plan: {n} boats on {Plan}" chip in the Subscription card.
+- **No emails. Help unchanged** — no Help paragraph mentions the listing ranges.
+- **Tested:** typecheck + eslint clean.
+
 ## Oct 26 (late) — Broker Websites: section order + "your own photos" — NOT PUSHED, NOT TESTED LIVE · MIGRATION `20261026e_section_order.sql` NOT APPLIED · no new dependency
 
 - **Section order:** `broker_sites.section_order jsonb` (null = the layout's default: Classic/Editorial `proof, yachts, sold, about, testimonials, sell`; Showroom leads with `yachts`). `cleanSectionOrder` (`src/lib/brokerSite.ts`) keeps known keys once and appends missing ones in default order — used on save and on read. Hero always first, Contact + footer last. All three layouts render in that order (`SiteHome` maps keys → sections); header nav anchors follow it (`SiteShell` `order` prop; boat pages too). Preview honours `order=` (comma list). Site reads fall back without the column; saving before the migration answers "section order isn't switched on yet".

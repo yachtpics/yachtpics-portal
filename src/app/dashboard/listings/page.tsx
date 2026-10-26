@@ -8,6 +8,8 @@ import { hasAccess } from "@/lib/subscriptionAccess";
 import { signDerivatives } from "@/lib/photoDerivatives";
 import { getCurrentShows } from "@/lib/boatShows";
 import ShowBanner from "./_components/ShowBanner";
+import PlanNudgeBanner from "./_components/PlanNudgeBanner";
+import { allowanceMessage, listingAllowance } from "@/lib/listingAllowance";
 
 export default async function ListingsPage({ searchParams = {} }: { searchParams?: { show?: string } }) {
   const supabase = await createClient();
@@ -108,6 +110,25 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
       ? supabase.rpc("listing_hero_photos", { p_listing_ids: listings.map((l) => l.id) })
       : Promise.resolve({ data: [] }),
   ]);
+  // Over the plan's listing range? A nudge only (src/lib/listingAllowance.ts):
+  // the broker's own plan, or — for an assistant — each broker they work for.
+  const nudgeTargets: { brokerId: string; firstName: string | null }[] =
+    profile?.role === "broker"
+      ? [{ brokerId: user.id, firstName: null }]
+      : isAssistant
+        ? (((await service.from("broker_assistants").select("broker_id, profiles:broker_id(first_name)").eq("assistant_id", user.id)).data ?? []) as unknown as { broker_id: string; profiles: { first_name: string | null } | null }[])
+            .map((r) => ({ brokerId: r.broker_id, firstName: r.profiles?.first_name ?? "your broker" }))
+        : [];
+  const nudges = (await Promise.all(nudgeTargets.map(async (t) => {
+    try {
+      const a = await listingAllowance(service, t.brokerId);
+      const message = allowanceMessage(a, t.firstName);
+      return message && a.suggestedPlan ? { ...t, message, suggestedName: a.suggestedPlan.name } : null;
+    } catch {
+      return null;
+    }
+  }))).filter((n): n is { brokerId: string; firstName: string | null; message: string; suggestedName: string } => !!n);
+
   const lockedListingIds = listings.filter((l) => l.broker_id && lockedOwners.has(l.broker_id)).map((l) => l.id);
 
   // Cover photo per row, resolved server-side. One RPC (DISTINCT ON, honoring
@@ -172,6 +193,10 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
           + New Listing
         </Link>
       </div>
+
+      {nudges.map((n) => (
+        <PlanNudgeBanner key={n.brokerId} brokerId={n.brokerId} message={n.message} suggestedName={n.suggestedName} assistantFor={n.firstName} />
+      ))}
 
       {bannerShow && (
         <ShowBanner

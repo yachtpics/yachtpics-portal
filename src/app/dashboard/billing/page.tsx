@@ -30,6 +30,8 @@ type WebsiteState = {
 export default function BillingPage() {
   const [sub, setSub] = useState<Subscription | null>(null);
   const [website, setWebsite] = useState<WebsiteState>(null);
+  /** Listing-range nudge (src/lib/listingAllowance.ts) — never blocks anything. */
+  const [allowance, setAllowance] = useState<{ over: boolean; message: string | null; suggestedPlan: { id: string; name: string; price: number; priceId: string } | null } | null>(null);
   const [websiteBusy, setWebsiteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
@@ -57,6 +59,8 @@ export default function BillingPage() {
       // offers "plan + website" checkouts.
       const w = await fetch("/api/website?summary=1", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
       setWebsite((w?.entitlement as WebsiteState) ?? null);
+      const a = await fetch("/api/billing/allowance", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      setAllowance(a);
     }
     load();
   }, []);
@@ -223,6 +227,31 @@ export default function BillingPage() {
       {cancelled && (
         <div className="mb-6 bg-warn-50 border border-warn-200 rounded-card px-5 py-4">
           <p className="text-sm text-warn-800">Checkout was cancelled. Your plan has not changed.</p>
+        </div>
+      )}
+
+      {/* Over the plan's listing range — a calm nudge, nothing is blocked. */}
+      {allowance?.over && allowance.message && allowance.suggestedPlan && (
+        <div className="mb-6 bg-white border border-accent-200 rounded-card px-5 py-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-ink-700">{allowance.message}</p>
+          {(() => {
+            const target = PLANS.find((p) => p.priceId === allowance.suggestedPlan!.priceId);
+            if (!target) return null;
+            // Keeps the website line exactly as it is (on stays on, off stays off).
+            return (
+              <button
+                onClick={async () => {
+                  await changePlan(target, !!website?.onPlan);
+                  const a = await fetch("/api/billing/allowance", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+                  setAllowance(a);
+                }}
+                disabled={!!checkoutLoading}
+                className="shrink-0 text-sm font-semibold px-4 py-2 rounded-ctl bg-accent-500 hover:bg-accent-400 text-ink-950 transition-colors disabled:opacity-50"
+              >
+                Upgrade to {target.name}
+              </button>
+            );
+          })()}
         </div>
       )}
 

@@ -2,6 +2,9 @@
 export const PLANS = [
   {
     id: "starter",
+    /** Active-listing range this tier is priced for (listingAllowance.ts). null = no upper limit. */
+    minListings: 1,
+    maxListings: 5 as number | null,
     name: "Starter",
     description: "1–5 active listings",
     price: 29,
@@ -9,6 +12,9 @@ export const PLANS = [
   },
   {
     id: "growth",
+    /** Active-listing range this tier is priced for (listingAllowance.ts). null = no upper limit. */
+    minListings: 6,
+    maxListings: 10 as number | null,
     name: "Growth",
     description: "6–10 active listings",
     price: 49,
@@ -16,6 +22,9 @@ export const PLANS = [
   },
   {
     id: "pro",
+    /** Active-listing range this tier is priced for (listingAllowance.ts). null = no upper limit. */
+    minListings: 11,
+    maxListings: 20 as number | null,
     name: "Pro",
     description: "11–20 active listings",
     price: 79,
@@ -23,6 +32,9 @@ export const PLANS = [
   },
   {
     id: "elite",
+    /** Active-listing range this tier is priced for (listingAllowance.ts). null = no upper limit. */
+    minListings: 21,
+    maxListings: null as number | null,
     name: "Elite",
     description: "21+ active listings",
     price: 149,

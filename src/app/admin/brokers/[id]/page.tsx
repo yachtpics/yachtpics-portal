@@ -13,6 +13,7 @@ import ReelServiceCard, { type ReelCardRow } from "./_components/ReelServiceCard
 import { planLabel } from "@/lib/subscriptionAccess";
 import WebsiteCompToggle from "./_components/WebsiteCompToggle";
 import { websiteEntitlement, type WebsiteEntitlement } from "@/lib/websiteAddon";
+import { listingAllowance } from "@/lib/listingAllowance";
 import { serviceClient } from "@/lib/brokerSiteServer";
 import { WEBSITE_PRICE } from "@/lib/plans";
 
@@ -52,6 +53,8 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   // Whether that site may be live (owner decision Oct 26: Portal access AND
   // Elite / the $50 website line on their plan / comp).
   const siteEnt: WebsiteEntitlement | null = brokerSiteErr ? null : await websiteEntitlement(serviceClient(), params.id).catch(() => null);
+  // Over the plan's listing range? (nudge only — src/lib/listingAllowance.ts)
+  const allowance = await listingAllowance(serviceClient(), params.id).catch(() => null);
   const ENT_LABEL: Record<WebsiteEntitlement["reason"], string> = {
     elite: "Included with Elite",
     website: `On their plan (+$${WEBSITE_PRICE}/mo)`,
@@ -237,6 +240,11 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
               : subscription?.status ?? "—"}
           </span>
           <p className="text-sm text-ink-500 mt-2">Plan: {planLabel(subscription ?? null)}</p>
+          {allowance?.over && (
+            <span className="inline-block mt-2 text-xs font-medium px-2.5 py-1 rounded-full border bg-warn-50 text-warn-800 border-warn-200">
+              Over plan: {allowance.activeCount} boats on {allowance.plan}
+            </span>
+          )}
           {subscription?.current_period_end && (
             <p className="text-xs text-ink-500 mt-1 tabular-nums">
               Renews {new Date(subscription.current_period_end).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" })}
