@@ -3,6 +3,7 @@ import { orderPhotos } from "@/lib/photoOrder";
 import { loadBitmap } from "@/lib/canvasText";
 import { normalizeHex } from "@/lib/reelStyles";
 import { isDepthLooksSubscriber } from "@/lib/depthLooksRelease";
+import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components/ReelMaker";
 
 /**
@@ -15,7 +16,7 @@ import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components
  * Service batch renderer builds exactly the same source.
  */
 
-type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number };
+type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number; derivatives_at?: string | null };
 type VideoRow = { id: string; title: string | null; filename: string | null; thumbnail_path: string | null; display_order: number | null };
 
 export async function loadListingReelSource(supabase: SupabaseClient, id: string): Promise<ReelSource | null> {
@@ -58,7 +59,7 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
   const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }, isSubscriber] = await Promise.all([
     supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
     supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
-    supabase.from("photos").select("id, storage_path, category, filename, display_order").eq("listing_id", id).eq("is_visible", true).order("display_order"),
+    supabase.from("photos").select("id, storage_path, category, filename, display_order, derivatives_at").eq("listing_id", id).eq("is_visible", true).order("display_order"),
     supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
     // The listing's videos, offered as clips in the listing's own order.
     supabase.from("videos").select("id, title, filename, thumbnail_path, display_order").eq("listing_id", id).order("display_order"),
@@ -78,10 +79,23 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
 
   // Same order the slideshow uses: cover first, then the walk-through.
   const ordered = orderPhotos((ph ?? []) as Photo[], { manual: l.photo_order_manual === true, heroId: l.hero_photo_id });
-  // Small thumbnails for the picker (one signing call per photo, in parallel).
+  // Picker thumbnails (Oct 26: tiles got bigger, 3 across on a phone, so a
+  // 240px transform looked soft). Use the stored 600px copies, signed in one
+  // batch call; only photos without them fall back to a per-photo transform.
+  const thumbMap: Record<string, string> = {};
+  const ready = ordered.filter((p) => p.storage_path && hasDerivatives(p));
+  for (let i = 0; i < ready.length; i += 1000) {
+    const chunk = ready.slice(i, i + 1000);
+    try {
+      const { data } = await supabase.storage.from("listing-photos")
+        .createSignedUrls(chunk.map((p) => derivativePath(p, 600)), 3600);
+      (data ?? []).forEach((d, k) => { if (d.signedUrl && !d.error) thumbMap[chunk[k].id] = d.signedUrl; });
+    } catch { /* fall back below */ }
+  }
   const thumbs = await Promise.all(ordered.map(async (p) => {
+    if (thumbMap[p.id]) return thumbMap[p.id];
     const { data } = await supabase.storage.from("listing-photos")
-      .createSignedUrl(p.storage_path, 3600, { transform: { width: 240, height: 240, resize: "contain", quality: 70 } });
+      .createSignedUrl(p.storage_path, 3600, { transform: { width: 480, height: 480, resize: "cover", quality: 70 } });
     return data?.signedUrl ?? null;
   }));
   const photos: ReelPhoto[] = ordered.map((p, i) => ({

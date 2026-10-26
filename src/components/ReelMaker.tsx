@@ -3859,7 +3859,7 @@ export default function ReelMaker({
             )}
           </div>
         )}
-        <div className="grid grid-cols-5 sm:grid-cols-8 gap-1.5">
+        <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
           {photos.map((p) => {
             const on = chosen.includes(p.id);
             const idx = selectedPhotos.findIndex((q) => q.id === p.id);
@@ -3869,7 +3869,7 @@ export default function ReelMaker({
                 <button onClick={() => togglePhoto(p.id)} disabled={busy} title={p.category ?? p.filename ?? ""}
                   className={`relative block w-full aspect-square overflow-hidden rounded-sm border-2 transition-colors bg-ink-100 ${on ? "border-accent-500" : "border-transparent opacity-55 hover:opacity-90"}`}>
                   {p.previewUrl && <RetryImg src={p.previewUrl} alt="" loading="lazy" className="w-full h-full object-cover" />}
-                  {on && <span className="absolute top-0.5 left-0.5 text-[10px] font-semibold bg-ink-950/80 text-white rounded px-1">{idx + 1}</span>}
+                  {on && <span className="absolute top-1 left-1 text-xs font-semibold bg-ink-950/80 text-white rounded px-1.5 py-0.5">{idx + 1}</span>}
                 </button>
                 {/* A sibling, not nested — a button can't hold a button. The
                     hit area is 28px square in the bottom-right corner, clear of
