@@ -411,7 +411,7 @@ const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
  * compressor, seeing the body of the track around -15 dBFS, works 1–2 dB.
  */
 const STUDIO_DRIVE_DB: Record<MusicMood, number> = {
-  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -1.8, groove: -5.3, lift: -2.6, coastal: -5.9, coastal_drive: -6.4, sail: -5.5,
+  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -1.8, groove: -5.3, lift: -2.6, coastal: -5.9, coastal_drive: -6.4, sail: -8,
 };
 
 /** How much of the classic sub bass stays under the finger bass (Calm and Cinematic keep it all). */
@@ -450,7 +450,9 @@ const STUDIO_MIX: Record<MusicMood, Partial<Record<StudioBus, number>>> = {
   coastal_drive: { keys: 3.9, guitar: 1.9, bed: 1.2, bass: 2.1, kit: 3.2, perc: 10.5 },
   // Lead: the pluck; pad and finger bass 4 LU under it, the sine sub ~6, the
   // kick 2, the hats/shaker 9, the nylon double 10 (measured, Oct 27).
-  sail: { pluck: 3.2, bed: -3.4, bass: -1.2, kit: 3.4, perc: 8.6, guitar: 8.9 },
+  // v2 (owner: "more bass, less plucky"): lead -2.5 dB, nylon +1 (just under the
+  // lead), pad +1.5, kick +1; the bass comes up through its new voicing and the sub.
+  sail: { pluck: 0.7, bed: -1.9, bass: -1.2, kit: 4.4, perc: 8.6, guitar: 9.9 },
 };
 
 /** The keys/guitar (and bed) dip under each kick: about -1.5 dB for ~120 ms. */
@@ -2868,8 +2870,11 @@ function composeCoastalLayers(g: {
 
 // ── Sail (Oct 27) ──────────────────────────────────────────────────────────
 
-/** Sail's sine sub under the finger bass (set by measurement). */
-const SAIL_SUB = 0.12;
+/**
+ * Sail's sine sub under the finger bass. v2: +1.5 dB a note, and it now plays
+ * on the beat as well as the off-beat — about +5 dB of sub in all (measured).
+ */
+const SAIL_SUB = 0.143;
 
 /**
  * Sail (Oct 27, studio engine): bright, breezy, sunlit — a tropical-house
@@ -2936,12 +2941,14 @@ function composeSailLayers(g: {
     const o1 = c.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = f; o1.detune.value = -5;
     const o2 = c.createOscillator(); o2.type = "square"; o2.frequency.value = f; o2.detune.value = 5;
     const g2 = c.createGain(); g2.gain.value = 0.35;
-    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 1.6;
-    lp.frequency.setValueAtTime(Math.min(12000, f * 5 + 2500 * vel), s0);
-    lp.frequency.exponentialRampToValueAtTime(Math.max(250, f * 1.2), s0 + decay * 0.6);
+    // v2: a gentler transient — a smaller filter sweep, less resonance and an
+    // 18 ms attack — so it reads as a soft keys pluck rather than a snappy one.
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.9;
+    lp.frequency.setValueAtTime(Math.min(6000, f * 3 + 1200 * vel), s0);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(250, f * 1.5), s0 + decay * 0.8);
     const env = c.createGain();
     env.gain.setValueAtTime(0, s0);
-    env.gain.linearRampToValueAtTime(vel, s0 + 0.005);
+    env.gain.linearRampToValueAtTime(vel, s0 + 0.018);
     env.gain.exponentialRampToValueAtTime(0.0001, s0 + decay);
     const pn = makePan(c, pan);
     o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(env); env.connect(pn); pn.connect(pluckIn);
@@ -2950,7 +2957,8 @@ function composeSailLayers(g: {
   };
 
   // ── The motifs: three seeded 16th rhythms (nothing in a bar's last three 16ths) ──
-  const POOL = [[0, 3, 6, 8, 10, 12], [0, 2, 3, 6, 9, 11], [1, 3, 6, 7, 10, 12], [0, 3, 4, 7, 10, 12], [0, 2, 6, 8, 9, 12]];
+  // v2: mostly 8ths and held notes, one syncopation each — fewer 16th runs.
+  const POOL = [[0, 2, 4, 6, 10], [0, 3, 6, 8, 12], [0, 4, 6, 10], [2, 4, 8, 10, 12], [0, 2, 6, 8, 10]];
   const pool = POOL.slice();
   const motifs: { steps: number[]; order: number[] }[] = [];
   for (let k = 0; k < 3; k++) {
@@ -2994,8 +3002,9 @@ function composeSailLayers(g: {
       const vel = clamp(secVel * (st % 4 === 0 ? 1 : 0.82) * (1 + (rnd() - 0.5) * 0.16), 0.2, 1);
       const at = t + (rnd() - 0.5) * 0.006;
       const room = (i + 1 < mo.steps.length ? mo.steps[i + 1] : 16) - st;
-      synth(m, at, vel, 0.18 + 0.12 * Math.min(1, room / 4), (rnd() - 0.5) * 0.5);
-      playNote(c, mixer.guitar, { instrument: "nylon", midi: m - 12, at: Math.max(0, at), duration: 0.16, velocity: vel * 0.4, release: 0.25, pan: -0.25 });
+      // v2: notes ring for the room they have (up to ~0.9 s), and the nylon carries more of it.
+      synth(m, at, vel, Math.min(0.9, 0.3 + 0.06 * room), (rnd() - 0.5) * 0.5);
+      playNote(c, mixer.guitar, { instrument: "nylon", midi: m - 12, at: Math.max(0, at), duration: Math.min(0.6, room * s16 * 0.8), velocity: vel * 0.55, release: 0.35, pan: -0.25 });
     });
   }
 
@@ -3043,7 +3052,7 @@ function composeSailLayers(g: {
     const preDrop = t >= drop - beat - 1e-3 && t < drop - 1e-3;
     // Kick on every beat — soft and short, the low end kept clean — and the pad pumps under it.
     if (!preDrop && !(dv === 3 && lastBar && pos === 3 && sc !== "thin")) {
-      playHit(c, mixer.kit, { name: "kick", at: t, velocity: sc === "thin" ? 0.7 : sc === "full" ? 0.9 : 0.8, choke: 0.2, lowpassHz: 3500 });
+      playHit(c, mixer.kit, { name: "kick", at: t, velocity: sc === "thin" ? 0.7 : sc === "full" ? 0.9 : 0.8, choke: 0.3, lowpassHz: 3500 }); // v2: a longer, fuller tail
       mixer.duck(t);
       padOut.gain.setValueAtTime(1, t);
       padOut.gain.linearRampToValueAtTime(0.5, t + 0.01);
@@ -3070,14 +3079,16 @@ function composeSailLayers(g: {
       playHit(c, mixer.perc, { name: "snap", at: t, velocity: 0.6 });
       playHit(c, mixer.kit, { name: "snare", at: t, velocity: 0.2, lowpassHz: 5000 });
     }
-    // Finger bass on the off-beat 8th — the tropical bounce — over the sine sub.
-    if (off < E - 0.05) {
-      const bm = 36 + mod(tonicPc + chordAt(off + 0.01).root - 36, 12);
-      const bv = sc === "full" ? 0.85 : sc === "thin" ? 0.6 : 0.72;
-      const len = Math.min(s8 * 0.8, E - off - 0.03);
-      playNote(c, mixer.bass, { instrument: "bass", midi: bm, at: off, duration: len, velocity: bv, release: 0.06 });
-      subNote(bm, off, len, bv);
-    }
+    // Finger bass — v2: the root on the beat as well as the off-beat bounce,
+    // notes held into each other (not staccato) and darker — over the sine sub.
+    const bv = sc === "full" ? 0.88 : sc === "thin" ? 0.65 : 0.78;
+    [[t, 0.85], [off, 1]].forEach(([at, w]) => {
+      if (at >= E - 0.05) return;
+      const bm = 36 + mod(tonicPc + chordAt(at + 0.01).root - 36, 12);
+      const len = Math.min(s8 * 0.95, E - at - 0.03);
+      playNote(c, mixer.bass, { instrument: "bass", midi: bm, at, duration: len, velocity: bv * w, release: 0.22, lowpassHz: 900 });
+      subNote(bm, at, len, bv * w);
+    });
   }
 
   // ── The end card: a kick, the tonic rolled on the pluck, bass and sub held ──
