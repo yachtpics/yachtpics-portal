@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK } from "@/lib/planValue";
 import dynamic from "next/dynamic";
 import { arrayMove } from "@dnd-kit/sortable";
 import { hasAccess, type AccessStatus } from "@/lib/subscriptionAccess";
@@ -802,7 +803,7 @@ export default function BrokerListingPage() {
             <button
               onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
               disabled={!canSendToClient}
-              title={canSendToClient ? "Email this listing to a client" : (!hasAccess(accessStatus) ? "Subscribe to send listings to clients" : "Publish your slideshow first to send it to a client")}
+              title={canSendToClient ? "Email this listing to a client" : (!hasAccess(accessStatus) ? `Send this listing to a client from the Portal. ${PLAN_GATE_LINE}` : "Publish your slideshow first to send it to a client")}
               className="bg-ink-950 hover:bg-ink-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-ink-950 text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
             >
               Send to Client
@@ -836,7 +837,7 @@ export default function BrokerListingPage() {
           ) : (
             <Link href="/dashboard/billing"
               className="bg-ink-100 text-ink-400 text-sm font-semibold px-4 py-2.5 rounded-lg cursor-not-allowed border border-hairline-strong"
-              title="Subscribe to upload photos">
+              title={`Upload your own photos for boats we didn't shoot. ${PLAN_GATE_LINE}`}>
               + Add Photos
             </Link>
           )}
@@ -921,8 +922,8 @@ export default function BrokerListingPage() {
             </>
           ) : (
             <>
-              <p className="text-ink-400 text-sm">Your trial has ended</p>
-              <Link href="/dashboard/billing" className="text-accent-700 text-xs font-medium hover:underline mt-1 inline-block">Subscribe to upload photos &#8594;</Link>
+              <p className="text-ink-400 text-sm">Upload your own photos for boats we didn&rsquo;t shoot.</p>
+              <p className="text-ink-400 text-xs mt-1">{PLAN_GATE_LINE}{" "}<Link href={BILLING_PATH} className="text-accent-700 font-medium hover:underline">{PLAN_GATE_LINK} &#8594;</Link></p>
             </>
           )}
         </div>
@@ -1435,7 +1436,7 @@ export default function BrokerListingPage() {
               <button
                 onClick={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
                 disabled={!hasAccess(accessStatus)}
-                title={hasAccess(accessStatus) ? "Email this listing to a client" : "Subscribe to send listings to clients"}
+                title={hasAccess(accessStatus) ? "Email this listing to a client" : `Send this listing to a client from the Portal. ${PLAN_GATE_LINE}`}
                 className="flex items-center gap-2 bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-accent-500 text-ink-950 text-sm font-semibold px-4 py-2 rounded-lg transition-colors"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1495,8 +1496,8 @@ export default function BrokerListingPage() {
         {listing.slideshow_published && !hasAccess(accessStatus) && (
           <div className="mt-4 px-4 py-3 rounded-lg text-sm bg-danger-50 border border-danger-200 text-danger-700">
             <span className="font-semibold">Your plan has ended.</span>{" "}
-            You can still <span className="font-medium">Preview</span> your slideshow to see how it looks — but sending, sharing links, and the QR code are off, and the link won&rsquo;t open for clients until you resubscribe.{" "}
-            <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>{" "}
+            You can still <span className="font-medium">Preview</span> your slideshow, but sending, sharing links and the QR code are off, and the link won&rsquo;t open for clients until a plan is back. Buyer slideshows are branded to you, with video, and sent from the Portal. {PLAN_GATE_LINE}{" "}
+            <Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link>{" "}
             <span className="text-danger-600">Downloading your delivered photos always stays free.</span>
           </div>
         )}
@@ -1538,7 +1539,7 @@ export default function BrokerListingPage() {
             className={`border-2 border-dashed rounded-xl p-10 text-center transition-colors ${hasAccess(accessStatus) ? "border-hairline-strong cursor-pointer hover:border-accent-500" : "border-hairline cursor-default"}`}
           >
             {!hasAccess(accessStatus)
-              ? <p className="text-ink-400 text-sm"><Link href="/dashboard/billing" className="text-accent-700 font-medium hover:underline">Subscribe</Link> to upload documents</p>
+              ? <p className="text-ink-400 text-sm">Add brochures and spec PDFs to the listing. {PLAN_GATE_LINE} <Link href={BILLING_PATH} className="text-accent-700 font-medium hover:underline">{PLAN_GATE_LINK}</Link></p>
               : <p className="text-ink-400 text-sm">No documents yet — click to upload a PDF</p>
             }
           </div>

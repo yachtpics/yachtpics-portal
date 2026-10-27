@@ -80,7 +80,7 @@ const sections = [
     steps: [
       "One plan covers your whole brokerage location — your brokers and all of their assistants — instead of each broker paying for their own.",
       "Billing lives under Brokerage → Billing. Start the Office plan there; the same page shows its status, the renewal date, and how many brokers it covers.",
-      "While it's active every broker in your brokerage is unlocked automatically — no plan of their own needed — and your shared inventory is included.",
+      "While it's active every broker in your brokerage is covered automatically — no plan of their own needed — and your shared inventory is included.",
       "The plan covers a set number of brokers per location. If you go over, the page says so — reach out to YachtPics to add seats.",
     ],
   },

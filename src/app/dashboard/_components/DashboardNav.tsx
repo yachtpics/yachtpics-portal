@@ -287,7 +287,7 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
               className="block rounded-ctl border border-danger-500/40 bg-danger-500/[0.08] px-3 py-2.5 hover:bg-danger-500/[0.14] transition-colors duration-base ease-quiet"
             >
               <p className="text-danger-300 text-xs font-semibold">Trial Ended</p>
-              <p className="text-danger-300/70 text-xs mt-0.5">Subscribe to continue &#8594;</p>
+              <p className="text-danger-300/70 text-xs mt-0.5">See plans &#8594;</p>
             </Link>
           )}
           {role === "broker" && accessStatus === "trial_expiring" && trialDaysLeft !== null && (

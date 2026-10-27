@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK } from "@/lib/planValue";
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { hasAccess } from "@/lib/subscriptionAccess";
@@ -455,8 +456,8 @@ export default function SocialGraphicPage() {
       {locked && (
         <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700">
           <span className="font-semibold">This is a preview.</span>{" "}
-          Your plan has ended — subscribe to download clean, watermark-free social posts.{" "}
-          <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>
+          Branded social posts with your logo, ready to download without the preview mark. {PLAN_GATE_LINE}{" "}
+          <Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link>
         </div>
       )}
 
@@ -517,7 +518,7 @@ export default function SocialGraphicPage() {
         {locked ? (
           <Link href="/dashboard/billing"
             className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">
-            🔒 Subscribe to Download
+            {PLAN_GATE_LINK} to download
           </Link>
         ) : (
           <button onClick={download} disabled={rendering || !selected}

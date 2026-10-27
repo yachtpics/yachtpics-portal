@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
+import { PLAN_BENEFITS_SENTENCE, PLAN_FROM_LINE, PLAN_ONE_LINER, PLAN_PUTS_TO_WORK } from "@/lib/planValue";
 import HelpTip from "@/components/HelpTip";
 import EnableNotifications from "@/components/EnableNotifications";
 import FeaturedStrip, { type FeaturedBoat } from "@/components/FeaturedStrip";
@@ -311,8 +312,8 @@ export default async function DashboardPage() {
                 <span className="text-[10px] font-bold text-accent-300 border border-accent-300/40 w-5 h-5 rounded-full flex items-center justify-center shrink-0">3</span>
                 <p className="text-white text-xs font-semibold">Choose a plan</p>
               </div>
-              <p className="text-ink-400 text-xs leading-relaxed mb-2">Keep the slideshow builder after your free trial.</p>
-              <span className="text-accent-300 text-xs font-medium">View Plans</span>
+              <p className="text-ink-400 text-xs leading-relaxed mb-2">{PLAN_PUTS_TO_WORK} {PLAN_FROM_LINE}</p>
+              <span className="text-accent-300 text-xs font-medium">See plans</span>
             </Link>
             )}
           </div>
@@ -352,7 +353,7 @@ export default async function DashboardPage() {
             </p>
           </div>
           <Link href="/dashboard/billing" className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2">
-            Upgrade
+            See plans
           </Link>
         </div>
       )}
@@ -373,7 +374,7 @@ export default async function DashboardPage() {
         <div className="px-6 py-5">
           <div className="flex items-center gap-1.5 mb-2">
             <p className="label-caps">Plan</p>
-            <HelpTip text="Your current subscription tier. Photo downloads are always free. A paid plan unlocks the slideshow builder." detail="Go to Billing to upgrade or manage your plan." position="below" />
+            <HelpTip text={`Your current plan. ${PLAN_ONE_LINER}`} detail={`Every plan includes ${PLAN_BENEFITS_SENTENCE}. Change or manage it under Billing.`} position="below" />
           </div>
           <p className="text-3xl font-light text-ink-900 capitalize">
             {effectiveAccess.officeCovered ? "Office plan" : planLabel(subscription ?? null)}

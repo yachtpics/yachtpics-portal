@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { trialDaysFor } from "@/lib/subscriptionAccess";
+import { PLAN_BENEFITS_SENTENCE } from "@/lib/planValue";
 
 export async function POST(req: NextRequest) {
   // Internal-only: called from the dashboard layout on first login.
@@ -119,7 +120,7 @@ export async function POST(req: NextRequest) {
 
       <a href="${portalUrl}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:32px;">Open My Portal &rarr;</a>
 
-      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Downloading your photos is always free.</strong> You also have a ${trialDays}-day free trial of the publishing tools above — slideshows, listing video, and uploads — so you can put them to work right away.</p>
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Downloading your photos is always free.</strong> You also have a ${trialDays}-day free trial of everything a plan includes: ${PLAN_BENEFITS_SENTENCE}.</p>
 
       <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">Questions or need anything adjusted? Just reply to this email — we're here.</p>
     </div>

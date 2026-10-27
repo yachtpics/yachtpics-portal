@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { REEL_STYLES, STYLE_ORDER } from "@/lib/reelStyles";
 import Link from "next/link";
+import { PLAN_BENEFITS, PLAN_ONE_LINER } from "@/lib/planValue";
 import { getSeeShowcase, getSeeStats, type SeeReel } from "@/lib/seeShowcase";
 import { SEE_QUOTES } from "@/content/seeQuotes";
 import { PLANS } from "@/lib/plans";
@@ -267,13 +268,20 @@ export default async function SeePage() {
         <div className="max-w-5xl mx-auto">
           <p className="label-caps-inverse mb-4">Plans</p>
           <p className="text-white text-h1 font-medium max-w-xl">
-            Your photographs are free. The tools are the plan.
+            {PLAN_ONE_LINER}
           </p>
           <p className="text-ink-300 text-base sm:text-lg leading-relaxed max-w-xl mt-6">
             If YachtPics shot your listing, the photographs are yours to download at no charge, always, and every listing includes two reels. No plan, no trial clock.
           </p>
-          <p className="text-ink-300 text-base sm:text-lg leading-relaxed max-w-xl mt-4">
-            A plan adds the marketing tools: unlimited reels, branded slideshows and client galleries, from ${fromPrice} a month. Brokers we haven&rsquo;t shot for can bring their own listings and use the same tools on the same plans.
+          <ul className="mt-6 max-w-xl space-y-2">
+            {PLAN_BENEFITS.map((b) => (
+              <li key={b.key} className="text-ink-300 text-[0.9375rem] leading-relaxed">
+                <span className="text-white font-medium">{b.label}.</span> {b.detail}
+              </li>
+            ))}
+          </ul>
+          <p className="text-ink-300 text-base sm:text-lg leading-relaxed max-w-xl mt-6">
+            From ${fromPrice} a month. Brokers we haven&rsquo;t shot for can bring their own listings and use the same tools on the same plans.
           </p>
           <Link
             href="/auth/signup"

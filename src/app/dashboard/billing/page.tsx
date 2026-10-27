@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { PLANS, REEL_SERVICE_PRICE, REEL_SERVICE_REELS_PER_BOAT, WEBSITE_PRICE, WEBSITE_INCLUDED_PLANS, planIncludesWebsite, planPriceWithWebsite } from "@/lib/plans";
 import HelpTip from "@/components/HelpTip";
+import { PLAN_BENEFITS, PLAN_BENEFITS_SENTENCE, PLAN_PUTS_TO_WORK } from "@/lib/planValue";
 import { Badge } from "@/components/ui";
 import { getAccessStatus, trialDaysFor } from "@/lib/subscriptionAccess";
 
@@ -298,7 +299,7 @@ export default function BillingPage() {
       )}
       {sub?.status === "canceled" && (
         <div className="mb-6 bg-ink-50 border border-hairline rounded-card px-5 py-4">
-          <p className="text-sm text-ink-600">Your subscription has been cancelled. Choose a plan below to reactivate.</p>
+          <p className="text-sm text-ink-600">Your plan has ended. Your photos and listings are safe; choose a plan below and everything comes back where you left it.</p>
         </div>
       )}
 
@@ -308,10 +309,10 @@ export default function BillingPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <p className="text-sm font-semibold text-ink-900">Photo downloads are always free</p>
-            <HelpTip text="Every photograph YachtPics delivers is yours to view and download, free, with or without a plan." detail="A plan adds the tools: buyer slideshows, unlimited reels, Seller Reports, boat-show dock cards and your own listings." position="below" width={280} />
+            <HelpTip text="Every photograph YachtPics delivers is yours to view and download, free, with or without a plan." detail={`Every plan includes ${PLAN_BENEFITS_SENTENCE}.`} position="below" width={280} />
           </div>
           <p className="text-sm text-ink-600">
-            Every photograph we deliver is yours to download, free, plan or no plan. A plan adds the tools that put them to work: buyer slideshows you send to clients, unlimited reels, a Seller Report for every listing, boat-show dock cards, and your own listings with your own photos for boats we didn&apos;t shoot.
+            Every photograph we deliver is yours to download, plan or no plan. {PLAN_PUTS_TO_WORK}
           </p>
         </div>
       </div>
@@ -326,12 +327,25 @@ export default function BillingPage() {
             <div>
               <p className="text-sm font-semibold text-danger-700">Your free trial has ended</p>
               <p className="text-xs text-danger-600 mt-1">
-                Photo uploads, video uploads, and slideshow sharing are paused until you subscribe. Your existing photos and listings are safe — choose a plan below to reactivate.
+                Buyer slideshows, Seller Reports, unlimited reels and uploads are paused. Your photos and listings are safe, and a plan brings everything back where you left it.
               </p>
             </div>
           </div>
         </div>
       )}
+
+      {/* Every plan includes — the canonical list (src/lib/planValue.ts) */}
+      <div className="mb-8">
+        <h2 className="label-caps mb-3">Every plan includes</h2>
+        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+          {PLAN_BENEFITS.map((b) => (
+            <li key={b.key} className="bg-white border border-hairline rounded-card px-4 py-3">
+              <p className="text-sm font-semibold text-ink-900">{b.label}</p>
+              <p className="text-xs text-ink-500 mt-1 leading-relaxed">{b.detail}</p>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       {/* Plan grid */}
       <div>
@@ -356,7 +370,7 @@ export default function BillingPage() {
               `w-full py-2.5 rounded-ctl text-sm font-semibold transition-colors duration-fast ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 disabled:opacity-60 ${
                 primary ? "bg-accent-500 hover:bg-accent-400 text-ink-950" : "border border-hairline-strong text-ink-800 hover:border-ink-400"
               }`;
-            const chooseLabel = hasStripeSub ? "Change plan" : trialExpired ? "Subscribe" : inAppTrialEnd ? "Choose plan" : "Subscribe";
+            const chooseLabel = hasStripeSub ? "Change plan" : "Choose plan";
             return (
               <div key={plan.id} className={`relative bg-white rounded-card border shadow-elev-1 px-5 py-5 flex flex-col transition-colors duration-fast ease-quiet ${isCurrentPlan ? "border-accent-500 ring-1 ring-accent-500" : "border-hairline-strong hover:border-ink-400"}`}>
                 {isCurrentPlan && (

@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
     const { status: ownerAccess } = await getEffectiveAccessStatus(supabaseAdmin, listing.broker_id);
     if (!hasAccess(ownerAccess)) {
       return NextResponse.json(
-        { error: "This plan has ended. Subscribe to send listings to clients — downloading delivered photos always stays free." },
+        { error: "Sending listings to clients is included with every plan, from $29 a month — see Billing. Downloading delivered photos always stays free." },
         { status: 403 }
       );
     }

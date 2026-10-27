@@ -103,7 +103,7 @@ export default async function BrokerageBillingPage({ searchParams }: { searchPar
       </div>
 
       <p className="text-xs text-gray-400">
-        Individual brokers don&rsquo;t need their own plan while the Office plan is active — they&rsquo;re all unlocked automatically.
+        Individual brokers don&rsquo;t need their own plan while the Office plan is active — they&rsquo;re all covered automatically.
       </p>
     </div>
   );

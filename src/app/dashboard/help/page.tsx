@@ -90,11 +90,11 @@ const sections = [
     num: "07",
     title: "Billing & Subscription",
     steps: [
-      "Photo downloads are always free — no subscription required, even after your trial ends.",
-      "A paid plan unlocks the tools: uploading photos and videos, publishing slideshows, Send to Client, spec sheets, and social posts.",
+      "Your photos are free. A plan puts them to work. Every photograph we deliver is yours to download, with or without a plan, even after your trial ends.",
+      "Every plan includes, from $29 a month: Buyer slideshows — branded to you, with video, sent to clients from the Portal. Seller Reports — what buyers look at on every listing, ready to send the owner. Unlimited reels — a dozen looks, with original music you can post anywhere. Boat-show dock cards — a printed card with a QR code, and a count of every scan. Your own listings — upload your own photos for boats we didn't shoot. Your own website is +$50 a month, included with Elite.",
       "Your 14-day free trial starts the first time you sign in (accounts opened before October 24, 2026 keep their 30 days). Choose a plan any time during it and you won't be charged until the trial ends — the Billing page shows the date. In the last two days of the trial, choosing a plan starts billing straight away. Cancel anytime from the Billing page. During the trial we email you three times: a week in, with what your listings did (from their Seller Reports); two days before it ends; and once it has ended.",
       "Reels without a plan: each listing includes two reels. A reel counts once you take it off the page — download it, send it to your phone, save it to your camera roll, or add it to the listing. Making and previewing never count, and taking the same reel twice is still one. Subscribers make as many as they like.",
-      "Office plan: a brokerage admin can cover the whole brokerage with one plan, under Brokerage → Billing. While it's active every broker there is unlocked automatically — no plan of their own needed — and their assistants are included.",
+      "Office plan: a brokerage admin can cover the whole brokerage with one plan, under Brokerage → Billing. While it's active every broker there is covered automatically — no plan of their own needed — and their assistants are included.",
     ],
   },
   {

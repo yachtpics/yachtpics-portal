@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK } from "@/lib/planValue";
 import PrintButton from "@/app/print/listing/[id]/PrintButton";
 import { buildEngagement } from "@/lib/engagement";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
@@ -101,7 +102,7 @@ export default async function SellerReportPage({ params }: { params: { id: strin
             <div style={{ position: "absolute", inset: 0, zIndex: 5, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none" }}>
               <div style={{ transform: "rotate(-30deg)", textAlign: "center", color: "rgba(195,158,78,0.30)", fontWeight: 800 }}>
                 <div style={{ fontSize: 96, letterSpacing: 4 }}>PREVIEW</div>
-                <div style={{ fontSize: 30, letterSpacing: 2, color: "rgba(5,11,20,0.30)" }}>Subscribe to unlock</div>
+                <div style={{ fontSize: 30, letterSpacing: 2, color: "rgba(5,11,20,0.30)" }}>Included with every Portal plan</div>
               </div>
             </div>
           )}
@@ -246,8 +247,8 @@ export default async function SellerReportPage({ params }: { params: { id: strin
       {locked ? (
         <div className="no-print" style={{ maxWidth: "8.5in", margin: "16px auto 0", textAlign: "center" }}>
           <div style={{ background: "#fdf1f0", border: "1px solid #f5cfca", borderRadius: 10, padding: "16px 20px" }}>
-            <p style={{ margin: "0 0 10px", fontSize: 14, color: "#992f26" }}><strong>This is a preview.</strong> Your plan has ended — subscribe to print or send a clean seller report.</p>
-            <Link href="/dashboard/billing" style={{ display: "inline-block", background: BRASS, color: INK, fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "10px 22px", borderRadius: 8 }}>Choose a plan &rarr;</Link>
+            <p style={{ margin: "0 0 10px", fontSize: 14, color: "#992f26" }}><strong>This is a preview.</strong> The Seller Report shows what buyers look at on every listing, ready to send the owner. {PLAN_GATE_LINE}</p>
+            <Link href={BILLING_PATH} style={{ display: "inline-block", background: BRASS, color: INK, fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "10px 22px", borderRadius: 8 }}>{PLAN_GATE_LINK} &rarr;</Link>
           </div>
         </div>
       ) : (

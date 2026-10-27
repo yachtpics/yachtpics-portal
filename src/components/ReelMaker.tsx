@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK } from "@/lib/planValue";
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { uploadListingVideo, uploadSocialCoverToPrivateBucket, uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
@@ -2838,7 +2839,7 @@ export default function ReelMaker({
         ctx.font = `600 ${120 * sc}px ${serifFamily}, Georgia, serif`;
         ctx.fillText("Preview", 0, -24 * sc);
         ctx.font = `500 ${30 * sc}px ${sans}`;
-        ctx.fillText("Subscribe to unlock", 0, 48 * sc);
+        ctx.fillText("Included with every Portal plan", 0, 48 * sc);
         ctx.restore();
       };
 
@@ -3463,8 +3464,8 @@ export default function ReelMaker({
       {locked && (
         <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700">
           <span className="font-semibold">This is a preview.</span>{" "}
-          Your plan has ended — subscribe to download clean, watermark-free video.{" "}
-          <Link href="/dashboard/billing" className="font-semibold underline">Choose a plan →</Link>
+          Unlimited reels in a dozen looks, with original music you can post anywhere, downloaded without the preview mark. {PLAN_GATE_LINE}{" "}
+          <Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link>
         </div>
       )}
 
@@ -4052,11 +4053,11 @@ export default function ReelMaker({
             </div>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
               {locked ? (
-                <Link href="/dashboard/billing" className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">🔒 Subscribe to Download</Link>
+                <Link href={BILLING_PATH} className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">{PLAN_GATE_LINK} to download</Link>
               ) : allowanceSpent ? (
                 <p className="text-sm text-ink-500 text-center max-w-md">
-                  The two reels included with this listing have been used. Subscribers make as many as they like.{" "}
-                  <Link href="/dashboard/billing" className="text-accent-700 font-semibold hover:underline">See plans</Link>
+                  The two reels included with this listing have been used. Unlimited reels, with original music you can post anywhere: {PLAN_GATE_LINE.charAt(0).toLowerCase() + PLAN_GATE_LINE.slice(1)}{" "}
+                  <Link href={BILLING_PATH} className="text-accent-700 font-semibold hover:underline">{PLAN_GATE_LINK}</Link>
                 </p>
               ) : (
                 <>

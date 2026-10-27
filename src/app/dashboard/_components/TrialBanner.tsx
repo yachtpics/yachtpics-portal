@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PLAN_FROM_PRICE } from "@/lib/planValue";
 import type { AccessStatus } from "@/lib/subscriptionAccess";
 import { trialDaysRemaining } from "@/lib/subscriptionAccess";
 
@@ -24,14 +25,14 @@ export default function TrialBanner({ accessStatus, trialEndsAt }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
           </svg>
           <span>
-            <strong className="font-semibold text-danger-700">Your free trial has ended.</strong> Subscribe to continue uploading photos and sharing slideshows.
+            <strong className="font-semibold text-danger-700">Your free trial has ended.</strong> Your photos are still free. A plan brings back buyer slideshows, Seller Reports, unlimited reels and dock cards, from ${PLAN_FROM_PRICE} a month.
           </span>
         </div>
         <Link
           href="/dashboard/billing"
           className="shrink-0 bg-ink-950 text-white font-semibold text-xs px-4 py-2 rounded-ctl hover:bg-ink-800 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2"
         >
-          Subscribe now
+          See plans
         </Link>
       </div>
     );
@@ -45,14 +46,14 @@ export default function TrialBanner({ accessStatus, trialEndsAt }: Props) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
         <span>
-          <strong className="font-semibold text-warn-800">{daysLeft} {daysLeft === 1 ? "day" : "days"} left on your free trial.</strong> Subscribe before it ends to keep access.
+          <strong className="font-semibold text-warn-800">{daysLeft} {daysLeft === 1 ? "day" : "days"} left on your free trial.</strong> Choose a plan to keep your buyer slideshows, Seller Reports and unlimited reels running, from ${PLAN_FROM_PRICE} a month.
         </span>
       </div>
       <Link
         href="/dashboard/billing"
         className="shrink-0 bg-white border border-hairline-strong text-ink-900 font-semibold text-xs px-4 py-2 rounded-ctl hover:border-ink-400 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2"
       >
-        View plans
+        See plans
       </Link>
     </div>
   );

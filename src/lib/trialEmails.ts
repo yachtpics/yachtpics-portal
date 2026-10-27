@@ -10,6 +10,7 @@
 // Style follows the other broker emails: ink header, brass accent, short,
 // understated, no exclamation marks, no emoji.
 
+import { PLAN_BENEFITS, PLAN_ONE_LINER, PLAN_PUTS_TO_WORK } from "@/lib/planValue";
 import { unsubscribeFooterHtml } from "@/lib/unsubscribe";
 
 const PORTAL = "https://portal.yachtpics.com";
@@ -81,23 +82,29 @@ function list(items: string[]): string {
 const label = (t: string) =>
   `<p style="margin:0 0 8px;font-size:13px;font-weight:700;color:#111827;text-transform:uppercase;">${t}</p>`;
 
-// What a trial unlocks that stops at the end, and what stays — checked
-// against the code: slideshows go private (publicSlideshow.ts), Send to
-// Client is refused (send-to-client route), reels fall back to two per
-// listing (reelAllowance.ts), Seller Reports lock (report page); photo
-// downloads stay free.
+// What the trial gives that stops at the end, and what stays — the
+// canonical plan benefits (src/lib/planValue.ts), in the same order, checked
+// against the code: slideshows go private and Send to Client is refused
+// (publicSlideshow.ts, send-to-client route), Seller Reports lock (report
+// page), reels fall back to two per listing (reelAllowance.ts), dock-card
+// QR codes lead to the now-private slideshow, uploads of your own photos
+// stop (listing page); photo downloads stay free.
+const strong = (t: string) => `<strong style="color:#111827;">${t}.</strong>`;
+const BENEFIT = Object.fromEntries(PLAN_BENEFITS.map((b) => [b.key, b.label])) as Record<string, string>;
 const STOPS = [
-  "<strong style=\"color:#111827;\">Your slideshow links go private.</strong> Buyers who open one won&rsquo;t see the boat.",
-  "<strong style=\"color:#111827;\">Send to Client stops.</strong>",
-  "<strong style=\"color:#111827;\">Reels go back to two per listing.</strong>",
-  "<strong style=\"color:#111827;\">Seller Reports lock.</strong>",
+  `${strong(BENEFIT.slideshows)} The links go private and Send to Client stops.`,
+  `${strong(BENEFIT.reports)} They lock.`,
+  `${strong(BENEFIT.reels)} Back to two per listing.`,
+  `${strong(BENEFIT.dockcards)} Their QR codes lead to a private slideshow.`,
+  `${strong(BENEFIT.own)} Uploading your own photos stops.`,
 ];
-// The same four, as they stand once the trial has ended.
+// The same five, as they stand once the trial has ended.
 const STOPPED = [
-  "<strong style=\"color:#111827;\">Your slideshow links are private.</strong> Buyers who open one see that it&rsquo;s unavailable.",
-  "<strong style=\"color:#111827;\">Send to Client is off.</strong>",
-  "<strong style=\"color:#111827;\">Reels are back to two per listing.</strong>",
-  "<strong style=\"color:#111827;\">Seller Reports are locked.</strong>",
+  `${strong(BENEFIT.slideshows)} The links are private and Send to Client is off.`,
+  `${strong(BENEFIT.reports)} Locked.`,
+  `${strong(BENEFIT.reels)} Back to two per listing.`,
+  `${strong(BENEFIT.dockcards)} Their QR codes lead to a private slideshow.`,
+  `${strong(BENEFIT.own)} Uploads of your own photos are off.`,
 ];
 const STAYS = [
   "<strong style=\"color:#111827;\">Every photograph we delivered</strong>, free to download, always.",
@@ -205,8 +212,8 @@ export function trialEndingEmail(opts: {
       ${list(STOPS)}
       ${label("What stays")}
       ${list(STAYS)}
-      ${p(`Plans start at $${STARTER_PRICE} a month. Choose one now and nothing changes.`)}
-      ${cta("Choose a plan", `${PORTAL}/dashboard/billing`)}
+      ${p(`${PLAN_ONE_LINER} Plans start at $${STARTER_PRICE} a month; choose one now and nothing changes.`)}
+      ${cta("See plans", `${PORTAL}/dashboard/billing`)}
       ${signoff}`;
   return { subject: `Your trial ends ${when}`, html: shell(inner, unsubToken) };
 }
@@ -226,7 +233,7 @@ export function trialEndedEmail(opts: {
       ${p(`Your free trial of the YachtPics Portal ended on ${esc(endedOn)}. Your photographs are still yours &mdash; every image we delivered stays free to download, and each listing keeps two reels.`)}
       ${label("What you lose without a plan")}
       ${list(STOPPED)}
-      ${p(`Starter brings it all back for $${STARTER_PRICE} a month, for up to five active listings. Your slideshows, sends and reports are where you left them.`)}
+      ${p(`${PLAN_PUTS_TO_WORK} Starter brings it all back for $${STARTER_PRICE} a month, for up to five active boats. Your slideshows, sends and reports are where you left them.`)}
       ${cta(`Choose Starter &middot; $${STARTER_PRICE}/month`, `${PORTAL}/dashboard/billing`)}
       ${p("Have a question first? Just reply to this email.", true)}
       ${signoff}`;

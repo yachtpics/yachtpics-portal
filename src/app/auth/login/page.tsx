@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { PLAN_FROM_LINE, PLAN_ONE_LINER } from "@/lib/planValue";
 import { createClient } from "@/lib/supabase/client";
 import { Button, Input, Label } from "@/components/ui";
 import { safeNextPath } from "@/lib/safeNext";
@@ -244,6 +245,9 @@ export default function LoginPage() {
           <Link href="/see" className="text-ink-400 hover:text-ink-200 transition-colors duration-fast">
             See what your listings could look like →
           </Link>
+        </p>
+        <p className="text-center text-xs text-ink-500 mt-2">
+          {PLAN_ONE_LINER} {PLAN_FROM_LINE}
         </p>
 
         <p className="mt-12 text-center text-[0.625rem] font-medium uppercase tracking-caps-wide [text-indent:0.24em] text-white/25">
