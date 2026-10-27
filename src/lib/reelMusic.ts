@@ -54,11 +54,11 @@
 import type { StyleKey } from "@/lib/reelStyles";
 import { discardNotes, flushNotes, loadInstruments, playHit, playNote, type InstrumentName, type SampledInstrument } from "@/lib/reelSampler";
 
-export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat" | "groove" | "lift" | "coastal" | "coastal_drive";
+export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat" | "groove" | "lift" | "coastal" | "coastal_drive" | "sail";
 export type MusicChoice = "off" | "auto" | MusicMood;
 
-export const MUSIC_MOODS: MusicMood[] = ["calm", "cinematic", "elegant", "upbeat", "groove", "lift", "coastal", "coastal_drive"];
-export const MUSIC_CHOICES: MusicChoice[] = ["off", "auto", "calm", "cinematic", "elegant", "upbeat", "groove", "lift", "coastal", "coastal_drive"];
+export const MUSIC_MOODS: MusicMood[] = ["calm", "cinematic", "elegant", "upbeat", "groove", "lift", "coastal", "coastal_drive", "sail"];
+export const MUSIC_CHOICES: MusicChoice[] = ["off", "auto", "calm", "cinematic", "elegant", "upbeat", "groove", "lift", "coastal", "coastal_drive", "sail"];
 export const MUSIC_LABEL: Record<MusicChoice, string> = {
   off: "Off",
   auto: "Auto",
@@ -70,6 +70,7 @@ export const MUSIC_LABEL: Record<MusicChoice, string> = {
   lift: "Lift",
   coastal: "Coastal",
   coastal_drive: "Coastal Drive",
+  sail: "Sail",
 };
 
 /** One line on what each mood sounds like (shown under the picker). */
@@ -82,6 +83,7 @@ export const MUSIC_BLURB: Record<MusicMood, string> = {
   lift: "Bright, building, uplifting",
   coastal: "Warm, melodic, feel-good",
   coastal_drive: "Coastal with more punch",
+  sail: "Bright, breezy, sunlit — a tropical-house glide",
 };
 
 /**
@@ -197,7 +199,7 @@ type MoodParams = {
   reverbSec: number;
   reverbWet: number;
   delayWet: number;
-  rhythm: "none" | "pulse" | "soft" | "full" | "groove" | "lift" | "coastal";
+  rhythm: "none" | "pulse" | "soft" | "full" | "groove" | "lift" | "coastal" | "sail";
   minorChance: number;
   riser: number;
 };
@@ -213,6 +215,8 @@ const MOOD: Record<MusicMood, MoodParams> = {
   lift:      { tempo: [134, 138], harmonic: 2, keysStep: [0.5, 0.5], keysDecay: 0.4, keysLevel: 0.15, padCut: 1200, padLevel: 0.032, reverbSec: 2.4, reverbWet: 0.32, delayWet: 0.2, rhythm: "lift", minorChance: 0, riser: 0.045 },
   // Coastal: warm and melodic, minor leaning to its relative major, with "breaths" before cuts (see composeCoastalLayers).
   // Coastal Drive: the same world with a punchier kit and a more forward 8th-note bass.
+  // Sail (Oct 27, studio only — the classic engine plays it as Coastal Drive): tropical house, major only.
+  sail:      { tempo: [108, 114], harmonic: 1, keysStep: [0.5, 0.5], keysDecay: 0.5, keysLevel: 0.13, padCut: 1800, padLevel: 0.034, reverbSec: 2.6, reverbWet: 0.32, delayWet: 0.24, rhythm: "sail", minorChance: 0, riser: 0.045 },
   coastal_drive: { tempo: [126, 130], harmonic: 1, keysStep: [0.5, 0.5], keysDecay: 0.5, keysLevel: 0.13, padCut: 1700, padLevel: 0.034, reverbSec: 2.5, reverbWet: 0.32, delayWet: 0.22, rhythm: "coastal", minorChance: 1, riser: 0.045 },
   coastal:   { tempo: [118, 126], harmonic: 1, keysStep: [0.5, 0.5], keysDecay: 0.5, keysLevel: 0.13, padCut: 1600, padLevel: 0.036, reverbSec: 2.8, reverbWet: 0.36, delayWet: 0.22, rhythm: "coastal", minorChance: 1, riser: 0.04 },
 };
@@ -253,6 +257,17 @@ const KEYS_PATTERNS = [
   [0, 2, 3, 1, 2, 3, 4, 2],
 ];
 const TONICS = [0, 2, 3, 5, 7, 9, 10]; // C D Eb F G A Bb
+/** Sail's keys: Bb, C, D, F, G. */
+const SAIL_TONICS = [10, 0, 2, 5, 7];
+/** Sail's chords: the major set plus a plain V (no sus) — the vi–IV–I–V / I–V–vi–IV family. */
+const SAIL_CH: Record<string, Chord> = { ...MAJ, V: { root: 7, pad: [4, 7, 14], arp: [0, 4, 7, 12] } };
+const SAIL_PROGS = [
+  ["vi", "IV", "I", "V"],
+  ["I", "V", "vi", "IV"],
+  ["IV", "I", "V", "vi"],
+  ["vi", "IV", "I", "Vsus"],
+  ["I", "vi", "IV", "V"],
+];
 
 /**
  * Fit a beat grid to the cuts: the tempo (in the mood's range, or the one
@@ -386,6 +401,7 @@ const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
   lift: ["pad", "piano", "strings", "drums"],
   coastal: ["epiano", "nylon", "bass", "drums"],
   coastal_drive: ["epiano", "nylon", "bass", "pad", "drums"],
+  sail: ["pad", "strings", "nylon", "bass", "drums"],
 };
 
 /**
@@ -395,16 +411,16 @@ const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
  * compressor, seeing the body of the track around -15 dBFS, works 1–2 dB.
  */
 const STUDIO_DRIVE_DB: Record<MusicMood, number> = {
-  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -1.8, groove: -5.3, lift: -2.6, coastal: -5.9, coastal_drive: -6.4,
+  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -1.8, groove: -5.3, lift: -2.6, coastal: -5.9, coastal_drive: -6.4, sail: -5.5,
 };
 
 /** How much of the classic sub bass stays under the finger bass (Calm and Cinematic keep it all). */
 const STUDIO_SUB: Record<MusicMood, number> = {
-  calm: 1, cinematic: 1, elegant: 0.45, upbeat: 0.45, groove: 1, lift: 1, coastal: 1, coastal_drive: 1,
+  calm: 1, cinematic: 1, elegant: 0.45, upbeat: 0.45, groove: 1, lift: 1, coastal: 1, coastal_drive: 1, sail: 1,
 };
 
 /** Studio bus levels (relative; the level pass sets the overall loudness). */
-const STUDIO_TRIM = { bed: 0.5, strings: 0.5, keys: 0.5, guitar: 0.5, bells: 0.35, bass: 0.55, kit: 0.6, perc: 0.45 };
+const STUDIO_TRIM = { bed: 0.5, strings: 0.5, keys: 0.5, guitar: 0.5, bells: 0.35, bass: 0.55, kit: 0.6, perc: 0.45, pluck: 0.5 };
 type StudioBus = keyof typeof STUDIO_TRIM;
 
 /**
@@ -432,6 +448,9 @@ const STUDIO_MIX: Record<MusicMood, Partial<Record<StudioBus, number>>> = {
   // Drive v3 (Oct 23): keys now carries only the sparse Rhodes motifs (-2 dB, just
   // under the chords when they play); the kick +1.5 dB — the drive is kick and bass.
   coastal_drive: { keys: 3.9, guitar: 1.9, bed: 1.2, bass: 2.1, kit: 3.2, perc: 10.5 },
+  // Lead: the pluck; pad and finger bass 4 LU under it, the sine sub ~6, the
+  // kick 2, the hats/shaker 9, the nylon double 10 (measured, Oct 27).
+  sail: { pluck: 3.2, bed: -3.4, bass: -1.2, kit: 3.4, perc: 8.6, guitar: 8.9 },
 };
 
 /** The keys/guitar (and bed) dip under each kick: about -1.5 dB for ~120 ms. */
@@ -489,6 +508,8 @@ type StudioMix = {
   /** After the pad chain's own output: ducked under kicks where asked, with the hall send. */
   bedDuck: AudioNode;
   strings: AudioNode; keys: AudioNode; guitar: AudioNode; bells: AudioNode; bass: AudioNode; kit: AudioNode; perc: AudioNode;
+  /** Sail's synth pluck: high-passed at 200 Hz, a gentle -1.5 dB above 8 kHz (bright, not tinny), the 3/16 delay. */
+  pluck: AudioNode;
   hall: AudioNode;
   /** Dip the keys and guitar (and the bed, where asked) under a kick at `t`. */
   duck: (t: number) => void;
@@ -568,6 +589,7 @@ function makeStudio(c: BaseAudioContext, master: AudioNode, delayIn: AudioNode, 
     // so it's shelved down, keeping the punch above 80 Hz.
     kit: bus({ hp: 40, subShelf: -4, trim: trim("kit"), room: 0.12 }),
     perc: bus({ hp: 300, trim: trim("perc"), room: 0.2, hall: 0.06 }),
+    pluck: bus({ hp: 200, shelves: [["highshelf", 8000, -1.5]], trim: trim("pluck"), room: 0.15, hall: 0.18, delay: 0.5, duck: true }),
     duck: (t: number) => {
       if (!(t >= 0) || !isFinite(t)) return;
       ducked.forEach((d) => {
@@ -750,7 +772,9 @@ export async function composeReelMusic(opts: ComposeOptions): Promise<AudioBuffe
       }
     }
   }
-  return composeTrack(opts, false);
+  // The classic engine has no Sail of its own: it plays Coastal Drive's
+  // voicing, so the A/B checkbox still has something to compare.
+  return composeTrack(opts.mood === "sail" ? { ...opts, mood: "coastal_drive" } : opts, false);
 }
 
 async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<AudioBuffer> {
@@ -766,6 +790,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   const lift = opts.mood === "lift";
   const coastalDrive = opts.mood === "coastal_drive";
   const coastal = opts.mood === "coastal" || coastalDrive; // Coastal Drive shares Coastal's world
+  const sail = opts.mood === "sail";
   const rand = mulberry32((opts.seed >>> 0) ^ seedFromString(opts.mood));
   const jitter = (amt: number) => (rand() - 0.5) * 2 * amt;
   // The studio's own choices draw from a separate stream, so `rand` stays in
@@ -775,10 +800,12 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   const cuts = Array.from(new Set(opts.cutTimesSec.filter((c) => isFinite(c) && c > 0.3 && c < dur - 0.3).map((c) => Math.round(c * 1000) / 1000))).sort((a, b) => a - b);
 
   // Key, mode, progression.
-  const tonicPc = TONICS[Math.floor(rand() * TONICS.length)];
+  const tonicPc = sail ? SAIL_TONICS[Math.floor(rand() * SAIL_TONICS.length)] : TONICS[Math.floor(rand() * TONICS.length)];
   const minor = rand() < p.minorChance;
   const table = minor ? MIN : MAJ;
-  const prog = (minor ? MIN_PROGS : MAJ_PROGS)[Math.floor(rand() * (minor ? MIN_PROGS.length : MAJ_PROGS.length))].map((k) => table[k]);
+  const prog = sail
+    ? SAIL_PROGS[Math.floor(rand() * SAIL_PROGS.length)].map((k) => SAIL_CH[k])
+    : (minor ? MIN_PROGS : MAJ_PROGS)[Math.floor(rand() * (minor ? MIN_PROGS.length : MAJ_PROGS.length))].map((k) => table[k]);
   const tonic = minor ? MIN.i : MAJ.I;
   const dominant = minor ? MIN.VIIsus : MAJ.Vsus;
   const predominant = minor ? MIN.VI : MAJ.IV;
@@ -789,7 +816,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   // Lift: the drop lands ON a cut — the one nearest 45% (preferring 40–50%) —
   // and the grid is turned so that cut is a downbeat.
   let liftDrop: number | null = null;
-  if (lift) {
+  if (lift || sail) { // Sail's drop is placed the same way
     const target = dur * 0.45;
     let bestD = Infinity;
     cuts.forEach((ct) => {
@@ -823,7 +850,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   let buildStart = nearestBar(anchor);
   if (buildStart < introEnd) buildStart = introEnd;
   if (buildStart > E - bar) buildStart = Math.max(introEnd, E - bar);
-  if (lift && liftDrop !== null) buildStart = clamp(liftDrop, introEnd, Math.max(introEnd, E - bar));
+  if ((lift || sail) && liftDrop !== null) buildStart = clamp(liftDrop, introEnd, Math.max(introEnd, E - bar));
   if (coastal) buildStart = introEnd;
 
   // Chord segments up to the end card: bar lines, grouped by harmonic rhythm.
@@ -881,7 +908,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       // compressor. The level pass after rendering sets the loudness.
       const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 30; hp.Q.value = 0.7;
       // +2 dB of weight for the Coastal moods (owner's ear, Oct 23), +1 elsewhere.
-      const low = c.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 100; low.gain.value = coastal ? 2 : 1;
+      const low = c.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 100; low.gain.value = coastal || sail ? 2 : 1;
       const air = c.createBiquadFilter(); air.type = "highshelf"; air.frequency.value = 10000; air.gain.value = 1.5;
       const drive = c.createGain(); drive.gain.value = Math.pow(10, STUDIO_DRIVE_DB[opts.mood] / 20) * 0.5; // the shaper's ±1 is ±2 of signal
       const shaper = c.createWaveShaper(); shaper.curve = saturationCurve(); shaper.oversample = "2x";
@@ -932,7 +959,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
 
     // The studio's buses and rooms (null in the classic engine). Lift and
     // Coastal already pump the bed under their kicks, so only the keys dip there.
-    const mixer = studio ? makeStudio(c, master, delayIn, srand, p.reverbSec * 1.35, !lift && !coastal, opts.mood, plan as DevPlan) : null;
+    const mixer = studio ? makeStudio(c, master, delayIn, srand, p.reverbSec * 1.35, !lift && !coastal && !sail, opts.mood, plan as DevPlan) : null;
     /** Where reverb sends go: the studio's hall, or the classic room. */
     const verb: AudioNode = mixer ? mixer.hall : reverb;
     delayRet.connect(verb);
@@ -1045,6 +1072,12 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
             strike(b, nb - b - 0.03, mood === "elegant" ? 0.42 : coastal ? 0.36 : 0.4);
           }
         }
+      } else if (mood === "sail") {
+        // Sail: the warm pad with the strings quietly in it (it pumps under the kick).
+        tones.forEach((m, k) => {
+          playNote(c, padBus, { instrument: "pad", midi: m, at: start, duration: len, velocity: 0.62, attack, release: 1.2, pan: spread(k, 0.5) });
+          playNote(c, padBus, { instrument: "strings", midi: m + 12, at: start + 0.02, duration: len, velocity: 0.34, attack: attack * 1.2, release: 1.4, detuneCents: 5, pan: -spread(k, 0.65) });
+        });
       } else {
         // Groove and Lift: the warm pad.
         tones.forEach((m, k) => playNote(c, padBus, { instrument: "pad", midi: m, at: start, duration: len, velocity: 0.7, attack, release: 1.4, pan: spread(k, 0.5) }));
@@ -1089,7 +1122,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       if (stop > s0) { o.start(s0); o8.start(s0); o.stop(stop); o8.stop(stop); }
     };
     segs.forEach((sg) => {
-      if (groove || lift || coastal) return; // Groove's low end is its 808; Lift and Coastal have their own ducked bass (below)
+      if (groove || lift || coastal || sail) return; // Groove's low end is its 808; Lift, Coastal and Sail have their own bass (below)
       const s0 = Math.max(sg.start, introEnd);
       if (sg.end <= s0) return;
       const midi = 33 + mod(tonicPc + sg.chord.root - 33, 12);
@@ -1152,7 +1185,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       return tones;
     };
     const keysFrom = introEnd;
-    if (mixer && feel && !groove && !lift && !coastal) {
+    if (mixer && feel && !groove && !lift && !coastal && !sail) {
       // Studio: the arpeggio follows the plan — its pattern bar by bar, its
       // register every 4 bars, out in a keys drop-out, lighter early and late.
       const sub = 0.5 * beat;
@@ -1196,12 +1229,12 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       }
     }
     // The landing: a rolled tonic chord on the end card, left to ring.
-    if (!groove && !lift && !coastal) {
+    if (!groove && !lift && !coastal && !sail) {
       const tones = keyTones(tonic);
       tones.slice(0, 4).forEach((m, i) => keyNote(m, E + i * 0.07 + jitter(0.006), 0.9 - i * 0.08, Math.min(3.5, dur - E + 0.2), (i - 1.5) * 0.18));
     }
     // A soft bell on cuts that land on a beat (no more than one a bar).
-    if (!groove && !lift && !coastal) {
+    if (!groove && !lift && !coastal && !sail) {
       let last = -Infinity;
       cuts.forEach((ct) => {
         if (ct < introEnd || ct >= E - 0.2) return;
@@ -1333,7 +1366,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         if (pos === 1 || pos === 3) snap(feel.time(t), 0.9 * pv);
       }
     };
-    if (p.rhythm !== "none" && !groove && !lift && !coastal) {
+    if (p.rhythm !== "none" && !groove && !lift && !coastal && !sail) {
       const sub = 0.5 * beat;
       const from = p.rhythm === "full" ? introEnd : buildStart;
       let t = grid.phase + Math.ceil((from - grid.phase) / sub - 1e-6) * sub;
@@ -1406,6 +1439,13 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       });
     }
 
+    if (sail && mixer) {
+      composeSailLayers({
+        c, master, verb, noise, padOut, mixer, dur, beat, bar, phase: grid.phase,
+        introEnd, drop: buildStart, E, segs, tonicPc, tonic,
+      });
+    }
+
     if (coastal) {
       composeCoastalLayers({
         c, master, reverb: verb, delayIn, noise, padOut, rand, jitter, dur, beat, bar, phase: grid.phase,
@@ -1435,7 +1475,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         playHit(c, mixer.bells, { name: "crash", at: E, velocity: 0.3, lowpassHz: 6000 });
       }
       // A soft low bloom under the tonic (Groove lands on its 808 instead).
-      if (!groove && !lift && !coastal) {
+      if (!groove && !lift && !coastal && !sail) {
       const o = c.createOscillator(); o.type = "sine";
       o.frequency.setValueAtTime(62, E);
       o.frequency.exponentialRampToValueAtTime(44, E + 0.6);
@@ -2824,4 +2864,231 @@ function composeCoastalLayers(g: {
   } else {
     leadNote(target, E, Math.min(2.2, dur - E - 0.3), 0.95, prevLead !== null && prevLead !== target ? prevLead : null);
   }
+}
+
+// ── Sail (Oct 27) ──────────────────────────────────────────────────────────
+
+/** Sail's sine sub under the finger bass (set by measurement). */
+const SAIL_SUB = 0.12;
+
+/**
+ * Sail (Oct 27, studio engine): bright, breezy, sunlit — a tropical-house
+ * glide at 108–114 BPM in a seeded major key. The style is the one the owner
+ * pointed at; the melodies and progressions are this composer's own (seeded),
+ * not modelled on any track.
+ *   • Intro (1–2 bars): the pad and a filtered pluck, no kick.
+ *   • Groove: a soft, short kick on every beat — the pad ducks ~6 dB under
+ *     each and recovers over 60% of a beat (the sidechain pump) — a closed hat
+ *     on the off-beats, a quiet 16th shaker, finger bass on the off-beat 8ths
+ *     over a sine sub.
+ *   • Riser: a noise sweep and the pluck's low-pass opening, into the drop on
+ *     the cut nearest 45% of the reel; the kick sits out the beat before it.
+ *   • Drop: the pluck wide open, claps on 2 and 4, a soft crash on the downbeat.
+ *   • Thin-out over the last two bars (no claps or shaker, sparser pluck), then
+ *     the shared riser, end-card cadence and fade.
+ *   • The pluck: a saw + square voice through a fast-closing low-pass, 180–300
+ *     ms, with the 3/16 stereo delay; the nylon guitar doubles it quietly an
+ *     octave down. Syncopated 16th motifs in call-and-answer bar pairs (the
+ *     answer drops a note and ends on another chord tone), a rest at each bar
+ *     end, three seeded rhythms rotating (never three phrases running), the
+ *     register moving every 4 bars (the plan's inversions).
+ * The classic engine has no Sail: it plays Coastal Drive (composeReelMusic).
+ */
+function composeSailLayers(g: {
+  c: OfflineAudioContext; master: AudioNode; verb: AudioNode; noise: AudioBuffer; padOut: GainNode; mixer: StudioMix;
+  dur: number; beat: number; bar: number; phase: number;
+  introEnd: number; drop: number; E: number; segs: Seg[]; tonicPc: number; tonic: Chord;
+}) {
+  const { c, master, verb, noise, padOut, mixer, dur, beat, bar, phase, introEnd, drop, E, segs, tonicPc } = g;
+  const rnd = mixer.rand, plan = mixer.plan;
+  const s8 = beat / 2, s16 = beat / 4;
+  const chordAt = (t: number): Chord => {
+    for (let i = segs.length - 1; i >= 0; i--) if (t >= segs[i].start - 1e-4) return segs[i].chord;
+    return segs[0].chord;
+  };
+  const riserStart = clamp(drop - 2 * bar, introEnd, drop);
+  const thinAt = Math.max(drop + 2 * bar, E - 2 * bar);
+  type Section = "intro" | "groove" | "riser" | "full" | "thin" | "end";
+  const section = (t: number): Section =>
+    t >= E - 1e-3 ? "end" : t < introEnd - 1e-3 ? "intro" : t < riserStart - 1e-3 ? "groove" : t < drop - 1e-3 ? "riser" : t < thinAt - 1e-3 ? "full" : "thin";
+
+  // ── The pluck: voices → the arrangement's low-pass → the pluck bus ──
+  const pluckIn = c.createGain();
+  const sweep = c.createBiquadFilter(); sweep.type = "lowpass"; sweep.Q.value = 0.7;
+  pluckIn.connect(sweep); sweep.connect(mixer.pluck);
+  {
+    // Closed in the intro, half open in the groove, sweeping open over the
+    // riser, open in the drop, closing a little to thin out, open on the card.
+    const pts: [number, number][] = [[introEnd, 900], [introEnd + bar * 0.5, 2600], [riserStart, 2600], [drop, 10000], [thinAt, 10000], [thinAt + bar, 4000], [E, 4000], [E + 0.4, 7000]];
+    sweep.frequency.setValueAtTime(900, 0);
+    let last = 0;
+    pts.forEach(([t, f]) => {
+      if (!(t > last + 1e-3) || t > dur) return;
+      sweep.frequency.exponentialRampToValueAtTime(f, t);
+      last = t;
+    });
+  }
+  /** Saw + square through a fast-closing low-pass: bright on the attack, round by the tail. */
+  const synth = (midi: number, t0: number, vel: number, decay: number, pan: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.03) return;
+    const f = mtof(midi);
+    const o1 = c.createOscillator(); o1.type = "sawtooth"; o1.frequency.value = f; o1.detune.value = -5;
+    const o2 = c.createOscillator(); o2.type = "square"; o2.frequency.value = f; o2.detune.value = 5;
+    const g2 = c.createGain(); g2.gain.value = 0.35;
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 1.6;
+    lp.frequency.setValueAtTime(Math.min(12000, f * 5 + 2500 * vel), s0);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(250, f * 1.2), s0 + decay * 0.6);
+    const env = c.createGain();
+    env.gain.setValueAtTime(0, s0);
+    env.gain.linearRampToValueAtTime(vel, s0 + 0.005);
+    env.gain.exponentialRampToValueAtTime(0.0001, s0 + decay);
+    const pn = makePan(c, pan);
+    o1.connect(lp); o2.connect(g2); g2.connect(lp); lp.connect(env); env.connect(pn); pn.connect(pluckIn);
+    const stop = Math.min(dur, s0 + decay + 0.02);
+    o1.start(s0); o2.start(s0); o1.stop(stop); o2.stop(stop);
+  };
+
+  // ── The motifs: three seeded 16th rhythms (nothing in a bar's last three 16ths) ──
+  const POOL = [[0, 3, 6, 8, 10, 12], [0, 2, 3, 6, 9, 11], [1, 3, 6, 7, 10, 12], [0, 3, 4, 7, 10, 12], [0, 2, 6, 8, 9, 12]];
+  const pool = POOL.slice();
+  const motifs: { steps: number[]; order: number[] }[] = [];
+  for (let k = 0; k < 3; k++) {
+    const steps = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+    const order: number[] = [];
+    let d = rnd() < 0.5 ? 0 : 2;
+    steps.forEach((_, i) => {
+      if (i > 0) { const r = rnd(); d = clamp(d + (r < 0.35 ? 1 : r < 0.6 ? -1 : r < 0.8 ? 2 : -2), 0, 4); }
+      order.push(d);
+    });
+    motifs.push({ steps, order });
+  }
+  const firstBarT = phase - Math.ceil(phase / bar) * bar;
+  const nBars = Math.ceil((E - firstBarT) / bar) + 1;
+  // One motif per 2-bar phrase: often a new one, never the same three phrases running.
+  const phraseMotif: number[] = [];
+  for (let p = 0; p < nBars / 2 + 1; p++) {
+    let m = p === 0 ? 0 : rnd() < 0.6 ? Math.floor(rnd() * 3) : phraseMotif[p - 1];
+    if (p >= 2 && phraseMotif[p - 1] === phraseMotif[p - 2] && m === phraseMotif[p - 1]) m = (m + 1) % 3;
+    phraseMotif.push(m);
+  }
+  for (let bi = 0; bi < nBars; bi++) {
+    const b0 = firstBarT + bi * bar;
+    if (b0 >= E - 0.05) break;
+    const answer = bi % 2 === 1;
+    const mo = motifs[phraseMotif[Math.floor(bi / 2)]];
+    const inv = plan.voicing(b0 + 0.01).inv;
+    if (answer && section(b0 + 0.01) === "thin") continue;
+    mo.steps.forEach((st, i) => {
+      if (answer && i === 3) return; // the answer drops a note: its rhythm differs
+      const t = b0 + st * s16;
+      if (t < 0 || t >= E - 0.05) return;
+      const sc = section(t);
+      if (sc === "thin" && i % 2 === 1) return;
+      const ch = chordAt(t + 0.01);
+      const base = 64 + mod(tonicPc + ch.root - 64, 12);
+      const tones = voiceTones(ch.arp.map((iv) => base + iv), { inv, oct: 0 }, 86);
+      const last = i === mo.steps.length - 1;
+      const m = tones[(mo.order[i] + (answer && last ? 2 : 0)) % tones.length]; // the answer ends on another chord tone
+      const secVel = sc === "intro" ? 0.55 : sc === "groove" || sc === "riser" ? 0.75 : sc === "full" ? 0.95 : 0.6;
+      const vel = clamp(secVel * (st % 4 === 0 ? 1 : 0.82) * (1 + (rnd() - 0.5) * 0.16), 0.2, 1);
+      const at = t + (rnd() - 0.5) * 0.006;
+      const room = (i + 1 < mo.steps.length ? mo.steps[i + 1] : 16) - st;
+      synth(m, at, vel, 0.18 + 0.12 * Math.min(1, room / 4), (rnd() - 0.5) * 0.5);
+      playNote(c, mixer.guitar, { instrument: "nylon", midi: m - 12, at: Math.max(0, at), duration: 0.16, velocity: vel * 0.4, release: 0.25, pan: -0.25 });
+    });
+  }
+
+  // ── The riser into the drop: a noise sweep (the pluck's filter opens with it) ──
+  if (drop - riserStart > 0.5) {
+    const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
+    const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.4;
+    bp.frequency.setValueAtTime(400, riserStart);
+    bp.frequency.exponentialRampToValueAtTime(7000, drop);
+    const gn = c.createGain();
+    gn.gain.setValueAtTime(0.0001, riserStart);
+    gn.gain.exponentialRampToValueAtTime(0.04, drop - 0.02);
+    gn.gain.linearRampToValueAtTime(0, drop + 0.08);
+    src.connect(bp); bp.connect(gn); gn.connect(master);
+    const rs = c.createGain(); rs.gain.value = 0.7; gn.connect(rs); rs.connect(verb);
+    src.start(riserStart); src.stop(Math.min(dur, drop + 0.12));
+  }
+  if (drop < E - bar) playHit(c, mixer.perc, { name: "crash", at: drop, velocity: 0.42 });
+
+  // ── The sine sub under the finger bass ──
+  const sub = c.createGain(); sub.gain.value = SAIL_SUB; sub.connect(master);
+  const subNote = (midi: number, t0: number, len: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02) return;
+    const f = mtof(midi);
+    const o = c.createOscillator(); o.type = "sine"; o.frequency.value = f;
+    const o2 = c.createOscillator(); o2.type = "sine"; o2.frequency.value = f * 2; // so a phone hears it
+    const g2 = c.createGain(); g2.gain.value = 0.3;
+    const gn = c.createGain();
+    const off = Math.min(dur, s0 + Math.max(0.06, len));
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(vel, s0 + 0.008);
+    gn.gain.setValueAtTime(vel, off);
+    gn.gain.linearRampToValueAtTime(0, off + 0.04);
+    o.connect(gn); o2.connect(g2); g2.connect(gn); gn.connect(sub);
+    const stop = Math.min(dur, off + 0.06);
+    o.start(s0); o2.start(s0); o.stop(stop); o2.stop(stop);
+  };
+
+  // ── The groove, beat by beat ──
+  for (let t = phase + Math.ceil((introEnd - phase) / beat - 1e-6) * beat; t < E - 0.02; t += beat) {
+    const sc = section(t + 1e-3);
+    const pos = mod(Math.round((t - phase) / beat), 4);
+    const dv = plan.drums(t), lastBar = plan.barInBlock(t) === 3;
+    const preDrop = t >= drop - beat - 1e-3 && t < drop - 1e-3;
+    // Kick on every beat — soft and short, the low end kept clean — and the pad pumps under it.
+    if (!preDrop && !(dv === 3 && lastBar && pos === 3 && sc !== "thin")) {
+      playHit(c, mixer.kit, { name: "kick", at: t, velocity: sc === "thin" ? 0.7 : sc === "full" ? 0.9 : 0.8, choke: 0.2, lowpassHz: 3500 });
+      mixer.duck(t);
+      padOut.gain.setValueAtTime(1, t);
+      padOut.gain.linearRampToValueAtTime(0.5, t + 0.01);
+      padOut.gain.linearRampToValueAtTime(1, t + 0.6 * beat);
+    }
+    // Off-beat closed hat (an open one closing the bar, in some 4-bar blocks).
+    const off = t + s8;
+    if (off < E - 0.03) {
+      const hv = (sc === "full" ? 0.36 : 0.28) * (1 + (rnd() - 0.5) * 0.2);
+      if (dv === 1 && pos === 3) playHit(c, mixer.perc, { name: "hat_open", at: off, velocity: 0.3, pan: 0.25, choke: s8 * 0.9 });
+      else playHit(c, mixer.perc, { name: "hat", at: off, velocity: hv, pan: 0.25 });
+    }
+    // A quiet 16th shaker (8ths only in some blocks); not in the thin-out.
+    if (sc !== "thin") {
+      for (let k = 0; k < 4; k++) {
+        if (dv === 2 && k % 2 === 1) continue;
+        const at = t + k * s16;
+        if (at >= E - 0.03) break;
+        playHit(c, mixer.perc, { name: "shaker", at, velocity: (k === 2 ? 0.26 : 0.18) * (sc === "full" ? 1 : 0.8) * (1 + (rnd() - 0.5) * 0.2), pan: -0.25 });
+      }
+    }
+    // Claps on 2 and 4 in the drop only.
+    if (sc === "full" && (pos === 1 || pos === 3)) {
+      playHit(c, mixer.perc, { name: "snap", at: t, velocity: 0.6 });
+      playHit(c, mixer.kit, { name: "snare", at: t, velocity: 0.2, lowpassHz: 5000 });
+    }
+    // Finger bass on the off-beat 8th — the tropical bounce — over the sine sub.
+    if (off < E - 0.05) {
+      const bm = 36 + mod(tonicPc + chordAt(off + 0.01).root - 36, 12);
+      const bv = sc === "full" ? 0.85 : sc === "thin" ? 0.6 : 0.72;
+      const len = Math.min(s8 * 0.8, E - off - 0.03);
+      playNote(c, mixer.bass, { instrument: "bass", midi: bm, at: off, duration: len, velocity: bv, release: 0.06 });
+      subNote(bm, off, len, bv);
+    }
+  }
+
+  // ── The end card: a kick, the tonic rolled on the pluck, bass and sub held ──
+  const rootPc = mod(tonicPc + g.tonic.root, 12);
+  playHit(c, mixer.kit, { name: "kick", at: E, velocity: 0.85, choke: 0.3, lowpassHz: 3500 });
+  const base = 64 + mod(rootPc - 64, 12);
+  g.tonic.arp.slice(0, 3).forEach((iv, i) => {
+    synth(base + iv, E + i * s16, 0.8 - i * 0.1, 0.6, (i - 1) * 0.3);
+    playNote(c, mixer.guitar, { instrument: "nylon", midi: base + iv - 12, at: E + i * s16, duration: 0.6, velocity: 0.35, release: 0.8, pan: -0.25 });
+  });
+  const hold = Math.max(0.2, Math.min(1.6, dur - E - 0.1));
+  playNote(c, mixer.bass, { instrument: "bass", midi: 36 + mod(rootPc - 36, 12), at: E, duration: hold, velocity: 0.8, release: 0.3 });
+  subNote(36 + mod(rootPc - 36, 12), E, hold, 0.8);
 }

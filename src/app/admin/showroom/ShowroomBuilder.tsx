@@ -55,7 +55,7 @@ type Boat = {
 
 const RECENT_DAYS = 120;
 // Calm, Elegant and Coastal suit a lobby; the rest are there if wanted.
-const MUSIC_MENU: MusicMood[] = ["calm", "elegant", "coastal", "cinematic", "upbeat", "lift", "coastal_drive", "groove"];
+const MUSIC_MENU: MusicMood[] = ["calm", "elegant", "coastal", "sail", "cinematic", "upbeat", "lift", "coastal_drive", "groove"];
 const CORNERS: { key: LogoCorner; label: string }[] = [
   { key: "br", label: "Bottom right" }, { key: "bl", label: "Bottom left" },
   { key: "tr", label: "Top right" }, { key: "tl", label: "Top left" },
