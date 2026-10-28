@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { discardUploadedOriginal, makeDerivativesNow, uploadOriginal } from "@/lib/photoStoreClient";
 
 /**
  * Run `worker` over `items`, at most `limit` at a time. Each worker gets the
@@ -87,6 +88,8 @@ export type ListingPhotoRow = {
   category: string | null;
   display_order: number;
   is_visible: boolean;
+  /** Where the original lives (Oct 28): "supabase" | "r2". */
+  storage_backend?: string | null;
 };
 
 /**
@@ -112,10 +115,9 @@ export async function uploadListingPhoto(opts: {
   const ext = file.name.split(".").pop();
   const path = `${brokerId}/${listingId}/${pathKey}.${ext}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("listing-photos")
-    .upload(path, file, { upsert: false });
-  if (uploadError) return { ok: false, error: uploadError.message };
+  // R2 or Supabase — the server's switch decides (src/lib/photoStore.ts).
+  const up = await uploadOriginal({ supabase, path, file, scope: { listingId } });
+  if (!up.ok) return { ok: false, error: up.error };
 
   const { data: row, error: insertError } = await supabase
     .from("photos")
@@ -128,15 +130,20 @@ export async function uploadListingPhoto(opts: {
       display_order: displayOrder,
       is_visible: true,
       uploaded_by: uploadedBy,
+      storage_backend: up.backend,
+      original_bytes: up.bytes,
     })
     .select()
     .single();
 
   if (insertError || !row) {
-    await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
+    await discardUploadedOriginal(supabase, path, up.backend, { listingId });
     return { ok: false, error: insertError?.message ?? "Couldn't save the photo record." };
   }
-  requestDerivatives(listingId, [(row as ListingPhotoRow).id]);
+  // R2 original: its stored copies are made before this returns, so the
+  // tile, labelling and public pages never need the full-size file.
+  if (up.backend === "r2") await makeDerivativesNow({ listingId }, [(row as ListingPhotoRow).id]);
+  else requestDerivatives(listingId, [(row as ListingPhotoRow).id]);
   return { ok: true, row: row as ListingPhotoRow };
 }
 
@@ -179,10 +186,8 @@ export async function replaceListingPhoto(opts: {
   const path = `${ownerFolder}/${listingId}/${Date.now()}-r${Math.random().toString(36).slice(2, 8)}.${ext}`;
 
   onStage?.("uploading");
-  const { error: uploadError } = await supabase.storage
-    .from("listing-photos")
-    .upload(path, file, { upsert: false, contentType: file.type || undefined });
-  if (uploadError) return { ok: false, error: uploadError.message };
+  const up = await uploadOriginal({ supabase, path, file, scope: { listingId }, contentType: file.type || undefined });
+  if (!up.ok) return { ok: false, error: up.error };
 
   onStage?.("saving");
   let res: Response;
@@ -190,19 +195,34 @@ export async function replaceListingPhoto(opts: {
     res = await fetch(`/api/listings/${listingId}/photos/${photoId}/replace`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ newPath: path, filename: file.name }),
+      body: JSON.stringify({ newPath: path, filename: file.name, backend: up.backend }),
     });
   } catch (e) {
-    await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
+    await discardUploadedOriginal(supabase, path, up.backend, { listingId });
     return { ok: false, error: e instanceof Error ? e.message : "Network error" };
   }
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data?.photo) {
-    await supabase.storage.from("listing-photos").remove([path]).then(() => {}, () => {});
+    await discardUploadedOriginal(supabase, path, up.backend, { listingId });
     return { ok: false, error: data?.error ?? `The server answered ${res.status}` };
   }
   // The replace route cleared derivatives_at and removed the old copies;
   // make the new file's copies now.
-  requestDerivatives(listingId, [photoId]);
+  if (up.backend === "r2") {
+    // R2 original: the server can't resize it on the fly, so the tile comes
+    // from the stored copy made now.
+    await makeDerivativesNow({ listingId }, [photoId]);
+    try {
+      const t = await fetch("/api/thumbs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listingId, width: 400 }),
+      }).then((res) => (res.ok ? res.json() : null));
+      const thumb = (t?.urls as Record<string, string> | undefined)?.[photoId];
+      if (thumb) (data.photo as ReplacedPhoto).thumbUrl = thumb;
+    } catch { /* tile shows "processing" until the page refreshes thumbnails */ }
+  } else {
+    requestDerivatives(listingId, [photoId]);
+  }
   return { ok: true, photo: data.photo as ReplacedPhoto };
 }

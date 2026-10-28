@@ -5,6 +5,7 @@ import {
   photosForAngle, reelServiceCaption, REEL_SERVICE_ANGLES,
   type ReelServiceAngle, type ReelServiceSettings,
 } from "@/lib/reelService";
+import { signResizedPath } from "@/lib/photoStore";
 
 /**
  * "Rewrite" for a Reel Service caption (Oct 23). The planner writes a
@@ -105,10 +106,8 @@ async function framesFor(svc: SupabaseClient, listing: CaptionListing, job: Capt
 
   // Signed the same way the Reel Maker's reel-copy route signs them.
   return (await Promise.all(picked.map(async (p) => {
-    const { data: s } = await svc.storage.from("listing-photos").createSignedUrl(p.storage_path, 600, {
-      transform: { width: 800, height: 800, resize: "contain", quality: 70 },
-    });
-    return s?.signedUrl ? { url: s.signedUrl, category: p.category ?? null } : null;
+    const url = await signResizedPath(svc, p.storage_path, 600, { width: 800, height: 800, resize: "contain", quality: 70 }, { ensure: true });
+    return url ? { url, category: p.category ?? null } : null;
   }))).filter(Boolean) as { url: string; category: string | null }[];
 }
 

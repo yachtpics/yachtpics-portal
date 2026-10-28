@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { signDerivatives } from "@/lib/photoDerivatives";
+import { ensureDerivatives, signDerivatives } from "@/lib/photoDerivatives";
+import { runInBackground } from "@/lib/jobs/queue";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -64,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const { data: photos } = await service
     .from("photos")
-    .select("id, storage_path, derivatives_at")
+    .select("id, storage_path, derivatives_at, storage_backend")
     .eq("listing_id", body.listingId);
   if (!photos?.length) return NextResponse.json({ urls: {}, missing: [] });
 
@@ -73,8 +74,18 @@ export async function POST(req: NextRequest) {
   const urls: Record<string, string> = { ...derived.urls };
   const missing: string[] = [];
   const fallback = derived.missing;
-  for (let i = 0; i < fallback.length; i += CHUNK) {
-    const batch = fallback.slice(i, i + CHUNK);
+  // Originals on R2 (Oct 28) can't be resized by Supabase and are never sent
+  // as tiles: until their stored copies exist (made right after upload) they
+  // are listed as `processing` (no url — the tile shows a placeholder), and
+  // making the copies is kicked off in the background.
+  const r2Fallback = fallback.filter((p) => (p as { storage_backend?: string | null }).storage_backend === "r2");
+  const processing = r2Fallback.filter((p) => !p.derivatives_at).map((p) => p.id);
+  if (processing.length) {
+    runInBackground(ensureDerivatives(processing.slice(0, 40), { svc: service, concurrency: 4, deadline: Date.now() + 50_000 }));
+  }
+  const supaFallback = fallback.filter((p) => (p as { storage_backend?: string | null }).storage_backend !== "r2");
+  for (let i = 0; i < supaFallback.length; i += CHUNK) {
+    const batch = supaFallback.slice(i, i + CHUNK);
     await Promise.all(
       batch.map(async (p) => {
         const { data, error } = await service.storage
@@ -92,12 +103,12 @@ export async function POST(req: NextRequest) {
   // off Supabase quietly signs the original instead of erroring — so the page
   // still "works" while downloading full-size files. One line in the logs is
   // the difference between noticing that and not.
-  const list = fallback.map((p) => urls[p.id]).filter(Boolean);
+  const list = supaFallback.map((p) => urls[p.id]).filter(Boolean);
   if (list.length > 0 && list.some((u) => !u.includes("/render/image/"))) {
     console.warn(
       "Supabase image transformation appears to be disabled — /api/thumbs is returning full-size originals"
     );
   }
 
-  return NextResponse.json({ urls, missing });
+  return NextResponse.json({ urls, missing, ...(processing.length ? { processing } : {}) });
 }

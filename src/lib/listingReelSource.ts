@@ -5,6 +5,7 @@ import { normalizeHex } from "@/lib/reelStyles";
 import { isDepthLooksSubscriber } from "@/lib/depthLooksRelease";
 import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components/ReelMaker";
+import { photoDrawUrls } from "@/lib/photoStoreClient";
 
 /**
  * Assemble a listing's half of a reel — the boat, the broker's card and
@@ -16,7 +17,7 @@ import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components
  * Service batch renderer builds exactly the same source.
  */
 
-type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number; derivatives_at?: string | null };
+type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number; derivatives_at?: string | null; storage_backend?: string | null };
 type VideoRow = { id: string; title: string | null; filename: string | null; thumbnail_path: string | null; display_order: number | null };
 
 export async function loadListingReelSource(supabase: SupabaseClient, id: string): Promise<ReelSource | null> {
@@ -59,7 +60,7 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
   const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }, isSubscriber] = await Promise.all([
     supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
     supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
-    supabase.from("photos").select("id, storage_path, category, filename, display_order, derivatives_at").eq("listing_id", id).eq("is_visible", true).order("display_order"),
+    supabase.from("photos").select("id, storage_path, category, filename, display_order, derivatives_at, storage_backend").eq("listing_id", id).eq("is_visible", true).order("display_order"),
     supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
     // The listing's videos, offered as clips in the listing's own order.
     supabase.from("videos").select("id, title, filename, thumbnail_path, display_order").eq("listing_id", id).order("display_order"),
@@ -94,6 +95,10 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
   }
   const thumbs = await Promise.all(ordered.map(async (p) => {
     if (thumbMap[p.id]) return thumbMap[p.id];
+    // An original on R2 without stored copies yet: no picker thumbnail (a
+    // full-size original is never used as a tile); copies arrive moments
+    // after upload.
+    if (p.storage_backend === "r2") return null;
     const { data } = await supabase.storage.from("listing-photos")
       .createSignedUrl(p.storage_path, 3600, { transform: { width: 480, height: 480, resize: "cover", quality: 70 } });
     return data?.signedUrl ?? null;
@@ -105,18 +110,16 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
     filename: p.filename,
     // Photographs at a sensible size for the frame. Transform first (fast,
     // cheap on the wire); fall back to the original if transforms fail.
+    // (Originals on R2, Oct 28: the stored 2000px copy when the frame needs no
+    // more, else the original — src/lib/photoStoreClient.ts photoDrawUrls.)
     loadBitmap: async (longEdge: number) => {
-      const { data: t } = await supabase.storage.from("listing-photos")
-        .createSignedUrl(p.storage_path, 3600, { transform: { width: Math.round(longEdge), height: Math.round(longEdge), resize: "contain", quality: 82 } });
-      const url = t?.signedUrl ?? null;
-      let bmp: ImageBitmap | null = null;
-      if (url) { try { bmp = await loadBitmap(url); } catch { bmp = null; } }
-      if (!bmp) {
-        const { data: o } = await supabase.storage.from("listing-photos").createSignedUrl(p.storage_path, 3600);
-        if (!o?.signedUrl) throw new Error("A photo couldn't be loaded.");
-        bmp = await loadBitmap(o.signedUrl);
+      const urls = await photoDrawUrls(supabase, p, longEdge, { quality: 82 });
+      if (urls.length === 0) throw new Error("A photo couldn't be loaded.");
+      let lastErr: unknown = null;
+      for (let k = 0; k < urls.length; k++) {
+        try { return await loadBitmap(urls[k]); } catch (e) { lastErr = e; }
       }
-      return bmp;
+      throw lastErr instanceof Error ? lastErr : new Error("A photo couldn't be loaded.");
     },
   }));
 

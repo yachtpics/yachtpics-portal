@@ -8,6 +8,7 @@ import {
   sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
+import { resizeImageBlob, signOriginalsInBrowser } from "@/lib/photoStoreClient";
 
 // Two ways photos leave a listing page, one per role:
 //
@@ -86,19 +87,42 @@ export function useSizedDownloads(opts: {
    * which expire). Full resolution are the originals; the others are resized
    * by Supabase when fetched.
    */
-  async function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<Record<string, string>> {
-    if (targets.length === 0) return {};
+  const extOf = (p: ListingPhoto) => (p.filename?.split(".").pop() ?? "jpg").toLowerCase();
+
+  // Photos whose resized download the page makes itself (originals on R2,
+  // which Supabase can't resize): id → long edge + output type.
+  type ResizeSpec = { edge: number; type: string };
+  async function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<{ urls: Record<string, string>; resize: Record<string, ResizeSpec> }> {
+    if (targets.length === 0) return { urls: {}, resize: {} };
     try {
       const res = await fetch(`/api/listings/${listingId}/photos/download-urls`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ photoIds: targets.map((t) => t.id), size }),
       });
-      if (!res.ok) return {};
+      if (!res.ok) return { urls: {}, resize: {} };
       const d = await res.json().catch(() => null);
-      return (d?.urls ?? {}) as Record<string, string>;
+      return { urls: (d?.urls ?? {}) as Record<string, string>, resize: (d?.resize ?? {}) as Record<string, ResizeSpec> };
     } catch {
-      return {};
+      return { urls: {}, resize: {} };
+    }
+  }
+
+  /**
+   * The file for one photo: fetched, and scaled down here when the server
+   * said so. A re-encoded HEIC/TIFF/WebP becomes a .jpg; if this browser
+   * can't decode the original, the full-size file is saved instead.
+   */
+  async function photoBlob(photo: ListingPhoto, url: string, resize: Record<string, ResizeSpec>): Promise<{ blob: Blob; ext: string }> {
+    const blob = await fetchBlobWithRetry(url);
+    const spec = resize[photo.id];
+    const ext = extOf(photo);
+    if (!spec) return { blob, ext };
+    try {
+      const out = await resizeImageBlob(blob, spec.edge, spec.type);
+      return { blob: out, ext: spec.type === "image/png" ? "png" : ext === "jpeg" ? "jpeg" : "jpg" };
+    } catch {
+      return { blob, ext };
     }
   }
 
@@ -111,9 +135,8 @@ export function useSizedDownloads(opts: {
     const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
     const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
     const vessel = vesselName ? cleanName(vesselName) : "";
-    const extOf = (p: ListingPhoto) => (p.filename?.split(".").pop() ?? "jpg").toLowerCase();
 
-    const fresh = await signForDownload(targets, size);
+    const { urls: fresh, resize } = await signForDownload(targets, size);
 
     // Single photo — direct download, no ZIP needed
     if (targets.length === 1) {
@@ -121,12 +144,12 @@ export function useSizedDownloads(opts: {
       try {
         const url = fresh[photo.id];
         if (!url) throw new Error("no link");
-        const blob = await fetchBlobWithRetry(url);
+        const { blob, ext } = await photoBlob(photo, url, resize);
         // "Sea Dream – Salon.jpg": the vessel name keeps a loose download
         // identifiable in a Downloads folder full of "Salon.jpg"s. Resized
         // copies say their size so they can't be mistaken for the original.
         const label = cleanName(photo.category ?? "Photo") || "Photo";
-        const filename = `${vessel ? `${vessel} – ` : ""}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${extOf(photo)}`;
+        const filename = `${vessel ? `${vessel} – ` : ""}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${ext}`;
         triggerDownload(blob, filename);
         // Log download silently (fire-and-forget)
         fetch(`/api/listings/${listingId}/log-download`, {
@@ -162,9 +185,9 @@ export function useSizedDownloads(opts: {
         const url = fresh[photo.id];
         try {
           if (url) {
-            const blob = await fetchBlobWithRetry(url);
+            const { blob, ext } = await photoBlob(photo, url, resize);
             const label = cleanName(photo.category ?? "Photo") || "Photo";
-            zip.file(`${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${extOf(photo)}`, blob);
+            zip.file(`${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${ext}`, blob);
             added++;
           }
         } catch { /* counted below */ }
@@ -266,10 +289,10 @@ export function useOriginalSave(opts: {
   const saveLocked = saveBusy !== null || shareJob !== null;
 
   async function saveItems(targets: ListingPhoto[]): Promise<{ url: string; name: string }[]> {
-    const fresh = new Map<string, string>();
+    let fresh = new Map<string, string>();
     try {
-      const { data } = await supabase.storage.from("listing-photos").createSignedUrls(targets.map((t) => t.storage_path), 900);
-      (data ?? []).forEach((d) => { if (d.path && d.signedUrl) fresh.set(d.path, d.signedUrl); });
+      // Supabase or R2, per photo (src/lib/photoStoreClient.ts).
+      fresh = await signOriginalsInBrowser(supabase, targets.map((t) => t.storage_path), 900);
     } catch { /* fall back to the urls the page was given */ }
     const out: { url: string; name: string }[] = [];
     targets.forEach((t) => {

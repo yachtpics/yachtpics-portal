@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { logShowcaseEvent } from "@/lib/showcaseEvents";
 import { orderPhotos } from "@/lib/photoOrder";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -52,8 +53,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const paths = rows.map((r) => r.storage_path as string);
   if (paths.length === 0) return NextResponse.json({ photos: [] });
 
-  const { data: signed } = await service.storage.from("listing-photos").createSignedUrls(paths, 3600);
-  const photos = (signed ?? []).map((s) => s.signedUrl).filter(Boolean);
+  const signed = await signOriginalPaths(service, paths, 3600);
+  const photos = signed.map((s) => s.signedUrl).filter(Boolean);
 
   return NextResponse.json({ photos }, { headers: { "Cache-Control": "no-store" } });
 }

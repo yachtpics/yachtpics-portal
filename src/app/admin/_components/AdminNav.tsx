@@ -28,6 +28,7 @@ import {
   Tags,
   Anchor,
   ListChecks,
+  HardDrive,
   type LucideIcon,
 } from "lucide-react";
 
@@ -57,6 +58,7 @@ const navItems: NavItem[] = [
   { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Jobs", href: "/admin/jobs", icon: ListChecks },
+  { label: "Storage", href: "/admin/storage", icon: HardDrive },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
   { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
   { label: "Showroom Loop", href: "/admin/showroom", icon: MonitorPlay, short: "Showroom" },

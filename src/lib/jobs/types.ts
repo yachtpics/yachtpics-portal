@@ -5,7 +5,14 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export const JOB_KINDS = ["republish_site", "derivatives_backfill", "relabel_photos"] as const;
+export const JOB_KINDS = [
+  "republish_site",
+  "derivatives_backfill",
+  "relabel_photos",
+  "photo_originals_copy",
+  "photo_originals_cleanup",
+  "site_photos_cleanup",
+] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
 export function isJobKind(x: unknown): x is JobKind {
@@ -17,6 +24,9 @@ export const JOB_LABELS: Record<JobKind, string> = {
   republish_site: "Re-publish live boats",
   derivatives_backfill: "Photo thumbnails",
   relabel_photos: "Label photos",
+  photo_originals_copy: "Copy photo originals to R2",
+  photo_originals_cleanup: "Remove Supabase copies of moved originals",
+  site_photos_cleanup: "Remove old website photo copies (site-photos)",
 };
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";

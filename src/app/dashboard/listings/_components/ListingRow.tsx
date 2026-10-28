@@ -4,6 +4,7 @@ import { useState, useRef, useEffect, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 
 // JSZip is only needed when someone actually downloads photos, but importing it
 // at the top meant every broker downloaded the whole zip library just to LOOK at
@@ -177,15 +178,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       }
 
       const paths = photos.map((p) => p.storage_path);
-      const { data: signedData } = await supabase.storage
-        .from("listing-photos")
-        .createSignedUrls(paths, 3600);
+      // Supabase or R2, per photo (src/lib/photoStoreClient.ts).
+      const signed = await signOriginalsInBrowser(supabase, paths, 3600);
 
-      if (!signedData) { setDownloading(false); return; }
-
-      const photosWithUrls = photos.map((p, i) => ({
+      const photosWithUrls = photos.map((p) => ({
         ...p,
-        url: signedData[i]?.signedUrl ?? null,
+        url: signed.get(p.storage_path) ?? null,
       }));
 
       const { default: JSZip } = await import("jszip");

@@ -5,6 +5,7 @@ import GalleryDetail from "./_components/GalleryDetail";
 import RefreshOnMount from "@/components/RefreshOnMount";
 import { withVideoUrls } from "@/lib/videoUrls";
 import { signDerivatives } from "@/lib/photoDerivatives";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +37,7 @@ export default async function AdminGalleryDetailPage({ params }: { params: { id:
   const { urls: thumbUrls, missing: noThumb } = await signDerivatives(supabase, photos ?? [], 600, 3600);
   const fallbackPaths = noThumb.map((p) => p.storage_path).filter(Boolean);
   const { data: photoSigned } = fallbackPaths.length > 0
-    ? await supabase.storage.from("listing-photos").createSignedUrls(fallbackPaths, 3600)
+    ? { data: await signOriginalPaths(supabase, fallbackPaths, 3600) }
     : { data: [] };
   const photoUrlMap = new Map((photoSigned ?? []).map((d) => [d.path, d.signedUrl]));
   const photosWithUrls = (photos ?? []).map((p) => ({

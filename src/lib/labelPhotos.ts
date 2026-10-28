@@ -12,6 +12,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { categorizePhotos } from "@/lib/ai";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { signResizedPath } from "@/lib/photoStore";
 
 export const LABEL_BATCH = 8;
 
@@ -88,12 +89,10 @@ export async function labelListingPhotos(
     }
     const t0 = Date.now();
     const batch = candidates.slice(i, i + LABEL_BATCH);
-    const urls = await Promise.all(batch.map(async ({ p }) => {
-      const { data: signed } = await svc.storage.from("listing-photos").createSignedUrl(p.storage_path, 600, {
-        transform: { width: 800, height: 800, resize: "contain", quality: 70 },
-      });
-      return signed?.signedUrl ?? null;
-    }));
+    // Supabase resize, or the stored copy for an original on R2 (photoStore).
+    const urls = await Promise.all(batch.map(({ p }) =>
+      signResizedPath(svc, p.storage_path, 600, { width: 800, height: 800, resize: "contain", quality: 70 }, { ensure: true })
+    ));
     const usable = batch.map(({ p }, j) => ({ p, url: urls[j] })).filter((x) => x.url) as { p: PhotoRow; url: string }[];
 
     if (usable.length) {

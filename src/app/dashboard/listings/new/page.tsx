@@ -10,6 +10,7 @@ import { expandPickedFiles } from "@/lib/pickedImages";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
 import { requestDerivatives } from "@/lib/uploadListingPhoto";
+import { makeDerivativesNow, uploadOriginal } from "@/lib/photoStoreClient";
 
 type BrokerOption = { id: string; name: string };
 
@@ -176,11 +177,10 @@ export default function NewListingPage() {
         const ext = photo.file.name.split(".").pop();
         const path = `${brokerId}/${listingId}/${Date.now()}-${i}.${ext}`;
 
-        const { error: uploadError } = await supabase.storage
-          .from("listing-photos")
-          .upload(path, photo.file, { upsert: false });
+        // R2 or Supabase — the server's switch decides (src/lib/photoStore.ts).
+        const up = await uploadOriginal({ supabase, path, file: photo.file, scope: { listingId } });
 
-        if (!uploadError) {
+        if (up.ok) {
           const { data: { user } } = await supabase.auth.getUser();
           const { data: newPhoto } = await supabase.from("photos").insert({
             listing_id: listingId,
@@ -189,10 +189,15 @@ export default function NewListingPage() {
             category: photo.category,
             display_order: i,
             is_visible: true,
+            storage_backend: up.backend,
+            original_bytes: up.bytes,
             uploaded_by: user?.id ?? brokerId,
           }).select("id").single();
           // Stored 600 / 2000 px copies, made server-side (fire-and-forget).
-          if (newPhoto?.id) requestDerivatives(listingId, [newPhoto.id as string]);
+          if (newPhoto?.id) {
+            if (up.backend === "r2") await makeDerivativesNow({ listingId }, [newPhoto.id as string]);
+            else requestDerivatives(listingId, [newPhoto.id as string]);
+          }
         }
         setUploadProgress(Math.round(((i + 1) / photos.length) * 100));
       }

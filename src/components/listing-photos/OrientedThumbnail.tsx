@@ -22,6 +22,17 @@ export default function OrientedThumbnail({ url, fallbackUrl, filename }: { url:
     }
   }, [url]);
 
+  // No link yet — e.g. a photo whose stored copies are still being made
+  // (originals on R2 are never used as tiles): a quiet placeholder, not a
+  // broken image.
+  if (!url && !fallbackUrl) {
+    return (
+      <div className="w-full aspect-[4/3] bg-ink-100 flex items-center justify-center text-xs text-ink-500 select-none">
+        Processing…
+      </div>
+    );
+  }
+
   return (
     <RetryImg
       ref={ref}

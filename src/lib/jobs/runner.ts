@@ -14,12 +14,13 @@
  * itself again.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { buildListingFiles } from "@/lib/sitePublish";
+import { buildListingFiles, markSitePhotosBackend } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 import { runDerivativeBackfill } from "@/lib/photoDerivatives";
 import { isAiConfigured } from "@/lib/ai";
 import { labelCategories, labelListingPhotos } from "@/lib/labelPhotos";
 import { isMissingTable, jobsServiceClient } from "./queue";
+import { photoOriginalsCleanup, photoOriginalsCopy, sitePhotosCleanup } from "./photoMigration";
 import {
   JobFatalError,
   isJobFatal,
@@ -53,7 +54,9 @@ async function republishOne(svc: SupabaseClient, listingId: string): Promise<str
   await svc.from("listings").update({ publish_to_site: true }).eq("id", listingId);
   const built = await buildListingFiles(listingId);
   if ("error" in built) return built.error;
+  if (built.photosBackend !== "r2") await markSitePhotosBackend(listingId, "supabase");
   const res = await uploadFiles(built.files);
+  if (!res.error && built.photosBackend === "r2") await markSitePhotosBackend(listingId, "r2");
   if (res.error) {
     await svc.from("listings").update({ publish_to_site: false, published_at: null }).eq("id", listingId);
     return res.error;
@@ -204,6 +207,9 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   republish_site: republishSite,
   derivatives_backfill: derivativesBackfill,
   relabel_photos: relabelPhotos,
+  photo_originals_copy: photoOriginalsCopy,
+  photo_originals_cleanup: photoOriginalsCleanup,
+  site_photos_cleanup: sitePhotosCleanup,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

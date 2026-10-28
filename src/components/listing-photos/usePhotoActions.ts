@@ -14,6 +14,7 @@ import {
 } from "@/lib/uploadListingPhoto";
 import type { ListingPhoto, OnPhotoMessage, PhotoCapabilities, ReplaceStage } from "./types";
 import type { ListingPhotosState } from "./useListingPhotos";
+import { signOriginalInBrowser } from "@/lib/photoStoreClient";
 
 /**
  * Everything a person can do to a listing's photos — upload (4 at a time, with
@@ -185,10 +186,7 @@ export function usePhotoActions(opts: {
         if (r.ok) {
           const photo: ListingPhoto = { ...r.row };
           if (caps.keepOriginalUrls) {
-            const { data: signed } = await supabase.storage
-              .from("listing-photos")
-              .createSignedUrl(r.row.storage_path, 3600);
-            photo.url = signed?.signedUrl ?? null;
+            photo.url = await signOriginalInBrowser(supabase, r.row.storage_path, 3600);
           }
           results[i] = photo;
           setPhotos((prev) => [...prev, photo]);

@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { draftDescription, isAiConfigured, type DescribableListing } from "@/lib/ai";
 import { orderPhotos } from "@/lib/photoOrder";
+import { signResizedPath } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -47,12 +48,10 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     if (picked.length === 0 || !seen.has(key)) { picked.push(p); seen.add(key); }
     if (picked.length >= 6) break;
   }
-  const urls = (await Promise.all(picked.map(async (p) => {
-    const { data } = await service.storage.from("listing-photos").createSignedUrl(p.storage_path, 600, {
-      transform: { width: 800, height: 800, resize: "contain", quality: 70 },
-    });
-    return data?.signedUrl ?? null;
-  }))).filter(Boolean) as string[];
+  // Supabase resize, or the stored copy for an original on R2 (photoStore).
+  const urls = (await Promise.all(picked.map((p) =>
+    signResizedPath(service, p.storage_path, 600, { width: 800, height: 800, resize: "contain", quality: 70 }, { ensure: true })
+  ))).filter(Boolean) as string[];
 
   try {
     const description = await draftDescription(listing as DescribableListing, urls);

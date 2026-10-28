@@ -10,6 +10,7 @@ import { hasAccess } from "@/lib/subscriptionAccess";
 import {
   YACHTPICS_CARD, YACHTPICS_COLORS, YACHTPICS_PHONES, type YpPhone,
 } from "@/lib/yachtpicsBrand";
+import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 
 /**
  * Editorial serif for the vessel name. High-contrast garamond — the register
@@ -192,8 +193,9 @@ export default function SocialGraphicPage() {
       const { data: ph } = await supabase.from("photos")
         .select("id, storage_path").eq("listing_id", id).eq("is_visible", true).order("display_order");
       const paths = (ph ?? []).map((p) => p.storage_path);
-      const { data: signed } = paths.length ? await supabase.storage.from("listing-photos").createSignedUrls(paths, 7200) : { data: [] };
-      const withUrls: Photo[] = (ph ?? []).map((p, i) => ({ id: p.id, url: signed?.[i]?.signedUrl ?? null }));
+      // Supabase or R2, per photo (src/lib/photoStoreClient.ts).
+      const signed = paths.length ? await signOriginalsInBrowser(supabase, paths, 7200) : new Map<string, string>();
+      const withUrls: Photo[] = (ph ?? []).map((p) => ({ id: p.id, url: signed.get(p.storage_path) ?? null }));
       setPhotos(withUrls);
       // Default to the broker-chosen cover photo if set & visible, else the first photo.
       const hero = l.hero_photo_id ? withUrls.find((p) => p.id === l.hero_photo_id && p.url) : null;

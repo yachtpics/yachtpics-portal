@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { cancelJob, enqueueJob, getJob, jobsBaseUrl, kickWorker, listJobs, retryJob } from "@/lib/jobs/queue";
 import { isLabelCandidate } from "@/lib/labelPhotos";
 import { isJobKind, type JobKind } from "@/lib/jobs/types";
+import { CLEANUP_CONFIRM_PHRASE } from "@/lib/jobs/photoMigration";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -80,7 +81,12 @@ async function normaliseParams(
   svc: SupabaseClient
 ): Promise<{ params: Record<string, unknown> } | { error: string }> {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  if (kind === "republish_site" || kind === "derivatives_backfill") return { params: {} };
+  if (kind === "republish_site" || kind === "derivatives_backfill" || kind === "photo_originals_copy") return { params: {} };
+  // Deleting files: only with the typed confirmation from /admin/storage.
+  if (kind === "photo_originals_cleanup" || kind === "site_photos_cleanup") {
+    if (p.confirm !== CLEANUP_CONFIRM_PHRASE) return { error: `Type "${CLEANUP_CONFIRM_PHRASE}" to confirm.` };
+    return { params: { confirm: CLEANUP_CONFIRM_PHRASE } };
+  }
 
   // relabel_photos: explicit listingIds, or scope "unlabelled" = every active
   // listing that still has photos marked Other / blank (resolved now, so the

@@ -40,9 +40,17 @@ export {
  * `photos.derivatives_at`: null = not generated; a real time = both sizes
  * exist; DERIVATIVES_UNAVAILABLE_AT = this original can't be resized (left on
  * the old path for good, so the backfill doesn't retry it forever).
+ *
+ * Oct 28 — originals on R2 (`photos.storage_backend = 'r2'`, see
+ * src/lib/photoStore.ts): Supabase can only resize a file it holds, so the
+ * original is staged for a moment under `_tmp/derive/` in this bucket, resized
+ * by the SAME transform (identical output), and the staged copy removed
+ * straight after. The derivatives themselves land in Supabase as always.
  */
 
 const BUCKET = "listing-photos";
+/** Where R2 originals are staged for a moment while Supabase resizes them. */
+export const STAGING_PREFIX = "_tmp/derive/";
 const QUALITY = 80;
 const ONE_YEAR = "31536000";
 
@@ -146,11 +154,11 @@ export async function ensureDerivatives(
   const ids = Array.from(new Set(photoIds.filter((x) => typeof x === "string" && x)));
   if (ids.length === 0) return out;
 
-  const rows: { id: string; storage_path: string; derivatives_at: string | null }[] = [];
+  const rows: { id: string; storage_path: string; derivatives_at: string | null; storage_backend?: string | null }[] = [];
   for (let i = 0; i < ids.length; i += 200) {
     const { data, error } = await svc
       .from("photos")
-      .select("id, storage_path, derivatives_at")
+      .select("id, storage_path, derivatives_at, storage_backend")
       .in("id", ids.slice(i, i + 200));
     if (error) throw new Error(error.message);
     rows.push(...((data ?? []) as typeof rows));
@@ -179,9 +187,45 @@ export async function ensureDerivatives(
     console.warn(`photo derivatives: ${r.id} unavailable (${reason})`);
   };
 
-  const processOne = async (r: DerivativeSource) => {
+  const processOne = async (r: DerivativeSource & { storage_backend?: string | null }) => {
+    // R2 original → a short-lived staged copy Supabase can resize.
+    let source = r.storage_path;
+    let staged: string | null = null;
+    if (r.storage_backend === "r2") {
+      let original: { bytes: Uint8Array; contentType: string };
+      try {
+        // Lazy: this module is reachable from client bundles (via
+        // publicPhotoUrls → photoAlt); photoStore is server-only.
+        const { readOriginal } = await import("@/lib/photoStore");
+        original = await readOriginal(svc, r);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (/NoSuchKey|not.?found|does not exist|404/i.test(msg)) await markUnavailable(r, "original missing on R2");
+        else out.failed.push({ id: r.id, reason: `read original: ${msg}` });
+        return;
+      }
+      const ext = (r.storage_path.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+      staged = `${STAGING_PREFIX}${r.id}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
+      const { error: stageErr } = await svc.storage.from(BUCKET).upload(staged, original.bytes, {
+        contentType: original.contentType,
+        upsert: true,
+      });
+      if (stageErr) {
+        out.failed.push({ id: r.id, reason: `stage: ${stageErr.message}` });
+        return;
+      }
+      source = staged;
+    }
+    try {
+      await makeBoth(r, source);
+    } finally {
+      if (staged) await svc.storage.from(BUCKET).remove([staged]).then(() => {}, () => {});
+    }
+  };
+
+  const makeBoth = async (r: DerivativeSource, source: string) => {
     for (const size of DERIVATIVE_SIZES) {
-      const got = await fetchResized(svc, r.storage_path, size);
+      const got = await fetchResized(svc, source, size);
       if (!got.ok) {
         if (got.permanent) await markUnavailable(r, got.reason);
         else out.failed.push({ id: r.id, reason: got.reason });
@@ -312,6 +356,31 @@ export async function signDerivatives<T extends DerivativeSource & { derivatives
     else missing.push(photo);
   }
   return { urls, missing };
+}
+
+/**
+ * Remove staged copies left under STAGING_PREFIX by a resize that died before
+ * its own clean-up (older than `olderThanMs`, default 1 h). Touches nothing
+ * outside that folder. Returns how many were removed.
+ */
+export async function sweepStagedOriginals(svc: SupabaseClient, olderThanMs = 60 * 60 * 1000): Promise<number> {
+  const folder = STAGING_PREFIX.replace(/\/+$/, "");
+  const cutoff = Date.now() - olderThanMs;
+  let removed = 0;
+  for (let round = 0; round < 20; round++) {
+    const { data, error } = await svc.storage.from(BUCKET).list(folder, { limit: 1000, sortBy: { column: "created_at", order: "asc" } });
+    if (error || !data?.length) break;
+    const stale = data
+      .filter((o) => o.id && o.name && Date.parse(o.created_at ?? "") < cutoff)
+      .map((o) => `${folder}/${o.name}`)
+      .filter((p) => p.startsWith(STAGING_PREFIX));
+    if (stale.length === 0) break;
+    const { error: rmErr } = await svc.storage.from(BUCKET).remove(stale);
+    if (rmErr) break;
+    removed += stale.length;
+    if (stale.length < data.length) break;
+  }
+  return removed;
 }
 
 /** Remove the derivative objects of these photos (best effort). */

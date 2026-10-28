@@ -2,7 +2,8 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, brokerageDisplayName, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
 import { includesPhotos, includesVideo, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
-import { r2Configured, r2Exists, r2Put, r2PublicUrl, r2Delete } from "@/lib/r2";
+import { r2Configured, r2Exists, r2Put, r2PublicUrl, r2Delete, R2_BUCKET } from "@/lib/r2";
+import { copyR2OriginalTo, readOriginal } from "@/lib/photoStore";
 import { ftpConfigured, uploadFiles, deleteFiles } from "@/lib/siteFtp";
 import type { SiteVideo } from "@/lib/siteTemplates";
 
@@ -129,6 +130,46 @@ export function publicPhotoUrl(path: string): string {
   return `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/${PUBLIC_BUCKET}/${path}`;
 }
 
+/**
+ * Where a boat page's photos are published (Oct 28, 2026). Its OWN switch,
+ * independent of where new uploads go — OFF by default: "supabase" = the
+ * public `site-photos` bucket, exactly as before, unless the env var
+ * SITE_PHOTOS_BACKEND is exactly "r2" (and the media host is configured):
+ * then the public R2 media bucket that already serves the website's video
+ * (same `{site_page}/{slug}/` folder, same file names as site-photos used).
+ *
+ * Which one a live page uses is recorded on the listing
+ * (`listings.site_photos_backend`) only AFTER its files reached the website —
+ * see markSitePhotosBackend — so the gated site-photos cleanup never removes
+ * a file a live page still points at.
+ */
+export type SitePhotosBackend = "supabase" | "r2";
+export function sitePhotosBackend(): SitePhotosBackend {
+  const env = (process.env.SITE_PHOTOS_BACKEND || "").trim().toLowerCase();
+  return env === "r2" && r2Configured() ? "r2" : "supabase";
+}
+
+/**
+ * Time one publish may spend copying photos to the R2 media host (the routes
+ * that build pages run for at most 60 s). Copies already made are skipped
+ * next time, so a big boat finishes over a couple of publishes.
+ */
+const R2_SYNC_BUDGET_MS = 35_000;
+
+/**
+ * Record where this boat's live page points its photos. "r2": call after a
+ * successful upload. "supabase": call before uploading — it only clears an
+ * earlier "r2" mark (a no-op write for every boat that was never on R2).
+ */
+export async function markSitePhotosBackend(listingId: string, backend: SitePhotosBackend): Promise<void> {
+  let q = service()
+    .from("listings")
+    .update({ site_photos_backend: backend === "r2" ? "r2" : null })
+    .eq("id", listingId);
+  if (backend !== "r2") q = q.eq("site_photos_backend", "r2");
+  await q.then(() => {}, () => {});
+}
+
 type ListingRow = {
   id: string;
   vessel_name: string | null;
@@ -149,11 +190,16 @@ type ListingRow = {
 };
 
 /** Copy a listing's visible photos into the public bucket; returns public URLs. */
-async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): Promise<string[]> {
+async function syncPhotos(
+  listing: ListingRow,
+  sitePage: string,
+  slug: string,
+  backend: SitePhotosBackend
+): Promise<string[] | { error: string }> {
   const svc = service();
   const { data: photoRows } = await svc
     .from("photos")
-    .select("id, storage_path, category, display_order")
+    .select("id, storage_path, category, display_order, storage_backend")
     .eq("listing_id", listing.id)
     .eq("is_visible", true)
     .order("display_order", { ascending: true });
@@ -180,9 +226,58 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
     const src = r.storage_path as string;
     const ext = (src.split(".").pop() || "jpg").toLowerCase();
     const dest = `${sitePage}/${slug}/${r.id}.${ext}`;
-    urls.push(publicPhotoUrl(dest));
-    return { src, dest };
+    urls.push(backend === "r2" ? r2PublicUrl(dest) : publicPhotoUrl(dest));
+    return { src, dest, onR2: (r as { storage_backend?: string | null }).storage_backend === "r2" };
   });
+
+  // Public R2 media bucket (Oct 28). Same ID names, so an existing file is
+  // already this photo's bytes and is skipped. An R2 original is copied
+  // server side; a Supabase one is read and uploaded.
+  //
+  // Errors are per photo (a photo that can't be copied is left off the page,
+  // never failing the whole build). Copying stops starting new photos after
+  // R2_SYNC_BUDGET_MS; if any are left, the build reports it and the next
+  // publish carries on (finished copies are skipped).
+  if (backend === "r2") {
+    const started = Date.now();
+    const failedDest = new Set<string>();
+    let notStarted = 0;
+    let next = 0;
+    await Promise.all(
+      Array.from({ length: Math.min(8, jobs.length) }, async () => {
+        while (next < jobs.length) {
+          const j = jobs[next++];
+          if (Date.now() - started > R2_SYNC_BUDGET_MS) {
+            notStarted++;
+            continue;
+          }
+          try {
+            if (await r2Exists(j.dest)) continue;
+            if (j.onR2) {
+              try {
+                await copyR2OriginalTo(j.src, R2_BUCKET, j.dest);
+                continue;
+              } catch {
+                /* fall back to read + upload */
+              }
+            }
+            const { bytes, contentType } = await readOriginal(svc, { storage_path: j.src, storage_backend: j.onR2 ? "r2" : "supabase" });
+            await r2Put(j.dest, bytes, contentType);
+          } catch {
+            failedDest.add(j.dest);
+          }
+        }
+      })
+    );
+    if (notStarted > 0) {
+      return {
+        error: `Copying this boat's photos to the media host — ${notStarted} of ${jobs.length} still to go. Publish again to carry on (finished ones are skipped).`,
+      };
+    }
+    if (failedDest.size === 0) return urls;
+    const keep = jobs.map((j, k) => (failedDest.has(j.dest) ? null : urls[k])).filter((u): u is string => !!u);
+    return keep;
+  }
 
   // Server-side copies — the bytes never travel through this function.
   // Chunked so a 100+ photo boat doesn't open 100 sockets at once. An existing
@@ -195,6 +290,16 @@ async function syncPhotos(listing: ListingRow, sitePage: string, slug: string): 
           .from(PRIVATE_BUCKET)
           .copy(j.src, j.dest, { destinationBucket: PUBLIC_BUCKET });
         if (error && !/exists/i.test(error.message)) {
+          if (j.onR2) {
+            // An original on R2 (Supabase can't copy it): read it from R2.
+            try {
+              const { bytes, contentType } = await readOriginal(svc, { storage_path: j.src, storage_backend: "r2" });
+              await svc.storage.from(PUBLIC_BUCKET).upload(j.dest, bytes, { upsert: true, contentType });
+            } catch {
+              /* left out of the bucket, as when a download fails */
+            }
+            return;
+          }
           const { data: blob } = await svc.storage.from(PRIVATE_BUCKET).download(j.src);
           if (blob) {
             await svc.storage.from(PUBLIC_BUCKET).upload(j.dest, blob, { upsert: true });
@@ -463,7 +568,7 @@ export async function unpublishFromSite(
   return { warnings };
 }
 
-export async function buildListingFiles(listingId: string): Promise<{ files: SiteFile[]; slug: string; label: string } | { error: string }> {
+export async function buildListingFiles(listingId: string): Promise<{ files: SiteFile[]; slug: string; label: string; photosBackend: SitePhotosBackend } | { error: string }> {
   const svc = service();
 
   const { data: listing } = await svc
@@ -528,7 +633,10 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   const wantsVideo = includesVideo(media) && videoPublishReady();
 
-  const photos = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug) : [];
+  const photosBackend = sitePhotosBackend();
+  const synced = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug, photosBackend) : [];
+  if (!Array.isArray(synced)) return { error: synced.error };
+  const photos = synced;
   // syncPhotos returns the ordered list, so the first entry IS the cover photo
   // (the chosen hero, or the first in the walk-the-boat order). That's what the
   // video player uses as its poster.
@@ -602,5 +710,5 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   files.push(await renderSitemap());
   files.push(renderRobots());
 
-  return { files, slug, label };
+  return { files, slug, label, photosBackend };
 }

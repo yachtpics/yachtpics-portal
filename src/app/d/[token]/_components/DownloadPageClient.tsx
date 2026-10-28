@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import RetryImg from "@/components/RetryImg";
-import { photoAlt } from "@/lib/publicPhotoUrls";
+import { photoAlt } from "@/lib/photoAlt";
 import PresentedThrough from "@/components/PresentedThrough";
 
 type Photo = {

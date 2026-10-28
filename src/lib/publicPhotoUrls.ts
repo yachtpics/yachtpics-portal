@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { signDerivatives } from "@/lib/photoDerivatives";
+import { signResizedPath, signResizedPaths } from "@/lib/photoStore";
 
 /**
  * Right-sized photo links for the public pages (buyer slideshow /s, gallery /g,
@@ -28,6 +29,11 @@ import { signDerivatives } from "@/lib/photoDerivatives";
  * there's no transform to rate-limit. Everything here prefers them
  * (`signPhotosAtSize`, `signGridThumbs`); the per-photo transform signing below
  * is now only the fallback for photos not backfilled yet.
+ *
+ * Oct 28 — originals on R2: the per-photo transform signing goes through
+ * src/lib/photoStore.ts (signResizedPath[s]), which uses the stored copies for
+ * an R2 original (Supabase can't resize a file it doesn't hold) and the
+ * original itself if those don't exist yet.
  */
 
 export type ImageTransform = {
@@ -44,7 +50,6 @@ export const OG_TRANSFORM: ImageTransform = { width: 1200, height: 630, resize: 
 
 export type PhotoSizes = { thumb: string | null; full: string | null };
 
-const BUCKET = "listing-photos";
 
 /**
  * Resized links for the FIRST `limit` paths only (default 24); path → url.
@@ -60,21 +65,9 @@ export async function signTransformed(
   ttlSeconds: number,
   limit = 24
 ): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
   const unique = Array.from(new Set(paths.filter(Boolean))).slice(0, limit);
-  await Promise.all(
-    unique.map(async (path) => {
-      try {
-        const { data } = await supabase.storage
-          .from(BUCKET)
-          .createSignedUrl(path, ttlSeconds, { transform });
-        if (data?.signedUrl) out.set(path, data.signedUrl);
-      } catch {
-        /* leave it unsigned — the page falls back to the original */
-      }
-    })
-  );
-  return out;
+  // Unsigned paths are simply absent — the page falls back to the original.
+  return signResizedPaths(supabase, unique, ttlSeconds, transform, { concurrency: unique.length || 1 });
 }
 
 /** Sign one path with a transform (e.g. the hero for a link preview). */
@@ -85,8 +78,7 @@ export async function signOneTransformed(
   ttlSeconds: number
 ): Promise<string | null> {
   try {
-    const { data } = await supabase.storage.from(BUCKET).createSignedUrl(path, ttlSeconds, { transform });
-    return data?.signedUrl ?? null;
+    return await signResizedPath(supabase, path, ttlSeconds, transform);
   } catch {
     return null;
   }
@@ -111,22 +103,14 @@ export async function signIdsAtSize(
   concurrency = 20
 ): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
+  if (items.length === 0) return out;
   const transform = size === "full" ? FULL_TRANSFORM : THUMB_TRANSFORM;
-  let next = 0;
-  const worker = async () => {
-    while (next < items.length) {
-      const item = items[next++];
-      try {
-        const { data } = await supabase.storage
-          .from(BUCKET)
-          .createSignedUrl(item.storage_path, ttlSeconds, { transform });
-        if (data?.signedUrl) out[item.id] = data.signedUrl;
-      } catch {
-        /* leave it unsigned; the viewer asks again later */
-      }
-    }
-  };
-  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+  // Unsigned ones are left out; the viewer asks again later.
+  const byPath = await signResizedPaths(supabase, items.map((i) => i.storage_path), ttlSeconds, transform, { concurrency });
+  for (const item of items) {
+    const u = byPath.get(item.storage_path);
+    if (u) out[item.id] = u;
+  }
   return out;
 }
 
@@ -168,9 +152,4 @@ export async function signGridThumbs(
   return signPhotosAtSize(supabase, photos, "thumb", ttlSeconds, { fallbackLimit });
 }
 
-/** Alt text for a photo on a public page: "Salon — Sea Dream". */
-export function photoAlt(category: string | null | undefined, vesselName: string | null | undefined): string {
-  const what = (category ?? "").trim() || "Photo";
-  const name = (vesselName ?? "").trim();
-  return name ? `${what} — ${name}` : what;
-}
+export { photoAlt } from "@/lib/photoAlt";

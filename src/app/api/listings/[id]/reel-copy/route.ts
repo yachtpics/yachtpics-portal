@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { draftReelCopy, isAiConfigured, type DescribableListing } from "@/lib/ai";
+import { signResizedPath } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -57,11 +58,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const byId = new Map(rows.map((r) => [r.id as string, r]));
   const ordered = ids.map((i) => byId.get(i)).filter((r): r is NonNullable<typeof r> => !!r);
 
+  // Supabase resize, or the stored copy for an original on R2 (photoStore).
   const photos = (await Promise.all(ordered.map(async (p) => {
-    const { data } = await service.storage.from("listing-photos").createSignedUrl(p.storage_path as string, 600, {
-      transform: { width: 800, height: 800, resize: "contain", quality: 70 },
-    });
-    return data?.signedUrl ? { url: data.signedUrl, category: (p.category as string | null) ?? null } : null;
+    const url = await signResizedPath(service, p.storage_path as string, 600, { width: 800, height: 800, resize: "contain", quality: 70 }, { ensure: true });
+    return url ? { url, category: (p.category as string | null) ?? null } : null;
   }))).filter(Boolean) as { url: string; category: string | null }[];
 
   if (photos.length === 0) return NextResponse.json({ error: "Couldn't read those photos." }, { status: 502 });

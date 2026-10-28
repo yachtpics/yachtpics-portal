@@ -146,6 +146,10 @@ async function checkPrivateBucket(): Promise<{ ok: boolean; bucket?: string; det
   let corsNote: string | undefined;
   try {
     await r2EnsureVideoCors();
+    // Photo originals (Oct 28) share this bucket unless R2_PHOTO_BUCKET names
+    // another — then that one needs the same rule.
+    const photoBucket = process.env.R2_PHOTO_BUCKET;
+    if (photoBucket && photoBucket !== R2_VIDEO_BUCKET) await r2EnsureVideoCors(photoBucket);
   } catch {
     corsNote =
       "The API token can't manage bucket settings, so CORS must be set by hand in the Cloudflare " +

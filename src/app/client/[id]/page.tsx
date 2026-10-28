@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import ClientGalleryView from "./_components/ClientGalleryView";
 import { withVideoUrls } from "@/lib/videoUrls";
 import { signGridThumbs } from "@/lib/publicPhotoUrls";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ export default async function ClientGalleryPage({ params }: { params: { id: stri
   // for the first 24, the original after that).
   const [{ data: ps }, thumbMap] = await Promise.all([
     photoPaths.length > 0
-      ? service.storage.from("listing-photos").createSignedUrls(photoPaths, 7200)
+      ? signOriginalPaths(service, photoPaths, 7200).then((data) => ({ data }))
       : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
     signGridThumbs(service, photos ?? [], 7200),
   ]);

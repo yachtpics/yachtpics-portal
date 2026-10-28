@@ -8,6 +8,7 @@ import PrintButton from "./PrintButton";
 import HeroImage from "./HeroImage";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import { signOriginalUrl } from "@/lib/photoStore";
 
 export const dynamic = "force-dynamic";
 
@@ -88,8 +89,7 @@ export default async function ListingFlyerPage({ params }: { params: { id: strin
 
   let heroUrl: string | null = null;
   if (heroPhoto?.storage_path) {
-    const { data: signed } = await service.storage.from("listing-photos").createSignedUrl(heroPhoto.storage_path, 3600);
-    heroUrl = signed?.signedUrl ?? null;
+    heroUrl = await signOriginalUrl(service, heroPhoto.storage_path, 3600);
   }
 
   // Only credit YachtPics when the hero photo is ours — delivered (no uploader)

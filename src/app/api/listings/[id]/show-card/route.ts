@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient, type SupabaseClient } from "@supabase/supabase-js";
 import { buildDockCardPdf, imageKind, pdfSafe, type DockCardImage, type DockCardSize } from "@/lib/dockCardPdf";
 import { dockCardUrl, getCurrentShows, showDatesLabel, type BoatShow } from "@/lib/boatShows";
+import { lookupPhotoPaths, resizedOriginalBytes } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -46,6 +47,13 @@ async function coverPhoto(svc: SupabaseClient, listingId: string): Promise<DockC
   const { data } = await svc.rpc("listing_hero_photos", { p_listing_ids: [listingId] });
   const path = ((data ?? []) as { storage_path: string }[])[0]?.storage_path;
   if (!path) return null;
+  // Original on R2 (Oct 28): a 2000 px JPEG/PNG made server side from it
+  // (resizedOriginalBytes — the full-size file is never the fallback).
+  const row = (await lookupPhotoPaths(svc, [path])).get(path);
+  if (row?.storage_backend === "r2") {
+    const bytes = await resizedOriginalBytes(svc, path, 2000, 85);
+    return bytes ? asImage(bytes) : null;
+  }
   const bucket = svc.storage.from("listing-photos");
   // Resized, upright (transforms honour EXIF), and in the original's format —
   // asking for JPEG/PNG keeps Supabase from answering in WebP.

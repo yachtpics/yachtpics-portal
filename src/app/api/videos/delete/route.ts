@@ -4,7 +4,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { r2Configured, r2Delete, r2VideoDelete, r2VideoSize } from "@/lib/r2";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
-import { buildListingFiles } from "@/lib/sitePublish";
+import { buildListingFiles, markSitePhotosBackend } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 
 export const runtime = "nodejs";
@@ -211,7 +211,9 @@ async function removeFromWebsite(
       return { siteUpdated: false, siteWarning: "The video is gone from the media host, but the website page wasn't updated." };
     }
 
+    if (built.photosBackend !== "r2") await markSitePhotosBackend(listingId, "supabase");
     const res = await uploadFiles(built.files);
+    if (!res.error && built.photosBackend === "r2") await markSitePhotosBackend(listingId, "r2");
     if (res.error) {
       return { siteUpdated: false, siteWarning: `The video is gone, but the website page couldn't be updated: ${res.error}` };
     }

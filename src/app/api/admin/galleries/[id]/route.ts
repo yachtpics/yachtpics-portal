@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/requireAdmin";
 import { r2VideoDelete } from "@/lib/r2";
 import { logMediaDeletion } from "@/lib/mediaDeletionLog";
 import { removeDerivatives } from "@/lib/photoDerivatives";
+import { deleteOriginals } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 
@@ -60,7 +61,8 @@ export async function DELETE(_req: NextRequest, { params }: { params: { id: stri
 
   const { data: photos } = await admin.from("photos").select("id, storage_path").eq("gallery_id", params.id);
   if (photos && photos.length > 0) {
-    await admin.storage.from("listing-photos").remove(photos.map((p) => p.storage_path));
+    // Originals wherever they are (Supabase and/or R2 — photoStore).
+    await deleteOriginals(admin, photos.map((p) => p.storage_path));
     await removeDerivatives(admin, photos);
   }
   // Video files live in whichever store each row says — deleting only from

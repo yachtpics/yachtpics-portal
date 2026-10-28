@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
+import { signOriginalPaths } from "@/lib/photoStore";
+import { originalContentType } from "@/lib/photoStoreShared";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -26,7 +28,13 @@ type DownloadSize = keyof typeof SIZES;
 
 /**
  * POST /api/listings/[id]/photos/download-urls  { photoIds: string[], size }
- *   → { urls: { [photoId]: signedUrl }, failed: photoId[] }
+ *   → { urls: { [photoId]: signedUrl }, failed: photoId[], resize?: { [photoId]: { edge, type } } }
+ *
+ * Oct 28 — originals on R2: Supabase can't resize them, so for a Web / Social
+ * download of an R2 original the link is the ORIGINAL and `resize` tells the
+ * page to scale it down itself (long edge `edge`, re-encoded as `type`, the
+ * original's own format) — same file the broker got before, made in the
+ * browser instead of by Supabase. R2 has no egress charge.
  *
  * The broker listing page asks for these at download time (never reusing
  * page-load links, which expire), for one photo, a selection or the whole
@@ -76,24 +84,37 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // Only this listing's photos — ids from anywhere else are simply ignored.
     const { data: photos } = await svc
       .from("photos")
-      .select("id, storage_path")
+      .select("id, storage_path, storage_backend")
       .eq("listing_id", listingId)
       .in("id", ids);
-    const rows = (photos ?? []).filter((p) => !!p.storage_path) as { id: string; storage_path: string }[];
+    const rows = (photos ?? []).filter((p) => !!p.storage_path) as { id: string; storage_path: string; storage_backend: string | null }[];
 
     const urls: Record<string, string> = {};
+    const resize: Record<string, { edge: number; type: string }> = {};
     const edge = SIZES[size];
-    if (edge === null) {
-      const { data } = await svc.storage.from(BUCKET).createSignedUrls(rows.map((r) => r.storage_path), TTL);
+    // Originals — every full download, and resized downloads of R2 originals.
+    const originalsFor = edge === null ? rows : rows.filter((r) => r.storage_backend === "r2");
+    if (originalsFor.length) {
+      const signed = await signOriginalPaths(svc, originalsFor.map((r) => r.storage_path), TTL);
       const byPath = new Map<string, string>();
-      (data ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath.set(d.path, d.signedUrl); });
-      rows.forEach((r) => { const u = byPath.get(r.storage_path); if (u) urls[r.id] = u; });
-    } else {
+      signed.forEach((d) => { if (d.signedUrl) byPath.set(d.path, d.signedUrl); });
+      originalsFor.forEach((r) => {
+        const u = byPath.get(r.storage_path);
+        if (!u) return;
+        urls[r.id] = u;
+        if (edge !== null) {
+          const t = originalContentType(r.storage_path, "image/jpeg");
+          resize[r.id] = { edge, type: t === "image/png" ? "image/png" : "image/jpeg" };
+        }
+      });
+    }
+    if (edge !== null) {
+      const supaRows = rows.filter((r) => r.storage_backend !== "r2");
       // Supabase signs transforms one url at a time.
       const CHUNK = 50;
-      for (let i = 0; i < rows.length; i += CHUNK) {
+      for (let i = 0; i < supaRows.length; i += CHUNK) {
         await Promise.all(
-          rows.slice(i, i + CHUNK).map(async (r) => {
+          supaRows.slice(i, i + CHUNK).map(async (r) => {
             const { data } = await svc.storage.from(BUCKET).createSignedUrl(r.storage_path, TTL, {
               transform: { width: edge, height: edge, resize: "contain", quality: 85, format: "origin" },
             });
@@ -104,7 +125,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     }
 
     const failed = ids.filter((pid) => !urls[pid]);
-    return NextResponse.json({ urls, failed });
+    return NextResponse.json({ urls, failed, ...(Object.keys(resize).length ? { resize } : {}) });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

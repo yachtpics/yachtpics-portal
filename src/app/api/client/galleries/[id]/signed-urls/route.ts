@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { signVideoUrls } from "@/lib/videoUrls";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 
@@ -63,7 +64,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
 
   const photoPaths = (photos ?? []).map((p) => p.storage_path);
   const { data: ps } = photoPaths.length
-    ? await service.storage.from("listing-photos").createSignedUrls(photoPaths, TTL)
+    ? { data: await signOriginalPaths(service, photoPaths, TTL) }
     : { data: [] };
   const pmap = new Map((ps ?? []).map((d) => [d.path, d.signedUrl]));
 

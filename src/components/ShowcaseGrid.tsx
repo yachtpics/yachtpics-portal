@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import ShowcaseBoard, { type Boat } from "@/components/ShowcaseBoard";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 type ShowcaseRow = {
   listing_id: string;
@@ -38,8 +39,8 @@ export default async function ShowcaseGrid() {
     const service = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
     const paths = Array.from(new Set(rows.map((r) => r.hero_storage_path).filter(Boolean))) as string[];
     if (paths.length > 0) {
-      const { data: signed } = await service.storage.from("listing-photos").createSignedUrls(paths, 3600);
-      for (const s of signed ?? []) if (s.signedUrl && s.path) heroUrls.set(s.path, s.signedUrl);
+      const signed = await signOriginalPaths(service, paths, 3600);
+      for (const s of signed) if (s.signedUrl && s.path) heroUrls.set(s.path, s.signedUrl);
     }
   }
 

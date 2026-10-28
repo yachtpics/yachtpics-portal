@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
+import { uploadOriginal } from "@/lib/photoStoreClient";
 
 type Photo = { id: string; storage_path: string; filename: string | null; category: string | null; display_order: number | null; is_visible: boolean | null; url: string | null };
 type Video = { id: string; storage_path: string; filename: string | null; created_at: string; url: string | null };
@@ -173,11 +174,12 @@ export default function GalleryDetail({
       try {
         const ext = file.name.split(".").pop() || "jpg";
         const path = `galleries/${gallery.id}/${crypto.randomUUID()}.${ext}`;
-        const { error: upErr } = await supabase.storage.from("listing-photos").upload(path, file, { upsert: false });
-        if (upErr) throw upErr;
+        // R2 or Supabase — the server's switch decides (src/lib/photoStore.ts).
+        const up = await uploadOriginal({ supabase, path, file, scope: { galleryId: gallery.id } });
+        if (!up.ok) throw new Error(up.error);
         const { data: row, error: insErr } = await supabase
           .from("photos")
-          .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name, display_order: order++, is_visible: true, uploaded_by: uploader?.id ?? null })
+          .insert({ gallery_id: gallery.id, storage_path: path, filename: file.name, display_order: order++, is_visible: true, uploaded_by: uploader?.id ?? null, storage_backend: up.backend, original_bytes: up.bytes })
           .select("id, storage_path, filename, category, display_order, is_visible")
           .single();
         if (insErr) throw insErr;

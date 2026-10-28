@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import DownloadPageClient from "./_components/DownloadPageClient";
 import { signVideoUrl, withVideoPosters } from "@/lib/videoUrls";
 import { OG_TRANSFORM, signGridThumbs, signOneTransformed } from "@/lib/publicPhotoUrls";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -162,7 +163,7 @@ export default async function PublicDownloadPage({ params }: { params: { token: 
   const paths = (photos ?? []).map((p) => p.storage_path);
   const [{ data: signed }, thumbMap] = await Promise.all([
     paths.length > 0
-      ? supabase.storage.from("listing-photos").createSignedUrls(paths, 60 * 60 * 6)
+      ? signOriginalPaths(supabase, paths, 60 * 60 * 6).then((data) => ({ data }))
       : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] }),
     signGridThumbs(supabase, photos ?? [], 60 * 60 * 6),
   ]);

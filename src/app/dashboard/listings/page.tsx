@@ -10,6 +10,7 @@ import { getCurrentShows } from "@/lib/boatShows";
 import ShowBanner from "./_components/ShowBanner";
 import PlanNudgeBanner from "./_components/PlanNudgeBanner";
 import { allowanceMessage, listingAllowance } from "@/lib/listingAllowance";
+import { signResizedPaths } from "@/lib/photoStore";
 
 export default async function ListingsPage({ searchParams = {} }: { searchParams?: { show?: string } }) {
   const supabase = await createClient();
@@ -159,14 +160,11 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
       if (u) urlByPath.set(p.storage_path as string, u);
     });
     // Covers not backfilled yet: the per-photo transform, as before.
-    await Promise.all(paths.filter((path) => !urlByPath.has(path)).map(async (path) => {
-      const { data: signed } = await supabase.storage
-        .from("listing-photos")
-        .createSignedUrl(path, 3600, {
-          transform: { width: 600, height: 600, resize: "contain", quality: 72 },
-        });
-      if (signed?.signedUrl) urlByPath.set(path, signed.signedUrl);
-    }));
+    // (Supabase resize; an original on R2 uses its stored copy — photoStore.)
+    const resized = await signResizedPaths(supabase, paths.filter((path) => !urlByPath.has(path)), 3600, {
+      width: 600, height: 600, resize: "contain", quality: 72,
+    });
+    resized.forEach((u, path) => urlByPath.set(path, u));
     for (const r of rows) {
       const url = urlByPath.get(r.storage_path);
       if (url) heroes[r.listing_id] = { url, fit: r.hero_fit === "fill" ? "fill" : "fit" };

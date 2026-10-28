@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runDerivativeBackfill } from "@/lib/photoDerivatives";
+import { runDerivativeBackfill, serviceRoleClient, sweepStagedOriginals } from "@/lib/photoDerivatives";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,8 +29,11 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const r = await runDerivativeBackfill({ budgetMs: 50_000, concurrency: 4 });
-    return NextResponse.json(r);
+    // Staged copies of R2 originals (`_tmp/derive/`) older than an hour —
+    // left only if a resize died mid-way. Nothing else is touched.
+    const staleStagedRemoved = await sweepStagedOriginals(serviceRoleClient()).catch(() => 0);
+    const r = await runDerivativeBackfill({ budgetMs: 45_000, concurrency: 4 });
+    return NextResponse.json({ ...r, staleStagedRemoved });
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }

@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import AdminListingDetail from "./_components/AdminListingDetail";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { withVideoUrls } from "@/lib/videoUrls";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 type DownloadProfile = { first_name: string | null; last_name: string | null; display_email: string | null };
 type DownloadRecord = {
@@ -166,8 +167,8 @@ export default async function AdminListingPage({ params, searchParams }: { param
   const paths = (photos ?? []).map(p => p.storage_path);
   const signPhotos = async () => {
     if (paths.length === 0) return [];
-    const { data } = await supabase.storage.from("listing-photos").createSignedUrls(paths, 3600);
-    return data;
+    // Supabase or R2, per photo (src/lib/photoStore.ts).
+    return signOriginalPaths(supabase, paths, 3600);
   };
 
   // Wave 2 — the reads that needed a wave-one result, side by side.

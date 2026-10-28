@@ -7,6 +7,7 @@ import PrintButton from "@/app/print/listing/[id]/PrintButton";
 import { buildEngagement } from "@/lib/engagement";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import { signResizedPath } from "@/lib/photoStore";
 
 export const dynamic = "force-dynamic";
 
@@ -63,10 +64,8 @@ export default async function SellerReportPage({ params }: { params: { id: strin
   const topWithUrls = await Promise.all(eng.topPhotos.slice(0, 6).map(async (tp) => {
     const { data: p } = await service.from("photos").select("storage_path").eq("id", tp.photo_id).maybeSingle();
     if (!p) return { ...tp, url: null as string | null };
-    const { data: signed } = await service.storage.from("listing-photos").createSignedUrl(p.storage_path, 3600, {
-      transform: { width: 400, height: 400, resize: "contain", quality: 72 },
-    });
-    return { ...tp, url: signed?.signedUrl ?? null };
+    const url = await signResizedPath(service, p.storage_path, 3600, { width: 400, height: 400, resize: "contain", quality: 72 });
+    return { ...tp, url };
   }));
 
   const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : (profile?.display_email ?? "Broker");

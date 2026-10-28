@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { buildListingFiles, unpublishFromSite } from "@/lib/sitePublish";
+import { buildListingFiles, markSitePhotosBackend, unpublishFromSite } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 
 export const runtime = "nodejs";
@@ -50,13 +50,26 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
   }
 
+  const { data: before } = await svc
+    .from("listings")
+    .select("publish_to_site")
+    .eq("id", params.id)
+    .maybeSingle();
+
   await svc
     .from("listings")
     .update({ publish_to_site: true })
     .eq("id", params.id);
 
   const built = await buildListingFiles(params.id);
-  if ("error" in built) return NextResponse.json({ error: built.error }, { status: 400 });
+  if ("error" in built) {
+    // Don't leave the switch on for a boat whose page couldn't be built — put
+    // it back to what it was (a boat that was already live stays live).
+    if (before && before.publish_to_site !== true) {
+      await svc.from("listings").update({ publish_to_site: false }).eq("id", params.id);
+    }
+    return NextResponse.json({ error: built.error }, { status: 400 });
+  }
 
   // Preview mode, or FTP not wired up yet: hand back what WOULD ship.
   if (dryRun || !ftpConfigured()) {
@@ -72,7 +85,11 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     });
   }
 
+  // Supabase-bucket photos: say so BEFORE the upload (a half-finished upload
+  // may already point the page there). R2: only once it's all up.
+  if (built.photosBackend !== "r2") await markSitePhotosBackend(params.id, "supabase");
   const res = await uploadFiles(built.files);
+  if (!res.error && built.photosBackend === "r2") await markSitePhotosBackend(params.id, "r2");
   if (res.error) {
     // The upload failed after we'd already flipped publish_to_site on (the
     // publisher requires it set to build). Roll it back so the boat doesn't

@@ -11,6 +11,7 @@ import type { BadgeTone } from "@/components/ui";
 import { planLabel } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { signResizedPaths } from "@/lib/photoStore";
 
 function statusTone(status: string): BadgeTone {
   if (status === "active") return "success";
@@ -109,14 +110,9 @@ export default async function DashboardPage() {
     // small cards. Supabase only accepts a transform when signing one url at a
     // time, so these are signed individually — but all at once.
     if (paths.length > 0) {
-      await Promise.all(paths.map(async (path) => {
-        const { data: signed } = await svc.storage
-          .from("listing-photos")
-          .createSignedUrl(path, 3600, {
-            transform: { width: 800, height: 800, resize: "contain", quality: 72 },
-          });
-        if (signed?.signedUrl) urls.set(path, signed.signedUrl);
-      }));
+      // (Supabase resize; an original on R2 uses its stored copy — photoStore.)
+      const resized = await signResizedPaths(svc, paths, 3600, { width: 800, height: 800, resize: "contain", quality: 72 });
+      resized.forEach((u, path) => urls.set(path, u));
     }
     return scRows.map((r) => ({
       id: r.listing_id,

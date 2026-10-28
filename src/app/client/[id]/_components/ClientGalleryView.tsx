@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
-import { photoAlt } from "@/lib/publicPhotoUrls";
+import { photoAlt } from "@/lib/photoAlt";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null; thumbUrl?: string | null };

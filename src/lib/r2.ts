@@ -288,9 +288,11 @@ export async function r2VideoSize(key: string): Promise<number | null> {
  *     }
  *   ]
  */
-export async function r2EnsureVideoCors(): Promise<void> {
+export async function r2EnsureVideoCors(bucket: string = R2_VIDEO_BUCKET): Promise<void> {
+  // Also used for a separate photo-originals bucket (R2_PHOTO_BUCKET), which
+  // needs the same rule: browser PUTs (uploads) and GETs (zips, reels).
   await r2().send(new PutBucketCorsCommand({
-    Bucket: R2_VIDEO_BUCKET,
+    Bucket: bucket,
     CORSConfiguration: {
       CORSRules: [
         {

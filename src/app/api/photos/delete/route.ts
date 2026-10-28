@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { removeDerivatives } from "@/lib/photoDerivatives";
+import { deleteOriginals } from "@/lib/photoStore";
 
 /**
  * POST /api/photos/delete
@@ -46,7 +47,7 @@ export async function POST(req: NextRequest) {
 
     const { data: photos } = await svc
       .from("photos")
-      .select("id, listing_id, gallery_id, storage_path, filename")
+      .select("id, listing_id, gallery_id, storage_path, filename, storage_backend")
       .in("id", ids);
     if (!photos || photos.length === 0) {
       return NextResponse.json({ error: "Photo not found" }, { status: 404 });
@@ -75,7 +76,8 @@ export async function POST(req: NextRequest) {
     // must not stop the record from being cleaned up.
     const paths = photos.map((p) => p.storage_path as string).filter(Boolean);
     if (paths.length > 0) {
-      await svc.storage.from("listing-photos").remove(paths).catch(() => {});
+      // Wherever the originals are (Supabase and/or R2 — photoStore).
+      await deleteOriginals(svc, paths);
     }
     // …and their stored 600 / 2000 px copies (`_d/`), computed from the row.
     await removeDerivatives(svc, photos.map((p) => ({ id: p.id as string, storage_path: p.storage_path as string })));
@@ -109,7 +111,9 @@ export async function POST(req: NextRequest) {
       photoCount: photos.length,
       filename: photos.length === 1 ? (photos[0].filename as string | null) : null,
       storagePath: photos.length === 1 ? (photos[0].storage_path as string) : null,
-      storageHost: "supabase",
+      storageHost: photos.every((p) => p.storage_backend === "r2")
+        ? "r2"
+        : photos.some((p) => p.storage_backend === "r2") ? "supabase+r2" : "supabase",
       extra: photos.length > 1
         ? { filenames: photos.slice(0, 25).map((p) => p.filename ?? p.storage_path) }
         : {},

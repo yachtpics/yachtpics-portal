@@ -2,6 +2,7 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient, signFirstPaint } from "@/lib/publicSlideshow";
 import { withVideoUrls } from "@/lib/videoUrls";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 /**
  * Shared by the public gallery page (/g/[slug]), its link preview and its
@@ -91,7 +92,7 @@ export async function signGalleryExtras(
   const [videoUrls, batch] = await Promise.all([
     withVideoUrls(supabase, videos, { expiresIn: GALLERY_TTL }),
     paths.length > 0
-      ? supabase.storage.from("listing-photos").createSignedUrls(paths, GALLERY_TTL).then(({ data }) => data ?? [])
+      ? signOriginalPaths(supabase, paths, GALLERY_TTL) // stills stay in Supabase; originals may be on R2
       : Promise.resolve([] as { path: string | null; signedUrl: string }[]),
   ]);
   const byPath = new Map(batch.map((d) => [d.path ?? "", d.signedUrl] as const));

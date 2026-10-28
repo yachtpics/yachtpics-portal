@@ -18,6 +18,7 @@ import {
   estimateShowroomBytes, FAT32_MAX_BYTES, fetchBitmap, formatBytes, formatRunTime, loadLogoBitmap, renderShowroom,
   showroomTimeline, SHOWROOM_SIZES, type BoatTransition, type LogoCorner, type ShowroomResolution, type ShowroomSlide,
 } from "@/lib/showroomRender";
+import { photoDrawUrls, signOriginalInBrowser } from "@/lib/photoStoreClient";
 
 // The reel title face (ReelMaker's Cormorant Garamond).
 const serif = Cormorant_Garamond({ subsets: ["latin"], weight: ["600"], display: "swap" });
@@ -141,7 +142,7 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
         .sort((a, b) => (Date.parse(b.shotAt) || 0) - (Date.parse(a.shotAt) || 0));
       // Photos per listing (separately — a brokerage's photos together pass Supabase's 1000-row page).
       const photoLists = await Promise.all(listings.map(({ l }) =>
-        supabase.from("photos").select("id, storage_path, filename, category, display_order")
+        supabase.from("photos").select("id, storage_path, filename, category, display_order, storage_backend, derivatives_at")
           .eq("listing_id", l.id).eq("is_visible", true).order("display_order").limit(2000)
           .then((r) => (r.data ?? []) as ShowroomPhoto[])));
       if (seq !== loadSeq.current) return;
@@ -251,14 +252,18 @@ export default function ShowroomBuilder({ brokerages, brokers }: { brokerages: S
             // of the download), the original if that fails. 4K: Supabase
             // transforms stop at 2500 px, so always the original (signed for
             // an hour), decoded down to 4400 px.
+            // Originals on R2 (Oct 28): src/lib/photoStoreClient.ts picks the
+            // links (resized first where possible, then the original).
             if (!is4k) {
-              const { data: t } = await supabase.storage.from("listing-photos")
-                .createSignedUrl(p.storage_path, 3600, { transform: { width: 2400, height: 2400, resize: "contain", quality: 85 } });
-              if (t?.signedUrl) { try { return await fetchBitmap(t.signedUrl, photoEdge); } catch { /* fall through */ } }
+              const candidates = await photoDrawUrls(supabase, p, 2400, { quality: 85 });
+              for (let k = 0; k < candidates.length; k++) {
+                try { return await fetchBitmap(candidates[k], photoEdge); } catch { /* next */ }
+              }
+              throw new Error("No link for a photo.");
             }
-            const { data: orig } = await supabase.storage.from("listing-photos").createSignedUrl(p.storage_path, 3600);
-            if (!orig?.signedUrl) throw new Error("No link for a photo.");
-            return fetchBitmap(orig.signedUrl, photoEdge);
+            const orig = await signOriginalInBrowser(supabase, p.storage_path, 3600);
+            if (!orig) throw new Error("No link for a photo.");
+            return fetchBitmap(orig, photoEdge);
           },
         });
       });

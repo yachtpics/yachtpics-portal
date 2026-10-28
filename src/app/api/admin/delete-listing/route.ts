@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { removeDerivatives } from "@/lib/photoDerivatives";
+import { deleteOriginals } from "@/lib/photoStore";
 
 export async function DELETE(req: NextRequest) {
   try {
@@ -23,7 +24,8 @@ export async function DELETE(req: NextRequest) {
     // Delete files from storage
     if (photos && photos.length > 0) {
       const paths = photos.map((p) => p.storage_path);
-      await supabase.storage.from("listing-photos").remove(paths);
+      // Originals wherever they are (Supabase and/or R2 — photoStore).
+      await deleteOriginals(supabase, paths);
       // Files are removed by row path (not folder prefix), so the stored
       // thumbnails under {broker}/{listing}/_d/ need naming explicitly.
       await removeDerivatives(supabase, photos);

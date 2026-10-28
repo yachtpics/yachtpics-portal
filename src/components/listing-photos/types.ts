@@ -16,6 +16,8 @@ export interface ListingPhoto {
   is_visible: boolean;
   /** Stored 600/2000 px copies made (src/lib/photoDerivativePaths.ts). */
   derivatives_at?: string | null;
+  /** Where the original lives (Oct 28): "supabase" | "r2" (src/lib/photoStoreShared.ts). */
+  storage_backend?: string | null;
   /** Signed full-size link the admin page is handed by its server page (and
    *  keeps fresh for new uploads / replaces). The broker page never has one:
    *  it signs on demand. */

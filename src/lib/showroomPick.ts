@@ -26,6 +26,9 @@ export type ShowroomPhoto = {
   filename: string | null;
   category: string | null;
   display_order: number | null;
+  /** Where the original lives (Oct 28) and whether stored copies exist. */
+  storage_backend?: string | null;
+  derivatives_at?: string | null;
 };
 
 export const SHOWROOM_PICK_MIN = 6;

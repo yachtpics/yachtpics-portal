@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { notFound } from "next/navigation";
+import { signOriginalPaths } from "@/lib/photoStore";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -87,7 +88,7 @@ export default async function BrianNopperDemoSite() {
 
   const coverPaths = Array.from(covers.values());
   const { data: signed } = coverPaths.length
-    ? await supabase.storage.from("listing-photos").createSignedUrls(coverPaths, 7200)
+    ? { data: await signOriginalPaths(supabase, coverPaths, 7200) }
     : { data: [] };
   const urlByPath = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
 

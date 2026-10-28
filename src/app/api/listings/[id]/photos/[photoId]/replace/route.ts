@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { removeDerivatives } from "@/lib/photoDerivatives";
+import { deleteOriginals, headR2Original, noteR2PhotoExists, signOriginalUrl, signResizedPath } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 
@@ -37,6 +38,8 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const newPath = typeof body?.newPath === "string" ? body.newPath : "";
     const filename = typeof body?.filename === "string" ? body.filename.slice(0, 255) : null;
+    // Where the browser put the new file (src/lib/photoStoreClient.ts uploadOriginal).
+    const newBackend: "supabase" | "r2" = body?.backend === "r2" ? "r2" : "supabase";
     if (!listingId || !photoId || !newPath) {
       return NextResponse.json({ error: "Missing listing, photo or file." }, { status: 400 });
     }
@@ -55,7 +58,7 @@ export async function POST(
 
     const { data: photo } = await svc
       .from("photos")
-      .select("id, listing_id, storage_path, filename")
+      .select("id, listing_id, storage_path, storage_backend, filename")
       .eq("id", photoId)
       .maybeSingle();
     if (!photo || photo.listing_id !== listingId) {
@@ -75,11 +78,21 @@ export async function POST(
       return NextResponse.json({ error: "That upload isn't in this listing's folder." }, { status: 400 });
     }
 
-    const { data: listed, error: listError } = await svc.storage
-      .from(BUCKET)
-      .list(`${parts[0]}/${parts[1]}`, { search: parts[2], limit: 10 });
-    if (listError || !(listed ?? []).some((o) => o.name === parts[2])) {
-      return NextResponse.json({ error: "The new file didn't reach storage — try again." }, { status: 400 });
+    let newBytes: number | null = null;
+    if (newBackend === "r2") {
+      const head = await headR2Original(newPath);
+      if (!head || head.size <= 0) {
+        return NextResponse.json({ error: "The new file didn't reach storage — try again." }, { status: 400 });
+      }
+      newBytes = head.size;
+      noteR2PhotoExists();
+    } else {
+      const { data: listed, error: listError } = await svc.storage
+        .from(BUCKET)
+        .list(`${parts[0]}/${parts[1]}`, { search: parts[2], limit: 10 });
+      if (listError || !(listed ?? []).some((o) => o.name === parts[2])) {
+        return NextResponse.json({ error: "The new file didn't reach storage — try again." }, { status: 400 });
+      }
     }
 
     const { data: clash } = await svc
@@ -96,7 +109,16 @@ export async function POST(
       .from("photos")
       // derivatives_at cleared: the stored thumbnails belong to the old file.
       // The browser asks for new ones right after (replaceListingPhoto).
-      .update({ storage_path: newPath, filename: filename ?? photo.filename, derivatives_at: null })
+      .update({
+        storage_path: newPath,
+        filename: filename ?? photo.filename,
+        derivatives_at: null,
+        storage_backend: newBackend,
+        original_bytes: newBytes,
+        r2_verified_at: null,
+        r2_copy_error: null,
+        supabase_removed_at: null,
+      })
       .eq("id", photoId)
       .eq("listing_id", listingId)
       .select("id, storage_path, filename")
@@ -113,17 +135,18 @@ export async function POST(
       await removeDerivatives(svc, [{ id: photoId, storage_path: oldPath }]);
       const { data: stillUsed } = await svc.from("photos").select("id").eq("storage_path", oldPath).limit(1);
       if (!(stillUsed ?? []).length) {
-        await svc.storage.from(BUCKET).remove([oldPath]).catch(() => {});
+        // Wherever it lives (Supabase, R2, or both mid-migration).
+        await deleteOriginals(svc, [oldPath]);
       }
     }
 
     // Fresh links for the new path, so the page can swap the tile right away.
     // Same thumbnail shape as /api/thumbs.
-    const [thumb, original] = await Promise.all([
-      svc.storage.from(BUCKET).createSignedUrl(newPath, 60 * 60 * 6, {
-        transform: { width: 400, height: 400, resize: "contain", quality: 72 },
-      }),
-      svc.storage.from(BUCKET).createSignedUrl(newPath, 3600),
+    // (An R2 original has no derivatives yet, so its "thumbnail" is the
+    // original until they're made a moment later — never a broken tile.)
+    const [thumbUrl, originalUrl] = await Promise.all([
+      signResizedPath(svc, newPath, 60 * 60 * 6, { width: 400, height: 400, resize: "contain", quality: 72 }),
+      signOriginalUrl(svc, newPath, 3600),
     ]);
 
     // The old file left storage, so it goes in the deletion log like any
@@ -145,7 +168,7 @@ export async function POST(
       photoCount: 1,
       filename: (photo.filename as string | null) ?? null,
       storagePath: oldPath,
-      storageHost: "supabase",
+      storageHost: (photo as { storage_backend?: string | null }).storage_backend === "r2" ? "r2" : "supabase",
       extra: { replaced: true, replaced_with: filename ?? newPath, photo_id: photoId },
     });
 
@@ -154,8 +177,8 @@ export async function POST(
         id: updated.id,
         storage_path: updated.storage_path,
         filename: updated.filename,
-        thumbUrl: thumb.data?.signedUrl ?? null,
-        originalUrl: original.data?.signedUrl ?? null,
+        thumbUrl,
+        originalUrl,
       },
     });
   } catch (err) {

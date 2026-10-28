@@ -5,6 +5,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import type { ListingPhoto, PhotoCapabilities } from "./types";
+import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 
 /**
  * The photo state a listing page keeps: the rows, their resized thumbnails
@@ -104,21 +105,20 @@ export function useListingPhotos(opts: {
   async function signDisplayCopies(targets: ListingPhoto[], expiresIn: number): Promise<Record<string, string>> {
     const out: Record<string, string> = {};
     if (targets.length === 0) return out;
-    const pathFor = (t: ListingPhoto) => (hasDerivatives(t) ? derivativePath(t, 2000) : t.storage_path);
-    const { data } = await supabase.storage
-      .from("listing-photos")
-      .createSignedUrls(targets.map(pathFor), expiresIn);
-    const byPath = new Map<string, string>();
-    (data ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath.set(d.path, d.signedUrl); });
-    targets.forEach((t) => { const u = byPath.get(pathFor(t)); if (u) out[t.id] = u; });
-    // A stored copy that couldn't be signed (object missing): try the original.
-    const retry = targets.filter((t) => !out[t.id] && hasDerivatives(t));
-    if (retry.length) {
-      const { data: again } = await supabase.storage
+    // Stored copies are always in Supabase; originals may be on R2 (Oct 28).
+    const withCopy = targets.filter((t) => hasDerivatives(t));
+    if (withCopy.length) {
+      const { data } = await supabase.storage
         .from("listing-photos")
-        .createSignedUrls(retry.map((t) => t.storage_path), expiresIn);
-      const byPath2 = new Map<string, string>();
-      (again ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath2.set(d.path, d.signedUrl); });
+        .createSignedUrls(withCopy.map((t) => derivativePath(t, 2000)), expiresIn);
+      const byPath = new Map<string, string>();
+      (data ?? []).forEach((d) => { if (d.path && d.signedUrl && !d.error) byPath.set(d.path, d.signedUrl); });
+      withCopy.forEach((t) => { const u = byPath.get(derivativePath(t, 2000)); if (u) out[t.id] = u; });
+    }
+    // No stored copy, or it couldn't be signed (object missing): the original.
+    const retry = targets.filter((t) => !out[t.id]);
+    if (retry.length) {
+      const byPath2 = await signOriginalsInBrowser(supabase, retry.map((t) => t.storage_path), expiresIn);
       retry.forEach((t) => { const u = byPath2.get(t.storage_path); if (u) out[t.id] = u; });
     }
     if (Object.keys(out).length) setOriginals((prev) => ({ ...prev, ...out }));
