@@ -11,7 +11,7 @@
 -- BEFORE applying: store the SAME value as Vercel's CRON_SECRET in Supabase
 -- Vault, named exactly 'jobs_cron_secret' (Dashboard → Project Settings →
 -- Vault → Add new secret), or in the SQL editor:
---   select vault.create_secret('<CRON_SECRET value>', 'jobs_cron_secret');
+--   select vault.create_secret('<JOBS_TICK_SECRET value>', 'jobs_cron_secret');
 --
 -- To stop it later:  select cron.unschedule('jobs-tick');
 create extension if not exists pg_cron;

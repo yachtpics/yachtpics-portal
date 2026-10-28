@@ -25,14 +25,20 @@ const STALE_MS = 90_000;
  * heartbeat for 90 s), it answers at once and runs ONE batch in this same
  * invocation (waitUntil, ~40 s — no self-fetch). A healthy chain is left alone.
  *
- * Auth: CRON_SECRET as `Authorization: Bearer …` or `x-jobs-secret`; fails
+ * Auth: JOBS_TICK_SECRET (or CRON_SECRET) as `Authorization: Bearer …` or `x-jobs-secret`; fails
  * closed when it isn't set.
  */
 async function handle(req: NextRequest) {
-  const secret = process.env.CRON_SECRET;
-  if (!secret) return NextResponse.json({ error: "CRON_SECRET not configured" }, { status: 500 });
+  // JOBS_TICK_SECRET (shared with the Supabase Vault secret `jobs_cron_secret`)
+  // is preferred; CRON_SECRET is still accepted.
+  const secrets = [process.env.JOBS_TICK_SECRET, process.env.CRON_SECRET].filter(
+    (s): s is string => typeof s === "string" && s.length >= 16,
+  );
+  if (secrets.length === 0) return NextResponse.json({ error: "JOBS_TICK_SECRET not configured" }, { status: 500 });
   const bearer = req.headers.get("authorization");
-  if (bearer !== `Bearer ${secret}` && req.headers.get("x-jobs-secret") !== secret) {
+  const given = req.headers.get("x-jobs-secret");
+  const ok = secrets.some((s) => bearer === `Bearer ${s}` || given === s);
+  if (!ok) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
