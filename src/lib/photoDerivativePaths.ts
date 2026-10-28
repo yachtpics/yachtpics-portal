@@ -85,6 +85,15 @@ export type DownloadSizeName = keyof typeof DOWNLOAD_SIZE_EDGES;
 export const DOWNLOAD_SIZE_QUALITY = 85;
 export const DOWNLOAD_FOLDER = "_dl";
 
+/**
+ * true: an R2 original whose long side is ≤ 2048 gets no Web & MLS file — that
+ * download serves the original. NOTE (measured Oct 28 on four 2000×1333
+ * YachtPics JPEGs): today's Supabase Web & MLS download of such a file is a
+ * q85 re-encode at the SAME pixel size, ~0.52 MB vs ~2.2 MB (≈23%). Set false
+ * to keep making the smaller re-encode for R2 photos too.
+ */
+export const WEB_USES_ORIGINAL_WHEN_SMALL = false;
+
 /** PNG originals stay PNG (as Supabase's format "origin" did); everything else is JPEG. */
 export function downloadSizeExt(storagePath: string): "jpg" | "png" {
   return (storagePath.split(".").pop() || "").toLowerCase() === "png" ? "png" : "jpg";
@@ -102,8 +111,20 @@ export function downloadSizePath(photo: DerivativeSource, size: DownloadSizeName
   return `${dir}${DOWNLOAD_FOLDER}/${photo.id}-${pathVersion(path)}-${size}.${downloadSizeExt(path)}`;
 }
 
-/** What photos.download_sizes holds: which sizes exist, for which original. */
-export type DownloadSizesRecord = { path: string } & Partial<Record<DownloadSizeName, number>>;
+/**
+ * What photos.download_sizes holds: which sizes exist (bytes), for which
+ * original, the original's upright size (w × h), and `web_original` = the
+ * original's long side is ≤ 2048, so no Web & MLS file is made and that
+ * download serves the original itself.
+ */
+export type DownloadSizesRecord = { path: string; w?: number; h?: number; web_original?: boolean; error?: string } &
+  Partial<Record<DownloadSizeName, number>>;
+
+/** Web & MLS of this photo is its original (long side ≤ 2048, recorded for the current original). */
+export function webServesOriginal(photo: { storage_path: string; download_sizes?: unknown }): boolean {
+  const rec = photo.download_sizes as DownloadSizesRecord | null | undefined;
+  return !!rec && rec.path === photo.storage_path && rec.web_original === true;
+}
 
 /** True when the record says `size` exists for this photo's CURRENT original. */
 export function hasDownloadSize(

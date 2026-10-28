@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { originalPathInScope, presignR2Original, signOriginalPaths } from "@/lib/photoStore";
-import { downloadSizeExt, downloadSizePath, hasDownloadSize, type DownloadSizeName } from "@/lib/photoDerivativePaths";
+import { downloadSizeExt, downloadSizePath, hasDownloadSize, webServesOriginal, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 
 export const runtime = "nodejs";
 // 60 s: an R2 photo whose Web / Social file isn't made yet is made here (sharp).
@@ -110,7 +110,15 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       const name = size as DownloadSizeName;
       const r2Rows = rows.filter((r) => r.storage_backend === "r2" && originalPathInScope(r.storage_path, r));
       const started = Date.now();
+      // Web & MLS of an original no bigger than 2048 px (YachtPics' 2000 px
+      // deliveries): the original itself, named exactly as the Web & MLS
+      // download is today (the page adds " (2048px)" and the original's extension).
+      const isWebOriginal = (r: { storage_path: string; download_sizes: unknown }) => name === "web" && webServesOriginal(r);
       for (const r of r2Rows) {
+        if (isWebOriginal(r)) {
+          try { urls[r.id] = await presignR2Original(r.storage_path, TTL); } catch { /* failed below */ }
+          continue;
+        }
         let ready = hasDownloadSize(r, name);
         if (!ready) {
           if (Date.now() - started > MAKE_BUDGET_MS) {
@@ -120,6 +128,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           try {
             const { storeDownloadSizes } = await import("@/lib/photoSharp");
             const rec = await storeDownloadSizes(svc, r);
+            if (rec && name === "web" && rec.web_original) {
+              try { urls[r.id] = await presignR2Original(r.storage_path, TTL); } catch { /* failed below */ }
+              continue;
+            }
             ready = !!rec && typeof rec[name] === "number";
           } catch (e) {
             console.warn(`download size ${name} for ${r.id}: ${e instanceof Error ? e.message : e}`);

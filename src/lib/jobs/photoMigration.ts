@@ -78,8 +78,9 @@ async function copyOne(svc: SupabaseClient, row: CopyRow): Promise<number> {
     const { makeDownloadSizes } = await import("@/lib/photoSharp");
     const made = await makeDownloadSizes(bytes, row.storage_path);
     const type = downloadSizeExt(row.storage_path) === "png" ? "image/png" : "image/jpeg";
-    const rec: Record<string, unknown> = { path: row.storage_path };
-    for (const [name, buf] of Array.from(made.entries())) {
+    const rec: Record<string, unknown> = { path: row.storage_path, w: made.width, h: made.height };
+    if (made.webOriginal) rec.web_original = true;
+    for (const [name, buf] of Array.from(made.files.entries())) {
       await putR2Original(downloadSizePath(row, name), new Uint8Array(buf), type);
       rec[name] = buf.byteLength;
     }

@@ -8,6 +8,7 @@ import {
   type DerivativeSize,
   type DownloadSizeName,
   type DownloadSizesRecord,
+  WEB_USES_ORIGINAL_WHEN_SMALL,
 } from "@/lib/photoDerivativePaths";
 
 /**
@@ -89,18 +90,39 @@ export function makeJpegOrPng(original: Uint8Array, edge: number, png: boolean, 
   });
 }
 
-/** Both download sizes of an original. Throws if it can't decode. */
-export function makeDownloadSizes(original: Uint8Array, storagePath: string): Promise<Map<DownloadSizeName, Buffer>> {
+export type MadeDownloadSizes = {
+  files: Map<DownloadSizeName, Buffer>;
+  /** Upright size of the original. */
+  width: number;
+  height: number;
+  /** Long side ≤ 2048: no Web & MLS file — that download is the original. */
+  webOriginal: boolean;
+};
+
+/**
+ * The download sizes of an original. Social (1080) always; Web & MLS (2048)
+ * only when the original is bigger than 2048 on its long side — YachtPics
+ * delivers 2000 px files, for which a "2048" copy would only be a re-encode
+ * of the same pixels. Throws if it can't decode.
+ */
+export function makeDownloadSizes(original: Uint8Array, storagePath: string): Promise<MadeDownloadSizes> {
   return serial(async () => {
     const base = await pipeline(original);
+    const meta = await base.clone().metadata();
+    const swap = (meta.orientation ?? 1) >= 5;
+    const width = (swap ? meta.height : meta.width) ?? 0;
+    const height = (swap ? meta.width : meta.height) ?? 0;
+    const webOriginal =
+      WEB_USES_ORIGINAL_WHEN_SMALL && width > 0 && height > 0 && Math.max(width, height) <= DOWNLOAD_SIZE_EDGES.web;
     const png = downloadSizeExt(storagePath) === "png";
     const out = new Map<DownloadSizeName, Buffer>();
     for (const name of Object.keys(DOWNLOAD_SIZE_EDGES) as DownloadSizeName[]) {
+      if (name === "web" && webOriginal) continue;
       const edge = DOWNLOAD_SIZE_EDGES[name];
       const p = base.clone().resize(edge, edge, { fit: "inside", withoutEnlargement: true });
       out.set(name, png ? await p.png().toBuffer() : await p.jpeg({ quality: DOWNLOAD_SIZE_QUALITY }).toBuffer());
     }
-    return out;
+    return { files: out, width, height, webOriginal };
   });
 }
 
@@ -168,14 +190,18 @@ export async function storeDownloadSizes(
   if (!bytes && !staged) bytes = (await readOriginal(svc, { storage_path: photo.storage_path, storage_backend: "r2" })).bytes;
   const sharpType = downloadSizeExt(photo.storage_path) === "png" ? "image/png" : "image/jpeg";
   let files: Map<DownloadSizeName, { bytes: Uint8Array; type: string }>;
+  const rec: DownloadSizesRecord = { path: photo.storage_path };
   try {
     if (!bytes) throw new Error("staged only");
     const made = await makeDownloadSizes(bytes, photo.storage_path);
-    files = new Map(Array.from(made.entries()).map(([k, b]) => [k, { bytes: new Uint8Array(b), type: sharpType }]));
+    files = new Map(Array.from(made.files.entries()).map(([k, b]) => [k, { bytes: new Uint8Array(b), type: sharpType }]));
+    rec.w = made.width;
+    rec.h = made.height;
+    if (made.webOriginal) rec.web_original = true;
   } catch {
+    // Staged path (HEIC): both sizes made, as before.
     files = await downloadSizesViaStaging(svc, photo, bytes, staged ?? null);
   }
-  const rec: DownloadSizesRecord = { path: photo.storage_path };
   for (const [name, f] of Array.from(files.entries())) {
     await putR2Original(downloadSizePath(photo, name), f.bytes, f.type);
     rec[name] = f.bytes.byteLength;
