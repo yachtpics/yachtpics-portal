@@ -190,6 +190,8 @@ export function usePhotoActions(opts: {
           }
           results[i] = photo;
           setPhotos((prev) => [...prev, photo]);
+          // Original on R2: its 600 px tile appears as soon as it's made.
+          r.thumb?.then((tile) => { if (tile) setThumbs((prev) => ({ ...prev, [photo.id]: tile })); });
           if (category === "Other") needsLabel.push(photo.id);
         } else {
           failedIdx.push(i);

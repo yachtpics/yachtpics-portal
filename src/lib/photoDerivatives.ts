@@ -204,6 +204,11 @@ export async function ensureDerivatives(
         else out.failed.push({ id: r.id, reason: `read original: ${msg}` });
         return;
       }
+      // sharp, in this function — no staging round trip. Derivatives first
+      // (tiles need them), then the pre-made download sizes into R2.
+      if (await makeWithSharp(r, original.bytes)) return;
+      // sharp couldn't load or decode this file (e.g. HEIC): the old staging
+      // path, for this file only.
       const ext = (r.storage_path.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
       staged = `${STAGING_PREFIX}${r.id}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}.${ext}`;
       const { error: stageErr } = await svc.storage.from(BUCKET).upload(staged, original.bytes, {
@@ -218,9 +223,52 @@ export async function ensureDerivatives(
     }
     try {
       await makeBoth(r, source);
+      // R2 original sharp couldn't read (HEIC): its Web / Social files from
+      // the same staged copy, via Supabase's transform (today's params).
+      if (staged && out.done.includes(r.id)) {
+        const { storeDownloadSizes } = await import("@/lib/photoSharp");
+        await storeDownloadSizes(svc, r, undefined, staged).catch((e) => {
+          console.warn(`download sizes (staged): ${r.id} not made (${e instanceof Error ? e.message : e})`);
+        });
+      }
     } finally {
       if (staged) await svc.storage.from(BUCKET).remove([staged]).then(() => {}, () => {});
     }
+  };
+
+  /** R2 original: both WebP derivatives with sharp. False = fall back to staging. */
+  const makeWithSharp = async (r: DerivativeSource, bytes: Uint8Array): Promise<boolean> => {
+    const { makeWebpDerivatives, storeDownloadSizes } = await import("@/lib/photoSharp");
+    let made: Map<DerivativeSize, Buffer>;
+    try {
+      made = await makeWebpDerivatives(bytes, DERIVATIVE_SIZES);
+    } catch (e) {
+      console.warn(`photo derivatives: sharp couldn't make ${r.id} (${e instanceof Error ? e.message : e}) — staging instead`);
+      return false;
+    }
+    for (const size of DERIVATIVE_SIZES) {
+      const buf = made.get(size)!;
+      const upErr = await uploadDerivative(svc, derivativePath(r, size), buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
+      if (upErr) {
+        out.failed.push({ id: r.id, reason: `upload: ${upErr}` });
+        return true;
+      }
+    }
+    const { error } = await svc
+      .from("photos")
+      .update({ derivatives_at: new Date().toISOString() })
+      .eq("id", r.id)
+      .eq("storage_path", r.storage_path);
+    if (error) {
+      out.failed.push({ id: r.id, reason: `db: ${error.message}` });
+      return true;
+    }
+    out.done.push(r.id);
+    // Web & MLS / Social files, best effort (made on demand if this fails).
+    await storeDownloadSizes(svc, r, bytes).catch((e) => {
+      console.warn(`download sizes: ${r.id} not made (${e instanceof Error ? e.message : e})`);
+    });
+    return true;
   };
 
   const makeBoth = async (r: DerivativeSource, source: string) => {
@@ -263,6 +311,63 @@ export async function ensureDerivatives(
     }
   });
   await Promise.all(lanes);
+  return out;
+}
+
+/**
+ * Upload step for originals on R2 (Oct 28): make ONLY the 600 px copy, so the
+ * tile shows at once, and stamp `thumb_at`. The 2000 copy and the Web /
+ * Social files follow in the background job (`r2_photo_finish`), which sets
+ * derivatives_at as usual. sharp first; a file sharp can't read (HEIC) is
+ * staged and resized by Supabase. Supabase-backed photos are skipped (their
+ * upload flow is unchanged). Returns id → done.
+ */
+export async function ensureThumb600(
+  photoIds: string[],
+  opts: { svc?: SupabaseClient } = {}
+): Promise<{ done: string[]; failed: { id: string; reason: string }[] }> {
+  const svc = opts.svc ?? serviceRoleClient();
+  const out = { done: [] as string[], failed: [] as { id: string; reason: string }[] };
+  const ids = Array.from(new Set(photoIds.filter((x) => typeof x === "string" && x))).slice(0, 200);
+  if (ids.length === 0) return out;
+  const { data, error } = await svc
+    .from("photos")
+    .select("id, storage_path, storage_backend, derivatives_at, thumb_at")
+    .in("id", ids);
+  if (error) throw new Error(error.message);
+  const { readOriginal } = await import("@/lib/photoStore");
+  const { makeThumb600 } = await import("@/lib/photoSharp");
+  for (const r of (data ?? []) as { id: string; storage_path: string; storage_backend: string | null; derivatives_at: string | null; thumb_at: string | null }[]) {
+    if (r.storage_backend !== "r2" || r.derivatives_at || r.thumb_at) {
+      if (r.derivatives_at || r.thumb_at) out.done.push(r.id);
+      continue;
+    }
+    let staged: string | null = null;
+    try {
+      const { bytes, contentType } = await readOriginal(svc, r);
+      let webp: ArrayBuffer | null = null;
+      try {
+        const b = await makeThumb600(bytes);
+        webp = b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+      } catch {
+        const ext = (r.storage_path.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "") || "jpg";
+        staged = `${STAGING_PREFIX}${r.id}-t${Date.now().toString(36)}.${ext}`;
+        const { error: stErr } = await svc.storage.from(BUCKET).upload(staged, bytes, { contentType, upsert: true });
+        if (stErr) throw new Error(`stage: ${stErr.message}`);
+        const got = await fetchResized(svc, staged, 600);
+        if (!got.ok) throw new Error(got.reason);
+        webp = got.bytes;
+      }
+      const upErr = await uploadDerivative(svc, derivativePath(r, 600), webp);
+      if (upErr) throw new Error(`upload: ${upErr}`);
+      await svc.from("photos").update({ thumb_at: new Date().toISOString() }).eq("id", r.id).eq("storage_path", r.storage_path);
+      out.done.push(r.id);
+    } catch (e) {
+      out.failed.push({ id: r.id, reason: e instanceof Error ? e.message : String(e) });
+    } finally {
+      if (staged) await svc.storage.from(BUCKET).remove([staged]).then(() => {}, () => {});
+    }
+  }
   return out;
 }
 
@@ -323,7 +428,7 @@ export async function runDerivativeBackfill(opts: {
  * or whose object couldn't be signed — the caller falls back to its existing
  * transform-signing path for exactly those.
  */
-export async function signDerivatives<T extends DerivativeSource & { derivatives_at?: string | null }>(
+export async function signDerivatives<T extends DerivativeSource & { derivatives_at?: string | null; thumb_at?: string | null }>(
   supabase: SupabaseClient,
   photos: T[],
   size: DerivativeSize,
@@ -333,7 +438,8 @@ export async function signDerivatives<T extends DerivativeSource & { derivatives
   const missing: T[] = [];
   const ready: { photo: T; path: string }[] = [];
   for (const p of photos) {
-    if (p.storage_path && hasDerivatives(p)) ready.push({ photo: p, path: derivativePath(p, size) });
+    // (thumb_at: an R2 upload whose 600 is made and whose 2000 is on its way.)
+    if (p.storage_path && (hasDerivatives(p) || (size === 600 && !!p.thumb_at))) ready.push({ photo: p, path: derivativePath(p, size) });
     else missing.push(p);
   }
   if (ready.length === 0) return { urls, missing };
@@ -389,4 +495,7 @@ export async function removeDerivatives(svc: SupabaseClient, photos: DerivativeS
   for (let i = 0; i < paths.length; i += 1000) {
     await svc.storage.from(BUCKET).remove(paths.slice(i, i + 1000)).then(() => {}, () => {});
   }
+  // …and the pre-made Web / Social files of originals on R2 (Oct 28).
+  const { deleteDownloadSizeFiles } = await import("@/lib/photoStore");
+  await deleteDownloadSizeFiles(photos).catch(() => {});
 }

@@ -221,78 +221,35 @@ export async function discardUploadedOriginal(
 }
 
 /**
- * Make the stored 600 / 2000 px copies of photos whose originals were just
- * uploaded to R2 — AWAITED, so tiles, labelling and public pages never need
- * the full-size original. (Supabase uploads keep the fire-and-forget
- * requestDerivatives.) Best effort: the daily backfill catches anything missed.
+ * Photos whose originals were just uploaded to R2: make their 600 px tile now
+ * (callers don't hold the upload queue for it — the tile appears when it
+ * lands) and queue the rest (2000 copy,
+ * Web / Social files) as a background job on the server. Returns id → tile
+ * link for the photos whose 600 was made. Supabase uploads keep the
+ * fire-and-forget requestDerivatives. Best effort: the background job and the
+ * daily backfill catch anything missed.
  */
-export async function makeDerivativesNow(scope: UploadScope, photoIds: string[]): Promise<void> {
-  if (photoIds.length === 0) return;
+export async function makeDerivativesNow(scope: UploadScope, photoIds: string[]): Promise<Record<string, string>> {
+  const thumbs: Record<string, string> = {};
+  if (photoIds.length === 0) return thumbs;
   try {
     if (scope.listingId) {
       for (let i = 0; i < photoIds.length; i += 40) {
-        await fetch(`/api/listings/${scope.listingId}/photos/derivatives`, {
+        const res = await fetch(`/api/listings/${scope.listingId}/photos/derivatives`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photoIds: photoIds.slice(i, i + 40) }),
+          body: JSON.stringify({ photoIds: photoIds.slice(i, i + 40), quick: true }),
+          // Survives a page change mid-upload, so the job still gets queued.
+          keepalive: true,
         });
+        const d = res.ok ? await res.json().catch(() => null) : null;
+        Object.assign(thumbs, (d?.thumbs ?? {}) as Record<string, string>);
       }
     } else if (scope.galleryId) {
       await fetch(`/api/admin/galleries/${scope.galleryId}/photos/derivatives`, { method: "POST" });
     }
   } catch {
-    /* the daily backfill catches it */
+    /* the background job / daily backfill catches it */
   }
-}
-
-// ─── resizing in the browser ────────────────────────────────────────────────
-
-/**
- * Downscale an image blob so its long edge is at most `edge`, re-encoded as
- * `type` (JPEG / PNG — the original's own format). Used for the Web & MLS and
- * Social downloads of originals on R2, which Supabase can't resize. Halves
- * step by step for a clean result (one big drawImage step aliases), honours
- * EXIF orientation, never upscales.
- */
-export async function resizeImageBlob(blob: Blob, edge: number, type: string, quality = 0.85): Promise<Blob> {
-  const bmp = await createImageBitmap(blob, { imageOrientation: "from-image" } as ImageBitmapOptions);
-  try {
-    const scale = Math.min(1, edge / Math.max(bmp.width, bmp.height));
-    const tw = Math.max(1, Math.round(bmp.width * scale));
-    const th = Math.max(1, Math.round(bmp.height * scale));
-    let src: CanvasImageSource = bmp;
-    let sw = bmp.width;
-    let sh = bmp.height;
-    while (sw / 2 >= tw && sh / 2 >= th) {
-      const c = document.createElement("canvas");
-      c.width = Math.round(sw / 2);
-      c.height = Math.round(sh / 2);
-      const ctx = c.getContext("2d");
-      if (!ctx) break;
-      ctx.imageSmoothingEnabled = true;
-      ctx.imageSmoothingQuality = "high";
-      ctx.drawImage(src, 0, 0, c.width, c.height);
-      src = c;
-      sw = c.width;
-      sh = c.height;
-    }
-    const out = document.createElement("canvas");
-    out.width = tw;
-    out.height = th;
-    const ctx = out.getContext("2d");
-    if (!ctx) throw new Error("No canvas");
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
-    if (type !== "image/png") {
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, tw, th);
-    }
-    ctx.drawImage(src, 0, 0, tw, th);
-    const encodeAs = type === "image/png" ? "image/png" : "image/jpeg";
-    return await new Promise<Blob>((resolve, reject) =>
-      out.toBlob((b) => (b ? resolve(b) : reject(new Error("Couldn't encode the photo."))), encodeAs, quality)
-    );
-  } finally {
-    bmp.close();
-  }
+  return thumbs;
 }

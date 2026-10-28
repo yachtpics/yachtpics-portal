@@ -2,11 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { signOriginalPaths } from "@/lib/photoStore";
-import { originalContentType } from "@/lib/photoStoreShared";
+import { originalPathInScope, presignR2Original, signOriginalPaths } from "@/lib/photoStore";
+import { downloadSizeExt, downloadSizePath, hasDownloadSize, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+// 60 s: an R2 photo whose Web / Social file isn't made yet is made here (sharp).
+export const maxDuration = 60;
+/** Time this request may spend making missing Web / Social files; the rest come back as `pending`. */
+const MAKE_BUDGET_MS = 35_000;
 
 const BUCKET = "listing-photos";
 const TTL = 60 * 60;
@@ -28,13 +31,15 @@ type DownloadSize = keyof typeof SIZES;
 
 /**
  * POST /api/listings/[id]/photos/download-urls  { photoIds: string[], size }
- *   → { urls: { [photoId]: signedUrl }, failed: photoId[], resize?: { [photoId]: { edge, type } } }
+ *   → { urls: { [photoId]: signedUrl }, failed: photoId[], pending?: photoId[], ext?: { [photoId]: "jpg" | "png" } }
  *
- * Oct 28 — originals on R2: Supabase can't resize them, so for a Web / Social
- * download of an R2 original the link is the ORIGINAL and `resize` tells the
- * page to scale it down itself (long edge `edge`, re-encoded as `type`, the
- * original's own format) — same file the broker got before, made in the
- * browser instead of by Supabase. R2 has no egress charge.
+ * Oct 28 — originals on R2: Supabase can't resize them, so their Web & MLS /
+ * Social files are PRE-MADE with sharp (same long edge and quality as the
+ * transform below) and stored in R2 beside the original (`_dl/`, recorded in
+ * photos.download_sizes). The link is a presigned R2 GET of that file. One
+ * that isn't made yet is made here on demand (stored, then served); any not
+ * reached within MAKE_BUDGET_MS come back as `pending` and the page asks
+ * again. `ext` is the made file's extension (jpg, or png for PNG originals).
  *
  * The broker listing page asks for these at download time (never reusing
  * page-load links, which expire), for one photo, a selection or the whole
@@ -84,29 +89,48 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // Only this listing's photos — ids from anywhere else are simply ignored.
     const { data: photos } = await svc
       .from("photos")
-      .select("id, storage_path, storage_backend")
+      .select("id, storage_path, storage_backend, download_sizes, listing_id")
       .eq("listing_id", listingId)
       .in("id", ids);
-    const rows = (photos ?? []).filter((p) => !!p.storage_path) as { id: string; storage_path: string; storage_backend: string | null }[];
+    const rows = (photos ?? []).filter((p) => !!p.storage_path) as {
+      id: string; storage_path: string; storage_backend: string | null; download_sizes: unknown; listing_id: string;
+    }[];
 
     const urls: Record<string, string> = {};
-    const resize: Record<string, { edge: number; type: string }> = {};
+    const ext: Record<string, "jpg" | "png"> = {};
+    const pending: string[] = [];
     const edge = SIZES[size];
-    // Originals — every full download, and resized downloads of R2 originals.
-    const originalsFor = edge === null ? rows : rows.filter((r) => r.storage_backend === "r2");
-    if (originalsFor.length) {
-      const signed = await signOriginalPaths(svc, originalsFor.map((r) => r.storage_path), TTL);
+    if (edge === null) {
+      const signed = await signOriginalPaths(svc, rows.map((r) => r.storage_path), TTL);
       const byPath = new Map<string, string>();
       signed.forEach((d) => { if (d.signedUrl) byPath.set(d.path, d.signedUrl); });
-      originalsFor.forEach((r) => {
-        const u = byPath.get(r.storage_path);
-        if (!u) return;
-        urls[r.id] = u;
-        if (edge !== null) {
-          const t = originalContentType(r.storage_path, "image/jpeg");
-          resize[r.id] = { edge, type: t === "image/png" ? "image/png" : "image/jpeg" };
+      rows.forEach((r) => { const u = byPath.get(r.storage_path); if (u) urls[r.id] = u; });
+    } else {
+      // R2 originals: the pre-made file (made now if missing, within budget).
+      const name = size as DownloadSizeName;
+      const r2Rows = rows.filter((r) => r.storage_backend === "r2" && originalPathInScope(r.storage_path, r));
+      const started = Date.now();
+      for (const r of r2Rows) {
+        let ready = hasDownloadSize(r, name);
+        if (!ready) {
+          if (Date.now() - started > MAKE_BUDGET_MS) {
+            pending.push(r.id);
+            continue;
+          }
+          try {
+            const { storeDownloadSizes } = await import("@/lib/photoSharp");
+            const rec = await storeDownloadSizes(svc, r);
+            ready = !!rec && typeof rec[name] === "number";
+          } catch (e) {
+            console.warn(`download size ${name} for ${r.id}: ${e instanceof Error ? e.message : e}`);
+          }
         }
-      });
+        if (!ready) continue;
+        try {
+          urls[r.id] = await presignR2Original(downloadSizePath(r, name), TTL);
+          ext[r.id] = downloadSizeExt(r.storage_path);
+        } catch { /* failed below */ }
+      }
     }
     if (edge !== null) {
       const supaRows = rows.filter((r) => r.storage_backend !== "r2");
@@ -124,8 +148,13 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
     }
 
-    const failed = ids.filter((pid) => !urls[pid]);
-    return NextResponse.json({ urls, failed, ...(Object.keys(resize).length ? { resize } : {}) });
+    const failed = ids.filter((pid) => !urls[pid] && !pending.includes(pid));
+    return NextResponse.json({
+      urls,
+      failed,
+      ...(pending.length ? { pending } : {}),
+      ...(Object.keys(ext).length ? { ext } : {}),
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: message }, { status: 500 });

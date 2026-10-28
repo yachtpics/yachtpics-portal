@@ -110,7 +110,7 @@ export async function uploadListingPhoto(opts: {
   categorySource?: "filename" | "manual";
   displayOrder: number;
   uploadedBy: string | null;
-}): Promise<{ ok: true; row: ListingPhotoRow } | { ok: false; error: string }> {
+}): Promise<{ ok: true; row: ListingPhotoRow; thumb?: Promise<string | null> } | { ok: false; error: string }> {
   const { supabase, file, brokerId, listingId, pathKey, category, categorySource, displayOrder, uploadedBy } = opts;
   const ext = file.name.split(".").pop();
   const path = `${brokerId}/${listingId}/${pathKey}.${ext}`;
@@ -140,10 +140,16 @@ export async function uploadListingPhoto(opts: {
     await discardUploadedOriginal(supabase, path, up.backend, { listingId });
     return { ok: false, error: insertError?.message ?? "Couldn't save the photo record." };
   }
-  // R2 original: its stored copies are made before this returns, so the
-  // tile, labelling and public pages never need the full-size file.
-  if (up.backend === "r2") await makeDerivativesNow({ listingId }, [(row as ListingPhotoRow).id]);
-  else requestDerivatives(listingId, [(row as ListingPhotoRow).id]);
+  // R2 original: its 600 px tile is started now WITHOUT holding up the next
+  // upload (upload speed stays as today); `thumb` resolves to the tile link
+  // when it lands. The 2000 copy and the download files follow in a
+  // background job. The full-size file is never used as a tile.
+  if (up.backend === "r2") {
+    const id = (row as ListingPhotoRow).id;
+    const thumb = makeDerivativesNow({ listingId }, [id]).then((t) => t[id] ?? null, () => null);
+    return { ok: true, row: row as ListingPhotoRow, thumb };
+  }
+  requestDerivatives(listingId, [(row as ListingPhotoRow).id]);
   return { ok: true, row: row as ListingPhotoRow };
 }
 
@@ -211,16 +217,8 @@ export async function replaceListingPhoto(opts: {
   if (up.backend === "r2") {
     // R2 original: the server can't resize it on the fly, so the tile comes
     // from the stored copy made now.
-    await makeDerivativesNow({ listingId }, [photoId]);
-    try {
-      const t = await fetch("/api/thumbs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, width: 400 }),
-      }).then((res) => (res.ok ? res.json() : null));
-      const thumb = (t?.urls as Record<string, string> | undefined)?.[photoId];
-      if (thumb) (data.photo as ReplacedPhoto).thumbUrl = thumb;
-    } catch { /* tile shows "processing" until the page refreshes thumbnails */ }
+    const thumbs = await makeDerivativesNow({ listingId }, [photoId]);
+    if (thumbs[photoId]) (data.photo as ReplacedPhoto).thumbUrl = thumbs[photoId];
   } else {
     requestDerivatives(listingId, [photoId]);
   }

@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
 
   const { data: photos } = await service
     .from("photos")
-    .select("id, storage_path, derivatives_at, storage_backend")
+    .select("id, storage_path, derivatives_at, storage_backend, thumb_at")
     .eq("listing_id", body.listingId);
   if (!photos?.length) return NextResponse.json({ urls: {}, missing: [] });
 
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
   // are listed as `processing` (no url — the tile shows a placeholder), and
   // making the copies is kicked off in the background.
   const r2Fallback = fallback.filter((p) => (p as { storage_backend?: string | null }).storage_backend === "r2");
-  const processing = r2Fallback.filter((p) => !p.derivatives_at).map((p) => p.id);
+  const processing = r2Fallback.filter((p) => !p.derivatives_at && !(p as { thumb_at?: string | null }).thumb_at).map((p) => p.id);
   if (processing.length) {
     runInBackground(ensureDerivatives(processing.slice(0, 40), { svc: service, concurrency: 4, deadline: Date.now() + 50_000 }));
   }

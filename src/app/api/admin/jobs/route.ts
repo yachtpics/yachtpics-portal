@@ -81,7 +81,7 @@ async function normaliseParams(
   svc: SupabaseClient
 ): Promise<{ params: Record<string, unknown> } | { error: string }> {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  if (kind === "republish_site" || kind === "derivatives_backfill" || kind === "photo_originals_copy") return { params: {} };
+  if (kind === "republish_site" || kind === "derivatives_backfill" || kind === "photo_originals_copy" || kind === "r2_photo_finish") return { params: {} };
   // Deleting files: only with the typed confirmation from /admin/storage.
   if (kind === "photo_originals_cleanup" || kind === "site_photos_cleanup") {
     if (p.confirm !== CLEANUP_CONFIRM_PHRASE) return { error: `Type "${CLEANUP_CONFIRM_PHRASE}" to confirm.` };

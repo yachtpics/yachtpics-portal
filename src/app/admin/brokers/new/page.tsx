@@ -195,7 +195,8 @@ export default function InviteBrokerPage() {
             }).select("id").single();
             // Stored 600 / 2000 px copies, made server-side (fire-and-forget).
             if (newPhoto?.id) {
-              if (up.backend === "r2") await makeDerivativesNow({ listingId }, [newPhoto.id as string]);
+              // R2: 600 tile now, the rest in a background job — not awaited.
+              if (up.backend === "r2") void makeDerivativesNow({ listingId }, [newPhoto.id as string]);
               else requestDerivatives(listingId, [newPhoto.id as string]);
             }
           }

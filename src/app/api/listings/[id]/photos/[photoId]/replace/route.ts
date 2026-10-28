@@ -118,6 +118,8 @@ export async function POST(
         r2_verified_at: null,
         r2_copy_error: null,
         supabase_removed_at: null,
+        download_sizes: null,
+        thumb_at: null,
       })
       .eq("id", photoId)
       .eq("listing_id", listingId)

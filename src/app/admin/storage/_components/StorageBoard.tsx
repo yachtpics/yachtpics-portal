@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import JobProgress, { fetchActiveJob, startJob } from "@/components/admin/JobProgress";
 import type { JobKind, JobRow } from "@/lib/jobs/types";
+import SpeedCheck from "./SpeedCheck";
 
 type Stats = {
   supabase_count: number;
@@ -10,6 +11,8 @@ type Stats = {
   supabase_missing: number;
   r2_count: number;
   r2_bytes: number;
+  r2_download_count?: number;
+  r2_download_bytes?: number;
   r2_with_supabase_copy_count: number;
   r2_with_supabase_copy_bytes: number;
   orphan_count: number;
@@ -177,7 +180,9 @@ export default function StorageBoard() {
         </div>
         <Row label="Still on Supabase" count={stats.supabase_count} bytes={stats.supabase_bytes}
           hint={stats.supabase_missing ? `${n(stats.supabase_missing)} of these have no file in Supabase — they'll show as failed in the copy.` : undefined} />
-        <Row label="On Cloudflare R2" count={stats.r2_count} bytes={stats.r2_bytes} />
+        <Row label="On Cloudflare R2 — originals" count={stats.r2_count} bytes={stats.r2_bytes} />
+        <Row label="On Cloudflare R2 — Web & Social download files" count={stats.r2_download_count ?? 0} bytes={stats.r2_download_bytes ?? 0}
+          hint={`R2 total: ${gb(Number(stats.r2_bytes || 0) + Number(stats.r2_download_bytes || 0))}`} />
         <Row label="…of which still have a Supabase copy" count={stats.r2_with_supabase_copy_count} bytes={stats.r2_with_supabase_copy_bytes}
           hint="Freed by “Remove Supabase copies” below." />
         <Row label="Orphans (files with no photo record)" count={stats.orphan_count} bytes={stats.orphan_bytes}
@@ -189,6 +194,8 @@ export default function StorageBoard() {
           {!config.r2Photos ? " — R2 isn't configured" : ""}.
         </p>
       </section>
+
+      <SpeedCheck />
 
       <section className="space-y-3">
         <h2 className="text-sm font-semibold text-ink-900">1 · Copy originals to R2</h2>

@@ -20,7 +20,7 @@ import { runDerivativeBackfill } from "@/lib/photoDerivatives";
 import { isAiConfigured } from "@/lib/ai";
 import { labelCategories, labelListingPhotos } from "@/lib/labelPhotos";
 import { isMissingTable, jobsServiceClient } from "./queue";
-import { photoOriginalsCleanup, photoOriginalsCopy, sitePhotosCleanup } from "./photoMigration";
+import { photoOriginalsCleanup, photoOriginalsCopy, r2PhotoFinish, sitePhotosCleanup } from "./photoMigration";
 import {
   JobFatalError,
   isJobFatal,
@@ -210,6 +210,7 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   photo_originals_copy: photoOriginalsCopy,
   photo_originals_cleanup: photoOriginalsCleanup,
   site_photos_cleanup: sitePhotosCleanup,
+  r2_photo_finish: r2PhotoFinish,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

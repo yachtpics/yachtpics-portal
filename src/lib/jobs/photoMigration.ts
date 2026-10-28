@@ -19,12 +19,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDerivatives } from "@/lib/photoDerivatives";
 import { deleteR2Original, headR2Original, putR2Original, PHOTO_BUCKET, r2PhotosConfigured, noteR2PhotoExists } from "@/lib/photoStore";
 import { originalContentType } from "@/lib/photoStoreShared";
+import { DOWNLOAD_SIZE_EDGES, downloadSizeExt, downloadSizePath, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 import { r2Configured, r2Exists } from "@/lib/r2";
 import { JobFatalError, type JobHandler } from "./types";
 
 /** Photos per worker step (one ~40 s batch). */
 export const COPY_BATCH = 50;
-const COPY_CONCURRENCY = 6;
+const COPY_CONCURRENCY = 3; // sharp work is serialised per instance; keeps a batch inside the step budget
 const CLEANUP_BATCH = 200;
 const SITE_BUCKET = "site-photos";
 
@@ -69,10 +70,34 @@ async function copyOne(svc: SupabaseClient, row: CopyRow): Promise<number> {
     if ((head.contentType || "") !== contentType) throw new Error(`verify: R2 type ${head.contentType}, expected ${contentType}`);
   }
 
+  // The Web & MLS / Social download files, made now from the bytes in hand
+  // (sharp) and stored in R2 — so moved photos download as fast as new ones.
+  // Best effort: a photo sharp can't read gets them on demand later.
+  let downloadSizes: Record<string, unknown> | null = null;
+  try {
+    const { makeDownloadSizes } = await import("@/lib/photoSharp");
+    const made = await makeDownloadSizes(bytes, row.storage_path);
+    const type = downloadSizeExt(row.storage_path) === "png" ? "image/png" : "image/jpeg";
+    const rec: Record<string, unknown> = { path: row.storage_path };
+    for (const [name, buf] of Array.from(made.entries())) {
+      await putR2Original(downloadSizePath(row, name), new Uint8Array(buf), type);
+      rec[name] = buf.byteLength;
+    }
+    downloadSizes = rec;
+  } catch {
+    downloadSizes = null;
+  }
+
   const now = new Date().toISOString();
   const { data: updated, error } = await svc
     .from("photos")
-    .update({ storage_backend: "r2", r2_verified_at: now, original_bytes: bytes.byteLength, r2_copy_error: null })
+    .update({
+      storage_backend: "r2",
+      r2_verified_at: now,
+      original_bytes: bytes.byteLength,
+      r2_copy_error: null,
+      ...(downloadSizes ? { download_sizes: downloadSizes } : {}),
+    })
     .eq("id", row.id)
     .eq("storage_path", row.storage_path) // replaced meanwhile → leave it
     .eq("storage_backend", "supabase")
@@ -86,9 +111,16 @@ async function copyOne(svc: SupabaseClient, row: CopyRow): Promise<number> {
   // The row was deleted or its file replaced while copying: remove the R2
   // object this run just wrote (only that R2 key; Supabase is untouched),
   // unless some photos row still uses the path.
-  if (wroteNow) {
+  if (wroteNow || downloadSizes) {
     const { count } = await svc.from("photos").select("id", { count: "exact", head: true }).eq("storage_path", row.storage_path);
-    if ((count ?? 0) === 0) await deleteR2Original(row.storage_path).catch(() => {});
+    if ((count ?? 0) === 0) {
+      if (wroteNow) await deleteR2Original(row.storage_path).catch(() => {});
+      if (downloadSizes) {
+        await Promise.all(
+          (Object.keys(DOWNLOAD_SIZE_EDGES) as DownloadSizeName[]).map((n) => deleteR2Original(downloadSizePath(row, n)).catch(() => {}))
+        );
+      }
+    }
   }
   return 0;
 }
@@ -335,4 +367,69 @@ export const sitePhotosCleanup: JobHandler = async (job, { svc, deadlineMs }) =>
   const finished = boats.length < 5 && lastId === (boats.length ? boats[boats.length - 1].id : lastId);
   if (finished) log.push(`Finished — ${job.done + done} boats cleaned${job.failed + failed ? `, ${job.failed + failed} with files kept` : ""}.`);
   return { cursor: { lastId }, done, failed, total, log, finished };
+};
+
+// ─── r2_photo_finish ────────────────────────────────────────────────────────
+// Queued by the upload step of originals on R2 (which waits only for the 600
+// tile): makes the 2000 copy (sets derivatives_at) and the Web / Social
+// download files for every R2 photo still missing them, newest first. The
+// queue is the photos table itself. A photo that keeps failing is skipped for
+// the rest of this job (cursor.skip); the daily derivatives cron and the
+// on-demand download path still cover it. download_sizes gets a marker on
+// failure so this job doesn't loop on it (downloads then retry on demand).
+export const r2PhotoFinish: JobHandler = async (job, { svc, deadlineMs }) => {
+  const cur = (job.cursor ?? {}) as { skip?: string[] };
+  const skip = new Set(cur.skip ?? []);
+  const { ensureDerivatives } = await import("@/lib/photoDerivatives");
+  const { storeDownloadSizes } = await import("@/lib/photoSharp");
+  let done = 0;
+  let failed = 0;
+  const log: string[] = [];
+  let exhausted = false;
+  while (Date.now() < deadlineMs - 8000) {
+    const { data, error } = await svc
+      .from("photos")
+      .select("id, storage_path, derivatives_at, download_sizes")
+      .eq("storage_backend", "r2")
+      .or("derivatives_at.is.null,download_sizes.is.null")
+      .order("created_at", { ascending: false })
+      .limit(20 + skip.size);
+    if (error) throw new Error(error.message);
+    const rows = ((data ?? []) as { id: string; storage_path: string; derivatives_at: string | null; download_sizes: unknown }[])
+      .filter((r) => !skip.has(r.id));
+    if (rows.length === 0) {
+      exhausted = true;
+      break;
+    }
+    for (const r of rows) {
+      if (Date.now() > deadlineMs - 8000) break;
+      try {
+        if (!r.derivatives_at) {
+          // Both sizes + (via sharp, or the staged copy for HEIC) the download files.
+          const e = await ensureDerivatives([r.id], { svc, concurrency: 1, force: false });
+          if (e.failed.length) throw new Error(e.failed[0].reason);
+        } else if (!r.download_sizes) {
+          await storeDownloadSizes(svc, r).catch(async (err) => {
+            await svc.from("photos").update({ download_sizes: { path: r.storage_path, error: String(err).slice(0, 200) } })
+              .eq("id", r.id).then(() => {}, () => {});
+            throw err;
+          });
+        }
+        // Still nothing recorded for the download files (e.g. both ways failed
+        // inside ensureDerivatives): mark it so the job moves on.
+        const { data: after } = await svc.from("photos").select("derivatives_at, download_sizes").eq("id", r.id).maybeSingle();
+        if (after && after.derivatives_at && !after.download_sizes) {
+          await svc.from("photos").update({ download_sizes: { path: r.storage_path, error: "not made" } }).eq("id", r.id);
+        }
+        if (after && !after.derivatives_at) skip.add(r.id);
+        done++;
+      } catch (e) {
+        failed++;
+        skip.add(r.id);
+        if (log.length < 5) log.push(`${r.id.slice(0, 8)}… ${(e instanceof Error ? e.message : String(e)).slice(0, 160)}`);
+      }
+    }
+  }
+  log.unshift(`${done} photo${done === 1 ? "" : "s"} finished${failed ? `, ${failed} failed` : ""}`);
+  return { cursor: { skip: Array.from(skip).slice(-500) }, done, failed, log, finished: exhausted };
 };

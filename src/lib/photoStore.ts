@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { r2, R2_VIDEO_BUCKET } from "@/lib/r2";
-import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
+import { derivativePath, downloadSizePath, hasDerivatives, DOWNLOAD_SIZE_EDGES, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 import {
   PHOTO_BUCKET,
   normaliseBackend,
@@ -436,13 +436,15 @@ async function r2ResizedUrl(
     const h = transform.height ?? transform.width ?? 2000;
     const mode = transform.resize ?? "cover";
     try {
-      if (mode === "contain") {
+      if (mode === "contain" && (Math.max(w, h) <= 600 || Math.max(w, h) >= 2000)) {
         const size = Math.max(w, h) <= 600 ? 600 : 2000;
         const { data } = await client.storage
           .from(PHOTO_BUCKET)
           .createSignedUrl(derivativePath(ref, size), ttlSeconds, opts.download ? { download: opts.download } : undefined);
         if (data?.signedUrl) return data.signedUrl;
       } else {
+        // Same size as the Supabase path gives (e.g. the 800 px AI labelling
+        // image, link-preview crops): Supabase's transform of the 2000 copy.
         const { data } = await client.storage
           .from(PHOTO_BUCKET)
           .createSignedUrl(derivativePath(ref, 2000), ttlSeconds, {
@@ -607,4 +609,26 @@ export async function deleteOriginals(svc: SupabaseClient, paths: string[]): Pro
     }
   };
   await Promise.all(Array.from({ length: Math.min(8, unique.length) }, worker));
+}
+
+/**
+ * Remove the pre-made Web & MLS / Social files (R2, `_dl/`) of these photos —
+ * part of every photo / listing / gallery delete and of a replace (called from
+ * removeDerivatives). Best effort; no-op until any photo has lived on R2. The
+ * cleanup jobs never call this.
+ */
+export async function deleteDownloadSizeFiles(photos: { id: string; storage_path: string }[]): Promise<void> {
+  if (!r2PhotosConfigured() || photos.length === 0 || !(await anyR2Photos())) return;
+  const paths = photos
+    .filter((p) => p.id && p.storage_path)
+    .flatMap((p) => (Object.keys(DOWNLOAD_SIZE_EDGES) as DownloadSizeName[]).map((n) => downloadSizePath(p, n)));
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(8, paths.length) }, async () => {
+      while (next < paths.length) {
+        const p = paths[next++];
+        await r2().send(new DeleteObjectCommand({ Bucket: R2_PHOTO_BUCKET, Key: r2PhotoKey(p) })).then(() => {}, () => {});
+      }
+    })
+  );
 }

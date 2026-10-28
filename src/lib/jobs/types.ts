@@ -12,6 +12,7 @@ export const JOB_KINDS = [
   "photo_originals_copy",
   "photo_originals_cleanup",
   "site_photos_cleanup",
+  "r2_photo_finish",
 ] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
@@ -27,6 +28,7 @@ export const JOB_LABELS: Record<JobKind, string> = {
   photo_originals_copy: "Copy photo originals to R2",
   photo_originals_cleanup: "Remove Supabase copies of moved originals",
   site_photos_cleanup: "Remove old website photo copies (site-photos)",
+  r2_photo_finish: "Finish new R2 photos (2000 px copy + download sizes)",
 };
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";

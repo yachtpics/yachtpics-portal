@@ -73,3 +73,43 @@ export function hasDerivatives(photo: { derivatives_at?: string | null }): boole
   const t = Date.parse(photo.derivatives_at);
   return Number.isFinite(t) && t > Date.UTC(2000, 0, 1);
 }
+
+// ─── pre-made download sizes (originals on R2 only, Oct 28) ─────────────────
+
+/**
+ * The broker download sizes besides Full: same long edges and quality the
+ * Supabase transform used for Supabase originals (download-urls route).
+ */
+export const DOWNLOAD_SIZE_EDGES = { web: 2048, social: 1080 } as const;
+export type DownloadSizeName = keyof typeof DOWNLOAD_SIZE_EDGES;
+export const DOWNLOAD_SIZE_QUALITY = 85;
+export const DOWNLOAD_FOLDER = "_dl";
+
+/** PNG originals stay PNG (as Supabase's format "origin" did); everything else is JPEG. */
+export function downloadSizeExt(storagePath: string): "jpg" | "png" {
+  return (storagePath.split(".").pop() || "").toLowerCase() === "png" ? "png" : "jpg";
+}
+
+/**
+ * Where a pre-made download size lives — beside the original, in R2 (key =
+ * r2PhotoKey of this path). Versioned by the original's path like the
+ * derivatives, so a replaced photo never serves the old file.
+ */
+export function downloadSizePath(photo: DerivativeSource, size: DownloadSizeName): string {
+  const path = photo.storage_path;
+  const slash = path.lastIndexOf("/");
+  const dir = slash >= 0 ? path.slice(0, slash + 1) : "";
+  return `${dir}${DOWNLOAD_FOLDER}/${photo.id}-${pathVersion(path)}-${size}.${downloadSizeExt(path)}`;
+}
+
+/** What photos.download_sizes holds: which sizes exist, for which original. */
+export type DownloadSizesRecord = { path: string } & Partial<Record<DownloadSizeName, number>>;
+
+/** True when the record says `size` exists for this photo's CURRENT original. */
+export function hasDownloadSize(
+  photo: { storage_path: string; download_sizes?: unknown },
+  size: DownloadSizeName
+): boolean {
+  const rec = photo.download_sizes as DownloadSizesRecord | null | undefined;
+  return !!rec && rec.path === photo.storage_path && typeof rec[size] === "number" && (rec[size] as number) > 0;
+}

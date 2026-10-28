@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient, type SupabaseClient } from "@supabase/supabase-js";
 import { buildDockCardPdf, imageKind, pdfSafe, type DockCardImage, type DockCardSize } from "@/lib/dockCardPdf";
 import { dockCardUrl, getCurrentShows, showDatesLabel, type BoatShow } from "@/lib/boatShows";
-import { lookupPhotoPaths, resizedOriginalBytes } from "@/lib/photoStore";
+import { lookupPhotoPaths, readOriginal, resizedOriginalBytes } from "@/lib/photoStore";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,10 +47,21 @@ async function coverPhoto(svc: SupabaseClient, listingId: string): Promise<DockC
   const { data } = await svc.rpc("listing_hero_photos", { p_listing_ids: [listingId] });
   const path = ((data ?? []) as { storage_path: string }[])[0]?.storage_path;
   if (!path) return null;
-  // Original on R2 (Oct 28): a 2000 px JPEG/PNG made server side from it
-  // (resizedOriginalBytes — the full-size file is never the fallback).
+  // Original on R2 (Oct 28): a 2000 px JPEG/PNG made here with sharp from
+  // the original (upright, q85 — as the transform below). If sharp can't
+  // decode it (e.g. HEIC), the staged Supabase resize; the full-size file is
+  // never the fallback.
   const row = (await lookupPhotoPaths(svc, [path])).get(path);
   if (row?.storage_backend === "r2") {
+    try {
+      const { bytes } = await readOriginal(svc, row);
+      const { makeJpegOrPng } = await import("@/lib/photoSharp");
+      const out = await makeJpegOrPng(bytes, 2000, path.toLowerCase().endsWith(".png"), 85);
+      const img = asImage(new Uint8Array(out));
+      if (img) return img;
+    } catch {
+      /* staged fallback below */
+    }
     const bytes = await resizedOriginalBytes(svc, path, 2000, 85);
     return bytes ? asImage(bytes) : null;
   }
