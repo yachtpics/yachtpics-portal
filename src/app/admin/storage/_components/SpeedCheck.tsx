@@ -46,18 +46,25 @@ async function signDownload(listingId: string, ids: string[], size: string): Pro
 }
 
 export default function SpeedCheck() {
-  const [listings, setListings] = useState<{ id: string; name: string }[]>([]);
+  const [listings, setListings] = useState<{ id: string; name: string; broker?: string; photos?: number; status?: string | null }[]>([]);
+  const [query, setQuery] = useState("");
   const [listingId, setListingId] = useState("");
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<Result[]>([]);
   const [backendNote, setBackendNote] = useState("");
 
+  // Empty box: the 40 most recent active listings. Typing: search every
+  // listing with photos (name / make / model / broker), debounced.
   useEffect(() => {
-    fetch("/api/admin/storage/speed", { cache: "no-store" })
-      .then((r) => r.json())
-      .then((d) => setListings(d.listings ?? []))
-      .catch(() => {});
-  }, []);
+    const q = query.trim();
+    const t = setTimeout(() => {
+      fetch(`/api/admin/storage/speed${q ? `?q=${encodeURIComponent(q)}` : ""}`, { cache: "no-store" })
+        .then((r) => r.json())
+        .then((d) => setListings(d.listings ?? []))
+        .catch(() => {});
+    }, q ? 300 : 0);
+    return () => clearTimeout(t);
+  }, [query]);
 
   async function run() {
     if (!listingId || running) return;
@@ -143,14 +150,22 @@ export default function SpeedCheck() {
         first byte; nothing is saved. Run it twice — the first run includes cold caches.
       </p>
       <div className="flex flex-wrap items-center gap-2">
+        <input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search boat or broker…"
+          className="border border-hairline rounded-ctl px-3 py-1.5 text-sm w-56"
+        />
         <select
           value={listingId}
           onChange={(e) => setListingId(e.target.value)}
           className="border border-hairline rounded-ctl px-3 py-1.5 text-sm max-w-xs"
         >
-          <option value="">Pick a listing…</option>
+          <option value="">{query.trim() ? `${listings.length} match${listings.length === 1 ? "" : "es"} — pick one…` : "Pick a listing…"}</option>
           {listings.map((l) => (
-            <option key={l.id} value={l.id}>{l.name}</option>
+            <option key={l.id} value={l.id}>
+              {l.name}{l.broker ? ` — ${l.broker}` : ""}{typeof l.photos === "number" ? ` (${l.photos} photos)` : ""}{l.status && l.status !== "active" ? ` · ${l.status}` : ""}
+            </option>
           ))}
         </select>
         <button
