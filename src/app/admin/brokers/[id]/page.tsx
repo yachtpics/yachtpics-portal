@@ -27,7 +27,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   // instead of waiting behind it.
   const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }, { data: coBrokeredRows }] =
     await Promise.all([
-      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
+      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, address, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("status, trial_ends_at, current_period_end, stripe_subscription_id, stripe_price_id").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, make, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
@@ -207,6 +207,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             lastName={profile.last_name}
             email={profile.display_email}
             phone={profile.phone}
+            address={profile.address ?? null}
             brokerageName={details?.brokerage_name ?? null}
             brokerageWebsite={details?.brokerage_website ?? null}
           />

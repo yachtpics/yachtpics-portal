@@ -20,6 +20,8 @@ export default function InviteBrokerPage() {
     lastName: "",
     email: "",
     brokerage: "",
+    phone: "",
+    address: "",
     assistantEmail: "",
     assistantFirstName: "",
     assistantLastName: "",
@@ -125,6 +127,8 @@ export default function InviteBrokerPage() {
           lastName: broker.lastName,
           email: broker.email,
           brokerage: broker.brokerage,
+          phone: broker.phone.trim() || undefined,
+          address: broker.address.trim() || undefined,
           photosReady: photos.length > 0,
           videoReady: videoFiles.length > 0,
           assistantEmail: broker.assistantEmail || undefined,
@@ -353,6 +357,20 @@ export default function InviteBrokerPage() {
             <input type="text" value={broker.brokerage}
               onChange={(e) => setBroker({ ...broker, brokerage: e.target.value })}
               className={inputClass} />
+          </div>
+          <div className="mt-4">
+            <label className={labelClass}>Phone</label>
+            <input type="tel" value={broker.phone}
+              onChange={(e) => setBroker({ ...broker, phone: e.target.value })}
+              placeholder="(561) 555-0100"
+              className={inputClass} />
+          </div>
+          <div className="mt-4">
+            <label className={labelClass}>Address</label>
+            <textarea rows={2} value={broker.address}
+              onChange={(e) => setBroker({ ...broker, address: e.target.value })}
+              placeholder="Office or mailing address"
+              className={`${inputClass} resize-y`} />
           </div>
           <div className="mt-4 pt-4 border-t border-hairline">
             <label className={labelClass}>

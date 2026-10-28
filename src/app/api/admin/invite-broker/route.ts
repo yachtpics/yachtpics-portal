@@ -16,7 +16,7 @@ function generateTempPassword(): string {
 export async function POST(req: NextRequest) {
   try {
     const {
-      firstName, lastName, email, brokerage, photosReady, videoReady,
+      firstName, lastName, email, brokerage, phone, address, photosReady, videoReady,
       assistantEmail, assistantFirstName, assistantLastName,
       vesselName, vesselType, year, lengthFt, make, model, askingPrice, location,
       createListing,
@@ -55,7 +55,12 @@ export async function POST(req: NextRequest) {
     const loginLink = "https://portal.yachtpics.com/auth/login";
 
     const { error: profileError } = await supabase.from("profiles").upsert(
-      { id: brokerId, role: "broker", first_name: firstName, last_name: lastName, display_email: email, invited_by: adminUserId },
+      {
+        id: brokerId, role: "broker", first_name: firstName, last_name: lastName, display_email: email, invited_by: adminUserId,
+        // Optional contact details (Oct 28): trimmed, empty → null.
+        phone: typeof phone === "string" && phone.trim() ? phone.trim().slice(0, 40) : null,
+        address: typeof address === "string" && address.trim() ? address.trim().slice(0, 500) : null,
+      },
       { onConflict: "id" }
     );
 

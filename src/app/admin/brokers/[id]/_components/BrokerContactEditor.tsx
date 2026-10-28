@@ -9,6 +9,8 @@ interface Props {
   lastName: string | null;
   email: string | null;
   phone: string | null;
+  /** profiles.address — free text, optional (Oct 28). */
+  address: string | null;
   /**
    * broker_details.brokerage_name — free text, and the name the Reel end card and the
    * rest of the branding actually render. It is NOT the same thing as the brokerage a
@@ -19,13 +21,14 @@ interface Props {
   brokerageWebsite: string | null;
 }
 
-export default function BrokerContactEditor({ brokerId, firstName, lastName, email, phone, brokerageName, brokerageWebsite }: Props) {
+export default function BrokerContactEditor({ brokerId, firstName, lastName, email, phone, address, brokerageName, brokerageWebsite }: Props) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
   const [first, setFirst] = useState(firstName ?? "");
   const [last, setLast] = useState(lastName ?? "");
   const [mail, setMail] = useState(email ?? "");
   const [tel, setTel] = useState(phone ?? "");
+  const [addr, setAddr] = useState(address ?? "");
   const [firm, setFirm] = useState(brokerageName ?? "");
   const [site, setSite] = useState(brokerageWebsite ?? "");
   const [saving, setSaving] = useState(false);
@@ -36,6 +39,7 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
     setLast(lastName ?? "");
     setMail(email ?? "");
     setTel(phone ?? "");
+    setAddr(address ?? "");
     setFirm(brokerageName ?? "");
     setSite(brokerageWebsite ?? "");
     setError("");
@@ -55,6 +59,7 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
           firstName: first,
           lastName: last,
           phone: tel,
+          address: addr,
           brokerageName: firm,
           brokerageWebsite: site,
         }),
@@ -77,6 +82,7 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
           <p className="label-caps mb-1">Contact</p>
           <p className="text-sm text-ink-900">{email ?? "—"}</p>
           <p className="text-sm text-ink-500 mt-1">{phone ?? "—"}</p>
+          <p className="text-sm text-ink-500 mt-1 whitespace-pre-line">{address ?? "—"}</p>
           <p className="text-sm text-ink-500 mt-1">{brokerageName ?? "No brokerage name"}</p>
           {brokerageWebsite && <p className="text-xs text-ink-500 mt-1 break-all">{brokerageWebsite}</p>}
         </div>
@@ -108,7 +114,9 @@ export default function BrokerContactEditor({ brokerId, firstName, lastName, ema
       <label className="block text-[11px] text-ink-500 mb-1">Email (login)</label>
       <input type="email" value={mail} onChange={(e) => setMail(e.target.value)} className={`${inputClass} mb-2`} />
       <label className="block text-[11px] text-ink-500 mb-1">Phone</label>
-      <input type="tel" value={tel} onChange={(e) => setTel(e.target.value)} className={`${inputClass} mb-1`} />
+      <input type="tel" value={tel} onChange={(e) => setTel(e.target.value)} className={`${inputClass} mb-2`} />
+      <label className="block text-[11px] text-ink-500 mb-1">Address</label>
+      <textarea rows={2} value={addr} onChange={(e) => setAddr(e.target.value)} placeholder="Office or mailing address" className={`${inputClass} resize-y mb-1`} />
       <p className="text-[11px] text-ink-500 mb-3">
         The email is what the broker logs in with. Changing it updates their login right away — no re-invite needed.
       </p>

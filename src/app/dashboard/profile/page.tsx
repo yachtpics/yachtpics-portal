@@ -11,6 +11,7 @@ interface ProfileData {
   last_name: string;
   display_email: string;
   phone: string;
+  address: string;
   notify_on_view: boolean;
   email_opt_out: boolean;
 }
@@ -41,7 +42,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false);
   const [role, setRole] = useState<string>("broker");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "", notify_on_view: true, email_opt_out: false });
+  const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "", address: "", notify_on_view: true, email_opt_out: false });
   const [broker, setBroker] = useState<BrokerData>({ brokerage_name: "", brokerage_address: "", brokerage_city: "", brokerage_state: "", brokerage_zip: "", brokerage_website: "", license_number: "", bio: "" });
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -59,11 +60,11 @@ export default function ProfilePage() {
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, role, notify_on_view, email_opt_out").eq("id", user.id).single();
+    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, address, role, notify_on_view, email_opt_out").eq("id", user.id).single();
     const { data: b } = await supabase.from("broker_details").select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url").eq("id", user.id).single();
     const { data: a } = await supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)").eq("broker_id", user.id);
     if (p) {
-      setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "", notify_on_view: p.notify_on_view ?? true, email_opt_out: p.email_opt_out ?? false });
+      setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "", address: p.address ?? "", notify_on_view: p.notify_on_view ?? true, email_opt_out: p.email_opt_out ?? false });
       setRole(p.role ?? "broker");
     }
     if (b) {
@@ -99,7 +100,7 @@ export default function ProfilePage() {
     setMessage(null);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { error: e1 } = await supabase.from("profiles").update({ ...profile, updated_at: new Date().toISOString() }).eq("id", user.id);
+    const { error: e1 } = await supabase.from("profiles").update({ ...profile, address: profile.address.trim() || null, updated_at: new Date().toISOString() }).eq("id", user.id);
     const { error: e2 } = role === "broker"
       ? await supabase.from("broker_details").update({ ...broker, updated_at: new Date().toISOString() }).eq("id", user.id)
       : { error: null };
@@ -221,6 +222,10 @@ export default function ProfilePage() {
           <div>
             <label className={labelClass}>Phone</label>
             <input className={inputClass} type="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} placeholder="(561) 555-0100" />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={labelClass}>Address</label>
+            <textarea className={inputClass + " resize-y"} rows={2} value={profile.address} onChange={(e) => setProfile({ ...profile, address: e.target.value })} placeholder="Office or mailing address" />
           </div>
         </div>
       </section>

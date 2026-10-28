@@ -14,6 +14,7 @@ export async function POST(req: NextRequest) {
     firstName?: string;
     lastName?: string;
     phone?: string;
+    address?: string;
     brokerageName?: string;
     brokerageWebsite?: string;
   };
@@ -23,7 +24,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const { userId, email, firstName, lastName, phone, brokerageName, brokerageWebsite } = body;
+  const { userId, email, firstName, lastName, phone, address, brokerageName, brokerageWebsite } = body;
   if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
 
   const { data: prof } = await admin.from("profiles").select("role").eq("id", userId).single();
@@ -58,6 +59,7 @@ export async function POST(req: NextRequest) {
   if (typeof firstName === "string") update.first_name = firstName.trim() || null;
   if (typeof lastName === "string") update.last_name = lastName.trim() || null;
   if (typeof phone === "string") update.phone = phone.trim() || null;
+  if (typeof address === "string") update.address = address.trim().slice(0, 500) || null;
 
   if (Object.keys(update).length > 0) {
     const { error: profErr } = await admin.from("profiles").update(update).eq("id", userId);
