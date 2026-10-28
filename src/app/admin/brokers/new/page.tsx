@@ -1,5 +1,6 @@
 "use client";
 
+import { MONTHS, daysInMonth } from "@/lib/brokerContact";
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -21,7 +22,13 @@ export default function InviteBrokerPage() {
     email: "",
     brokerage: "",
     phone: "",
+    officePhone: "",
     address: "",
+    instagram: "",
+    facebook: "",
+    birthdayMonth: "",
+    birthdayDay: "",
+    notes: "",
     assistantEmail: "",
     assistantFirstName: "",
     assistantLastName: "",
@@ -129,6 +136,12 @@ export default function InviteBrokerPage() {
           brokerage: broker.brokerage,
           phone: broker.phone.trim() || undefined,
           address: broker.address.trim() || undefined,
+          officePhone: broker.officePhone.trim() || undefined,
+          instagram: broker.instagram.trim() || undefined,
+          facebook: broker.facebook.trim() || undefined,
+          birthdayMonth: broker.birthdayMonth || undefined,
+          birthdayDay: broker.birthdayDay || undefined,
+          notes: broker.notes.trim() || undefined,
           photosReady: photos.length > 0,
           videoReady: videoFiles.length > 0,
           assistantEmail: broker.assistantEmail || undefined,
@@ -358,12 +371,20 @@ export default function InviteBrokerPage() {
               onChange={(e) => setBroker({ ...broker, brokerage: e.target.value })}
               className={inputClass} />
           </div>
-          <div className="mt-4">
-            <label className={labelClass}>Phone</label>
-            <input type="tel" value={broker.phone}
-              onChange={(e) => setBroker({ ...broker, phone: e.target.value })}
-              placeholder="(561) 555-0100"
-              className={inputClass} />
+          <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className={labelClass}>Mobile</label>
+              <input type="tel" value={broker.phone}
+                onChange={(e) => setBroker({ ...broker, phone: e.target.value })}
+                placeholder="(561) 555-0100"
+                className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Office phone</label>
+              <input type="tel" value={broker.officePhone}
+                onChange={(e) => setBroker({ ...broker, officePhone: e.target.value })}
+                className={inputClass} />
+            </div>
           </div>
           <div className="mt-4">
             <label className={labelClass}>Address</label>
@@ -372,6 +393,46 @@ export default function InviteBrokerPage() {
               placeholder="Office or mailing address"
               className={`${inputClass} resize-y`} />
           </div>
+          <details className="mt-4 group">
+            <summary className="cursor-pointer select-none text-sm font-medium text-ink-700 hover:text-ink-900">More about them (optional)</summary>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelClass}>Instagram</label>
+                <input type="text" value={broker.instagram}
+                  onChange={(e) => setBroker({ ...broker, instagram: e.target.value })}
+                  placeholder="@handle or instagram.com/…"
+                  autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                  className={inputClass} />
+              </div>
+              <div>
+                <label className={labelClass}>Facebook</label>
+                <input type="text" value={broker.facebook}
+                  onChange={(e) => setBroker({ ...broker, facebook: e.target.value })}
+                  placeholder="facebook.com/… or page name"
+                  autoCapitalize="none" autoCorrect="off" spellCheck={false}
+                  className={inputClass} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Birthday</label>
+                <div className="grid grid-cols-2 gap-2 max-w-xs">
+                  <select value={broker.birthdayMonth} onChange={(e) => setBroker({ ...broker, birthdayMonth: e.target.value })} className={inputClass} aria-label="Birthday month">
+                    <option value="">Month</option>
+                    {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                  </select>
+                  <select value={broker.birthdayDay} onChange={(e) => setBroker({ ...broker, birthdayDay: e.target.value })} className={inputClass} aria-label="Birthday day">
+                    <option value="">Day</option>
+                    {Array.from({ length: broker.birthdayMonth ? daysInMonth(Number(broker.birthdayMonth)) : 31 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Private notes — only you and Samantha see these</label>
+                <textarea rows={3} value={broker.notes}
+                  onChange={(e) => setBroker({ ...broker, notes: e.target.value })}
+                  className={`${inputClass} resize-y`} />
+              </div>
+            </div>
+          </details>
           <div className="mt-4 pt-4 border-t border-hairline">
             <label className={labelClass}>
               Assistant <span className="text-ink-400 normal-case font-normal tracking-normal">(optional)</span>

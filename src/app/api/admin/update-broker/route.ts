@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cleanContactExtras } from "@/lib/brokerContact";
 import { requireAdmin } from "@/lib/requireAdmin";
 
 export const runtime = "nodejs";
@@ -15,6 +16,11 @@ export async function POST(req: NextRequest) {
     lastName?: string;
     phone?: string;
     address?: string;
+    officePhone?: string;
+    instagram?: string;
+    facebook?: string;
+    birthdayMonth?: number | string | null;
+    birthdayDay?: number | string | null;
     brokerageName?: string;
     brokerageWebsite?: string;
   };
@@ -26,6 +32,10 @@ export async function POST(req: NextRequest) {
 
   const { userId, email, firstName, lastName, phone, address, brokerageName, brokerageWebsite } = body;
   if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
+  // Office phone, Instagram, Facebook, birthday (Oct 28) — normalised and
+  // checked before anything (the login email included) is changed.
+  const extras = cleanContactExtras(body as Record<string, unknown>);
+  if (extras.error) return NextResponse.json({ error: extras.error }, { status: 400 });
 
   const { data: prof } = await admin.from("profiles").select("role").eq("id", userId).single();
   if (!prof) return NextResponse.json({ error: "Account not found" }, { status: 404 });
@@ -60,6 +70,7 @@ export async function POST(req: NextRequest) {
   if (typeof lastName === "string") update.last_name = lastName.trim() || null;
   if (typeof phone === "string") update.phone = phone.trim() || null;
   if (typeof address === "string") update.address = address.trim().slice(0, 500) || null;
+  Object.assign(update, extras.update);
 
   if (Object.keys(update).length > 0) {
     const { error: profErr } = await admin.from("profiles").update(update).eq("id", userId);

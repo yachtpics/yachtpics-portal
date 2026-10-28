@@ -4,6 +4,7 @@ import { logEmail } from "@/lib/logEmail";
 import { requireAdmin } from "@/lib/requireAdmin";
 import { findExistingUser } from "@/lib/findExistingUser";
 import { TRIAL_DAYS } from "@/lib/subscriptionAccess";
+import { cleanContactExtras } from "@/lib/brokerContact";
 import { PLAN_BENEFITS_SENTENCE } from "@/lib/planValue";
 
 function generateTempPassword(): string {
@@ -16,15 +17,21 @@ function generateTempPassword(): string {
 export async function POST(req: NextRequest) {
   try {
     const {
-      firstName, lastName, email, brokerage, phone, address, photosReady, videoReady,
+      firstName, lastName, email, brokerage, phone, address, notes, photosReady, videoReady,
       assistantEmail, assistantFirstName, assistantLastName,
       vesselName, vesselType, year, lengthFt, make, model, askingPrice, location,
       createListing,
+      ...rest
     } = await req.json();
 
     if (!firstName || !lastName || !email) {
       return NextResponse.json({ error: "First name, last name, and email are required." }, { status: 400 });
     }
+
+    // Optional extras (Oct 28): office phone, Instagram, Facebook, birthday.
+    // Checked before the account is created so a typo never leaves half a broker.
+    const extras = cleanContactExtras(rest as Record<string, unknown>);
+    if (extras.error) return NextResponse.json({ error: extras.error }, { status: 400 });
 
     // Identify (and authorize) the admin making the request, so we can record
     // who added this broker.
@@ -60,12 +67,23 @@ export async function POST(req: NextRequest) {
         // Optional contact details (Oct 28): trimmed, empty → null.
         phone: typeof phone === "string" && phone.trim() ? phone.trim().slice(0, 40) : null,
         address: typeof address === "string" && address.trim() ? address.trim().slice(0, 500) : null,
+        ...extras.update,
       },
       { onConflict: "id" }
     );
 
     if (profileError) {
       return NextResponse.json({ error: profileError.message }, { status: 500 });
+    }
+
+    // Private notes — admin-only table, service role (never shown to the broker).
+    if (typeof notes === "string" && notes.trim()) {
+      await supabase.from("broker_admin_notes").upsert({
+        broker_id: brokerId,
+        notes: notes.trim().slice(0, 5000),
+        updated_at: new Date().toISOString(),
+        updated_by: adminUserId,
+      }, { onConflict: "broker_id" });
     }
 
     if (brokerage?.trim()) {

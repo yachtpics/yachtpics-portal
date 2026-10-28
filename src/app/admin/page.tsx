@@ -6,6 +6,7 @@ import { getAccessStatus, isStripePaid, isComped } from "@/lib/subscriptionAcces
 import RepublishLiveBoats from "./_components/RepublishLiveBoats";
 import RetiredPages from "./_components/RetiredPages";
 import GenerateThumbnails from "./_components/GenerateThumbnails";
+import { daysUntilBirthday } from "@/lib/brokerContact";
 
 export const dynamic = "force-dynamic";
 
@@ -115,12 +116,59 @@ export default async function AdminPage() {
   const pendingCents = (pendingShoots ?? []).reduce((sum, s) => sum + (s.amount_cents ?? 0), 0);
   const pendingCount = (pendingShoots ?? []).length;
 
+  // ---- Birthdays in the next 14 days (Oct 28; Eastern date; Feb 29 → Feb 28 off leap years) ----
+  const { data: bdayRows } = await service
+    .from("profiles")
+    .select("id, first_name, last_name, birthday_month, birthday_day, broker_details(brokerage_name)")
+    .eq("role", "broker")
+    .not("birthday_month", "is", null)
+    .not("birthday_day", "is", null);
+  const todayET = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+  const birthdays = ((bdayRows ?? []) as unknown as {
+    id: string; first_name: string | null; last_name: string | null; birthday_month: number; birthday_day: number;
+    broker_details: { brokerage_name: string | null } | { brokerage_name: string | null }[] | null;
+  }[])
+    .map((b) => {
+      const { days, date } = daysUntilBirthday(b.birthday_month, b.birthday_day, todayET);
+      const bd = Array.isArray(b.broker_details) ? b.broker_details[0] : b.broker_details;
+      return {
+        id: b.id,
+        name: [b.first_name, b.last_name].filter(Boolean).join(" ") || "Broker",
+        brokerage: bd?.brokerage_name ?? null,
+        days,
+        label: date.toLocaleDateString("en-US", { weekday: "short", month: "long", day: "numeric" }),
+      };
+    })
+    .filter((b) => b.days <= 14)
+    .sort((a, b) => a.days - b.days);
+
   return (
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-8">
         <h1 className="text-display text-ink-900">Business Pulse</h1>
         <p className="text-ink-500 mt-1 text-sm">How YachtPics Portal is doing today, at a glance.</p>
       </div>
+
+      {/* Birthdays coming up — hidden when none */}
+      {birthdays.length > 0 && (
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 px-5 py-4 mb-6">
+          <p className="label-caps mb-2">Birthdays coming up</p>
+          <ul className="divide-y divide-hairline">
+            {birthdays.map((b) => (
+              <li key={b.id} className="py-2 flex items-center justify-between gap-3 text-sm">
+                <Link href={`/admin/brokers/${b.id}`} className="font-medium text-ink-900 hover:underline">
+                  {b.name}
+                  {b.brokerage && <span className="font-normal text-ink-500"> · {b.brokerage}</span>}
+                </Link>
+                <span className="text-ink-600 tabular-nums shrink-0">
+                  {b.label}
+                  <span className="text-ink-400"> · {b.days === 0 ? "today" : b.days === 1 ? "tomorrow" : `in ${b.days} days`}</span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {/* Revenue + conversion */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-4">

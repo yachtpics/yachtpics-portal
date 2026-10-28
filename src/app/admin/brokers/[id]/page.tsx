@@ -12,6 +12,7 @@ import BrokerListingsPublisher from "./_components/BrokerListingsPublisher";
 import ReelServiceCard, { type ReelCardRow } from "./_components/ReelServiceCard";
 import { planLabel } from "@/lib/subscriptionAccess";
 import WebsiteCompToggle from "./_components/WebsiteCompToggle";
+import AdminNotesEditor from "./_components/AdminNotesEditor";
 import { websiteEntitlement, type WebsiteEntitlement } from "@/lib/websiteAddon";
 import { listingAllowance } from "@/lib/listingAllowance";
 import { serviceClient } from "@/lib/brokerSiteServer";
@@ -27,7 +28,7 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   // instead of waiting behind it.
   const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }, { data: coBrokeredRows }] =
     await Promise.all([
-      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, address, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
+      supabase.from("profiles").select("id, first_name, last_name, display_email, phone, address, office_phone, instagram_handle, facebook_url, birthday_month, birthday_day, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("status, trial_ends_at, current_period_end, stripe_subscription_id, stripe_price_id").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, make, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
@@ -53,6 +54,18 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   // Whether that site may be live (owner decision Oct 26: Portal access AND
   // Elite / the $50 website line on their plan / comp).
   const siteEnt: WebsiteEntitlement | null = brokerSiteErr ? null : await websiteEntitlement(serviceClient(), params.id).catch(() => null);
+  // Private admin notes (Oct 28) — service role only; this page is admin-gated.
+  const { data: notesRow } = await serviceClient()
+    .from("broker_admin_notes")
+    .select("notes, updated_at, updated_by")
+    .eq("broker_id", params.id)
+    .maybeSingle();
+  let notesBy: string | null = null;
+  if (notesRow?.updated_by) {
+    const { data: who } = await serviceClient().from("profiles").select("first_name").eq("id", notesRow.updated_by).maybeSingle();
+    notesBy = who?.first_name ?? null;
+  }
+
   // Over the plan's listing range? (nudge only — src/lib/listingAllowance.ts)
   const allowance = await listingAllowance(serviceClient(), params.id).catch(() => null);
   const ENT_LABEL: Record<WebsiteEntitlement["reason"], string> = {
@@ -208,6 +221,11 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             email={profile.display_email}
             phone={profile.phone}
             address={profile.address ?? null}
+            officePhone={profile.office_phone ?? null}
+            instagram={profile.instagram_handle ?? null}
+            facebookUrl={profile.facebook_url ?? null}
+            birthdayMonth={profile.birthday_month ?? null}
+            birthdayDay={profile.birthday_day ?? null}
             brokerageName={details?.brokerage_name ?? null}
             brokerageWebsite={details?.brokerage_website ?? null}
           />
@@ -263,6 +281,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           </p>
         </div>
       </div>
+
+      {/* Private notes — admins only */}
+      <AdminNotesEditor brokerId={params.id} initialNotes={notesRow?.notes ?? ""} updatedAt={notesRow?.updated_at ?? null} updatedByName={notesBy} />
 
       {/* Assistants */}
       <AssistantsPanel brokerId={params.id} initialAssistants={assistantList} />

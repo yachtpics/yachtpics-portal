@@ -1,5 +1,6 @@
 "use client";
 
+import { MONTHS, cleanContactExtras, daysInMonth } from "@/lib/brokerContact";
 import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
 import HelpTip from "@/components/HelpTip";
@@ -43,6 +44,8 @@ export default function ProfilePage() {
   const [role, setRole] = useState<string>("broker");
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [profile, setProfile] = useState<ProfileData>({ first_name: "", last_name: "", display_email: "", phone: "", address: "", notify_on_view: true, email_opt_out: false });
+  // Office phone, Instagram, Facebook, birthday (Oct 28) — normalised on save (src/lib/brokerContact.ts).
+  const [extras, setExtras] = useState({ officePhone: "", instagram: "", facebook: "", birthdayMonth: "", birthdayDay: "" });
   const [broker, setBroker] = useState<BrokerData>({ brokerage_name: "", brokerage_address: "", brokerage_city: "", brokerage_state: "", brokerage_zip: "", brokerage_website: "", license_number: "", bio: "" });
   const [assistants, setAssistants] = useState<Assistant[]>([]);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -60,11 +63,18 @@ export default function ProfilePage() {
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, address, role, notify_on_view, email_opt_out").eq("id", user.id).single();
+    const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, address, office_phone, instagram_handle, facebook_url, birthday_month, birthday_day, role, notify_on_view, email_opt_out").eq("id", user.id).single();
     const { data: b } = await supabase.from("broker_details").select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url").eq("id", user.id).single();
     const { data: a } = await supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)").eq("broker_id", user.id);
     if (p) {
       setProfile({ first_name: p.first_name ?? "", last_name: p.last_name ?? "", display_email: p.display_email ?? "", phone: p.phone ?? "", address: p.address ?? "", notify_on_view: p.notify_on_view ?? true, email_opt_out: p.email_opt_out ?? false });
+      setExtras({
+        officePhone: p.office_phone ?? "",
+        instagram: p.instagram_handle ? `@${p.instagram_handle}` : "",
+        facebook: p.facebook_url ?? "",
+        birthdayMonth: p.birthday_month ? String(p.birthday_month) : "",
+        birthdayDay: p.birthday_day ? String(p.birthday_day) : "",
+      });
       setRole(p.role ?? "broker");
     }
     if (b) {
@@ -100,7 +110,9 @@ export default function ProfilePage() {
     setMessage(null);
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
-    const { error: e1 } = await supabase.from("profiles").update({ ...profile, address: profile.address.trim() || null, updated_at: new Date().toISOString() }).eq("id", user.id);
+    const cleaned = cleanContactExtras(extras);
+    if (cleaned.error) { setMessage({ type: "error", text: cleaned.error }); setSaving(false); return; }
+    const { error: e1 } = await supabase.from("profiles").update({ ...profile, address: profile.address.trim() || null, ...cleaned.update, updated_at: new Date().toISOString() }).eq("id", user.id);
     const { error: e2 } = role === "broker"
       ? await supabase.from("broker_details").update({ ...broker, updated_at: new Date().toISOString() }).eq("id", user.id)
       : { error: null };
@@ -220,12 +232,37 @@ export default function ProfilePage() {
             </p>
           </div>
           <div>
-            <label className={labelClass}>Phone</label>
+            <label className={labelClass}>Mobile</label>
             <input className={inputClass} type="tel" value={profile.phone} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} placeholder="(561) 555-0100" />
           </div>
           <div className="sm:col-span-2">
             <label className={labelClass}>Address</label>
             <textarea className={inputClass + " resize-y"} rows={2} value={profile.address} onChange={(e) => setProfile({ ...profile, address: e.target.value })} placeholder="Office or mailing address" />
+          </div>
+          <div>
+            <label className={labelClass}>Office phone</label>
+            <input className={inputClass} type="tel" value={extras.officePhone} onChange={(e) => setExtras({ ...extras, officePhone: e.target.value })} />
+          </div>
+          <div>
+            <label className={labelClass}>Birthday</label>
+            <div className="grid grid-cols-2 gap-2">
+              <select className={inputClass} value={extras.birthdayMonth} onChange={(e) => setExtras({ ...extras, birthdayMonth: e.target.value })} aria-label="Birthday month">
+                <option value="">Month</option>
+                {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+              </select>
+              <select className={inputClass} value={extras.birthdayDay} onChange={(e) => setExtras({ ...extras, birthdayDay: e.target.value })} aria-label="Birthday day">
+                <option value="">Day</option>
+                {Array.from({ length: extras.birthdayMonth ? daysInMonth(Number(extras.birthdayMonth)) : 31 }, (_, i) => i + 1).map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+            </div>
+          </div>
+          <div>
+            <label className={labelClass}>Instagram</label>
+            <input className={inputClass} value={extras.instagram} onChange={(e) => setExtras({ ...extras, instagram: e.target.value })} placeholder="@yourhandle" autoCapitalize="none" spellCheck={false} />
+          </div>
+          <div>
+            <label className={labelClass}>Facebook</label>
+            <input className={inputClass} value={extras.facebook} onChange={(e) => setExtras({ ...extras, facebook: e.target.value })} placeholder="facebook.com/… or page name" autoCapitalize="none" spellCheck={false} />
           </div>
         </div>
       </section>

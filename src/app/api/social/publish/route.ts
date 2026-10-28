@@ -131,6 +131,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This Page has no linked Instagram professional account." }, { status: 400 });
   }
 
+  // Instagram tagging (Oct 28): when the listing's broker has an Instagram
+  // handle, the Instagram caption credits them ("Listed by @handle") unless
+  // the caption already mentions them, the post is going to their own
+  // account, or it would push the caption past Instagram's limit. Facebook
+  // captions are unchanged.
+  let igCaption = caption;
+  if (platforms.indexOf("instagram") >= 0) {
+    const { data: owner } = await viewer.svc.from("profiles").select("instagram_handle").eq("id", source.brokerId).maybeSingle();
+    const handle = (owner as { instagram_handle?: string | null } | null)?.instagram_handle ?? null;
+    if (handle) {
+      const mentioned = new RegExp(`@${handle.replace(/\./g, "\\.")}(?![a-z0-9._])`, "i").test(caption);
+      const ownAccount = (conn.ig_username ?? "").toLowerCase() === handle;
+      const credited = `${caption}\n\nListed by @${handle}`;
+      if (!mentioned && !ownAccount && credited.length <= MAX_CAPTION) igCaption = credited;
+    }
+  }
+
   const now = new Date().toISOString();
   const makeRows = (withCover: boolean) => platforms.map((platform) => ({
     broker_id: source.brokerId,
@@ -144,7 +161,7 @@ export async function POST(req: NextRequest) {
     platform,
     page_id: conn.page_id,
     connection_id: conn.id,
-    caption,
+    caption: platform === "instagram" ? igCaption : caption,
     // Facebook-native schedules are uploaded right now (status flips to
     // 'scheduled' once Facebook accepts), so they start as 'posting'.
     status: scheduledFor && platform === "instagram" ? "scheduled" : "posting",
