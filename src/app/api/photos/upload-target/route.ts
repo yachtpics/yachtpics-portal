@@ -86,13 +86,16 @@ export async function POST(req: NextRequest) {
   const size = Number(body?.size);
   if (!Number.isFinite(size) || size <= 0) return NextResponse.json({ backend: "supabase" });
   if (size > MAX_ORIGINAL_BYTES) {
+    console.warn(`[upload-target] refused ${path}: ${size} bytes is over the cap`);
     return NextResponse.json({ error: `That file is over ${Math.round(MAX_ORIGINAL_BYTES / 1024 / 1024)} MB.` }, { status: 413 });
   }
 
   // Never overwrite: the key must be new — no photos row and no R2 object on it.
   const { count: used } = await svc.from("photos").select("id", { count: "exact", head: true }).eq("storage_path", path);
-  if ((used ?? 0) > 0) return NextResponse.json({ error: "That file name is already in use — try again." }, { status: 409 });
-  if (await headR2Original(path)) return NextResponse.json({ error: "That file name is already in use — try again." }, { status: 409 });
+  if ((used ?? 0) > 0 || (await headR2Original(path))) {
+    console.warn(`[upload-target] refused ${path}: key already in use`);
+    return NextResponse.json({ error: "That file name is already in use — try again." }, { status: 409 });
+  }
 
   const requested = typeof body?.contentType === "string" ? body.contentType.trim().toLowerCase() : "";
   const contentType = /^image\/[a-z0-9.+-]+$/.test(requested) ? requested : originalContentType(path, "image/jpeg");
@@ -100,8 +103,9 @@ export async function POST(req: NextRequest) {
     const url = await presignR2OriginalPut(path, contentType, Math.round(size));
     noteR2PhotoExists();
     return NextResponse.json({ backend: "r2", url, contentType });
-  } catch {
-    // R2 unreachable for signing → the old path still works.
+  } catch (e) {
+    // R2 unreachable for signing → the old path still works (logged).
+    console.error(`[upload-target] presign failed for ${path}: ${e instanceof Error ? e.message : String(e)}`);
     return NextResponse.json({ backend: "supabase" });
   }
 }

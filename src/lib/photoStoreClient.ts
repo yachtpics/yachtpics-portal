@@ -159,6 +159,8 @@ export async function uploadOriginal(opts: {
 }): Promise<UploadedOriginal> {
   const { supabase, path, file, scope } = opts;
   let target: { backend?: string; url?: string; contentType?: string } | null = null;
+  // Why an R2-bound upload ended up on Supabase — reported to the server log.
+  let fallback: { step: string; status?: number; message?: string; attempts?: number } | null = null;
   try {
     const res = await fetch("/api/photos/upload-target", {
       method: "POST",
@@ -169,24 +171,49 @@ export async function uploadOriginal(opts: {
     else if (res.status === 401 || res.status === 403) {
       const d = await res.json().catch(() => null);
       return { ok: false, error: d?.error ?? "You don't have access to upload here." };
+    } else {
+      const d = await res.json().catch(() => null);
+      fallback = { step: "target", status: res.status, message: d?.error ?? res.statusText };
     }
-  } catch {
+  } catch (e) {
     target = null;
+    fallback = { step: "target", message: e instanceof Error ? e.message : String(e) };
   }
 
   if (target?.backend === "r2" && target.url) {
-    try {
-      const put = await fetch(target.url, {
-        method: "PUT",
-        headers: { "Content-Type": target.contentType || file.type || originalContentType(path) },
-        body: file,
-      });
-      if (put.ok) return { ok: true, backend: "r2", bytes: file.size };
-    } catch {
-      /* CORS / network / preview host — fall back to Supabase below */
+    // One automatic retry (same signed link — a PUT to the same key is safe
+    // to repeat) before falling back to Supabase.
+    let lastStatus: number | undefined;
+    let lastMessage = "";
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const put = await fetch(target.url, {
+          method: "PUT",
+          headers: { "Content-Type": target.contentType || file.type || originalContentType(path) },
+          body: file,
+        });
+        if (put.ok) return { ok: true, backend: "r2", bytes: file.size };
+        lastStatus = put.status;
+        lastMessage = (await put.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 300) || put.statusText;
+      } catch (e) {
+        // CORS / network / preview host: the browser gives no status.
+        lastStatus = undefined;
+        lastMessage = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+      }
+      if (attempt === 1) await new Promise((r) => setTimeout(r, 800));
     }
+    fallback = { step: "put", status: lastStatus, message: lastMessage, attempts: 2 };
     // The R2 PUT didn't work: the upload must never fail outright, so it goes
     // to Supabase exactly as before Oct 28 (the row then says "supabase").
+  }
+
+  if (fallback) {
+    fetch("/api/photos/upload-fallback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...scope, path, size: file.size, type: file.type || "", ...fallback }),
+      keepalive: true,
+    }).catch(() => {});
   }
 
   // Supabase — exactly the call the pages made before Oct 28. (Also the

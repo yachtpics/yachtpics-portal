@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
+  S3Client,
   CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -221,7 +222,31 @@ export async function presignR2OriginalPut(
     ContentType: contentType,
     ContentLength: contentLength,
   });
-  return getSignedUrl(r2(), cmd, { expiresIn, signableHeaders: new Set(["content-type", "content-length"]) });
+  return getSignedUrl(r2PresignClient(), cmd, { expiresIn, signableHeaders: new Set(["content-type", "content-length"]) });
+}
+
+/**
+ * S3 client for presigning browser PUTs. The AWS SDK (≥ 3.729) by default
+ * adds "flexible checksum" params to a presigned PutObject URL —
+ * `x-amz-sdk-checksum-algorithm=CRC32&x-amz-checksum-crc32=AAAAAA==`, the CRC32
+ * of an EMPTY body (checked Oct 28 with client-s3 3.1111). The browser's
+ * body never matches it, so a store that enforces it rejects the upload.
+ * "WHEN_REQUIRED" leaves them out (Cloudflare's own advice for R2).
+ */
+let presignClient: S3Client | null = null;
+function r2PresignClient(): S3Client {
+  if (presignClient) return presignClient;
+  presignClient = new S3Client({
+    region: "auto",
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
+  });
+  return presignClient;
 }
 
 /** Delete ONE R2 original key (only the R2 copy — never Supabase). */
