@@ -9,7 +9,7 @@ import { guessCategory } from "@/lib/guessCategory";
 import { expandPickedFiles } from "@/lib/pickedImages";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
-import { runPool, uploadListingPhoto, PHOTO_UPLOAD_CONCURRENCY } from "@/lib/uploadListingPhoto";
+import { runPool, uploadListingPhoto, photoUploadConcurrency } from "@/lib/uploadListingPhoto";
 
 interface Broker {
   id: string;
@@ -131,7 +131,7 @@ export default function NewListingPage() {
     const stamp = Date.now();
     const failed: number[] = [];
     let done = 0;
-    await runPool(indices, PHOTO_UPLOAD_CONCURRENCY, async (photoIdx) => {
+    await runPool(indices, photoUploadConcurrency(indices.map((i) => photos[i].file)), async (photoIdx) => {
       const photo = photos[photoIdx];
       const r = await uploadListingPhoto({
         supabase,

@@ -158,14 +158,21 @@ export async function uploadOriginal(opts: {
   contentType?: string;
 }): Promise<UploadedOriginal> {
   const { supabase, path, file, scope } = opts;
-  let target: { backend?: string; url?: string; contentType?: string } | null = null;
+  const multipart = file.size > MULTIPART_THRESHOLD_BYTES;
+  let target: {
+    backend?: string; url?: string; contentType?: string;
+    multipart?: boolean; uploadId?: string; partSize?: number; partUrls?: string[];
+  } | null = null;
   // Why an R2-bound upload ended up on Supabase — reported to the server log.
   let fallback: { step: string; status?: number; message?: string; attempts?: number } | null = null;
   try {
     const res = await fetch("/api/photos/upload-target", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...scope, path, contentType: file.type || "", size: file.size }),
+      body: JSON.stringify({
+        ...scope, path, contentType: file.type || "", size: file.size,
+        ...(multipart ? { action: "multipart_start" } : {}),
+      }),
     });
     if (res.ok) target = await res.json().catch(() => null);
     else if (res.status === 401 || res.status === 403) {
@@ -180,7 +187,11 @@ export async function uploadOriginal(opts: {
     fallback = { step: "target", message: e instanceof Error ? e.message : String(e) };
   }
 
-  if (target?.backend === "r2" && target.url) {
+  if (target?.backend === "r2" && target.multipart && target.uploadId && Array.isArray(target.partUrls)) {
+    const r = await uploadInParts(path, file, scope, target.uploadId, target.partSize ?? 8 * 1024 * 1024, target.partUrls);
+    if (r.ok) return { ok: true, backend: "r2", bytes: file.size };
+    fallback = { step: r.step, status: r.status, message: r.message, attempts: r.attempts };
+  } else if (target?.backend === "r2" && target.url) {
     // One automatic retry (same signed link — a PUT to the same key is safe
     // to repeat) before falling back to Supabase.
     let lastStatus: number | undefined;
@@ -223,6 +234,97 @@ export async function uploadOriginal(opts: {
     .upload(path, file, { upsert: false, ...(opts.contentType ? { contentType: opts.contentType } : {}) });
   if (error) return { ok: false, error: error.message };
   return { ok: true, backend: "supabase", bytes: file.size };
+}
+
+/** Originals above this go up in parts (matches MULTIPART_THRESHOLD on the server). */
+const MULTIPART_THRESHOLD_BYTES = 10 * 1024 * 1024;
+/** Parts of ONE file in flight at once. */
+const PART_CONCURRENCY = 3;
+/** Tries per part (first + retries) before the whole upload gives up. */
+const PART_TRIES = 4;
+
+/**
+ * Upload one big original to R2 as a multipart upload: File.slice() pieces
+ * (only the piece in flight is read), PART_CONCURRENCY at a time, each part
+ * retried with back-off (1 s, 2 s, 4 s). Then the server completes it and
+ * checks the byte count. Any final failure aborts the multipart upload (no
+ * invisible half-uploads left in R2) and reports why.
+ */
+async function uploadInParts(
+  path: string,
+  file: File,
+  scope: UploadScope,
+  uploadId: string,
+  partSize: number,
+  partUrls: string[]
+): Promise<{ ok: true } | { ok: false; step: string; status?: number; message: string; attempts?: number }> {
+  const etags: (string | null)[] = partUrls.map(() => null);
+  let failure: { status?: number; message: string; attempts: number; part: number } | null = null;
+  let next = 0;
+  const lane = async () => {
+    while (next < partUrls.length && !failure) {
+      const i = next++;
+      const piece = file.slice(i * partSize, Math.min((i + 1) * partSize, file.size));
+      let status: number | undefined;
+      let message = "";
+      for (let attempt = 1; attempt <= PART_TRIES; attempt++) {
+        try {
+          const res = await fetch(partUrls[i], { method: "PUT", body: piece });
+          if (res.ok) {
+            const etag = res.headers.get("ETag");
+            if (!etag) {
+              failure = { message: "R2 didn't return the part's ETag (bucket CORS must expose ETag).", attempts: attempt, part: i + 1 };
+              return;
+            }
+            etags[i] = etag;
+            break;
+          }
+          status = res.status;
+          message = (await res.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 300) || res.statusText;
+        } catch (e) {
+          status = undefined;
+          message = e instanceof Error ? `${e.name}: ${e.message}` : String(e);
+        }
+        if (attempt === PART_TRIES) {
+          failure = { status, message, attempts: attempt, part: i + 1 };
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 1000 * 2 ** (attempt - 1)));
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(PART_CONCURRENCY, partUrls.length) }, lane));
+
+  const abort = () =>
+    fetch("/api/photos/upload-target", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...scope, path, uploadId, action: "multipart_abort" }),
+      keepalive: true,
+    }).catch(() => {});
+
+  if (failure || etags.some((e) => !e)) {
+    await abort();
+    const f = failure as { status?: number; message: string; attempts: number; part: number } | null;
+    return { ok: false, step: `part${f ? ` ${f.part}/${partUrls.length}` : ""}`, status: f?.status, message: f?.message ?? "a part didn't upload", attempts: f?.attempts };
+  }
+  try {
+    const res = await fetch("/api/photos/upload-target", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...scope, path, uploadId, size: file.size, action: "multipart_complete",
+        parts: etags.map((ETag, i) => ({ PartNumber: i + 1, ETag })),
+      }),
+    });
+    if (res.ok) return { ok: true };
+    const d = await res.json().catch(() => null);
+    await abort();
+    return { ok: false, step: "complete", status: res.status, message: d?.error ?? res.statusText };
+  } catch (e) {
+    await abort();
+    return { ok: false, step: "complete", message: e instanceof Error ? e.message : String(e) };
+  }
 }
 
 /**

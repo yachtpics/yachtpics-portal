@@ -35,6 +35,17 @@ export async function GET(req: NextRequest) {
     const r = await getJob(id, auth.admin);
     if (r.error) return fail(r);
     if (!r.job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    // The progress card polls this every few seconds. If the job is active but
+    // its batch chain broke (no live lease, no heartbeat for 90 s — e.g. Vercel
+    // refused the worker's call to itself with 508), wake the worker again.
+    const j = r.job;
+    if (
+      (j.status === "running" || j.status === "queued") &&
+      (!j.locked_until || Date.parse(j.locked_until) < Date.now()) &&
+      (!j.heartbeat_at || Date.now() - Date.parse(j.heartbeat_at) > 90_000)
+    ) {
+      kickWorker(jobsBaseUrl(req));
+    }
     return NextResponse.json({ job: r.job });
   }
 

@@ -39,7 +39,7 @@ export function loadSharp(): Promise<Sharp | null> {
         const s = ((m as unknown as { default?: Sharp }).default ?? (m as unknown as Sharp)) as Sharp;
         try {
           s.cache(false);
-          s.concurrency(1);
+          s.concurrency(2);
         } catch {
           /* older builds */
         }
@@ -53,12 +53,22 @@ export function loadSharp(): Promise<Sharp | null> {
   return sharpPromise;
 }
 
-// One image at a time per instance.
-let queue: Promise<unknown> = Promise.resolve();
-function serial<T>(fn: () => Promise<T>): Promise<T> {
-  const run = queue.then(fn, fn);
-  queue = run.then(() => undefined, () => undefined);
-  return run;
+// At most 2 images at a time per instance. (Was 1: with several upload
+// requests sharing one instance, 40–50 MB originals queued behind each other
+// until requests hit the 60 s limit — Sanibella shoot, Oct 28. Decodes use
+// JPEG shrink-on-load, so each needs far less memory than the full image.)
+const MAX_PARALLEL = 2;
+let active = 0;
+const waiting: (() => void)[] = [];
+async function serial<T>(fn: () => Promise<T>): Promise<T> {
+  if (active >= MAX_PARALLEL) await new Promise<void>((r) => waiting.push(r));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
 }
 
 async function pipeline(input: Uint8Array) {
@@ -127,6 +137,73 @@ export function makeDownloadSizes(original: Uint8Array, storagePath: string): Pr
 }
 
 export const DERIVATIVE_TYPE = DERIVATIVE_CONTENT_TYPE;
+
+/**
+ * Everything an R2 original needs, from ONE decode (big originals made five
+ * separate decodes before): the original is decoded once, upright, into a
+ * ≤ 2048 px working copy (JPEG shrink-on-load keeps that cheap even for a
+ * 50 MB file); the 2000 / 600 WebP derivatives and the Web & MLS / Social
+ * files are all made from it. Same sizes, fit and qualities as before.
+ * Throws if sharp can't decode the file.
+ */
+export function makeAllForR2(
+  original: Uint8Array,
+  storagePath: string
+): Promise<{ webp: Map<DerivativeSize, Buffer>; downloads: MadeDownloadSizes }> {
+  return serial(async () => {
+    const sharp = await loadSharp();
+    if (!sharp) throw new Error("sharp unavailable");
+    const input = Buffer.from(original.buffer, original.byteOffset, original.byteLength);
+    const meta = await sharp(input, { failOn: "none" }).metadata();
+    const swap = (meta.orientation ?? 1) >= 5;
+    const width = (swap ? meta.height : meta.width) ?? 0;
+    const height = (swap ? meta.width : meta.height) ?? 0;
+    const { data, info } = await sharp(input, { failOn: "none", limitInputPixels: 268_402_689 })
+      .rotate()
+      .resize(DOWNLOAD_SIZE_EDGES.web, DOWNLOAD_SIZE_EDGES.web, { fit: "inside", withoutEnlargement: true })
+      .raw()
+      .toBuffer({ resolveWithObject: true });
+    const work = () => sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } });
+    const webp = new Map<DerivativeSize, Buffer>();
+    for (const size of [2000, 600] as DerivativeSize[]) {
+      webp.set(size, await work().resize(size, size, { fit: "inside", withoutEnlargement: true }).webp({ quality: 80 }).toBuffer());
+    }
+    const webOriginal =
+      WEB_USES_ORIGINAL_WHEN_SMALL && width > 0 && height > 0 && Math.max(width, height) <= DOWNLOAD_SIZE_EDGES.web;
+    const png = downloadSizeExt(storagePath) === "png";
+    const files = new Map<DownloadSizeName, Buffer>();
+    for (const name of Object.keys(DOWNLOAD_SIZE_EDGES) as DownloadSizeName[]) {
+      if (name === "web" && webOriginal) continue;
+      const edge = DOWNLOAD_SIZE_EDGES[name];
+      const p = work().resize(edge, edge, { fit: "inside", withoutEnlargement: true });
+      files.set(name, png ? await p.png().toBuffer() : await p.jpeg({ quality: DOWNLOAD_SIZE_QUALITY }).toBuffer());
+    }
+    return { webp, downloads: { files, width, height, webOriginal } };
+  });
+}
+
+/** Store already-made download files in R2 and record them on the row. */
+export async function storeMadeDownloadFiles(
+  svc: SupabaseClient,
+  photo: { id: string; storage_path: string },
+  made: MadeDownloadSizes
+): Promise<DownloadSizesRecord> {
+  const { putR2Original } = await import("@/lib/photoStore");
+  const type = downloadSizeExt(photo.storage_path) === "png" ? "image/png" : "image/jpeg";
+  const rec: DownloadSizesRecord = { path: photo.storage_path, w: made.width, h: made.height };
+  if (made.webOriginal) rec.web_original = true;
+  for (const [name, buf] of Array.from(made.files.entries())) {
+    await putR2Original(downloadSizePath(photo, name), new Uint8Array(buf), type);
+    rec[name] = buf.byteLength;
+  }
+  await svc
+    .from("photos")
+    .update({ download_sizes: rec })
+    .eq("id", photo.id)
+    .eq("storage_path", photo.storage_path)
+    .then(() => {}, () => {});
+  return rec;
+}
 
 /**
  * Web / Social files via a short-lived staged Supabase copy and Supabase's

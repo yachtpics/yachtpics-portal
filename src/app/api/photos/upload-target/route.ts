@@ -3,6 +3,11 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import {
+  abortR2OriginalMultipart,
+  completeR2OriginalMultipart,
+  ORIGINAL_PART_SIZE,
+  presignR2OriginalPart,
+  startR2OriginalMultipart,
   deleteR2Original,
   headR2Original,
   MAX_ORIGINAL_BYTES,
@@ -79,6 +84,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  // Multipart finish / abort (big originals — see MULTIPART_THRESHOLD).
+  if (body?.action === "multipart_complete" || body?.action === "multipart_abort") {
+    const uploadId = typeof body?.uploadId === "string" ? body.uploadId : "";
+    if (!uploadId) return NextResponse.json({ error: "Missing upload id." }, { status: 400 });
+    // Only for a key no photos row uses yet (the row is written after).
+    const { count: usedNow } = await svc.from("photos").select("id", { count: "exact", head: true }).eq("storage_path", path);
+    if ((usedNow ?? 0) > 0) return NextResponse.json({ error: "A photo already uses that file." }, { status: 409 });
+    if (body.action === "multipart_abort") {
+      await abortR2OriginalMultipart(path, uploadId).catch(() => {});
+      return NextResponse.json({ aborted: true });
+    }
+    const parts = Array.isArray(body?.parts)
+      ? (body.parts as unknown[])
+          .map((p) => p as { PartNumber?: unknown; ETag?: unknown })
+          .filter((p) => Number.isInteger(p.PartNumber) && typeof p.ETag === "string")
+          .map((p) => ({ PartNumber: p.PartNumber as number, ETag: p.ETag as string }))
+      : [];
+    if (parts.length === 0 || parts.length > 10_000) return NextResponse.json({ error: "Missing parts." }, { status: 400 });
+    try {
+      await completeR2OriginalMultipart(path, uploadId, parts);
+    } catch (e) {
+      console.error(`[upload-target] multipart complete failed for ${path}: ${e instanceof Error ? e.message : String(e)}`);
+      return NextResponse.json({ error: "Couldn't finish the upload." }, { status: 502 });
+    }
+    // Counts only if R2 holds exactly the bytes the browser sent.
+    const head = await headR2Original(path);
+    const want = Number(body?.size);
+    if (!head || (Number.isFinite(want) && want > 0 && head.size !== want)) {
+      console.error(`[upload-target] multipart size mismatch for ${path}: R2 ${head?.size ?? 0} vs ${want}`);
+      await deleteR2Original(path).catch(() => {});
+      return NextResponse.json({ error: "The upload didn't assemble correctly." }, { status: 502 });
+    }
+    noteR2PhotoExists();
+    return NextResponse.json({ done: true });
+  }
+
   if (newOriginalsBackend() !== "r2") return NextResponse.json({ backend: "supabase" });
 
   // Size: declared by the browser, capped here, and signed into the link so
@@ -99,6 +140,21 @@ export async function POST(req: NextRequest) {
 
   const requested = typeof body?.contentType === "string" ? body.contentType.trim().toLowerCase() : "";
   const contentType = /^image\/[a-z0-9.+-]+$/.test(requested) ? requested : originalContentType(path, "image/jpeg");
+  if (body?.action === "multipart_start") {
+    try {
+      const uploadId = await startR2OriginalMultipart(path, contentType);
+      const partCount = Math.ceil(size / ORIGINAL_PART_SIZE);
+      const partUrls = await Promise.all(
+        Array.from({ length: partCount }, (_, i) => presignR2OriginalPart(path, uploadId, i + 1))
+      );
+      noteR2PhotoExists();
+      return NextResponse.json({ backend: "r2", multipart: true, uploadId, partSize: ORIGINAL_PART_SIZE, partUrls, contentType });
+    } catch (e) {
+      console.error(`[upload-target] multipart start failed for ${path}: ${e instanceof Error ? e.message : String(e)}`);
+      return NextResponse.json({ backend: "supabase" });
+    }
+  }
+
   try {
     const url = await presignR2OriginalPut(path, contentType, Math.round(size));
     noteR2PhotoExists();

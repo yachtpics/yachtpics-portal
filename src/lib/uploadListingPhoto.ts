@@ -81,6 +81,15 @@ export function requestDerivatives(listingId: string, photoIds: string[]) {
 /** How many listing photos upload at once (admin pages and the broker listing page). */
 export const PHOTO_UPLOAD_CONCURRENCY = 4;
 
+/**
+ * Files uploaded at once for this batch: 4 normally, 2 when any file is over
+ * 20 MB (full-resolution shoots of 20–50 MB each would otherwise saturate the
+ * connection — each big file also sends 3 parts in parallel).
+ */
+export function photoUploadConcurrency(files: { size: number }[]): number {
+  return files.some((f) => f.size > 20 * 1024 * 1024) ? 2 : PHOTO_UPLOAD_CONCURRENCY;
+}
+
 export type ListingPhotoRow = {
   id: string;
   storage_path: string;

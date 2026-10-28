@@ -56,7 +56,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       // The rest in the background, right away (one job does all R2 photos
       // still missing their 2000 copy / download files).
       const q = await enqueueJob("r2_photo_finish", {}, user.id, svc);
-      if (q.job && (!q.existing || q.job.status === "queued")) kickWorker(jobsBaseUrl(req));
+      // Wake the worker for a new or waiting job — and for a "running" one
+      // whose batch chain broke (no lease, or no heartbeat for 90 s): Vercel
+      // can refuse the worker's call to itself (HTTP 508 loop detection,
+      // seen Oct 28), which used to leave the job stalled until the daily cron.
+      const j = q.job;
+      const stale =
+        !!j &&
+        j.status === "running" &&
+        (!j.locked_until || Date.parse(j.locked_until) < Date.now()) &&
+        (!j.heartbeat_at || Date.now() - Date.parse(j.heartbeat_at) > 90_000);
+      if (j && (!q.existing || j.status === "queued" || stale)) kickWorker(jobsBaseUrl(req));
       const { data: made } = r.done.length
         ? await svc.from("photos").select("id, storage_path, derivatives_at, thumb_at").in("id", r.done)
         : { data: [] };

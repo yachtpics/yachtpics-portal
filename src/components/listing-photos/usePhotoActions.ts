@@ -10,7 +10,7 @@ import { guessCategory } from "@/lib/guessCategory";
 import { expandPickedFiles } from "@/lib/pickedImages";
 import { reorderPhotos } from "@/lib/reorderPhotos";
 import {
-  runPool, uploadListingPhoto, replaceListingPhoto, PHOTO_UPLOAD_CONCURRENCY,
+  runPool, uploadListingPhoto, replaceListingPhoto, photoUploadConcurrency,
 } from "@/lib/uploadListingPhoto";
 import type { ListingPhoto, OnPhotoMessage, PhotoCapabilities, ReplaceStage } from "./types";
 import type { ListingPhotosState } from "./useListingPhotos";
@@ -168,7 +168,7 @@ export function usePhotoActions(opts: {
     let done = 0;
 
     try {
-      await runPool(fileArr, PHOTO_UPLOAD_CONCURRENCY, async (file, i) => {
+      await runPool(fileArr, photoUploadConcurrency(fileArr), async (file, i) => {
         const guessed = guessCategory(file.name);
         const usedOverride = !!overrideCategory && guessed === "Other";
         const category = usedOverride ? overrideCategory! : guessed;

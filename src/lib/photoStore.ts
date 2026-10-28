@@ -1,6 +1,10 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import {
   S3Client,
+  AbortMultipartUploadCommand,
+  CompleteMultipartUploadCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
   CopyObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
@@ -57,7 +61,16 @@ export const R2_PHOTO_BUCKET = process.env.R2_PHOTO_BUCKET || R2_VIDEO_BUCKET;
 export const NEW_ORIGINALS_TO_R2 = false;
 
 /** Largest original a browser may PUT to R2 (bytes). */
-export const MAX_ORIGINAL_BYTES = 100 * 1024 * 1024;
+export const MAX_ORIGINAL_BYTES = 150 * 1024 * 1024;
+
+/**
+ * Originals bigger than this go up to R2 in parts (multipart), not one PUT:
+ * single 20–50 MB browser PUTs were being dropped at the network level
+ * ("Failed to fetch") on the Sanibella shoot, Oct 28.
+ */
+export const MULTIPART_THRESHOLD = 10 * 1024 * 1024;
+/** Part size for multipart originals (S3/R2 minimum is 5 MB except the last). */
+export const ORIGINAL_PART_SIZE = 8 * 1024 * 1024;
 
 export function r2PhotosConfigured(): boolean {
   return Boolean(
@@ -233,6 +246,40 @@ export async function presignR2OriginalPut(
  * body never matches it, so a store that enforces it rejects the upload.
  * "WHEN_REQUIRED" leaves them out (Cloudflare's own advice for R2).
  */
+/** Start a multipart upload of an original; returns the upload id. */
+export async function startR2OriginalMultipart(path: string, contentType: string): Promise<string> {
+  const res = await r2PresignClient().send(new CreateMultipartUploadCommand({
+    Bucket: R2_PHOTO_BUCKET,
+    Key: r2PhotoKey(path),
+    ContentType: contentType,
+  }));
+  if (!res.UploadId) throw new Error("R2 didn't return an upload id.");
+  return res.UploadId;
+}
+
+/** Presigned PUT for one part (no content type signed — parts are raw bytes). */
+export async function presignR2OriginalPart(path: string, uploadId: string, partNumber: number, expiresIn = 60 * 60 * 3): Promise<string> {
+  const cmd = new UploadPartCommand({ Bucket: R2_PHOTO_BUCKET, Key: r2PhotoKey(path), UploadId: uploadId, PartNumber: partNumber });
+  return getSignedUrl(r2PresignClient(), cmd, { expiresIn });
+}
+
+export async function completeR2OriginalMultipart(
+  path: string,
+  uploadId: string,
+  parts: { PartNumber: number; ETag: string }[]
+): Promise<void> {
+  await r2PresignClient().send(new CompleteMultipartUploadCommand({
+    Bucket: R2_PHOTO_BUCKET,
+    Key: r2PhotoKey(path),
+    UploadId: uploadId,
+    MultipartUpload: { Parts: [...parts].sort((a, b) => a.PartNumber - b.PartNumber) },
+  }));
+}
+
+export async function abortR2OriginalMultipart(path: string, uploadId: string): Promise<void> {
+  await r2PresignClient().send(new AbortMultipartUploadCommand({ Bucket: R2_PHOTO_BUCKET, Key: r2PhotoKey(path), UploadId: uploadId }));
+}
+
 let presignClient: S3Client | null = null;
 function r2PresignClient(): S3Client {
   if (presignClient) return presignClient;

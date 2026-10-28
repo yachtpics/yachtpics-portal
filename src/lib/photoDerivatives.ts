@@ -236,18 +236,21 @@ export async function ensureDerivatives(
     }
   };
 
-  /** R2 original: both WebP derivatives with sharp. False = fall back to staging. */
+  /**
+   * R2 original: both WebP derivatives AND the Web / Social files with sharp,
+   * from one decode (makeAllForR2). False = fall back to staging.
+   */
   const makeWithSharp = async (r: DerivativeSource, bytes: Uint8Array): Promise<boolean> => {
-    const { makeWebpDerivatives, storeDownloadSizes } = await import("@/lib/photoSharp");
-    let made: Map<DerivativeSize, Buffer>;
+    const { makeAllForR2, storeMadeDownloadFiles } = await import("@/lib/photoSharp");
+    let made: Awaited<ReturnType<typeof makeAllForR2>>;
     try {
-      made = await makeWebpDerivatives(bytes, DERIVATIVE_SIZES);
+      made = await makeAllForR2(bytes, r.storage_path);
     } catch (e) {
       console.warn(`photo derivatives: sharp couldn't make ${r.id} (${e instanceof Error ? e.message : e}) — staging instead`);
       return false;
     }
     for (const size of DERIVATIVE_SIZES) {
-      const buf = made.get(size)!;
+      const buf = made.webp.get(size)!;
       const upErr = await uploadDerivative(svc, derivativePath(r, size), buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer);
       if (upErr) {
         out.failed.push({ id: r.id, reason: `upload: ${upErr}` });
@@ -265,8 +268,8 @@ export async function ensureDerivatives(
     }
     out.done.push(r.id);
     // Web & MLS / Social files, best effort (made on demand if this fails).
-    await storeDownloadSizes(svc, r, bytes).catch((e) => {
-      console.warn(`download sizes: ${r.id} not made (${e instanceof Error ? e.message : e})`);
+    await storeMadeDownloadFiles(svc, r, made.downloads).catch((e) => {
+      console.warn(`download sizes: ${r.id} not stored (${e instanceof Error ? e.message : e})`);
     });
     return true;
   };
