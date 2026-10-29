@@ -1,5 +1,6 @@
 "use client";
 
+import { slideshowPublishUpdate } from "@/lib/slideshowPublish";
 import BoatShowCard from "@/components/BoatShowCard";
 import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import { useState, useRef, useEffect } from "react";
@@ -365,8 +366,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
 
   async function publishSlideshow() {
     setSlideshowBusy(true);
-    const slug = slideshowSlug ?? Math.random().toString(36).substring(2, 10);
-    const { error } = await supabase.from("listings").update({ slideshow_slug: slug, slideshow_published: true }).eq("id", listing.id);
+    const update = slideshowPublishUpdate(slideshowSlug);
+    const slug = update.slideshow_slug;
+    const { error } = await supabase.from("listings").update(update).eq("id", listing.id);
     if (!error) { setSlideshowSlug(slug); setSlideshowPublished(true); }
     else setMessage(`Couldn't publish the slideshow: ${error.message}`, "error");
     setSlideshowBusy(false);

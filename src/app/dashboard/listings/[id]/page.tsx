@@ -1,5 +1,6 @@
 "use client";
 
+import { slideshowPublishUpdate } from "@/lib/slideshowPublish";
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { createClient } from "@/lib/supabase/client";
@@ -217,6 +218,19 @@ export default function BrokerListingPage() {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  // "?section=slideshow" (the Slideshow ready email's button, carried through
+  // the sign-in redirect as part of ?next=) or "#slideshow": once the page
+  // has loaded, bring the Client Slideshow section into view. A plain anchor
+  // can't do it — the section renders after the data arrives.
+  const scrolledToSectionRef = useRef(false);
+  useEffect(() => {
+    if (loading || scrolledToSectionRef.current) return;
+    const wants = new URLSearchParams(window.location.search).get("section") === "slideshow" || window.location.hash === "#slideshow";
+    if (!wants) return;
+    scrolledToSectionRef.current = true;
+    window.setTimeout(() => document.getElementById("slideshow")?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+  }, [loading]);
 
   /**
    * Everything this page needs, in two waves instead of a queue.
@@ -621,8 +635,10 @@ export default function BrokerListingPage() {
 
   async function publishSlideshow() {
     setSlideshowWorking(true);
-    const slug = listing?.slideshow_slug ?? Math.random().toString(36).substring(2, 10);
-    await supabase.from("listings").update({ slideshow_slug: slug, slideshow_published: true }).eq("id", id);
+    // Same change as everywhere else Create Slideshow exists (src/lib/slideshowPublish.ts).
+    const update = slideshowPublishUpdate(listing?.slideshow_slug);
+    const slug = update.slideshow_slug;
+    await supabase.from("listings").update(update).eq("id", id);
     setListing((prev) => prev ? { ...prev, slideshow_slug: slug, slideshow_published: true } : prev);
     setSlideshowWorking(false);
   }

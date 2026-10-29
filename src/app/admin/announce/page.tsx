@@ -73,6 +73,7 @@ export default async function AdminAnnouncePage() {
     <div className="px-6 py-8 max-w-5xl mx-auto">
       <div className="mb-6">
         <h1 className="text-display text-ink-900">Announcements</h1>
+        <p className="text-sm mt-1"><a href="/admin/announce/slideshow-ready" className="text-accent-700 hover:underline">Slideshow ready — prepare slideshows and email brokers without a plan →</a></p>
         <p className="text-ink-500 text-sm mt-1">
           Each campaign has its own window, approval and dedup. Approve each one separately.
         </p>

@@ -1,5 +1,10 @@
 # Where we are — October 6, 2026
 
+## Oct 29 — "Slideshow ready" campaign tooling (/admin/announce/slideshow-ready) — NOT PUSHED · MIGRATION `20261029_slideshow_prepared.sql` APPLIED · no new dependency
+
+- **Step 1 — Prepare:** candidates = active, unsold, unpublished listings with ≥1 visible photo of brokers with NO access (getEffectiveAccessStatus + hasAccess). Checkboxes (test-looking accounts start unticked), "Prepare N slideshows" → `prepareSlideshows` re-checks eligibility, then applies `slideshowPublishUpdate` (new `src/lib/slideshowPublish.ts`, now also used by the broker's and admin's Create Slideshow buttons) + `listings.slideshow_prepared_by / _at`. Side-effect audit: the change is two columns; the only listings trigger guards ownership/sharing; no code sends email/push, publishes to yachtpics.com, touches the showcase or posts socially on publish; public link stays private while the broker has no access.
+- **Step 2 — Email:** recipients = brokers without access with ≥1 active unsold published slideshow, email_opt_out false, not already logged `slideshow_ready_2026_10` (sent). Featured = most recent photographed_at (else created_at); "…one of N ready" line when N > 1. Hero image = cover at 2000px, 90-day signed link. Button → `/dashboard/listings/{id}?section=slideshow` (survives the sign-in redirect via ?next=; the listing page now scrolls to Client Slideshow on `?section=slideshow` / `#slideshow`). No "Preview" link: signed out, /s shows "temporarily unavailable". Page: recipient list with checkboxes, 3 rendered previews, Send a test to me (logged as `…_test`), Send with typed SEND; Resend batch + email_log per recipient (dedup).
+
 ## Oct 28 — Photo originals → Cloudflare R2 (dual backend + migration tool) — NOT PUSHED, NOT TESTED LIVE · MIGRATION `20261028c_photo_originals_r2.sql` APPLIED · no new dependency
 
 - **Why:** Supabase Storage ~105 GB (Pro includes 100), +~9 GB/week. Full-res originals move to R2 (no egress charge); the 600/2000 px WebP derivatives stay in Supabase.
