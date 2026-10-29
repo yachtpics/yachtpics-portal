@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { newEmailLogId, trackEmailHtml } from "@/lib/emailTracking";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
 import { TIPS, tipEmailType, tipApprovalKey, tipEmailHtml } from "@/lib/portalTips";
 import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
@@ -83,14 +84,16 @@ export async function runTipsDrip(admin: SupabaseClient, sentBy: string): Promis
   }
 
   // One batched send for all due recipients (Resend batch API, ≤100/request).
-  const messages: BatchEmail[] = jobs.map(({ r, tipIndex }) => {
+  // Log ids chosen up front so each email's links and open pixel carry its own.
+  const logIds = jobs.map(() => newEmailLogId());
+  const messages: BatchEmail[] = jobs.map(({ r, tipIndex }, i) => {
     const tip = TIPS[tipIndex];
     const token = r.unsubscribe_token ?? undefined;
     return {
       from: FROM,
       to: r.display_email as string,
       subject: tip.subject,
-      html: tipEmailHtml(tip, { firstName: r.first_name ?? "there", unsubToken: token }),
+      html: trackEmailHtml(tipEmailHtml(tip, { firstName: r.first_name ?? "there", unsubToken: token }), logIds[i]),
       headers: token ? unsubscribeHeaders(token) : undefined,
     };
   });
@@ -104,6 +107,7 @@ export async function runTipsDrip(admin: SupabaseClient, sentBy: string): Promis
       if (ok) result.sent++;
       else result.failed++;
       return logEmail({
+        id: logIds[i],
         emailType: tipEmailType(tip.slug),
         recipientEmail: r.display_email as string,
         recipientRole: r.role === "assistant" ? "assistant" : "broker",
@@ -112,6 +116,7 @@ export async function runTipsDrip(admin: SupabaseClient, sentBy: string): Promis
         status: ok ? "sent" : "failed",
         error: ok ? null : (batchResults[i]?.error ?? "Send failed"),
         sentBy,
+        metadata: { tracked: true },
       });
     })
   );

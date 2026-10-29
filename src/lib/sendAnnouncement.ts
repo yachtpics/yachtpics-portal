@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { newEmailLogId, trackEmailHtml } from "@/lib/emailTracking";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
 import { GENERAL_ANNOUNCEMENT_CAMPAIGN, type AnnouncementCampaign } from "@/lib/announcementEmail";
 import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
@@ -130,13 +131,15 @@ export async function runAnnouncementSend(
   const { recipients, queue } = await planAnnouncement(admin, campaign);
 
   // One batched send for the whole queue (Resend batch API, ≤100 per request).
-  const messages: BatchEmail[] = queue.map((r) => {
+  // Log ids chosen up front so each email's links and open pixel carry its own.
+  const logIds = queue.map(() => newEmailLogId());
+  const messages: BatchEmail[] = queue.map((r, i) => {
     const token = r.unsubscribe_token ?? undefined;
     return {
       from: FROM,
       to: r.display_email as string,
       subject: campaign.subject,
-      html: campaign.html({ firstName: r.first_name ?? "there", unsubToken: token }),
+      html: trackEmailHtml(campaign.html({ firstName: r.first_name ?? "there", unsubToken: token }), logIds[i]),
       headers: token ? unsubscribeHeaders(token) : undefined,
     };
   });
@@ -151,6 +154,7 @@ export async function runAnnouncementSend(
       if (ok) sent++;
       else failed++;
       return logEmail({
+        id: logIds[i],
         emailType: campaign.type,
         recipientEmail: r.display_email as string,
         recipientRole: r.role === "assistant" ? "assistant" : "broker",
@@ -159,6 +163,7 @@ export async function runAnnouncementSend(
         status: ok ? "sent" : "failed",
         error: ok ? null : (batchResults[i]?.error ?? "Send failed"),
         sentBy,
+        metadata: { tracked: true },
       });
     })
   );

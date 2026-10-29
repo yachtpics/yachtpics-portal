@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
 export interface EmailLogEntry {
+  /** Pre-chosen row id — set when the email carries tracking links (src/lib/emailTracking.ts). */
+  id?: string;
   /** Stable machine type, e.g. "broker_invite", "photos_ready", "client_send". */
   emailType: string;
   recipientEmail: string;
@@ -39,6 +41,7 @@ export async function logEmail(entry: EmailLogEntry): Promise<void> {
         ? { ...(entry.metadata ?? {}), sentByLabel: entry.sentBy }
         : entry.metadata ?? null;
     await admin.from("email_log").insert({
+      ...(entry.id && UUID_RE.test(entry.id) ? { id: entry.id } : {}),
       email_type: entry.emailType,
       recipient_email: entry.recipientEmail,
       recipient_role: entry.recipientRole ?? null,

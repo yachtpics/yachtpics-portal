@@ -9,6 +9,8 @@ import {
   SLIDESHOW_READY_TYPE,
 } from "@/lib/slideshowReadyCampaign";
 import SlideshowReadyControls from "./SlideshowReadyControls";
+import { emailCampaignReport } from "@/lib/emailReport";
+import EmailReportTable from "../_components/EmailReportTable";
 
 export const dynamic = "force-dynamic";
 // Looks up every broker's access (~150) and renders three previews.
@@ -25,7 +27,11 @@ export default async function SlideshowReadyPage() {
   await requireAdminPage();
   const svc = serviceClient();
   const noAccess = await brokersWithoutAccess(svc);
-  const [candidates, plan] = await Promise.all([findPrepareCandidates(svc, noAccess), planSlideshowReady(svc, noAccess)]);
+  const [candidates, plan, report] = await Promise.all([
+    findPrepareCandidates(svc, noAccess),
+    planSlideshowReady(svc, noAccess),
+    emailCampaignReport(svc, SLIDESHOW_READY_TYPE),
+  ]);
   const previews = await Promise.all(
     plan.recipients.filter((r) => !r.testLike).slice(0, 3).map(async (r) => ({ r, ...(await renderForRecipient(svc, r)) }))
   );
@@ -39,6 +45,12 @@ export default async function SlideshowReadyPage() {
         email pointing at their newest boat&rsquo;s slideshow. Their public links stay private until they choose a plan; they can preview
         and see it in the Portal. Campaign key <code className="text-xs">{SLIDESHOW_READY_TYPE}</code>.
       </p>
+      {report.totals.sent > 0 && (
+        <section className="mt-6">
+          <h2 className="text-lg font-semibold text-ink-900 mb-3">Results</h2>
+          <EmailReportTable report={report} />
+        </section>
+      )}
       <SlideshowReadyControls
         candidates={candidates}
         recipients={plan.recipients.map((r) => ({

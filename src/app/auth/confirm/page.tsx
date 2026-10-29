@@ -73,6 +73,9 @@ export default function ConfirmSignInPage() {
       const { data: profile } = await supabase.from("profiles").select("role").eq("id", user.id).single();
       if (profile?.role === "admin") destination = "/admin";
     }
+    // Credit a recent campaign email with this sign-in (fire-and-forget;
+    // keepalive lets it finish while the page navigates).
+    void fetch("/api/e/signin", { method: "POST", keepalive: true }).catch(() => {});
     window.location.assign(next ?? destination);
   }
 

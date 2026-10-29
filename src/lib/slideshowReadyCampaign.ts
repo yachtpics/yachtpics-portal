@@ -7,6 +7,7 @@ import { slideshowPublishUpdate } from "@/lib/slideshowPublish";
 import { unsubscribeFooterHtml, unsubscribeHeaders } from "@/lib/unsubscribe";
 import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
 import { logEmail } from "@/lib/logEmail";
+import { newEmailLogId, trackEmailHtml } from "@/lib/emailTracking";
 import { PLAN_FROM_PRICE } from "@/lib/planValue";
 
 /**
@@ -306,9 +307,14 @@ export async function sendSlideshowReady(svc: SupabaseClient, brokerIds: string[
   const wanted = new Set(brokerIds);
   const { recipients } = await planSlideshowReady(svc);
   const queue = recipients.filter((r) => wanted.has(r.brokerId));
-  const rendered: { r: ReadyRecipient; subject: string; html: string }[] = [];
+  // Each email's log id is chosen up front so its links and open pixel can carry it.
+  const rendered: { r: ReadyRecipient; subject: string; html: string; logId: string }[] = [];
   for (let i = 0; i < queue.length; i += 10) {
-    const chunk = await Promise.all(queue.slice(i, i + 10).map(async (r) => ({ r, ...(await renderForRecipient(svc, r)) })));
+    const chunk = await Promise.all(queue.slice(i, i + 10).map(async (r) => {
+      const logId = newEmailLogId();
+      const { subject, html } = await renderForRecipient(svc, r);
+      return { r, subject, html: trackEmailHtml(html, logId), logId };
+    }));
     rendered.push(...chunk);
   }
   const messages: BatchEmail[] = rendered.map(({ r, subject, html }) => ({
@@ -321,10 +327,11 @@ export async function sendSlideshowReady(svc: SupabaseClient, brokerIds: string[
   const results = await sendResendBatch(messages);
   let sent = 0;
   let failed = 0;
-  await Promise.all(rendered.map(({ r, subject }, i) => {
+  await Promise.all(rendered.map(({ r, subject, logId }, i) => {
     const ok = results[i]?.ok ?? false;
     if (ok) sent++; else failed++;
     return logEmail({
+      id: logId,
       emailType: SLIDESHOW_READY_TYPE,
       recipientEmail: r.email,
       recipientRole: "broker",
@@ -335,7 +342,7 @@ export async function sendSlideshowReady(svc: SupabaseClient, brokerIds: string[
       status: ok ? "sent" : "failed",
       error: ok ? null : results[i]?.error ?? "Send failed",
       sentBy,
-      metadata: { readyCount: r.readyCount, resendId: results[i]?.id ?? null },
+      metadata: { readyCount: r.readyCount, resendId: results[i]?.id ?? null, tracked: true },
     });
   }));
   return { sent, failed, skipped: wanted.size - queue.length };
@@ -346,8 +353,11 @@ export async function sendSlideshowReadyTest(svc: SupabaseClient, to: string, se
   const r = sample ?? (await planSlideshowReady(svc)).recipients[0];
   if (!r) return { ok: false, error: "No recipients to base a test on yet — prepare some slideshows first." };
   const { subject, html } = await renderForRecipient(svc, r);
-  const [res] = await sendResendBatch([{ from: FROM, to, subject: `[Test] ${subject}`, html }]);
+  // Tracked like the real thing, so a click on the test shows up too.
+  const logId = newEmailLogId();
+  const [res] = await sendResendBatch([{ from: FROM, to, subject: `[Test] ${subject}`, html: trackEmailHtml(html, logId) }]);
   await logEmail({
+    id: logId,
     emailType: `${SLIDESHOW_READY_TYPE}_test`,
     recipientEmail: to,
     recipientRole: null,
@@ -355,7 +365,7 @@ export async function sendSlideshowReadyTest(svc: SupabaseClient, to: string, se
     status: res?.ok ? "sent" : "failed",
     error: res?.ok ? null : res?.error ?? null,
     sentBy,
-    metadata: { sampleBroker: r.brokerId },
+    metadata: { sampleBroker: r.brokerId, tracked: true },
   });
   return res?.ok ? { ok: true } : { ok: false, error: res?.error ?? "Send failed" };
 }

@@ -1,6 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { safeNextPath } from '@/lib/safeNext'
+import { serviceClient } from '@/lib/publicSlideshow'
+import { recordSigninAttribution } from '@/lib/emailTracking'
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url)
@@ -11,8 +13,10 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createClient()
-    const { error } = await supabase.auth.exchangeCodeForSession(code)
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code)
     if (!error) {
+      // Credit a recent campaign email with this sign-in (never blocks it).
+      if (data.user) await recordSigninAttribution(serviceClient(), data.user.id, request.headers.get('user-agent'))
       return NextResponse.redirect(`${origin}${next}`)
     }
   }

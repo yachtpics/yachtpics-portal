@@ -56,6 +56,9 @@ export default function LoginPage() {
       // from the server with the new session — avoids Next's client-side
       // router cache serving stale pages (e.g. a gallery added since the last
       // session wouldn't appear until a manual refresh).
+      // Credit a recent campaign email with this sign-in (fire-and-forget;
+      // keepalive lets it finish while the page navigates).
+      void fetch("/api/e/signin", { method: "POST", keepalive: true }).catch(() => {});
       window.location.assign(next ?? destination);
     }
   };
