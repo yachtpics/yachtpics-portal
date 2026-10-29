@@ -1,4 +1,4 @@
--- NOT APPLIED YET (the apply was held for a confirmation). Oct 29, 2026 —
+-- APPLIED Oct 29, 2026 (pasted in the SQL Editor; verified old-vs-new equivalent). —
 -- RLS speed-up: photos policies, initplan pattern. Same names, commands, roles
 -- and meaning; drop + create in one transaction (no window without a policy).
 -- Needs 20261029e_rls_helpers.sql (applied).

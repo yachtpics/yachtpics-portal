@@ -5,16 +5,21 @@ import AdminListingsBrowser from "./_components/AdminListingsBrowser";
 
 export default async function AdminListingsPage() {
   // Role check lives in the page, not only the layout — see requireAdminPage.
-  await requireAdminPage();
+  // It runs alongside the read (which goes through the signed-in user's RLS,
+  // so a non-admin gets nothing and is redirected anyway) rather than as an
+  // extra round trip in front of it.
   const supabase = await createClient();
 
-  const { data: listingsRaw } = await supabase
-    .from("listings")
-    .select(`
+  const [, { data: listingsRaw }] = await Promise.all([
+    requireAdminPage(),
+    supabase
+      .from("listings")
+      .select(`
       id, broker_id, vessel_name, vessel_type, year, length_ft, location, status, updated_at, make, model, in_showcase, showcase_opt_out,
       profiles:broker_id(first_name, last_name)
     `)
-    .order("updated_at", { ascending: false });
+      .order("updated_at", { ascending: false }),
+  ]);
 
   const listings = (listingsRaw ?? []).map((l) => {
     const b = (Array.isArray(l.profiles) ? l.profiles[0] : l.profiles) as { first_name: string | null; last_name: string | null } | null;

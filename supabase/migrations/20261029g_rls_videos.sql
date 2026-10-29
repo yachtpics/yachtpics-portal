@@ -1,4 +1,4 @@
--- NOT APPLIED YET (the apply was held for a confirmation). Oct 29, 2026 —
+-- APPLIED Oct 29, 2026 (pasted in the SQL Editor; verified old-vs-new equivalent). —
 -- RLS speed-up: videos policies, initplan pattern (same names, commands, roles
 -- and meaning). The assistant policies keep their narrower rule: direct
 -- assistant links only (rls_direct_assisted_listing_ids).

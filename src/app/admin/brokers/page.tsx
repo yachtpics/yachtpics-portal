@@ -5,11 +5,14 @@ import AdminBrokersBrowser, { type BrokerRow } from "./_components/AdminBrokersB
 
 export default async function AdminBrokersPage() {
   // Role check lives in the page, not only the layout — see requireAdminPage.
-  await requireAdminPage();
+  // It runs in the same wave as the reads (they go through the signed-in
+  // user's RLS, so a non-admin gets nothing and is redirected anyway) rather
+  // than as an extra round trip in front of them.
   const supabase = await createClient();
 
   // The brokers and the admin names are independent reads — one wave, not two.
-  const [{ data: brokers }, { data: adminProfiles }] = await Promise.all([
+  const [, { data: brokers }, { data: adminProfiles }] = await Promise.all([
+    requireAdminPage(),
     supabase
       .from("profiles")
       .select(`

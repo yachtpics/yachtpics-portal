@@ -17,10 +17,16 @@ function loginLabel(iso: string | null | undefined): { text: string; stale: bool
 
 export default async function AdminAssistantsPage() {
   // Role check lives in the page, not only the layout — see requireAdminPage.
-  await requireAdminPage();
+  // It runs alongside the reads below (they go through the signed-in user's
+  // RLS, so a non-admin would get nothing and be redirected anyway) instead of
+  // in front of them — and the three reads go out together. This page used to
+  // make five round trips one after another.
   const supabase = await createClient();
 
-  const { data: assistants } = await supabase
+  type Act = { id: string; last_sign_in_at: string | null; brokers_invited: number; client_sends: number; photo_uploads: number };
+  const [, { data: assistants }, { data: adminProfiles }, { data: activityRows }] = await Promise.all([
+    requireAdminPage(),
+    supabase
     .from("profiles")
     .select(`
       id, first_name, last_name, display_email, created_at,
@@ -28,12 +34,14 @@ export default async function AdminAssistantsPage() {
     `)
     .eq("role", "assistant")
     .order("last_name", { ascending: true })
-    .order("first_name", { ascending: true });
-
-  const { data: adminProfiles } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name")
-    .eq("role", "admin");
+    .order("first_name", { ascending: true }),
+    supabase
+      .from("profiles")
+      .select("id, first_name, last_name")
+      .eq("role", "admin"),
+    // Per-assistant activity (last login + counts), admin-gated SECURITY DEFINER.
+    supabase.rpc("assistant_activity"),
+  ]);
   const adminNameById = new Map(
     (adminProfiles ?? []).map((a) => [
       a.id as string,
@@ -41,9 +49,6 @@ export default async function AdminAssistantsPage() {
     ])
   );
 
-  // Per-assistant activity (last login + counts), admin-gated SECURITY DEFINER.
-  type Act = { id: string; last_sign_in_at: string | null; brokers_invited: number; client_sends: number; photo_uploads: number };
-  const { data: activityRows } = await supabase.rpc("assistant_activity");
   const activity = new Map(((activityRows ?? []) as Act[]).map((r) => [r.id, r]));
 
   // Show the most recently active first; never-logged-in sink to the bottom.

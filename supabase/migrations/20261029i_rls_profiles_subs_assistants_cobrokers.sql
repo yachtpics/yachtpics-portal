@@ -1,4 +1,4 @@
--- NOT APPLIED YET (the apply was held for a confirmation). Oct 29, 2026 —
+-- APPLIED Oct 29, 2026 (pasted in the SQL Editor; verified old-vs-new equivalent). —
 -- RLS speed-up: profiles, subscriptions, broker_assistants, listing_co_brokers
 -- policies, initplan pattern (same names, commands, roles and meaning).
 set local lock_timeout = '5s';
