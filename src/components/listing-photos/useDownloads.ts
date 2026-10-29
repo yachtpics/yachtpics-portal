@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { runPool } from "@/lib/uploadListingPhoto";
 import {
   SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
   sharePhotoFiles, saveFilesSequentially, saveFilesAsZip,
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
+import { formatBytes, openZipTarget, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
 
 // Two ways photos leave a listing page, one per role:
 //
@@ -22,14 +22,10 @@ import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
  *  signed by /api/listings/[id]/photos/download-urls (long edge capped). */
 export type DownloadSize = "full" | "web" | "social";
 export const DOWNLOAD_SIZES: { value: DownloadSize; label: string; short: string; suffix: string }[] = [
-  { value: "full", label: "Full resolution", short: "Full resolution", suffix: "" },
   { value: "web", label: "Web & MLS (2048px)", short: "Web & MLS", suffix: "2048px" },
   { value: "social", label: "Social (1080px)", short: "Social", suffix: "1080px" },
+  { value: "full", label: "Full resolution (print)", short: "Full resolution", suffix: "" },
 ];
-// Resized downloads are made on the fly by Supabase, which answers 429 to a
-// burst — so a zip of them fetches a few at a time. Originals can go wider.
-const RESIZED_FETCH_CONCURRENCY = 6;
-const ORIGINAL_FETCH_CONCURRENCY = 8;
 
 /** fetch → blob, retrying a 429 / 5xx twice with a short back-off. */
 async function fetchBlobWithRetry(url: string): Promise<Blob> {
@@ -63,8 +59,10 @@ export function useSizedDownloads(opts: {
   const { listingId, vesselName, onMessage, onFinished } = opts;
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
+  /** What the zip is doing, e.g. "12 of 194 photos · 480 MB" (null when idle). */
+  const [downloadLabel, setDownloadLabel] = useState<string | null>(null);
   // Download size for every download button on the page (remembered per browser).
-  const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("full");
+  const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("web"); // Web & MLS by default (Oct 29): fast, and what most downloads are for
   function setDownloadSize(v: DownloadSize) {
     setDownloadSizeState(v);
     try { localStorage.setItem("yp_download_size", v); } catch { /* private mode */ }
@@ -126,6 +124,20 @@ export function useSizedDownloads(opts: {
     const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
     const vessel = vesselName ? cleanName(vesselName) : "";
 
+    // Several photos: open the Save dialog NOW, while the click still counts
+    // as a user gesture (it can't be opened after the links are signed).
+    let zipTarget: ZipTarget | null = null;
+    if (targets.length > 1) {
+      const zipName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
+      zipTarget = await openZipTarget(zipName);
+      if (zipTarget.kind === "cancelled") {
+        setDownloading(false);
+        setDownloadProgress(0);
+        return;
+      }
+      setDownloadLabel("Preparing…");
+    }
+
     const { urls: fresh, ext: madeExt } = await signForDownload(targets, size);
     // A pre-made R2 file is JPEG (or PNG): name it so; otherwise the original's extension.
     const extFor = (p: ListingPhoto) => {
@@ -163,100 +175,55 @@ export function useSizedDownloads(opts: {
       return;
     }
 
-    // Multiple photos — ZIP, all inside a "{Vessel}/" folder, named
-    // "{nn} {Category}.jpg" so they sort in listing order.
-    // STORE (no compression): JPEGs are already compressed, so this makes zip
-    // generation 5-10x faster. JSZip is loaded on demand — it's sizeable and
-    // only needed when someone actually zips photos.
-    const { default: JSZip } = await import("jszip");
-    const zip = new JSZip();
+    // Multiple photos — a STREAMING zip (src/lib/zipDownload.ts), all inside
+    // a "{Vessel}/" folder, named "{nn} {Category}.jpg" so they sort in
+    // listing order. Store mode. Chrome / Edge write straight into the file
+    // picked (any size); other browsers get ≤ 1 GB parts.
     const folder = vessel || "Photos";
     const pad = Math.max(2, String(targets.length).length);
-    let fetched = 0;
-    let added = 0;
-
-    await runPool(
-      targets,
-      size === "full" ? ORIGINAL_FETCH_CONCURRENCY : RESIZED_FETCH_CONCURRENCY,
-      async (photo, index) => {
-        const url = fresh[photo.id];
-        try {
-          if (url) {
-            const blob = await fetchBlobWithRetry(url);
-            const ext = extFor(photo);
-            const label = cleanName(photo.category ?? "Photo") || "Photo";
-            zip.file(`${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${ext}`, blob);
-            added++;
-          }
-        } catch { /* counted below */ }
-        fetched++;
-        // Fetch phase = 0–85% of progress
-        setDownloadProgress(Math.round((fetched / targets.length) * 85));
-      }
-    );
-    const failedCount = targets.length - added;
-
-    if (added === 0) {
-      setDownloading(false);
-      setDownloadProgress(0);
-      onMessage({ kind: "error", text: "None of those photos could be downloaded. Please try again in a moment.", ms: 8000 });
+    const baseName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}`;
+    const entries: ZipEntry[] = targets.map((photo, index) => {
+      const label = cleanName(photo.category ?? "Photo") || "Photo";
+      return { name: `${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${extFor(photo)}`, url: fresh[photo.id] };
+    });
+    const result = await writeZip(zipTarget as Exclude<ZipTarget, { kind: "cancelled" }>, entries, {
+      baseName,
+      onProgress: (p) => {
+        setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
+        setDownloadLabel(
+          `${p.parts && p.parts > 1 ? `Part ${p.part} of ${p.parts} · ` : ""}${p.done} of ${p.total} photos · ${formatBytes(p.bytes)}`
+        );
+      },
+    });
+    setDownloading(false);
+    setDownloadProgress(0);
+    setDownloadLabel(null);
+    if (!result.ok) {
+      onMessage({ kind: "error", text: result.error, ms: 10000 });
       return;
     }
-
-    // Zip generation phase = 85–100%
-    setDownloadProgress(88);
-    const zipBlob = await zip.generateAsync(
-      { type: "blob", compression: "STORE" },
-      (meta) => setDownloadProgress(88 + Math.round(meta.percent * 0.12))
-    );
-    const zipName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
-
-    const finish = () => {
-      fetch(`/api/listings/${listingId}/log-download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoCount: added }),
-      }).catch(() => {});
-      setDownloading(false);
-      setDownloadProgress(0);
-      onFinished();
-      if (failedCount > 0) {
-        onMessage({
-          kind: "error",
-          text: `${failedCount} photo${failedCount !== 1 ? "s" : ""} couldn't be added to the zip — download ${failedCount !== 1 ? "them" : "it"} again on ${failedCount !== 1 ? "their" : "its"} own.`,
-          ms: 10000,
-        });
-      }
-    };
-
-    if ("showSaveFilePicker" in window) {
-      try {
-        const handle = await (window as any).showSaveFilePicker({
-          suggestedName: zipName,
-          types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
-        });
-        const writable = await handle.createWritable();
-        await writable.write(zipBlob);
-        await writable.close();
-        finish();
-        return;
-      } catch (err) {
-        // The broker closed the Save dialog: that's a "no", not a cue to
-        // download anyway. Anything else (picker unsupported in this
-        // context, write failed) falls through to a normal download.
-        if (err instanceof DOMException && err.name === "AbortError") {
-          setDownloading(false);
-          setDownloadProgress(0);
-          return;
-        }
-      }
+    fetch(`/api/listings/${listingId}/log-download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoCount: result.written }),
+    }).catch(() => {});
+    onFinished();
+    if (result.failed > 0) {
+      onMessage({
+        kind: "error",
+        text: `Saved ${result.written} photos${result.parts > 1 ? ` in ${result.parts} zip files` : ""}. ${result.failed} couldn't be downloaded — download ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`,
+        ms: 10000,
+      });
+    } else {
+      onMessage({
+        kind: "success",
+        text: `Saved ${result.written} photos (${formatBytes(result.bytes)})${result.parts > 1 ? ` in ${result.parts} zip files` : ""}.`,
+        ms: 5000,
+      });
     }
-
-    triggerDownload(zipBlob, zipName);
-    finish();
   }
 
-  return { downloading, downloadProgress, downloadSize, setDownloadSize, downloadTitle, downloadPhotos };
+  return { downloading, downloadProgress, downloadLabel, downloadSize, setDownloadSize, downloadTitle, downloadPhotos };
 }
 
 export type SizedDownloads = ReturnType<typeof useSizedDownloads>;
@@ -325,6 +292,34 @@ export function useOriginalSave(opts: {
     setSaveError(null);
     if (shouldUseShareSheet()) {
       await prepareShareBatch(targets, 0);
+      return;
+    }
+    // Several photos on a desktop: a streaming zip (src/lib/zipDownload.ts) —
+    // full-resolution shoots are several GB, far more than fits in memory.
+    // The Save dialog is opened first, while the click still counts.
+    if (targets.length > 1 && !isTouchDevice()) {
+      const base = (vesselName ?? "photos").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "photos";
+      const target = await openZipTarget(`${base}-photos.zip`);
+      if (target.kind === "cancelled") return;
+      setSaveBusy({ done: 0, total: targets.length });
+      try {
+        const items = await saveItems(targets);
+        const result = await writeZip(target, items.map((it) => ({ name: it.name, url: it.url })), {
+          baseName: `${base}-photos`,
+          onProgress: (p) => setSaveBusy({ done: p.done, total: p.total }),
+        });
+        if (!result.ok) setSaveError(result.error);
+        else {
+          const missed = result.failed + (targets.length - items.length);
+          if (missed > 0) setSaveError(`${missed} photo${missed !== 1 ? "s" : ""} couldn't be downloaded; the rest were saved.`);
+          else onMessage({ kind: "success", text: `${result.written} photos saved${result.parts > 1 ? ` in ${result.parts} zip files` : ""}.`, ms: 4000 });
+          onFinished();
+        }
+      } catch {
+        setSaveError("The download didn't finish. Please try again.");
+      } finally {
+        setSaveBusy(null);
+      }
       return;
     }
     setSaveBusy({ done: 0, total: targets.length });

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
+import { openZipTarget, writeZip } from "@/lib/zipDownload";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null; thumbUrl?: string | null };
@@ -242,61 +243,36 @@ export default function ClientGalleryView({
         setBusy(false);
         return;
       }
+      // Streaming zip (src/lib/zipDownload.ts): the Save dialog opens first,
+      // while the click still counts; then straight into the file on Chrome /
+      // Edge (any size), ≤ 1 GB parts elsewhere.
+      const target = await openZipTarget(`${safeName}-photos.zip`);
+      if (target.kind === "cancelled") return;
       // Re-sign everything first — the links this page was given may already
       // have expired, and a large set takes a while to pull down.
       const fresh = await freshUrls();
-
-      const { default: JSZip } = await import("jszip");
-      const zip = new JSZip();
-      const BATCH = 8;
-      let fetched = 0;
-      const failed: number[] = [];
-
-      for (let i = 0; i < available.length; i += BATCH) {
-        const batch = available.slice(i, i + BATCH);
-        await Promise.all(
-          batch.map(async (photo, j) => {
-            const n = i + j + 1;
-            const url = fresh?.photos?.[photo.id] ?? photo.url;
-            if (url) {
-              try {
-                const blob = await fetchFile(url);
-                const ext = photo.filename?.split(".").pop() ?? "jpg";
-                zip.file(`${String(n).padStart(3, "0")}-${photo.category ?? "photo"}.${ext}`, blob);
-              } catch {
-                // One retry — most failures here are transient.
-                try {
-                  const blob = await fetchFile(url);
-                  const ext = photo.filename?.split(".").pop() ?? "jpg";
-                  zip.file(`${String(n).padStart(3, "0")}-${photo.category ?? "photo"}.${ext}`, blob);
-                } catch {
-                  failed.push(n);
-                }
-              }
-            } else {
-              failed.push(n);
-            }
-            fetched++;
-            setProgress(Math.round((fetched / available.length) * 85));
-          })
-        );
-      }
-
-      // Never let photos go missing silently — that's how a client ends up
-      // discovering a gap in the numbering and having to ask about it.
-      if (failed.length) {
-        failed.sort((a, b) => a - b);
+      const result = await writeZip(
+        target,
+        available.map((photo, k) => ({
+          name: `${String(k + 1).padStart(3, "0")}-${photo.category ?? "photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+          url: fresh?.photos?.[photo.id] ?? photo.url,
+        })),
+        {
+          baseName: `${safeName}-photos`,
+          onProgress: (p) => setProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
+        }
+      );
+      // Never let photos go missing silently.
+      if (!result.ok) setDlError(result.error);
+      else if (result.failed) {
         setDlError(
-          `${failed.length} photo${failed.length === 1 ? "" : "s"} couldn't be added (${failed.join(", ")}). ` +
-          `Refresh the page and download again to collect them.`
+          `${result.failed} photo${result.failed === 1 ? "" : "s"} couldn't be added. Refresh the page and download again to collect them.`
         );
       }
-
-      setProgress(88);
-      const zipBlob = await zip.generateAsync({ type: "blob", compression: "STORE" }, (m) => setProgress(88 + Math.round(m.percent * 0.12)));
-      triggerDownload(zipBlob, `${safeName}-photos.zip`);
-      log("zip", available.length);
-      setProgress(100);
+      if (result.ok) {
+        log("zip", result.written);
+        setProgress(100);
+      }
     } catch {
       /* ignore */
     } finally {

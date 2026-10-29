@@ -6,6 +6,7 @@ import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefr
 import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/photoAlt";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
+import { openZipTarget, writeZip, type ZipTarget } from "@/lib/zipDownload";
 
 type GalleryPhoto = {
   id: string;
@@ -236,6 +237,14 @@ export default function GallerySlideshow({
   // Video tab downloads those one at a time.
   const downloadAllPhotos = useCallback(async () => {
     if (downloadingAll || photos.length === 0) return;
+    // Several photos: open the Save dialog first, while the click still
+    // counts (streaming zip — src/lib/zipDownload.ts).
+    const safeTitle = title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "gallery";
+    let target: ZipTarget | null = null;
+    if (photos.length > 1) {
+      target = await openZipTarget(`${safeTitle}-photos.zip`);
+      if (target.kind === "cancelled") return;
+    }
     setDownloadingAll(true);
     setDlProgress(0);
     setDlError("");
@@ -253,52 +262,27 @@ export default function GallerySlideshow({
         setDownloadingAll(false);
         return;
       }
-      const { default: JSZip } = await import("jszip");
-      const zip = new JSZip();
-      const BATCH = 8;
-      let fetched = 0;
-      const failed: number[] = [];
-      for (let i = 0; i < photos.length; i += BATCH) {
-        const batch = photos.slice(i, i + BATCH);
-        await Promise.all(
-          batch.map(async (p, j) => {
-            const n = i + j + 1;
-            const url = fresh?.photos?.[i + j] ?? p.downloadUrl;
-            try {
-              if (!url) throw new Error("no link");
-              const blob = await fetchFile(url);
-              zip.file(`${String(n).padStart(3, "0")}-${p.category ?? "photo"}.jpg`, blob);
-            } catch {
-              // One retry — most failures here are transient.
-              try {
-                if (!url) throw new Error("no link");
-                const blob = await fetchFile(url);
-                zip.file(`${String(n).padStart(3, "0")}-${p.category ?? "photo"}.jpg`, blob);
-              } catch {
-                failed.push(n);
-              }
-            }
-            fetched++;
-            setDlProgress(Math.round((fetched / photos.length) * 85));
-          })
-        );
-      }
-      if (failed.length) {
-        failed.sort((a, b) => a - b);
-        setDlError(
-          `${failed.length} photo${failed.length === 1 ? "" : "s"} couldn't be added (${failed.join(", ")}). ` +
-          `Refresh the page and download again to collect them.`
-        );
-      }
-      setDlProgress(88);
-      const safeTitle = title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "gallery";
-      const zipBlob = await zip.generateAsync(
-        { type: "blob", compression: "STORE" },
-        (meta) => setDlProgress(88 + Math.round(meta.percent * 0.12))
+      if (!target) return;
+      const result = await writeZip(
+        target,
+        photos.map((p, k) => ({
+          name: `${String(k + 1).padStart(3, "0")}-${p.category ?? "photo"}.jpg`,
+          url: fresh?.photos?.[k] ?? p.downloadUrl,
+        })),
+        {
+          baseName: `${safeTitle}-photos`,
+          onProgress: (pr) => setDlProgress(pr.total ? Math.round((pr.done / pr.total) * 100) : 0),
+        }
       );
-      triggerDownload(zipBlob, `${safeTitle}-photos.zip`);
-      logDownload(photos.length, "zip");
-      setDlProgress(100);
+      // Never let photos go missing silently.
+      if (!result.ok) setDlError(result.error);
+      else {
+        if (result.failed) {
+          setDlError(`${result.failed} photo${result.failed === 1 ? "" : "s"} couldn't be added. Refresh the page and download again to collect them.`);
+        }
+        logDownload(result.written, "zip");
+        setDlProgress(100);
+      }
     } catch {
       /* ignore */
     } finally {

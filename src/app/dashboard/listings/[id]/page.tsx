@@ -832,7 +832,7 @@ export default function BrokerListingPage() {
             customCategories={photoState.customCategories}
             downloadAllCount={visiblePhotos.length}
             downloadBusy={downloads.downloading}
-            busyLabel={`Zipping... ${downloads.downloadProgress}%`}
+            busyLabel={downloads.downloadLabel ?? `Downloading... ${downloads.downloadProgress}%`}
             onDownloadAll={() => requireDownloadLicense(() => downloads.downloadPhotos(visiblePhotos))}
             onDownloadSelected={() => requireDownloadLicense(() => downloads.downloadPhotos(selectedPhotos))}
             sizeSelect={<DownloadSizeSelect value={downloads.downloadSize} onChange={downloads.setDownloadSize} disabled={downloads.downloading} />}

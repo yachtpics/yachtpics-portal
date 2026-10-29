@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { openZipTarget, writeZip } from "@/lib/zipDownload";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
 import PresentedThrough from "@/components/PresentedThrough";
@@ -47,6 +48,7 @@ export default function DownloadPageClient({
 }) {
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [zipError, setZipError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const available = photos.filter((p) => p.url);
   const availableVideos = videos.filter((v) => v.downloadUrl);
@@ -80,6 +82,7 @@ export default function DownloadPageClient({
     if (busy || available.length === 0) return;
     setBusy(true);
     setProgress(0);
+    setZipError(null);
     try {
       // Single photo — no need to zip
       if (available.length === 1) {
@@ -93,38 +96,27 @@ export default function DownloadPageClient({
         return;
       }
 
-      const { default: JSZip } = await import("jszip");
-      const zip = new JSZip();
-      const BATCH = 8;
-      let fetched = 0;
-
-      for (let i = 0; i < available.length; i += BATCH) {
-        const batch = available.slice(i, i + BATCH);
-        await Promise.all(
-          batch.map(async (photo, j) => {
-            if (!photo.url) return;
-            try {
-              const res = await fetch(photo.url);
-              const blob = await res.blob();
-              const ext = photo.filename?.split(".").pop() ?? "jpg";
-              const name = `${String(i + j + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
-              zip.file(name, blob);
-            } catch {
-              /* skip failed photo */
-            }
-            fetched++;
-            setProgress(Math.round((fetched / available.length) * 85));
-          })
-        );
-      }
-
-      setProgress(88);
-      const zipBlob = await zip.generateAsync(
-        { type: "blob", compression: "STORE" },
-        (meta) => setProgress(88 + Math.round(meta.percent * 0.12))
+      // Streaming zip (src/lib/zipDownload.ts): straight into the picked file
+      // on Chrome / Edge (any size), ≤ 1 GB parts elsewhere.
+      const target = await openZipTarget(`${safeName}-photos.zip`);
+      if (target.kind === "cancelled") return;
+      const result = await writeZip(
+        target,
+        available.map((photo, k) => ({
+          name: `${String(k + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+          url: photo.url,
+        })),
+        {
+          baseName: `${safeName}-photos`,
+          onProgress: (p) => setProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
+        }
       );
-      triggerDownload(zipBlob, `${safeName}-photos.zip`);
-      logDownload(available.length);
+      if (!result.ok) {
+        setZipError(result.error);
+        return;
+      }
+      setZipError(result.failed ? `${result.failed} photo${result.failed === 1 ? "" : "s"} couldn't be downloaded; the rest were saved.` : null);
+      logDownload(result.written);
       setProgress(100);
     } catch {
       /* ignore */
@@ -156,7 +148,7 @@ export default function DownloadPageClient({
               disabled={busy || available.length === 0}
               className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
             >
-              {busy ? `Preparing… ${progress}%` : `⬇ Download all (${available.length})`}
+              {busy ? `Downloading… ${progress}%` : `⬇ Download all (${available.length})`}
             </button>
           </div>
           {busy && (
@@ -167,6 +159,7 @@ export default function DownloadPageClient({
               />
             </div>
           )}
+          {!busy && zipError && <p className="mt-3 text-sm text-danger-300">{zipError}</p>}
         </div>
       </div>
 

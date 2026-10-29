@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { openZipTarget, writeZip } from "@/lib/zipDownload";
 
 export type ShowRow = {
   listingId: string;
@@ -77,43 +78,33 @@ export default function ShowBoard({
   async function zipAll(show: ShowInfo, rows: ShowRow[]) {
     const todo = rows.filter((r) => r.published);
     if (todo.length === 0) return;
+    // Streaming zip (src/lib/zipDownload.ts): Save dialog first, while the
+    // click still counts; the cards stream into it one by one.
+    const zipBase = `${show.short} dock cards${size === "letter" ? " (letter)" : ""}`;
+    const target = await openZipTarget(`${zipBase}.zip`);
+    if (target.kind === "cancelled") return;
     setZipping(show.key);
     setNote(null);
     const failed: string[] = [];
     try {
-      const JSZip = (await import("jszip")).default;
-      const zip = new JSZip();
       const used = new Set<string>();
-      let done = 0;
+      const entries = todo.map((r) => {
+        let base = safeName(`${r.brokerage ? r.brokerage + " - " : ""}${r.boat}`);
+        while (used.has(base)) base += " (2)";
+        used.add(base);
+        return { name: `${base}.pdf`, url: `/api/listings/${r.listingId}/show-card?show=${encodeURIComponent(show.key)}&size=${size}`, boat: r.boat };
+      });
       setProgress(`0 / ${todo.length}`);
-      // Three at a time: each card fetches a photo server-side.
-      let next = 0;
-      const worker = async () => {
-        while (next < todo.length) {
-          const r = todo[next++];
-          try {
-            const res = await fetch(`/api/listings/${r.listingId}/show-card?show=${encodeURIComponent(show.key)}&size=${size}`);
-            if (!res.ok) throw new Error(String(res.status));
-            let base = safeName(`${r.brokerage ? r.brokerage + " - " : ""}${r.boat}`);
-            while (used.has(base)) base += " (2)";
-            used.add(base);
-            zip.file(`${base}.pdf`, await res.arrayBuffer());
-          } catch {
-            failed.push(r.boat);
-          }
-          done++;
-          setProgress(`${done} / ${todo.length}`);
-        }
-      };
-      await Promise.all([worker(), worker(), worker()]);
-      if (done - failed.length > 0) {
-        const blob = await zip.generateAsync({ type: "blob" });
-        saveBlob(blob, `${show.short} dock cards${size === "letter" ? " (letter)" : ""}.zip`);
-      }
+      const result = await writeZip(target, entries, {
+        baseName: zipBase,
+        onProgress: (p) => setProgress(`${p.done} / ${p.total}`),
+      });
+      if (!result.ok) throw new Error(result.error);
+      for (let k = 0; k < result.failed; k++) failed.push("?");
       const skipped = rows.length - todo.length;
-      const parts = [`${todo.length - failed.length} dock card${todo.length - failed.length === 1 ? "" : "s"} zipped.`];
+      const parts = [`${todo.length - failed.length} dock card${todo.length - failed.length === 1 ? "" : "s"} saved.`];
       if (skipped) parts.push(`${skipped} skipped (slideshow not published).`);
-      if (failed.length) parts.push(`Failed: ${failed.join(", ")}.`);
+      if (failed.length) parts.push(`${failed.length} card${failed.length === 1 ? "" : "s"} couldn't be made — download those one by one.`);
       setNote({ kind: failed.length ? "err" : "ok", text: parts.join(" ") });
     } catch {
       setNote({ kind: "err", text: "Couldn't build the zip. Try the cards one by one." });

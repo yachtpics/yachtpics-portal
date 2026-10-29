@@ -5,10 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
+import { openZipTarget, writeZip } from "@/lib/zipDownload";
 
-// JSZip is only needed when someone actually downloads photos, but importing it
-// at the top meant every broker downloaded the whole zip library just to LOOK at
-// their listings. Loaded on demand instead, inside handleDownload.
+// Zips stream through src/lib/zipDownload.ts (client-zip, a few KB — unlike
+// JSZip, which used to be loaded on demand here and held the whole zip in memory).
 
 type Listing = {
   id: string;
@@ -33,17 +33,6 @@ const statusStyle: Record<string, string> = {
   sold:     "bg-info-50 text-info-700",
   archived: "bg-ink-100 text-ink-500",
 };
-
-function triggerBlobDownload(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 
 export default function ListingRow({ listing, showBroker, isCoBroker, locked, heroUrl = null, heroFit = "fit", shows }: { listing: Listing; showBroker?: boolean; isCoBroker?: boolean; locked?: boolean; heroUrl?: string | null; heroFit?: "fit" | "fill"; shows?: string[] }) {
   // Status dropdown state
@@ -155,6 +144,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
 
   async function handleDownload() {
     if (downloading) return;
+    // Streaming zip (src/lib/zipDownload.ts): the Save dialog opens first,
+    // while the click still counts as a gesture; then the photos stream into
+    // it one by one (any size). Browsers without the dialog get ≤ 1 GB parts.
+    const zipBase = `${listing.vessel_name ?? "photos"}-photos`;
+    const target = await openZipTarget(`${zipBase}.zip`);
+    if (target.kind === "cancelled") return;
     setDownloading(true);
     setDownloadProgress(0);
     setDownloadDone(false);
@@ -171,6 +166,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         .order("display_order");
 
       if (!photos || photos.length === 0) {
+        if (target.kind === "stream") await target.writable.abort().catch(() => {});
         setNoPhotos(true);
         setTimeout(() => setNoPhotos(false), 3000);
         setDownloading(false);
@@ -181,70 +177,34 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       // Supabase or R2, per photo (src/lib/photoStoreClient.ts).
       const signed = await signOriginalsInBrowser(supabase, paths, 3600);
 
-      const photosWithUrls = photos.map((p) => ({
-        ...p,
-        url: signed.get(p.storage_path) ?? null,
-      }));
+      const entries = photos.map((photo, i) => {
+        const ext = photo.filename?.split(".").pop() ?? "jpg";
+        return {
+          name: `${String(i + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`,
+          url: signed.get(photo.storage_path) ?? null,
+        };
+      });
 
-      const { default: JSZip } = await import("jszip");
-      const zip = new JSZip();
-      const BATCH = 8;
-      let fetched = 0;
-
-      for (let b = 0; b < photosWithUrls.length; b += BATCH) {
-        const batch = photosWithUrls.slice(b, b + BATCH);
-        await Promise.all(
-          batch.map(async (photo, bi) => {
-            const globalIndex = b + bi;
-            if (!photo.url) return;
-            try {
-              const response = await fetch(photo.url);
-              const blob = await response.blob();
-              const ext = photo.filename?.split(".").pop() ?? "jpg";
-              const fname = `${String(globalIndex + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`;
-              zip.file(fname, blob);
-            } catch { /* skip failed photo */ }
-            fetched++;
-            setDownloadProgress(Math.round((fetched / photosWithUrls.length) * 85));
-          })
-        );
-      }
-
-      setDownloadProgress(88);
-      const zipBlob = await zip.generateAsync(
-        { type: "blob", compression: "STORE" },
-        (meta) => setDownloadProgress(88 + Math.round(meta.percent * 0.12))
-      );
-
-      const zipName = `${listing.vessel_name ?? "photos"}-photos.zip`;
-
-      if ("showSaveFilePicker" in window) {
-        try {
-          const handle = await (window as unknown as { showSaveFilePicker: (o: unknown) => Promise<FileSystemFileHandle> }).showSaveFilePicker({
-            suggestedName: zipName,
-            types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
-          });
-          const writable = await handle.createWritable();
-          await writable.write(zipBlob);
-          await writable.close();
-        } catch (err: unknown) {
-          if ((err as { name?: string })?.name !== "AbortError") triggerBlobDownload(zipBlob, zipName);
-        }
-      } else {
-        triggerBlobDownload(zipBlob, zipName);
+      const result = await writeZip(target, entries, {
+        baseName: zipBase,
+        onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
+      });
+      if (!result.ok) {
+        alert(result.error);
+        return;
       }
 
       // Log download (fire-and-forget)
       fetch(`/api/listings/${listing.id}/log-download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoCount: photos.length }),
+        body: JSON.stringify({ photoCount: result.written }),
       }).catch(() => {});
 
       setDownloadDone(true);
       setTimeout(() => setDownloadDone(false), 3000);
     } catch {
-      // silently fail
+      alert("The download didn't finish. Please try again.");
     } finally {
       setDownloading(false);
       setDownloadProgress(0);
