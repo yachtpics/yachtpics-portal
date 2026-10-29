@@ -10,5 +10,5 @@
 -- Additive; safe to run more than once.
 
 alter table public.listings
-  add column if not exists slideshow_prepared_by uuid references public.profiles(id) on delete set null,
+  add column if not exists slideshow_prepared_by uuid,
   add column if not exists slideshow_prepared_at timestamptz;
