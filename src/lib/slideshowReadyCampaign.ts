@@ -2,8 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
-import { signDerivatives } from "@/lib/photoDerivatives";
-import { FULL_TRANSFORM, signOneTransformed } from "@/lib/publicPhotoUrls";
+import { emailCoverImage, type EmailImage } from "@/lib/emailCoverImage";
 import { slideshowPublishUpdate } from "@/lib/slideshowPublish";
 import { unsubscribeFooterHtml, unsubscribeHeaders } from "@/lib/unsubscribe";
 import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
@@ -31,8 +30,6 @@ import { PLAN_FROM_PRICE } from "@/lib/planValue";
 export const SLIDESHOW_READY_TYPE = "slideshow_ready_2026_10";
 const FROM = "Charlie & Samantha at YachtPics <hello@yachtpics.com>";
 const PORTAL = "https://portal.yachtpics.com";
-/** The hero photo link in the email lives this long (it's a signed link to a private bucket). */
-const HERO_TTL = 60 * 60 * 24 * 90;
 
 type BrokerRow = {
   id: string;
@@ -222,21 +219,24 @@ export async function planSlideshowReady(svc: SupabaseClient, noAccess?: Map<str
   return { recipients, alreadySent, optedOut };
 }
 
-/** A 90-day signed link to the featured listing's cover at 2000px (derivative, else transform). */
-export async function heroImageUrl(svc: SupabaseClient, listingId: string): Promise<string | null> {
+/**
+ * The featured listing's cover as an email-safe image: a public ~1200px JPEG
+ * (src/lib/emailCoverImage.ts). Not the 2000px derivative — that is WebP,
+ * which Outlook/Gmail often show as a broken image. null = send without it.
+ */
+export async function heroImage(svc: SupabaseClient, listingId: string): Promise<EmailImage | null> {
   try {
     const [{ data: l }, { data: photos }] = await Promise.all([
       svc.from("listings").select("hero_photo_id, photo_order_manual").eq("id", listingId).maybeSingle(),
-      svc.from("photos").select("id, storage_path, category, filename, display_order, derivatives_at").eq("listing_id", listingId).eq("is_visible", true),
+      svc.from("photos").select("id, storage_path, storage_backend, category, filename, display_order, derivatives_at").eq("listing_id", listingId).eq("is_visible", true),
     ]);
-    const ordered = orderPhotos((photos ?? []) as { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number | null; derivatives_at: string | null }[], {
+    const ordered = orderPhotos((photos ?? []) as { id: string; storage_path: string; storage_backend: string | null; category: string | null; filename: string | null; display_order: number | null; derivatives_at: string | null }[], {
       manual: l?.photo_order_manual === true,
       heroId: l?.hero_photo_id ?? null,
     });
     const cover = ordered[0];
     if (!cover) return null;
-    const { urls } = await signDerivatives(svc, [cover], 2000, HERO_TTL);
-    return urls[cover.id] ?? (await signOneTransformed(svc, cover.storage_path, FULL_TRANSFORM, HERO_TTL));
+    return await emailCoverImage(svc, "slideshow-ready", listingId, cover);
   } catch {
     return null;
   }
@@ -251,8 +251,8 @@ export function slideshowReadySubject(vessel: string): string {
 }
 
 /** The email — announcement styling (dark header, white card, unsubscribe footer). */
-export function slideshowReadyHtml(opts: { firstName: string; vessel: string; slug: string; readyCount: number; heroUrl: string | null; unsubToken: string | null }): string {
-  const { firstName, vessel, slug, readyCount, heroUrl, unsubToken } = opts;
+export function slideshowReadyHtml(opts: { firstName: string; vessel: string; slug: string; readyCount: number; hero: EmailImage | null; unsubToken: string | null }): string {
+  const { firstName, vessel, slug, readyCount, hero, unsubToken } = opts;
   const v = esc(vessel);
   // The slideshow itself, as the buyer receives it. ?preview=1 makes a
   // signed-out click go through sign-in and back (src/app/s/[slug]/page.tsx);
@@ -269,7 +269,7 @@ export function slideshowReadyHtml(opts: { firstName: string; vessel: string; sl
     <div style="background:#050b14;padding:32px 40px;">
       <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics</p>
     </div>
-    ${heroUrl ? `<a href="${link}" style="display:block;"><img src="${esc(heroUrl)}" alt="${v}" width="560" style="display:block;width:100%;max-width:560px;height:auto;border:0;" /></a>` : ""}
+    ${hero ? `<a href="${link}" style="display:block;"><img src="${esc(hero.url)}" alt="${v} &mdash; the cover photo of her slideshow" width="560" height="${Math.round((560 * hero.height) / hero.width)}" style="display:block;width:100%;max-width:560px;height:auto;border:0;" /></a>` : ""}
     <div style="padding:40px;">
       ${p(`${esc(firstName)},`)}
       ${p(`Every photo from ${v}&rsquo;s shoot is now laid out as a buyer slideshow &mdash; branded to you, with a Seller Report that counts every view and shows what buyers linger on.`)}
@@ -288,10 +288,10 @@ export function slideshowReadyHtml(opts: { firstName: string; vessel: string; sl
 }
 
 export async function renderForRecipient(svc: SupabaseClient, r: ReadyRecipient): Promise<{ subject: string; html: string }> {
-  const heroUrl = await heroImageUrl(svc, r.featured.listingId);
+  const hero = await heroImage(svc, r.featured.listingId);
   return {
     subject: slideshowReadySubject(r.featured.vessel),
-    html: slideshowReadyHtml({ firstName: r.firstName, vessel: r.featured.vessel, slug: r.featured.slug, readyCount: r.readyCount, heroUrl, unsubToken: r.unsubToken }),
+    html: slideshowReadyHtml({ firstName: r.firstName, vessel: r.featured.vessel, slug: r.featured.slug, readyCount: r.readyCount, hero, unsubToken: r.unsubToken }),
   };
 }
 
