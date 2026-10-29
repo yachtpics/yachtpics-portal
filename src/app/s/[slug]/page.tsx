@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { createClient as createServerClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
 import {
@@ -86,7 +87,7 @@ export default async function PublicSlideshowPage({
   searchParams,
 }: {
   params: { slug: string };
-  searchParams: { src?: string; from?: string; t?: string };
+  searchParams: { src?: string; from?: string; t?: string; preview?: string };
 }) {
   headers();
 
@@ -109,7 +110,29 @@ export default async function PublicSlideshowPage({
   // resubscribe — EXCEPT the owner / their team / an admin can still preview it
   // themselves (so they see what they're missing). Buyers see a neutral message.
   // The same rule guards the link-refresh route (/api/s/[slug]/urls).
-  if (!(await canViewSlideshow(listing))) {
+  // Owner preview (Oct 29): the "Slideshow ready" email links here with
+  // ?preview=1. If the owner's plan has lapsed and nobody is signed in, send
+  // them to sign in and straight back (same-site path only — safeNextPath on
+  // the login page). Without ?preview=1 the public sees the neutral message.
+  const ownerLive = await ownerHasAccess(listing.broker_id);
+  const canView = ownerLive || (await canViewSlideshow(listing));
+  if (!canView && searchParams.preview === "1") {
+    let signedIn = false;
+    try {
+      const { data: { user } } = await (await createServerClient()).auth.getUser();
+      signedIn = !!user;
+    } catch { /* treat as signed out */ }
+    if (!signedIn) {
+      const back = `/s/${encodeURIComponent(params.slug)}?preview=1`;
+      redirect(`/auth/login?next=${encodeURIComponent(back)}`);
+    }
+  }
+  // Seen by the owner / their team / an admin while the owner has no plan:
+  // show the quiet "this is what your buyer sees" bar and don't count it as a
+  // buyer view.
+  const ownerPreview = canView && !ownerLive;
+
+  if (!canView) {
     return (
       <div className="min-h-screen bg-ink-950 flex items-center justify-center px-10 py-16">
         <div className="max-w-md text-center">
@@ -183,6 +206,7 @@ export default async function PublicSlideshowPage({
       sendToken={sendToken}
       tourUrl={listing.tour_url ?? null}
       deckPlanUrl={extras.deckPlanUrl}
+      ownerPreview={ownerPreview}
     />
   );
 }

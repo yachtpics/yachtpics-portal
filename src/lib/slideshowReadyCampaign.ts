@@ -251,11 +251,13 @@ export function slideshowReadySubject(vessel: string): string {
 }
 
 /** The email — announcement styling (dark header, white card, unsubscribe footer). */
-export function slideshowReadyHtml(opts: { firstName: string; vessel: string; listingId: string; readyCount: number; heroUrl: string | null; unsubToken: string | null }): string {
-  const { firstName, vessel, listingId, readyCount, heroUrl, unsubToken } = opts;
+export function slideshowReadyHtml(opts: { firstName: string; vessel: string; slug: string; readyCount: number; heroUrl: string | null; unsubToken: string | null }): string {
+  const { firstName, vessel, slug, readyCount, heroUrl, unsubToken } = opts;
   const v = esc(vessel);
-  // Lands on the listing, scrolled to Client Slideshow; ?section survives the sign-in redirect (?next=).
-  const link = `${PORTAL}/dashboard/listings/${listingId}?section=slideshow`;
+  // The slideshow itself, as the buyer receives it. ?preview=1 makes a
+  // signed-out click go through sign-in and back (src/app/s/[slug]/page.tsx);
+  // signed in, the owner sees it with the "this is what your buyer sees" bar.
+  const link = `${PORTAL}/s/${encodeURIComponent(slug)}?preview=1`;
   const p = (t: string, muted = false) =>
     `<p style="margin:0 0 16px;font-size:15px;color:${muted ? "#6b7280" : "#374151"};line-height:1.65;">${t}</p>`;
   const more = readyCount > 1 ? p(`&hellip;and her slideshow is one of ${readyCount} ready for you.`) : "";
@@ -289,7 +291,7 @@ export async function renderForRecipient(svc: SupabaseClient, r: ReadyRecipient)
   const heroUrl = await heroImageUrl(svc, r.featured.listingId);
   return {
     subject: slideshowReadySubject(r.featured.vessel),
-    html: slideshowReadyHtml({ firstName: r.firstName, vessel: r.featured.vessel, listingId: r.featured.listingId, readyCount: r.readyCount, heroUrl, unsubToken: r.unsubToken }),
+    html: slideshowReadyHtml({ firstName: r.firstName, vessel: r.featured.vessel, slug: r.featured.slug, readyCount: r.readyCount, heroUrl, unsubToken: r.unsubToken }),
   };
 }
 

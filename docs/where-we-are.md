@@ -1,5 +1,7 @@
 # Where we are — October 6, 2026
 
+> **2026-10-29 — Slideshow-ready email opens the slideshow.** The campaign button now links to `/s/{slug}?preview=1`. If the owner has no plan and nobody is signed in, `preview=1` sends the visitor to `/auth/login?next=/s/{slug}?preview=1`, which `safeNextPath` accepts (same-site only). Owners, their team and admins see a dismissible bar: "This is what your buyer sees…" with a link to /dashboard/billing. Those previews are not counted in slideshow views or events. Without `preview=1` the public still gets "temporarily unavailable".
+
 ## Oct 29 — "Slideshow ready" campaign tooling (/admin/announce/slideshow-ready) — NOT PUSHED · MIGRATION `20261029_slideshow_prepared.sql` APPLIED · no new dependency
 
 - **Step 1 — Prepare:** candidates = active, unsold, unpublished listings with ≥1 visible photo of brokers with NO access (getEffectiveAccessStatus + hasAccess). Checkboxes (test-looking accounts start unticked), "Prepare N slideshows" → `prepareSlideshows` re-checks eligibility, then applies `slideshowPublishUpdate` (new `src/lib/slideshowPublish.ts`, now also used by the broker's and admin's Create Slideshow buttons) + `listings.slideshow_prepared_by / _at`. Side-effect audit: the change is two columns; the only listings trigger guards ownership/sharing; no code sends email/push, publishes to yachtpics.com, touches the showcase or posts socially on publish; public link stays private while the broker has no access.

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import RetryImg from "@/components/RetryImg";
 import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefreshingUrls";
@@ -82,6 +83,12 @@ interface Props {
   urlsEndpoint?: string;
   embedded?: boolean;
   site?: string | null;
+  /**
+   * The owner (or their team / an admin) previewing while the owner has no
+   * plan (Oct 29): a slim dismissible bar says this is what the buyer sees,
+   * and nothing is recorded as a buyer view or event.
+   */
+  ownerPreview?: boolean;
 }
 
 type EventKind = "dwell" | "favorite" | "unfavorite" | "video_play" | "tour_click" | "deck_plan_view" | "details_view";
@@ -185,7 +192,7 @@ function FadePhoto({
   );
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null, ownerPreview = false }: Props) {
   // The page signs only the opening photo + first dozen tiles. The rest of
   // the display links arrive in chunks from /api/s/[slug]/urls as they're
   // about to be needed, and everything is re-signed when a tab returns after
@@ -255,6 +262,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const [favPulse, setFavPulse] = useState<string | null>(null);
 
   const flush = useCallback((final = false) => {
+    if (ownerPreview) { queueRef.current = []; return; }
     const events = queueRef.current.splice(0, 60);
     const durationS = startedAtRef.current ? Math.round((Date.now() - startedAtRef.current) / 1000) : 0;
     if (!events.length && !final) return;
@@ -274,7 +282,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       }
     } catch { /* fall through to fetch */ }
     fetch("/api/slideshow/event", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true }).catch(() => {});
-  }, [listingId, slug, sendToken, site]);
+  }, [listingId, slug, sendToken, site, ownerPreview]);
 
   // Every event carries where the visit came from when it isn't a plain link
   // (e.g. "flibs26" from a boat-show dock card), so each one is attributable.
@@ -312,6 +320,19 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   }
 
   // Inquiry form
+  // Owner-preview bar: dismissible for this browser session only.
+  const [previewBarHidden, setPreviewBarHidden] = useState(true);
+  useEffect(() => {
+    if (!ownerPreview) return;
+    let hidden = false;
+    try { hidden = sessionStorage.getItem(`yp_owner_preview_bar_${slug}`) === "1"; } catch { /* storage blocked */ }
+    setPreviewBarHidden(hidden);
+  }, [ownerPreview, slug]);
+  const hidePreviewBar = () => {
+    try { sessionStorage.setItem(`yp_owner_preview_bar_${slug}`, "1"); } catch { /* storage blocked */ }
+    setPreviewBarHidden(true);
+  };
+
   const [inquireOpen, setInquireOpen] = useState(false);
   const [inq, setInq] = useState({ name: "", email: "", phone: "", message: "" });
   const [inqBusy, setInqBusy] = useState(false);
@@ -355,6 +376,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   // Track view once per session
   useEffect(() => {
     const key = `viewed_${slug}`;
+    if (ownerPreview) return; // an owner preview is not a buyer view
     if (typeof sessionStorage !== "undefined" && !sessionStorage.getItem(key)) {
       sessionStorage.setItem(key, "1");
       fetch("/api/slideshow/view", {
@@ -516,6 +538,15 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   return (
     <div className={embedded ? "bg-ink-50 flex flex-col" : "min-h-screen bg-ink-50 flex flex-col"}>
+      {ownerPreview && !previewBarHidden && (
+        <div role="status" className="bg-ink-950 text-white/85 text-xs sm:text-[0.8125rem] px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
+          <p className="min-w-0 leading-snug">
+            This is what your buyer sees. Sending it and the share link come with a Portal plan.{" "}
+            <Link href="/dashboard/billing" className="text-accent-300 hover:text-accent-200 font-medium whitespace-nowrap">Choose a plan &rarr;</Link>
+          </p>
+          <button type="button" onClick={hidePreviewBar} aria-label="Dismiss" className="shrink-0 w-8 h-8 inline-flex items-center justify-center text-white/50 hover:text-white text-lg leading-none">&times;</button>
+        </div>
+      )}
       {/* Header — one hairline between the vessel and its photographs */}
       <div className={`flex items-center ${embedded ? "justify-end" : "justify-between"} px-4 sm:px-6 py-3.5 border-b border-hairline gap-4 overflow-x-auto`}>
         {!embedded && <div className="min-w-0">
