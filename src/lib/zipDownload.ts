@@ -14,15 +14,16 @@
  *    memory stays flat whatever the size. Zip64, store mode (photos are
  *    already compressed), via client-zip.
  *  - Elsewhere (Safari, iPhone, Firefox): the photos are split into parts of
- *    at most ~1 GB (smaller on phones / tablets), each saved as
- *    "<name> (part 1 of N).zip" one after another.
+ *    at most 400 MB (150 MB on phones / tablets), each zip streamed from
+ *    photos fetched one at a time and saved as "<name> (part 1 of N).zip";
+ *    a part the browser can't hold is halved and retried.
  *
  * Usage — open the target FIRST in the click handler, before any await (the
  * Save dialog needs the click's user activation), then sign the links, then
  * writeZip().
  */
 
-import { downloadZip, makeZip } from "client-zip";
+import { makeZip } from "client-zip";
 
 export type ZipEntry = {
   /** Path inside the zip, e.g. "Sea Dream/01 Salon.jpg". */
@@ -188,7 +189,12 @@ export async function writeZip(
   }
 
   // ── parts mode ──────────────────────────────────────────────────────────
-  const limit = opts.partLimitBytes ?? (isTouchDevice() ? 300 * 1024 * 1024 : 1024 * 1024 * 1024);
+  // Oct 30: was ≤ 1 GB parts built from every photo Blob held in memory plus
+  // a second Blob of the zip — up to 2 GB per part, which Safari refuses
+  // ("file too large"). Now each part's zip is STREAMED from photos fetched
+  // one at a time (only the zip being built is held — one copy), parts are
+  // smaller, and a part the browser can't hold is split in two and retried.
+  let limit = opts.partLimitBytes ?? partLimitBytes();
 
   // Sizes, to plan the parts: known ones as given; the rest from a 1-byte
   // ranged GET (Content-Range carries the total). Unknown → 40 MB.
@@ -208,53 +214,145 @@ export async function writeZip(
       }
     })
   );
-  const groups: ZipEntry[][] = [];
-  let cur: ZipEntry[] = [];
-  let curBytes = 0;
-  entries.forEach((e, i) => {
-    if (cur.length && curBytes + sizes[i] > limit) {
-      groups.push(cur);
-      cur = [];
-      curBytes = 0;
+  const sizeOf = new Map<ZipEntry, number>();
+  entries.forEach((e, i) => sizeOf.set(e, sizes[i]));
+  const plan = (list: ZipEntry[], max: number): ZipEntry[][] => {
+    const groups: ZipEntry[][] = [];
+    let cur: ZipEntry[] = [];
+    let curBytes = 0;
+    for (const e of list) {
+      const n = sizeOf.get(e) ?? 0;
+      if (cur.length && curBytes + n > max) {
+        groups.push(cur);
+        cur = [];
+        curBytes = 0;
+      }
+      cur.push(e);
+      curBytes += n;
     }
-    cur.push(e);
-    curBytes += sizes[i];
-  });
-  if (cur.length) groups.push(cur);
-  progress.parts = groups.length;
+    if (cur.length) groups.push(cur);
+    return groups;
+  };
+  const queue = plan(entries, limit);
+  let partNo = 0;
+  progress.parts = queue.length;
 
   let written = 0;
-  try {
-    for (let g = 0; g < groups.length; g++) {
-      progress.part = g + 1;
-      report();
-      const files: { name: string; input: Blob; lastModified: Date }[] = [];
-      for (const e of groups[g]) {
+  let saved = 0;
+  const retried = new Set<ZipEntry[]>();
+  while (queue.length) {
+    const group = queue.shift()!;
+    const before = { done: progress.done, failed: progress.failed, bytes: progress.bytes };
+    let groupWritten = 0;
+    progress.part = partNo + 1;
+    report();
+
+    // Photos fetched lazily, one at a time, as the zip asks for them.
+    const files = async function* () {
+      for (const e of group) {
+        let res: Response | null = null;
         try {
           if (!e.url) throw new Error("no link");
-          const res = await fetchWithRetry(e.url);
-          const blob = await res.blob();
-          progress.bytes += blob.size;
-          files.push({ name: e.name, input: blob, lastModified: new Date() });
-          written++;
+          res = await fetchWithRetry(e.url);
         } catch {
-          progress.failed++;
+          res = null;
         }
-        progress.done++;
-        report();
+        if (!res || !res.body) {
+          progress.failed++;
+          progress.done++;
+          report();
+          continue;
+        }
+        const counted = res.body.pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, ctl) {
+              progress.bytes += chunk.byteLength;
+              ctl.enqueue(chunk);
+            },
+            flush() {
+              progress.done++;
+              groupWritten++;
+              report();
+            },
+          })
+        );
+        const len = Number(res.headers.get("content-length"));
+        yield {
+          name: e.name,
+          input: counted,
+          lastModified: new Date(),
+          ...(Number.isFinite(len) && len > 0 ? { size: len } : {}),
+        };
       }
-      if (files.length === 0) continue;
-      const zip = await downloadZip(files).blob();
-      const name = groups.length > 1 ? `${opts.baseName} (part ${g + 1} of ${groups.length}).zip` : `${opts.baseName}.zip`;
-      saveBlob(zip, name);
-      // Give the browser a moment to start saving before the next part is built.
-      await sleep(600);
+    };
+
+    try {
+      const zip = await new Response(makeZip(files())).blob();
+      if (groupWritten > 0) {
+        partNo++;
+        const totalParts = partNo + queue.length;
+        const name = totalParts > 1 ? `${opts.baseName} (part ${partNo} of ${totalParts}).zip` : `${opts.baseName}.zip`;
+        saveBlob(new Blob([zip], { type: "application/zip" }), name);
+        saved++;
+        written += groupWritten;
+        // Give the browser a moment to start saving before the next part is built.
+        await sleep(800);
+      }
+    } catch (e) {
+      // Undo this part's progress — it will be redone.
+      progress.done = before.done;
+      progress.failed = before.failed;
+      progress.bytes = before.bytes;
+      if (isTooLarge(e) && group.length > 1) {
+        // The browser can't hold a part this big: halve the part size and
+        // re-plan this part and every part after it (all would be too big).
+        const groupBytes = group.reduce((t, x) => t + (sizeOf.get(x) ?? 0), 0);
+        limit = Math.max(Math.floor(Math.min(limit, groupBytes) / 2), 25 * 1024 * 1024);
+        const rest = [group, ...queue.splice(0)].flat();
+        queue.push(...plan(rest, limit));
+        progress.parts = partNo + queue.length;
+        report();
+        continue;
+      }
+      if (!isTooLarge(e) && !retried.has(group)) {
+        // A connection dropped mid-photo: build this part once more.
+        retried.add(group);
+        queue.unshift(group);
+        await sleep(1500);
+        continue;
+      }
+      return {
+        ok: false,
+        error: isTooLarge(e)
+          ? `This browser ran out of room for the zip${saved ? ` after ${saved} part${saved !== 1 ? "s" : ""}` : ""}. Choose Web & MLS from the size menu, or download Full resolution on a computer with Chrome or Edge.`
+          : `The download stopped (${e instanceof Error ? e.message : "error"}). Please try again.`,
+        written,
+        failed: progress.failed,
+      };
     }
-  } catch (e) {
-    return { ok: false, error: `The download stopped (${e instanceof Error ? e.message : "error"}). Please try again.`, written, failed: progress.failed };
   }
   if (written === 0) return { ok: false, error: "None of the photos could be downloaded.", written, failed: progress.failed };
-  return { ok: true, written, failed: progress.failed, bytes: progress.bytes, parts: groups.length };
+  return { ok: true, written, failed: progress.failed, bytes: progress.bytes, parts: saved };
+}
+
+/** True when this browser has no Save dialog, so a zip goes out as parts. */
+export function usesZipParts(): boolean {
+  if (typeof window === "undefined") return true;
+  return typeof (window as PickerWindow).showSaveFilePicker !== "function";
+}
+
+/** Largest part in parts mode: 400 MB on a computer, 150 MB on a phone / tablet. */
+export function partLimitBytes(): number {
+  return isTouchDevice() ? 150 * 1024 * 1024 : 400 * 1024 * 1024;
+}
+
+/** A browser "too big" error: memory, quota, Blob size (Safari: "file too large" / "The operation is insecure"). */
+function isTooLarge(e: unknown): boolean {
+  if (e instanceof RangeError) return true;
+  const name = e && typeof e === "object" && "name" in e ? String((e as { name: unknown }).name) : "";
+  const msg = e instanceof Error ? e.message : String(e ?? "");
+  if (/QuotaExceeded|NotReadable|DataCloneError|SecurityError/i.test(name)) return true;
+  return /too large|quota|out of memory|allocation|insecure|array buffer|exceeds/i.test(msg);
 }
 
 /** "1.2 GB" / "340 MB" for progress text. */

@@ -8,7 +8,7 @@ import {
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { formatBytes, openZipTarget, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
+import { formatBytes, openZipTarget, partLimitBytes, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
 
 // Two ways photos leave a listing page, one per role:
 //
@@ -106,9 +106,10 @@ export function useSizedDownloads(opts: {
    * server may still be making (`pending`: asked again, a few times).
    * `ext` = the extension of a pre-made file (jpg / png).
    */
-  async function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<{ urls: Record<string, string>; ext: Record<string, string> }> {
+  async function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<{ urls: Record<string, string>; ext: Record<string, string>; bytes: Record<string, number> }> {
     const urls: Record<string, string> = {};
     const ext: Record<string, string> = {};
+    const bytes: Record<string, number> = {};
     let ask = targets.map((t) => t.id);
     for (let attempt = 0; ask.length > 0 && attempt < 6; attempt++) {
       let pending: string[] = [];
@@ -122,13 +123,30 @@ export function useSizedDownloads(opts: {
         const d = await res.json().catch(() => null);
         Object.assign(urls, (d?.urls ?? {}) as Record<string, string>);
         Object.assign(ext, (d?.ext ?? {}) as Record<string, string>);
+        Object.assign(bytes, (d?.bytes ?? {}) as Record<string, number>);
         pending = Array.isArray(d?.pending) ? (d.pending as string[]) : [];
       } catch {
         break;
       }
       ask = pending;
     }
-    return { urls, ext };
+    return { urls, ext, bytes };
+  }
+
+  /** Total bytes of these photos at each size (no links signed); null if unknown. */
+  async function estimateSizes(targets: ListingPhoto[]): Promise<{ full: number; web: number; social: number } | null> {
+    try {
+      const res = await fetch(`/api/listings/${listingId}/photos/download-urls`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ photoIds: targets.map((t) => t.id), size: "full", estimate: true }),
+      });
+      if (!res.ok) return null;
+      const d = await res.json().catch(() => null);
+      return d?.totals ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async function downloadPhotos(targets: ListingPhoto[]) {
@@ -153,9 +171,28 @@ export function useSizedDownloads(opts: {
         return;
       }
       setDownloadLabel("Preparing…");
+
+      // Full resolution in a browser without the Save dialog (Safari, iPhone,
+      // Firefox) goes out as several zips — say so first, with the Web & MLS
+      // size beside it, when it's more than ~500 MB.
+      if (zipTarget.kind === "parts" && size === "full" && usesZipParts()) {
+        const est = await estimateSizes(targets);
+        if (est && est.full > 500 * 1024 * 1024) {
+          const zips = Math.max(2, Math.ceil(est.full / partLimitBytes()));
+          const go = window.confirm(
+            `Full resolution is ${formatBytes(est.full)} — it'll save as about ${zips} zips. Web & MLS is ${formatBytes(est.web)}.\n\nOK to continue at full resolution, or Cancel and pick Web & MLS from the size menu.`
+          );
+          if (!go) {
+            setDownloading(false);
+            setDownloadProgress(0);
+            setDownloadLabel(null);
+            return;
+          }
+        }
+      }
     }
 
-    const { urls: fresh, ext: madeExt } = await signForDownload(targets, size);
+    const { urls: fresh, ext: madeExt, bytes: madeBytes } = await signForDownload(targets, size);
     // A pre-made R2 file is JPEG (or PNG): name it so; otherwise the original's extension.
     const extFor = (p: ListingPhoto) => {
       const made = madeExt[p.id];
@@ -197,7 +234,7 @@ export function useSizedDownloads(opts: {
     const baseName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}`;
     const entries: ZipEntry[] = targets.map((photo, index) => {
       const label = cleanName(photo.category ?? "Photo") || "Photo";
-      return { name: `${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${extFor(photo)}`, url: fresh[photo.id] };
+      return { name: `${folder}/${String(index + 1).padStart(pad, "0")} ${label}.${extFor(photo)}`, url: fresh[photo.id], size: madeBytes[photo.id] ?? null };
     });
     const result = await writeZip(zipTarget as Exclude<ZipTarget, { kind: "cancelled" }>, entries, {
       baseName,

@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { originalPathInScope, presignR2Original, signOriginalPaths } from "@/lib/photoStore";
-import { downloadSizeExt, downloadSizePath, hasDownloadSize, webServesOriginal, type DownloadSizeName } from "@/lib/photoDerivativePaths";
+import { downloadSizeExt, downloadSizePath, hasDownloadSize, webServesOriginal, type DownloadSizeName, type DownloadSizesRecord } from "@/lib/photoDerivativePaths";
 
 export const runtime = "nodejs";
 // 60 s: an R2 photo whose Web / Social file isn't made yet is made here (sharp).
@@ -89,12 +89,41 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     // Only this listing's photos — ids from anywhere else are simply ignored.
     const { data: photos } = await svc
       .from("photos")
-      .select("id, storage_path, storage_backend, download_sizes, listing_id")
+      .select("id, storage_path, storage_backend, download_sizes, listing_id, original_bytes")
       .eq("listing_id", listingId)
       .in("id", ids);
     const rows = (photos ?? []).filter((p) => !!p.storage_path) as {
       id: string; storage_path: string; storage_backend: string | null; download_sizes: unknown; listing_id: string;
+      original_bytes: number | null;
     }[];
+
+    // Bytes of what each size serves, where known (sizes the zip plans parts
+    // with, and the "Full resolution is 1.4 GB" notice). A Supabase transform
+    // has no recorded size: estimated from the original (≈ 25% / 8%).
+    const bytesOf = (r: (typeof rows)[number], s: DownloadSize): number | null => {
+      const orig = r.original_bytes && r.original_bytes > 0 ? Number(r.original_bytes) : null;
+      if (s === "full") return orig;
+      const rec = r.download_sizes as DownloadSizesRecord | null;
+      const current = !!rec && rec.path === r.storage_path;
+      if (s === "web" && current && rec!.web_original) return orig;
+      if (current && typeof rec![s] === "number" && (rec![s] as number) > 0) return rec![s] as number;
+      return orig ? Math.round(orig * (s === "web" ? 0.25 : 0.08)) : null;
+    };
+
+    // { estimate: true }: totals per size, nothing signed.
+    if (body?.estimate === true) {
+      const totals = { full: 0, web: 0, social: 0 };
+      for (const r of rows) {
+        (["full", "web", "social"] as const).forEach((s) => { totals[s] += bytesOf(r, s) ?? 0; });
+      }
+      return NextResponse.json({ totals, count: rows.length });
+    }
+    const bytes: Record<string, number> = {};
+    rows.forEach((r) => {
+      const isMade = size !== "full" && r.storage_backend === "r2";
+      const b = size === "full" || isMade ? bytesOf(r, size) : null; // transforms: unknown exactly
+      if (b) bytes[r.id] = b;
+    });
 
     const urls: Record<string, string> = {};
     const ext: Record<string, "jpg" | "png"> = {};
@@ -166,6 +195,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       failed,
       ...(pending.length ? { pending } : {}),
       ...(Object.keys(ext).length ? { ext } : {}),
+      bytes,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
