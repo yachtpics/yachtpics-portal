@@ -588,7 +588,11 @@ export default function ReelMaker({
   const [classicSound, setClassicSound] = useState(false);
   /** Instrument download progress (0–100) while it's worth showing; null otherwise. */
   const [musicLoading, setMusicLoading] = useState<number | null>(null);
-  const previewRef = useRef<{ ctx: AudioContext; src: AudioBufferSourceNode | null } | null>(null);
+  /**
+   * The preview that's playing (or composing): its context, its source, and a
+   * backstop timer that ends it even if the browser never fires `ended`.
+   */
+  const previewRef = useRef<{ ctx: AudioContext; src: AudioBufferSourceNode | null; timer?: number } | null>(null);
   const previewTokenRef = useRef(0);
   useEffect(() => {
     if (auto) return;
@@ -1146,10 +1150,13 @@ export default function ReelMaker({
     const pv = previewRef.current;
     previewRef.current = null;
     if (pv) {
+      if (pv.timer !== undefined) window.clearTimeout(pv.timer);
       if (pv.src) { try { pv.src.onended = null; pv.src.stop(); } catch { /* not started */ } }
-      try { void pv.ctx.close(); } catch { /* already closed */ }
+      // close() returns a promise that can reject (already closed): never let it surface.
+      try { void pv.ctx.close().catch(() => { /* already closed */ }); } catch { /* already closed */ }
     }
     setPreviewing("");
+    setMusicLoading(null);
   }
 
   /** Compose the track for the reel as it stands and play it here. */
@@ -1161,26 +1168,46 @@ export default function ReelMaker({
     const AC = w.AudioContext ?? w.webkitAudioContext;
     if (!AC || !musicCanCompose()) { setMusicNote("This browser can\u2019t play the preview."); return; }
     // Made inside the tap, so Safari lets it play once the track is ready.
-    const ctx = new AC();
-    try { void ctx.resume(); } catch { /* fine */ }
+    // A browser that refuses a new context (too many open, audio blocked)
+    // gets a note instead of an exception that leaves nothing changed.
+    let ctx: AudioContext;
+    try { ctx = new AC(); } catch { setMusicNote("This browser wouldn\u2019t start the audio. Reload the page and try again."); return; }
+    try { void ctx.resume().catch(() => { /* resumed again before playing */ }); } catch { /* fine */ }
     const token = ++previewTokenRef.current;
     previewRef.current = { ctx, src: null };
     setPreviewing("composing");
     setMusicNote("");
     // The same options as the render (engine included), so what's heard is what's baked in.
     const prog = instrumentProgress();
+    // A compose that never comes back (a stalled instrument download) must not
+    // leave the button on "Composing…" for good.
+    const watchdog = window.setTimeout(() => {
+      if (token === previewTokenRef.current) { stopPreview(); setMusicNote("The preview took too long. Try again."); }
+    }, 90_000);
     try {
       const buf = await composeReelMusic({ ...plan.opts, onLoadProgress: prog.onLoadProgress });
+      window.clearTimeout(watchdog);
       prog.done();
+      if (token !== previewTokenRef.current) return;
+      // Some browsers park a context created seconds ago (or when the audio
+      // device sleeps): wake it before playing, or nothing plays and `ended`
+      // never comes.
+      if (ctx.state === "suspended") { try { await ctx.resume(); } catch { /* play anyway */ } }
       if (token !== previewTokenRef.current) return;
       const src = ctx.createBufferSource();
       src.buffer = buf;
       src.connect(ctx.destination);
       src.onended = () => { if (previewRef.current && previewRef.current.src === src) stopPreview(); };
-      previewRef.current = { ctx, src };
+      // The backstop: if `ended` never fires (the audio device went away
+      // mid-track), the preview still ends — and the Preview button returns.
+      const timer = window.setTimeout(() => {
+        if (previewRef.current && previewRef.current.src === src) stopPreview();
+      }, Math.ceil((buf.duration + 1.5) * 1000));
+      previewRef.current = { ctx, src, timer };
       src.start();
       setPreviewing("playing");
     } catch {
+      window.clearTimeout(watchdog);
       prog.done();
       if (token === previewTokenRef.current) { stopPreview(); setMusicNote("Couldn\u2019t make the preview."); }
     }
@@ -1190,8 +1217,9 @@ export default function ReelMaker({
     const pv = previewRef.current;
     previewRef.current = null;
     if (pv) {
+      if (pv.timer !== undefined) window.clearTimeout(pv.timer);
       if (pv.src) { try { pv.src.stop(); } catch { /* not started */ } }
-      try { void pv.ctx.close(); } catch { /* already closed */ }
+      try { void pv.ctx.close().catch(() => { /* already closed */ }); } catch { /* already closed */ }
     }
   }, []);
 
@@ -3639,7 +3667,9 @@ export default function ReelMaker({
                     {previewing === "composing" ? (musicLoading !== null ? `Loading instruments\u2026 ${musicLoading}% (stop)` : "Composing\u2026 (stop)") : "\u25a0 Stop"}
                   </button>
                 ) : (
-                  <button onClick={() => void previewMusic()} disabled={busy || photoCount === 0} className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-800 hover:border-ink-400 disabled:opacity-40">
+                  <button onClick={() => void previewMusic()} disabled={busy || photoCount === 0}
+                    title={busy ? "Preview is off while the video is being made \u2014 Cancel it to preview" : photoCount === 0 ? "Pick at least one photo to preview the music" : undefined}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-800 hover:border-ink-400 disabled:opacity-40">
                     &#9654; Preview
                   </button>
                 )}
