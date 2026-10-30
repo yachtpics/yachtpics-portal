@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   SHARE_BATCH, shouldUseShareSheet, isTouchDevice, photoFileName, fetchPhotoFiles,
@@ -8,7 +8,7 @@ import {
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { formatBytes, openZipTarget, partLimitBytes, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
+import { formatBytes, openZipTarget, partLimitBytes, saveFilesSeparately, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
 
 // Two ways photos leave a listing page, one per role:
 //
@@ -69,6 +69,11 @@ export function useSizedDownloads(opts: {
   const [downloadProgress, setDownloadProgress] = useState(0);
   /** What the zip is doing, e.g. "12 of 194 photos · 480 MB" (null when idle). */
   const [downloadLabel, setDownloadLabel] = useState<string | null>(null);
+  /** "Save as separate files" running — it can be cancelled. */
+  const [savingSeparately, setSavingSeparately] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
+  /** The photos of a zip that just failed — offered as separate files. */
+  const [zipFailed, setZipFailed] = useState<ListingPhoto[] | null>(null);
   // Download size for every download button on the page (remembered per browser).
   const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("web"); // Web & MLS by default (Oct 29): fast, and what most downloads are for
   function setDownloadSize(v: DownloadSize) {
@@ -149,14 +154,85 @@ export function useSizedDownloads(opts: {
     }
   }
 
+  /** Names and extensions shared by every download path. */
+  const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  const extWith = (madeExt: Record<string, string>) => (p: ListingPhoto) => {
+    // A pre-made R2 file is JPEG (or PNG): name it so; otherwise the original's extension.
+    const made = madeExt[p.id];
+    if (!made) return extOf(p);
+    return made === "jpg" && extOf(p) === "jpeg" ? "jpeg" : made;
+  };
+
+  /**
+   * "Save as separate files" (Oct 30): every photo as its own download, no
+   * zip — for office computers that block zip files. One photo at a time
+   * (src/lib/zipDownload.ts saveFilesSeparately), at the chosen size, named
+   * "Sea Dream – 01 Salon (2048px).jpg" so they sort in listing order.
+   */
+  async function saveSeparately(targets: ListingPhoto[]) {
+    if (targets.length === 0 || downloading) return;
+    setZipFailed(null);
+    setDownloading(true);
+    setSavingSeparately(true);
+    setDownloadProgress(0);
+    setDownloadLabel("Preparing…");
+    const ctl = new AbortController();
+    abortRef.current = ctl;
+    const size = downloadSize;
+    const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
+    const vessel = vesselName ? cleanName(vesselName) : "";
+    const { urls, ext } = await signForDownload(targets, size);
+    const extFor = extWith(ext);
+    const pad = Math.max(2, String(targets.length).length);
+    const entries = targets.map((photo, i) => {
+      const label = cleanName(photo.category ?? "Photo") || "Photo";
+      const nn = targets.length > 1 ? `${String(i + 1).padStart(pad, "0")} ` : "";
+      return {
+        name: `${vessel ? `${vessel} – ` : ""}${nn}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${extFor(photo)}`,
+        url: ctl.signal.aborted ? null : urls[photo.id],
+      };
+    });
+    const result = await saveFilesSeparately(entries, {
+      signal: ctl.signal,
+      context: { listingId, size },
+      onProgress: (p) => {
+        setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
+        setDownloadLabel(`${p.done} of ${p.total} photos`);
+      },
+    });
+    abortRef.current = null;
+    setDownloading(false);
+    setSavingSeparately(false);
+    setDownloadProgress(0);
+    setDownloadLabel(null);
+    if (result.written > 0) logDownload(result.written);
+    if (result.cancelled) {
+      onMessage({ kind: "success", text: `Stopped — ${result.written} of ${targets.length} photos saved.`, ms: 6000 });
+      return;
+    }
+    onFinished();
+    if (result.written === 0) {
+      onMessage({ kind: "error", text: "The photos couldn't be downloaded. Please try again in a moment.", ms: 10000 });
+    } else if (result.failed > 0) {
+      onMessage({ kind: "error", text: `Done — saved ${result.written} photos as separate files. ${result.failed} couldn't be downloaded; try ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`, ms: 10000 });
+    } else {
+      onMessage({ kind: "success", text: `Done — saved ${result.written} photo${result.written !== 1 ? "s" : ""} as separate files (${formatBytes(result.bytes)}).`, ms: 6000 });
+    }
+  }
+
+  /** Stop "Save as separate files" (photos already saved stay saved). */
+  function cancelDownload() {
+    abortRef.current?.abort();
+  }
+
   async function downloadPhotos(targets: ListingPhoto[]) {
     if (targets.length === 0) return;
+    setZipFailed(null);
     setDownloading(true);
     setDownloadProgress(0);
 
     const size = downloadSize;
     const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
-    const cleanName = (t: string) => t.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
     const vessel = vesselName ? cleanName(vesselName) : "";
 
     // Several photos: open the Save dialog NOW, while the click still counts
@@ -193,12 +269,7 @@ export function useSizedDownloads(opts: {
     }
 
     const { urls: fresh, ext: madeExt, bytes: madeBytes } = await signForDownload(targets, size);
-    // A pre-made R2 file is JPEG (or PNG): name it so; otherwise the original's extension.
-    const extFor = (p: ListingPhoto) => {
-      const made = madeExt[p.id];
-      if (!made) return extOf(p);
-      return made === "jpg" && extOf(p) === "jpeg" ? "jpeg" : made;
-    };
+    const extFor = extWith(madeExt);
 
     // Single photo — direct download, no ZIP needed
     if (targets.length === 1) {
@@ -250,7 +321,8 @@ export function useSizedDownloads(opts: {
     setDownloadProgress(0);
     setDownloadLabel(null);
     if (!result.ok) {
-      onMessage({ kind: "error", text: result.error, ms: 10000 });
+      setZipFailed(targets);
+      onMessage({ kind: "error", text: `${result.error} Or use Save as separate files.`, ms: 12000 });
       return;
     }
     logDownload(result.written);
@@ -270,7 +342,12 @@ export function useSizedDownloads(opts: {
     }
   }
 
-  return { downloading, downloadProgress, downloadLabel, downloadSize, setDownloadSize, downloadTitle, downloadPhotos };
+  return {
+    downloading, downloadProgress, downloadLabel, downloadSize, setDownloadSize, downloadTitle, downloadPhotos,
+    saveSeparately, savingSeparately, cancelDownload,
+    /** After a failed zip: save the same photos as separate files (null when nothing failed). */
+    retrySeparately: zipFailed ? () => saveSeparately(zipFailed) : null,
+  };
 }
 
 export type SizedDownloads = ReturnType<typeof useSizedDownloads>;

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { openZipTarget, writeZip } from "@/lib/zipDownload";
+import { useRef, useState } from "react";
+import { formatBytes, openZipTarget, saveFilesSeparately, writeZip } from "@/lib/zipDownload";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
 import PresentedThrough from "@/components/PresentedThrough";
@@ -50,6 +50,10 @@ export default function DownloadPageClient({
   const [progress, setProgress] = useState(0);
   const [zipError, setZipError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  // "Save as separate files" (no zip — office PCs that block zip files).
+  const [sepLabel, setSepLabel] = useState<string | null>(null);
+  const [sepDone, setSepDone] = useState<string | null>(null);
+  const sepAbort = useRef<AbortController | null>(null);
   const available = photos.filter((p) => p.url);
   const availableVideos = videos.filter((v) => v.downloadUrl);
   const safeName = vesselName.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "vessel";
@@ -76,6 +80,39 @@ export default function DownloadPageClient({
     } finally {
       setDownloadingId(null);
     }
+  }
+
+  async function saveSeparately() {
+    if (busy || available.length === 0) return;
+    setBusy(true);
+    setProgress(0);
+    setZipError(null);
+    setSepDone(null);
+    setSepLabel("Preparing…");
+    const ctl = new AbortController();
+    sepAbort.current = ctl;
+    const vessel = vesselName.replace(/[\\/:*?"<>|]+/g, " ").trim();
+    const res = await saveFilesSeparately(
+      available.map((photo, k) => ({
+        name: `${vessel ? `${vessel} – ` : ""}${String(k + 1).padStart(2, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+        url: photo.url,
+      })),
+      {
+        signal: ctl.signal,
+        onProgress: (p) => {
+          setProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
+          setSepLabel(`${p.done} of ${p.total} photos`);
+        },
+      }
+    );
+    sepAbort.current = null;
+    if (res.written > 0) logDownload(res.written);
+    setSepLabel(null);
+    setBusy(false);
+    setProgress(0);
+    if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved.`);
+    else if (res.written === 0) setZipError("The photos couldn't be downloaded. Please try again in a moment.");
+    else setSepDone(`Done — ${res.written} photos saved as separate files (${formatBytes(res.bytes)})${res.failed ? `; ${res.failed} couldn't be downloaded` : ""}.`);
   }
 
   async function downloadAll() {
@@ -143,13 +180,32 @@ export default function DownloadPageClient({
                 {" "}available to download
               </p>
             </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               onClick={downloadAll}
               disabled={busy || available.length === 0}
               className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
             >
-              {busy ? `Downloading… ${progress}%` : `⬇ Download all (${available.length})`}
+              {sepLabel ?? (busy ? `Downloading… ${progress}%` : `⬇ Download all (${available.length})`)}
             </button>
+            {sepLabel !== null ? (
+              <button
+                onClick={() => sepAbort.current?.abort()}
+                className="text-sm text-white/80 hover:text-white underline underline-offset-2 px-2 min-h-[44px]"
+              >
+                Cancel
+              </button>
+            ) : available.length > 1 && (
+              <button
+                onClick={saveSeparately}
+                disabled={busy}
+                title="Every photo as its own file, no zip — use this if your computer blocks zip files. Your browser may ask once to allow multiple downloads."
+                className="border border-white/30 hover:border-accent-400 text-white text-sm font-medium px-4 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet disabled:opacity-40"
+              >
+                Save as separate files
+              </button>
+            )}
+            </div>
           </div>
           {busy && (
             <div className="mt-4 h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -159,7 +215,17 @@ export default function DownloadPageClient({
               />
             </div>
           )}
-          {!busy && zipError && <p className="mt-3 text-sm text-danger-300">{zipError}</p>}
+          {!busy && zipError && (
+            <p className="mt-3 text-sm text-danger-300">
+              {zipError}{" "}
+              {available.length > 1 && (
+                <button onClick={saveSeparately} className="underline underline-offset-2 text-white hover:text-accent-300 font-medium">
+                  Save as separate files instead
+                </button>
+              )}
+            </p>
+          )}
+          {!busy && sepDone && <p className="mt-3 text-sm text-white/80">{sepDone}</p>}
         </div>
       </div>
 

@@ -6,7 +6,7 @@ import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefr
 import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/photoAlt";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
-import { openZipTarget, writeZip, type ZipTarget } from "@/lib/zipDownload";
+import { openZipTarget, saveFilesSeparately, writeZip, type ZipTarget } from "@/lib/zipDownload";
 
 type GalleryPhoto = {
   id: string;
@@ -156,6 +156,10 @@ export default function GallerySlideshow({
   const [downloadingOne, setDownloadingOne] = useState(false);
 
   const [dlError, setDlError] = useState("");
+  // "Save as separate files" (no zip — office PCs that block zip files).
+  const [sepLabel, setSepLabel] = useState<string | null>(null);
+  const [zipFailed, setZipFailed] = useState(false);
+  const sepAbort = useRef<AbortController | null>(null);
 
   const logDownload = useCallback((count: number, kind: "single" | "zip") => {
     fetch(`/api/g/${slug}/download`, {
@@ -275,8 +279,10 @@ export default function GallerySlideshow({
         }
       );
       // Never let photos go missing silently.
-      if (!result.ok) setDlError(result.error);
-      else {
+      if (!result.ok) {
+        setDlError(result.error);
+        setZipFailed(true);
+      } else {
         if (result.failed) {
           setDlError(`${result.failed} photo${result.failed === 1 ? "" : "s"} couldn't be added. Refresh the page and download again to collect them.`);
         }
@@ -289,6 +295,42 @@ export default function GallerySlideshow({
       setTimeout(() => { setDownloadingAll(false); setDlProgress(0); }, 600);
     }
   }, [downloadingAll, photos, title, logDownload, freshUrls, fetchFile]);
+
+  const savePhotosSeparately = useCallback(async () => {
+    if (downloadingAll || photos.length === 0) return;
+    setDownloadingAll(true);
+    setDlProgress(0);
+    setDlError("");
+    setZipFailed(false);
+    setSepLabel("Preparing…");
+    const ctl = new AbortController();
+    sepAbort.current = ctl;
+    try {
+      const fresh = await freshUrls();
+      const name = title.replace(/[\\/:*?"<>|]+/g, " ").trim();
+      const res = await saveFilesSeparately(
+        photos.map((p, k) => ({
+          name: `${name ? `${name} – ` : ""}${String(k + 1).padStart(3, "0")} ${p.category ?? "Photo"}.jpg`,
+          url: fresh?.photos?.[k] ?? p.downloadUrl,
+        })),
+        {
+          signal: ctl.signal,
+          onProgress: (pr) => {
+            setDlProgress(pr.total ? Math.round((pr.done / pr.total) * 100) : 0);
+            setSepLabel(`${pr.done} of ${pr.total}`);
+          },
+        }
+      );
+      if (res.written > 0) logDownload(res.written, "single");
+      if (!res.cancelled && res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
+      else if (!res.cancelled && res.failed) setDlError(`${res.failed} photo${res.failed === 1 ? "" : "s"} couldn't be downloaded. Refresh the page and download ${res.failed === 1 ? "it" : "them"} on ${res.failed === 1 ? "its" : "their"} own.`);
+    } finally {
+      sepAbort.current = null;
+      setSepLabel(null);
+      setDownloadingAll(false);
+      setDlProgress(0);
+    }
+  }, [downloadingAll, photos, title, logDownload, freshUrls]);
 
   const hasVideo = videos.length > 0;
   const [view, setView] = useState<"slideshow" | "grid" | "video">(
@@ -451,9 +493,26 @@ export default function GallerySlideshow({
               disabled={downloadingAll}
               className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-accent-500 bg-accent-500 text-white shadow-elev-1 hover:bg-accent-600 disabled:opacity-60 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
             >
-              {downloadingAll ? `Zipping… ${dlProgress}%` : videos.length > 0 ? "⤓ Download photos" : "⤓ Download all"}
+              {sepLabel ?? (downloadingAll ? `Zipping… ${dlProgress}%` : videos.length > 0 ? "⤓ Download photos" : "⤓ Download all")}
             </button>
           )}
+          {downloadsEnabled && photos.length > 1 && (sepLabel !== null ? (
+            <button
+              onClick={() => sepAbort.current?.abort()}
+              className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 transition-colors duration-base ease-quiet"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              onClick={savePhotosSeparately}
+              disabled={downloadingAll}
+              title="Save as separate files — every photo as its own file, no zip (for computers that block zip files). Your browser may ask once to allow multiple downloads."
+              className="hidden sm:inline-flex items-center text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 disabled:opacity-60 transition-colors duration-base ease-quiet"
+            >
+              Save as separate files
+            </button>
+          ))}
           {slides.length > 1 && view === "slideshow" && (
             <button
               onClick={() => setPlaying((p) => !p)}
@@ -484,7 +543,17 @@ export default function GallerySlideshow({
 
       {dlError && (
         <div className="mx-4 sm:mx-6 mt-3 bg-warn-50 border border-warn-200 text-warn-800 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
-          <span>{dlError}</span>
+          <span>
+            {dlError}
+            {zipFailed && photos.length > 1 && (
+              <>
+                {" "}
+                <button onClick={savePhotosSeparately} className="underline underline-offset-2 font-medium text-warn-900 hover:text-ink-900">
+                  Save as separate files instead
+                </button>
+              </>
+            )}
+          </span>
           <button onClick={() => setDlError("")} className="shrink-0 font-bold text-warn-700 hover:text-warn-800" aria-label="Dismiss">×</button>
         </div>
       )}

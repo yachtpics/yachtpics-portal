@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
-import { openZipTarget, writeZip } from "@/lib/zipDownload";
+import { formatBytes, openZipTarget, saveFilesSeparately, writeZip } from "@/lib/zipDownload";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null; thumbUrl?: string | null };
@@ -45,6 +45,11 @@ export default function ClientGalleryView({
   const [progress, setProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [dlError, setDlError] = useState("");
+  // "Save as separate files" (no zip — office PCs that block zip files).
+  const [sepLabel, setSepLabel] = useState<string | null>(null);
+  const [sepDone, setSepDone] = useState("");
+  const [zipFailed, setZipFailed] = useState(false);
+  const sepAbort = useRef<AbortController | null>(null);
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
   // Phones get the native share sheet (Messages, WhatsApp, Mail…); desktops
@@ -228,10 +233,48 @@ export default function ClientGalleryView({
     }
   }
 
+  async function saveSeparately() {
+    if (busy || expired || available.length === 0) return;
+    setBusy(true);
+    setProgress(0);
+    setDlError("");
+    setSepDone("");
+    setZipFailed(false);
+    setSepLabel("Preparing…");
+    const ctl = new AbortController();
+    sepAbort.current = ctl;
+    const fresh = await freshUrls();
+    const name = title.replace(/[\\/:*?"<>|]+/g, " ").trim();
+    const res = await saveFilesSeparately(
+      available.map((photo, k) => ({
+        name: `${name ? `${name} – ` : ""}${String(k + 1).padStart(3, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+        url: fresh?.photos?.[photo.id] ?? photo.url,
+      })),
+      {
+        signal: ctl.signal,
+        onProgress: (p) => {
+          setProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
+          setSepLabel(`${p.done} of ${p.total} photos`);
+        },
+      }
+    );
+    sepAbort.current = null;
+    if (res.written > 0) log("photo", res.written);
+    setSepLabel(null);
+    setBusy(false);
+    setProgress(0);
+    if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved.`);
+    else if (res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
+    else if (res.failed) setDlError(`Saved ${res.written} photos as separate files; ${res.failed} couldn't be downloaded. Refresh the page and download them on their own.`);
+    else setSepDone(`Done — ${res.written} photos saved as separate files (${formatBytes(res.bytes)}).`);
+  }
+
   async function downloadAll() {
     if (busy || expired || available.length === 0) return;
     setBusy(true);
     setProgress(0);
+    setZipFailed(false);
+    setSepDone("");
     try {
       if (available.length === 1) {
         const only = available[0];
@@ -263,7 +306,10 @@ export default function ClientGalleryView({
         }
       );
       // Never let photos go missing silently.
-      if (!result.ok) setDlError(result.error);
+      if (!result.ok) {
+        setDlError(result.error);
+        setZipFailed(true);
+      }
       else if (result.failed) {
         setDlError(
           `${result.failed} photo${result.failed === 1 ? "" : "s"} couldn't be added. Refresh the page and download again to collect them.`
@@ -296,15 +342,36 @@ export default function ClientGalleryView({
           </p>
         </div>
         {!expired && available.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+          {available.length > 1 && (sepLabel !== null ? (
+            <button
+              onClick={() => sepAbort.current?.abort()}
+              className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-2 min-h-[44px]"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              onClick={saveSeparately}
+              disabled={busy}
+              title="Every photo as its own file, no zip — use this if your computer blocks zip files. Your browser may ask once to allow multiple downloads."
+              className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet disabled:opacity-40"
+            >
+              Save as separate files
+            </button>
+          ))}
           <button
             onClick={downloadAll}
             disabled={busy}
             className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
           >
-            {busy ? `Preparing… ${progress}%` : `⬇ Download all photos (${available.length})`}
+            {sepLabel ?? (busy ? `Preparing… ${progress}%` : `⬇ Download all photos (${available.length})`)}
           </button>
+          </div>
         )}
       </div>
+
+      {!busy && sepDone && <p className="mt-3 text-sm text-ink-600">{sepDone}</p>}
 
       {busy && (
         <div className="mt-3 h-1.5 bg-ink-200 rounded-full overflow-hidden">
@@ -314,7 +381,17 @@ export default function ClientGalleryView({
 
       {dlError && (
         <div className="mt-3 bg-warn-50 border border-warn-200 text-warn-800 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
-          <span>{dlError}</span>
+          <span>
+            {dlError}
+            {zipFailed && available.length > 1 && (
+              <>
+                {" "}
+                <button onClick={saveSeparately} className="underline underline-offset-2 font-medium text-warn-900 hover:text-ink-900">
+                  Save as separate files instead
+                </button>
+              </>
+            )}
+          </span>
           <button onClick={() => setDlError("")} className="shrink-0 font-bold text-warn-700 hover:text-warn-800" aria-label="Dismiss">×</button>
         </div>
       )}

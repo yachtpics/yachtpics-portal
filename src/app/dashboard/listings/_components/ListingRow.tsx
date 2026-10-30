@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { openZipTarget, writeZip } from "@/lib/zipDownload";
+import { openZipTarget, saveFilesSeparately, writeZip } from "@/lib/zipDownload";
 
 // Zips stream through src/lib/zipDownload.ts (client-zip, a few KB — unlike
 // JSZip, which used to be loaded on demand here and held the whole zip in memory).
@@ -46,6 +46,9 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadDone, setDownloadDone] = useState(false);
   const [noPhotos, setNoPhotos] = useState(false);
+  // "Save as separate files" (no zip — office PCs that block zips): progress + cancel.
+  const [separateLabel, setSeparateLabel] = useState<string | null>(null);
+  const separateAbort = useRef<AbortController | null>(null);
 
   // Share state
   const [shareCopied, setShareCopied] = useState(false);
@@ -142,19 +145,25 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     }
   }
 
-  async function handleDownload() {
-    if (downloading) return;
+  async function handleDownload(mode: "zip" | "separate" = "zip") {
+    if (downloading) {
+      // The Files button doubles as Cancel while separate files are saving.
+      if (mode === "separate") separateAbort.current?.abort();
+      return;
+    }
     // Streaming zip (src/lib/zipDownload.ts): the Save dialog opens first,
     // while the click still counts as a gesture; then the photos stream into
-    // it one by one (any size). Browsers without the dialog get ≤ 1 GB parts.
+    // it one by one (any size). Browsers without the dialog get zip parts.
+    // "separate": every photo as its own download, no zip.
     const zipBase = `${listing.vessel_name ?? "photos"}-photos`;
-    const target = await openZipTarget(`${zipBase}.zip`);
-    if (target.kind === "cancelled") return;
+    const target = mode === "zip" ? await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size: "full" }) : null;
+    if (target?.kind === "cancelled") return;
     setDownloading(true);
     setDownloadProgress(0);
     setDownloadDone(false);
     setNoPhotos(false);
 
+    let fallBack = false;
     try {
       const supabase = createClient();
 
@@ -166,7 +175,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         .order("display_order");
 
       if (!photos || photos.length === 0) {
-        if (target.kind === "stream") await target.writable.abort().catch(() => {});
+        if (target?.kind === "stream") await target.writable.abort().catch(() => {});
         setNoPhotos(true);
         setTimeout(() => setNoPhotos(false), 3000);
         setDownloading(false);
@@ -185,20 +194,47 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         };
       });
 
-      const result = await writeZip(target, entries, {
-        baseName: zipBase,
-        onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
-      });
-      if (!result.ok) {
-        alert(result.error);
-        return;
+      let written = 0;
+      if (!target) {
+        const vessel = (listing.vessel_name ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
+        const ctl = new AbortController();
+        separateAbort.current = ctl;
+        const res = await saveFilesSeparately(
+          entries.map((e) => ({ ...e, name: vessel ? `${vessel} – ${e.name}` : e.name })),
+          {
+            signal: ctl.signal,
+            context: { listingId: listing.id, size: "full" },
+            onProgress: (p) => {
+              setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
+              setSeparateLabel(`${p.done}/${p.total}`);
+            },
+          }
+        );
+        separateAbort.current = null;
+        written = res.written;
+        if (!res.cancelled && res.written === 0) {
+          alert("The photos couldn't be downloaded. Please try again in a moment.");
+          return;
+        }
+      } else {
+        const result = await writeZip(target, entries, {
+          baseName: zipBase,
+          context: { listingId: listing.id, size: "full" },
+          onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
+        });
+        if (!result.ok) {
+          fallBack = window.confirm(`${result.error}\n\nSave the photos as separate files instead (no zip)?`);
+          return;
+        }
+        written = result.written;
       }
+      if (written === 0) return;
 
       // Log download (fire-and-forget)
       fetch(`/api/listings/${listing.id}/log-download`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ photoCount: result.written }),
+        body: JSON.stringify({ photoCount: written }),
       }).catch(() => {});
 
       setDownloadDone(true);
@@ -208,7 +244,11 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     } finally {
       setDownloading(false);
       setDownloadProgress(0);
+      setSeparateLabel(null);
+      separateAbort.current = null;
     }
+    // The zip failed and the broker chose separate files: same photos, no zip.
+    if (fallBack) void handleDownload("separate");
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -363,7 +403,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         {/* Download Photos */}
         <div className="relative">
           <button
-            onClick={handleDownload}
+            onClick={() => handleDownload("zip")}
             disabled={downloading}
             title="Download all photos as ZIP"
             className={`${quickAction}
@@ -401,6 +441,15 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
             )}
           </button>
         </div>
+        <button
+          onClick={() => handleDownload("separate")}
+          disabled={downloading && separateLabel === null}
+          title={separateLabel !== null ? "Cancel saving separate files" : "Save all photos as separate files (no zip) — for computers that block zip files"}
+          className={`${quickAction} border-hairline-strong bg-white text-ink-500 hover:border-accent-500 hover:text-ink-700 disabled:opacity-60 disabled:cursor-not-allowed`}
+        >
+          <span className="hidden sm:inline">{separateLabel !== null ? `${separateLabel} · Cancel` : "Files"}</span>
+          <span className="sm:hidden">{separateLabel !== null ? separateLabel : "Files"}</span>
+        </button>
 
         {/* Send to Client — active plans only */}
         {!locked && (

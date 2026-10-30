@@ -139,6 +139,7 @@ async function fetchWithRetry(url: string, init?: RequestInit): Promise<Response
       last = new Error(`HTTP ${res.status}`);
     } catch (e) {
       last = e;
+      if (init?.signal?.aborted) break;
       if (e instanceof Error && /^HTTP 4/.test(e.message)) break;
     }
   }
@@ -416,6 +417,56 @@ function isTooLarge(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e ?? "");
   if (/QuotaExceeded|NotReadable|DataCloneError|SecurityError/i.test(name)) return true;
   return /too large|quota|out of memory|allocation|insecure|array buffer|exceeds/i.test(msg);
+}
+
+export type SeparateProgress = { done: number; total: number; failed: number; bytes: number };
+export type SeparateResult = { written: number; failed: number; bytes: number; cancelled: boolean };
+
+/**
+ * "Save as separate files" (Oct 30) — no zip at all, for computers that
+ * refuse zip files (office policy / antivirus: Kyle Blom). Each photo is
+ * fetched and saved with a plain <a download>, the way a single photo is,
+ * ONE AT A TIME with a short gap so Chrome asks "allow multiple downloads"
+ * once and nothing is dropped. Only the photo being saved is held in memory
+ * (its object URL is released a few seconds after the save starts).
+ * `name` is the file name (any "folder/" part is dropped). Pass an
+ * AbortSignal to cancel between / during photos.
+ */
+export async function saveFilesSeparately(
+  entries: { name: string; url: string | null | undefined }[],
+  opts: { onProgress?: (p: SeparateProgress) => void; signal?: AbortSignal; gapMs?: number; context?: ZipContext } = {}
+): Promise<SeparateResult> {
+  const p: SeparateProgress = { done: 0, total: entries.length, failed: 0, bytes: 0 };
+  const report = () => opts.onProgress?.({ ...p });
+  report();
+  const gap = opts.gapMs ?? 400;
+  for (let i = 0; i < entries.length; i++) {
+    if (opts.signal?.aborted) return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled: true };
+    const e = entries[i];
+    try {
+      if (!e.url) throw new Error("no link");
+      const res = await fetchWithRetry(e.url, opts.signal ? { signal: opts.signal } : undefined);
+      const blob = await res.blob();
+      const file = e.name.split("/").pop() || e.name;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = file;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      p.bytes += blob.size;
+    } catch (err) {
+      if (opts.signal?.aborted) return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled: true };
+      p.failed++;
+      reportZipIssue("separate", err, { ...opts.context, mode: "separate", bytes: p.bytes, done: p.done, total: p.total });
+    }
+    p.done++;
+    report();
+    if (i + 1 < entries.length) await sleep(gap);
+  }
+  return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled: false };
 }
 
 /** "1.2 GB" / "340 MB" for progress text. */

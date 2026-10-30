@@ -14,6 +14,7 @@ import type { PhotoActions } from "./usePhotoActions";
 export function PhotoToolbar({
   variant, actions, photoCount, customCategories, downloadAllCount, downloadBusy, busyLabel,
   onDownloadAll, onDownloadSelected, sizeSelect, onSaveOriginals, onSaveOriginalsSelected, saveOriginalsBusy,
+  onSaveSeparately, onSaveSeparatelySelected, onCancelDownload, onRetrySeparately,
 }: {
   variant: PhotoVariant;
   actions: PhotoActions;
@@ -33,10 +34,47 @@ export function PhotoToolbar({
   onSaveOriginals?: () => void;
   onSaveOriginalsSelected?: () => void;
   saveOriginalsBusy?: boolean;
+  /** "Save as separate files" — every photo as its own download, no zip
+   *  (office computers that block zip files). All / the selection. */
+  onSaveSeparately?: () => void;
+  onSaveSeparatelySelected?: () => void;
+  /** Shown while a cancellable download runs (separate files). */
+  onCancelDownload?: (() => void) | null;
+  /** After a zip failed: one click saves the same photos as separate files. */
+  onRetrySeparately?: (() => void) | null;
 }) {
   const a = actions;
   const n = a.selectedIds.size;
   const broker = variant === "broker";
+
+  const plainBtn = "bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap";
+  const separate = (run?: () => void) => run && (
+    <button
+      onClick={run}
+      disabled={downloadBusy}
+      title="Every photo as its own file, no zip — use this if your computer blocks zip files. Your browser may ask once to allow multiple downloads."
+      className={plainBtn}
+    >
+      Save as separate files
+    </button>
+  );
+  const extras = (
+    <>
+      {downloadBusy && onCancelDownload && (
+        <button onClick={onCancelDownload} className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-1">
+          Cancel
+        </button>
+      )}
+      {!downloadBusy && onRetrySeparately && (
+        <button
+          onClick={onRetrySeparately}
+          className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap"
+        >
+          Save as separate files instead
+        </button>
+      )}
+    </>
+  );
 
   const bulkOptions = (
     <>
@@ -72,6 +110,8 @@ export function PhotoToolbar({
             >
               {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
             </button>
+            {separate(onSaveSeparately)}
+            {extras}
             <button
               onClick={() => a.setConfirmDeleteAll(true)}
               className="bg-white border border-hairline-strong hover:border-danger-300 text-danger-600 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
@@ -118,6 +158,8 @@ export function PhotoToolbar({
                 >
                   {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
                 </button>
+                {separate(onSaveSeparatelySelected)}
+                {extras}
                 <button
                   onClick={() => a.setConfirmDeleteSelected(true)}
                   disabled={a.deleting}
@@ -151,6 +193,8 @@ export function PhotoToolbar({
           >
             {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
           </button>
+          {separate(onSaveSeparately)}
+          {extras}
           {onSaveOriginals && (
             <button
               onClick={onSaveOriginals}
@@ -212,6 +256,8 @@ export function PhotoToolbar({
               >
                 {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
               </button>
+              {separate(onSaveSeparatelySelected)}
+              {extras}
               {onSaveOriginalsSelected && (
                 <button
                   onClick={onSaveOriginalsSelected}
