@@ -18,6 +18,11 @@
  *    photos fetched one at a time and saved as "<name> (part 1 of N).zip";
  *    a part the browser can't hold is halved and retried.
  *
+ * If the Save-dialog file fails to write (some PCs: OneDrive folders, managed
+ * PCs, "file too large"), the same zip is redone in parts mode; embedded
+ * browsers (Outlook / Teams WebViews) use parts mode from the start. Failures
+ * are reported to /api/photos/download-fallback (Vercel logs).
+ *
  * Usage — open the target FIRST in the click handler, before any await (the
  * Save dialog needs the click's user activation), then sign the links, then
  * writeZip().
@@ -57,26 +62,65 @@ export type ZipResult =
 
 type PickerWindow = Window & {
   showSaveFilePicker?: (opts: unknown) => Promise<{ name?: string; createWritable: () => Promise<WritableStream<Uint8Array>> }>;
+  chrome?: unknown;
 };
+
+/** Who / what a zip is for — sent with diagnostics (no PII; the server adds the user id). */
+export type ZipContext = { listingId?: string | null; size?: string | null };
+
+/**
+ * Diagnostics (Oct 30): a zip that fails, or a Save-dialog stream that falls
+ * back to parts, is reported to /api/photos/download-fallback, which writes
+ * one `[download-fallback]` line to the Vercel runtime logs. Fire-and-forget.
+ */
+export function reportZipIssue(step: string, err: unknown, extra: ZipContext & { mode?: string; bytes?: number; done?: number; total?: number } = {}) {
+  try {
+    const name = err && typeof err === "object" && "name" in err ? String((err as { name: unknown }).name) : typeof err;
+    const message = err instanceof Error ? err.message : String(err ?? "");
+    fetch("/api/photos/download-fallback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({ step, errorName: name, message, ...extra }),
+    }).catch(() => {});
+  } catch { /* diagnostics never break a download */ }
+}
+
+/**
+ * An embedded browser (Outlook / Teams / an app's WebView) — the Save dialog
+ * there may exist but fail to write, so these always use parts mode.
+ */
+function isEmbeddedWebView(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/WebView|; wv\)|\bTeams\/|Electron\/|Outlook|ms-office|MSOffice/i.test(ua)) return true;
+  const w = window as PickerWindow;
+  return typeof w.showSaveFilePicker === "function" && !w.chrome;
+}
 
 /**
  * Open where the zip goes. Call it first thing in the click handler. A
  * cancelled Save dialog comes back as { kind: "cancelled" } (reset the button);
  * a browser without the dialog, or one that refuses it, gets parts mode.
  */
-export async function openZipTarget(suggestedName: string): Promise<ZipTarget> {
+export async function openZipTarget(suggestedName: string, ctx: ZipContext = {}): Promise<ZipTarget> {
   const w = window as PickerWindow;
   if (typeof w.showSaveFilePicker !== "function") return { kind: "parts" };
+  if (isEmbeddedWebView()) return { kind: "parts" };
+  let step = "picker";
   try {
     const handle = await w.showSaveFilePicker({
       suggestedName,
       types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
     });
+    step = "createWritable";
     const writable = await handle.createWritable();
     return { kind: "stream", writable, name: handle.name ?? suggestedName };
   } catch (e) {
-    if (e instanceof DOMException && e.name === "AbortError") return { kind: "cancelled" };
-    // SecurityError (no user activation left), unsupported context, …
+    if (step === "picker" && e instanceof DOMException && e.name === "AbortError") return { kind: "cancelled" };
+    // SecurityError (no user activation left), a managed PC that blocks the
+    // file, unsupported context, … → parts mode (plain downloads).
+    reportZipIssue(step, e, { ...ctx, mode: "stream→parts" });
     return { kind: "parts" };
   }
 }
@@ -127,14 +171,19 @@ function saveBlob(blob: Blob, filename: string) {
 export async function writeZip(
   target: Exclude<ZipTarget, { kind: "cancelled" }>,
   entries: ZipEntry[],
-  opts: { baseName: string; onProgress?: (p: ZipProgress) => void; partLimitBytes?: number }
+  opts: { baseName: string; onProgress?: (p: ZipProgress) => void; partLimitBytes?: number; context?: ZipContext }
 ): Promise<ZipResult> {
   const total = entries.length;
-  const progress: ZipProgress = { done: 0, total, failed: 0, bytes: 0 };
+  let progress: ZipProgress = { done: 0, total, failed: 0, bytes: 0 };
   const report = () => opts.onProgress?.({ ...progress });
   report();
 
   if (target.kind === "stream") {
+    // The stream's own counters (`sp`): if it falls back, late callbacks of
+    // the abandoned stream can't touch the parts-mode progress.
+    const sp = progress;
+    const reportStream = () => { if (progress === sp) report(); };
+    let abandoned = false;
     // One photo downloading ahead while the previous one is written.
     const start = (e: ZipEntry): Promise<Response | null> =>
       e.url ? fetchWithRetry(e.url).catch(() => null) : Promise.resolve(null);
@@ -143,22 +192,23 @@ export async function writeZip(
       let next: Promise<Response | null> | null = entries.length ? start(entries[0]) : null;
       for (let i = 0; i < entries.length; i++) {
         const res = await next;
+        if (abandoned) { res?.body?.cancel().catch(() => {}); return; }
         next = i + 1 < entries.length ? start(entries[i + 1]) : null;
         if (!res || !res.body) {
-          progress.failed++;
-          progress.done++;
-          report();
+          sp.failed++;
+          sp.done++;
+          reportStream();
           continue;
         }
         const counted = res.body.pipeThrough(
           new TransformStream<Uint8Array, Uint8Array>({
             transform(chunk, ctl) {
-              progress.bytes += chunk.byteLength;
+              sp.bytes += chunk.byteLength;
               ctl.enqueue(chunk);
             },
             flush() {
-              progress.done++;
-              report();
+              sp.done++;
+              reportStream();
             },
           })
         );
@@ -174,17 +224,26 @@ export async function writeZip(
 
     try {
       await makeZip(files()).pipeTo(target.writable);
-      const written = total - progress.failed;
-      if (written === 0) return { ok: false, error: "None of the photos could be downloaded.", written, failed: progress.failed };
-      return { ok: true, written, failed: progress.failed, bytes: progress.bytes, parts: 1 };
+      const written = total - sp.failed;
+      if (written === 0) {
+        reportZipIssue("stream-empty", new Error("no photos fetched"), { ...opts.context, mode: "stream", bytes: sp.bytes, done: sp.done, total });
+        return { ok: false, error: "None of the photos could be downloaded.", written, failed: sp.failed };
+      }
+      return { ok: true, written, failed: sp.failed, bytes: sp.bytes, parts: 1 };
     } catch (e) {
+      // Oct 30: the Save-dialog file can fail on some PCs (OneDrive-synced
+      // folders, managed PCs, "file too large", quota, NotAllowed) — Kyle Blom.
+      // Discard the half-written file and redo the whole zip as plain
+      // downloads (parts mode), the way single photos already save fine.
+      reportZipIssue("stream-write", e, { ...opts.context, mode: "stream→parts", bytes: sp.bytes, done: sp.done, total });
+      abandoned = true;
+      // abort() discards what was written (Chrome writes to a .crswap file
+      // and only replaces the picked file on close). The picked file is not
+      // removed: it may be an existing file the user chose to overwrite.
       try { await target.writable.abort(); } catch { /* already closed */ }
-      return {
-        ok: false,
-        error: `The download stopped partway (${e instanceof Error ? e.message : "connection lost"}). Please try again.`,
-        written: progress.done - progress.failed,
-        failed: progress.failed,
-      };
+      progress = { done: 0, total, failed: 0, bytes: 0 };
+      report();
+      // falls through to parts mode below
     }
   }
 
@@ -321,6 +380,7 @@ export async function writeZip(
         await sleep(1500);
         continue;
       }
+      reportZipIssue("parts", e, { ...opts.context, mode: "parts", bytes: progress.bytes, done: progress.done, total });
       return {
         ok: false,
         error: isTooLarge(e)
@@ -331,7 +391,10 @@ export async function writeZip(
       };
     }
   }
-  if (written === 0) return { ok: false, error: "None of the photos could be downloaded.", written, failed: progress.failed };
+  if (written === 0) {
+    reportZipIssue("parts-empty", new Error("no photos fetched"), { ...opts.context, mode: "parts", bytes: progress.bytes, done: progress.done, total });
+    return { ok: false, error: "None of the photos could be downloaded.", written, failed: progress.failed };
+  }
   return { ok: true, written, failed: progress.failed, bytes: progress.bytes, parts: saved };
 }
 

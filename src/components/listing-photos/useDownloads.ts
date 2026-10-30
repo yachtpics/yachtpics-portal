@@ -164,7 +164,7 @@ export function useSizedDownloads(opts: {
     let zipTarget: ZipTarget | null = null;
     if (targets.length > 1) {
       const zipName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
-      zipTarget = await openZipTarget(zipName);
+      zipTarget = await openZipTarget(zipName, { listingId, size });
       if (zipTarget.kind === "cancelled") {
         setDownloading(false);
         setDownloadProgress(0);
@@ -238,6 +238,7 @@ export function useSizedDownloads(opts: {
     });
     const result = await writeZip(zipTarget as Exclude<ZipTarget, { kind: "cancelled" }>, entries, {
       baseName,
+      context: { listingId, size },
       onProgress: (p) => {
         setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
         setDownloadLabel(
