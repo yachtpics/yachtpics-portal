@@ -52,7 +52,7 @@
  * voices; the studio voicing of each mood is listed at STUDIO_INSTRUMENTS.
  */
 import type { StyleKey } from "@/lib/reelStyles";
-import { discardNotes, flushNotes, loadInstruments, playHit, playNote, type InstrumentName, type SampledInstrument } from "@/lib/reelSampler";
+import { discardNotes, flushNotes, loadInstruments, playHit, playNote, type DrumHit, type InstrumentName, type SampledInstrument } from "@/lib/reelSampler";
 
 export type MusicMood = "calm" | "cinematic" | "elegant" | "upbeat" | "groove" | "lift" | "coastal" | "coastal_drive" | "sail";
 export type MusicChoice = "off" | "auto" | MusicMood;
@@ -396,11 +396,11 @@ const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
   calm: ["pad", "strings", "piano", "bass"],
   cinematic: ["strings", "pad", "piano", "drums"],
   elegant: ["epiano", "piano", "nylon", "bass", "drums"],
-  upbeat: ["epiano", "piano", "bass", "drums"],
-  groove: ["pad", "epiano", "bass", "drums"],
+  upbeat: ["piano", "pad", "strings", "bass", "drums"],
+  groove: ["pad", "epiano", "piano", "strings", "bass", "drums"],
   lift: ["pad", "piano", "strings", "drums"],
   coastal: ["epiano", "nylon", "bass", "drums"],
-  coastal_drive: ["epiano", "nylon", "bass", "pad", "drums"],
+  coastal_drive: ["epiano", "nylon", "bass", "pad", "strings", "drums"],
   sail: ["pad", "strings", "nylon", "bass", "drums"],
 };
 
@@ -411,7 +411,7 @@ const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
  * compressor, seeing the body of the track around -15 dBFS, works 1–2 dB.
  */
 const STUDIO_DRIVE_DB: Record<MusicMood, number> = {
-  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -1.8, groove: -5.3, lift: -2.6, coastal: -5.9, coastal_drive: -6.4, sail: -8,
+  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -4.3, groove: -6.4, lift: -2.6, coastal: -5.9, coastal_drive: -7.2, sail: -5,
 };
 
 /** How much of the classic sub bass stays under the finger bass (Calm and Cinematic keep it all). */
@@ -436,23 +436,18 @@ const STUDIO_MIX: Record<MusicMood, Partial<Record<StudioBus, number>>> = {
   // Lead: the strings; piano 4 LU under, the pulse far back.
   cinematic: { bed: -1.4, keys: 2.9, kit: 2, bells: 8.8 },
   elegant: { keys: 4.3, bed: -1.4, guitar: 0.5, bass: -2.7, kit: 3.6, perc: 7.1, bells: 14.4 },
-  // (bells: the cut's piano note now, set at Calm's ratio to the keys)
-  upbeat: { keys: 1.1, bed: -5.6, bass: -4.1, kit: -0.3, perc: 2.9, bells: 9.5 },
-  // Lead: the Rhodes motif — with the 808 (unchanged) about 2 LU over it, as in the classic mix.
-  groove: { keys: -2.4, bed: -10, bass: -4.7, kit: 0.4, perc: 3.2 },
+  // Upbeat, Groove, Coastal Drive and Sail: the lively arrangement (Oct 30), set
+  // by measurement around the hook (pluck bus = 0): chords -3 LU, pad -6, finger
+  // bass -5, sub/808 -4 (Groove's 808 +1), kick and snare -1, hats -6, guitar -8.
+  upbeat: { pluck: 5.8, keys: 3.3, strings: -3.2, bass: -3.8, kit: 5.7, perc: 7.6 },
+  groove: { keys: 3.1, strings: -2.2, bass: 1.6, kit: 6.6, perc: 8 },
   lift: { keys: -0.5, bed: -12.8, strings: -4.5, kit: -1.6, perc: 0.9, bells: 8.6 },
   // Lead: the vibes; the guitars 2 LU under, the Rhodes bed 6.
   // Oct 23, owner's ear ("a little tinny"): finger bass +2.5 dB, Rhodes +1.5 dB,
   // Coastal's kick +1.5 dB (and the guitar bus EQ'd warmer — see makeStudio).
   coastal: { keys: 4.3, guitar: 3.1, bed: 1, bass: 0.7, kit: 4.4, perc: 10.1 },
-  // Drive v3 (Oct 23): keys now carries only the sparse Rhodes motifs (-2 dB, just
-  // under the chords when they play); the kick +1.5 dB — the drive is kick and bass.
-  coastal_drive: { keys: 3.9, guitar: 1.9, bed: 1.2, bass: 2.1, kit: 3.2, perc: 10.5 },
-  // Lead: the pluck; pad and finger bass 4 LU under it, the sine sub ~6, the
-  // kick 2, the hats/shaker 9, the nylon double 10 (measured, Oct 27).
-  // v2 (owner: "more bass, less plucky"): lead -2.5 dB, nylon +1 (just under the
-  // lead), pad +1.5, kick +1; the bass comes up through its new voicing and the sub.
-  sail: { pluck: 0.7, bed: -1.9, bass: -1.2, kit: 4.4, perc: 8.6, guitar: 9.9 },
+  coastal_drive: { pluck: 4.5, keys: 1.7, strings: -2.8, guitar: 7.2, bass: -1.9, kit: 5.8, perc: 7.7 },
+  sail: { pluck: 6.2, strings: -2.7, guitar: 6.6, bass: -2.5, kit: 4.5, perc: 7.8 },
 };
 
 /** The keys/guitar (and bed) dip under each kick: about -1.5 dB for ~120 ms. */
@@ -787,7 +782,12 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   const length = Math.max(1, Math.round(dur * SR));
   // Studio Coastal Drive (Oct 23): its drive comes from the kick and bass, not
   // speed — a tempo within ~6 BPM of Coastal's (118–126). Classic keeps 126–130.
-  const p: MoodParams = studio && opts.mood === "coastal_drive" ? { ...MOOD.coastal_drive, tempo: [120, 124] } : MOOD[opts.mood];
+  const p: MoodParams = studio && opts.mood === "coastal_drive" ? { ...MOOD.coastal_drive, tempo: [120, 124] }
+    // Studio Upbeat (Oct 30, "more lively"): a pop tempo.
+    : studio && opts.mood === "upbeat" ? { ...MOOD.upbeat, tempo: [112, 120] }
+    : MOOD[opts.mood];
+  /** The lively arrangement's style (studio Upbeat, Groove, Coastal Drive, Sail — Oct 30); null otherwise. */
+  const live: LiveStyle | null = studio ? LIVE_STYLES[opts.mood] ?? null : null;
   const groove = opts.mood === "groove";
   const lift = opts.mood === "lift";
   const coastalDrive = opts.mood === "coastal_drive";
@@ -818,7 +818,23 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   // Lift: the drop lands ON a cut — the one nearest 45% (preferring 40–50%) —
   // and the grid is turned so that cut is a downbeat.
   let liftDrop: number | null = null;
-  if (lift || sail) { // Sail's drop is placed the same way
+  // Lively: the first drop lands ON the cut nearest 4–6 bars in (after the
+  // intro and build), and the grid is turned so that cut is a downbeat.
+  let liveDrop: number | null = null;
+  if (live) {
+    const bar0 = 240 / grid.bpm;
+    let E0 = opts.endCardStartSec ?? NaN;
+    if (!isFinite(E0) || E0 <= 1 || E0 > dur - 0.8) E0 = Math.max(dur * 0.85, dur - 3);
+    const nb = E0 / bar0;
+    const target = (nb >= 14 ? 6 : nb >= 9 ? 4 : nb >= 6 ? 3 : 2) * bar0;
+    let bestD = Infinity;
+    cuts.forEach((ct) => {
+      const d = Math.abs(ct - target);
+      if (d <= bar0 * 1.25 && ct >= bar0 * 1.5 && ct <= E0 - 2 * bar0 && d < bestD) { bestD = d; liveDrop = ct; }
+    });
+    if (liveDrop === null) liveDrop = target;
+    grid.phase = mod(liveDrop, bar0);
+  } else if (lift || sail) { // Sail's drop is placed the same way
     const target = dur * 0.45;
     let bestD = Infinity;
     cuts.forEach((ct) => {
@@ -853,6 +869,8 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   if (buildStart < introEnd) buildStart = introEnd;
   if (buildStart > E - bar) buildStart = Math.max(introEnd, E - bar);
   if ((lift || sail) && liftDrop !== null) buildStart = clamp(liftDrop, introEnd, Math.max(introEnd, E - bar));
+  const livePlan: LivePlan | null = live && liveDrop !== null ? planLively(liveDrop, bar, E, cuts) : null;
+  if (livePlan) buildStart = livePlan.d1;
   if (coastal) buildStart = introEnd;
 
   // Chord segments up to the end card: bar lines, grouped by harmonic rhythm.
@@ -885,7 +903,24 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   if (coastal) assignCoastalChords(segs, rand);
   // Studio: the middle moves to a second, related progression, so no reel is
   // one 4-chord loop from start to finish (after 8 bars, or at the build).
-  if (studio && segs.length >= 5) {
+  if (livePlan && segs.length >= 4) {
+    // Lively harmony: the opening progression from the top of each drop (and
+    // the intro and builds), a second related one through the breakdown, the
+    // cadence into the end card as before.
+    const A = (coastal && segs.length >= 7 ? segs.slice(0, 4).map((sg) => sg.chord) : prog).slice(0, 4);
+    const kind = coastal ? "co" : minor ? "min" : "maj";
+    const tbl: Record<string, Chord> = kind === "maj" ? { ...(sail ? SAIL_CH : MAJ), ...MAJ_X } : kind === "min" ? MIN : CO;
+    const optsB = kind === "maj" ? MAJ_B : kind === "min" ? MIN_B : CO_B;
+    const B = optsB[Math.floor(srand() * optsB.length)].map((k) => tbl[k]);
+    const bounds = [firstBar, livePlan.b1, livePlan.d1, livePlan.bk, livePlan.b2, livePlan.d2];
+    for (let i = 0; i < segs.length - 3; i++) {
+      const t = segs[i].start + 1e-3;
+      const from = bounds.filter((x) => x <= t).reduce((m, x) => Math.max(m, x), firstBar);
+      const inB = t >= livePlan.bk && t < livePlan.d2 && livePlan.b2 > livePlan.bk;
+      const n = segs.filter((sg, j) => j < i && sg.start >= from - 1e-3).length;
+      segs[i].chord = inB ? B[n % 4] : A[n % 4];
+    }
+  } else if (studio && segs.length >= 5) {
     const target = Math.min(firstBar + 8 * bar, Math.max(buildStart, introEnd + bar));
     let from = segs.findIndex((sg) => sg.start >= target - 1e-3);
     if (lift) from = Math.max(from, segs.findIndex((sg) => sg.start >= buildStart - 1e-3) + 1); // the drop keeps its home chord
@@ -910,12 +945,14 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       // compressor. The level pass after rendering sets the loudness.
       const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 30; hp.Q.value = 0.7;
       // +2 dB of weight for the Coastal moods (owner's ear, Oct 23), +1 elsewhere.
-      const low = c.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 100; low.gain.value = coastal || sail ? 2 : 1;
+      const low = c.createBiquadFilter(); low.type = "lowshelf"; low.frequency.value = 100; low.gain.value = coastal || sail || live ? 2 : 1;
       const air = c.createBiquadFilter(); air.type = "highshelf"; air.frequency.value = 10000; air.gain.value = 1.5;
       const drive = c.createGain(); drive.gain.value = Math.pow(10, STUDIO_DRIVE_DB[opts.mood] / 20) * 0.5; // the shaper's ±1 is ±2 of signal
       const shaper = c.createWaveShaper(); shaper.curve = saturationCurve(); shaper.oversample = "2x";
       const comp = c.createDynamicsCompressor();
       comp.threshold.value = -18; comp.ratio.value = 2.5; comp.attack.value = 0.02; comp.release.value = 0.25; comp.knee.value = 12;
+      // Lively: a firmer bus compressor — the glue of a produced track.
+      if (live) { comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = 0.01; comp.release.value = 0.15; comp.knee.value = 6; }
       master.connect(hp); hp.connect(low); low.connect(air); air.connect(drive); drive.connect(shaper); shaper.connect(comp); comp.connect(fade);
     } else {
       const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 28; hp.Q.value = 0.7;
@@ -1090,7 +1127,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       const tones = sg.chord.pad.map((iv) => { const pc = mod(rootPc + iv, 12); return 55 + mod(pc - 55, 12); }).sort((a, b) => a - b);
       const attack = i === 0 ? Math.max(1.2, Math.min(2.6, introEnd)) : 0.9;
       const end = i === segs.length - 1 ? dur + 1 : sg.end;
-      if (mixer) { studioBed(sg, i, rootPc, tones, attack, end); return; }
+      if (mixer) { if (!live) studioBed(sg, i, rootPc, tones, attack, end); return; }
       tones.forEach((m, k) => padVoice(m, sg.start, end, (k / Math.max(1, tones.length - 1) - 0.5) * 0.7, attack));
     });
 
@@ -1124,7 +1161,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       if (stop > s0) { o.start(s0); o8.start(s0); o.stop(stop); o8.stop(stop); }
     };
     segs.forEach((sg) => {
-      if (groove || lift || coastal || sail) return; // Groove's low end is its 808; Lift, Coastal and Sail have their own bass (below)
+      if (groove || lift || coastal || sail || live) return; // Groove's low end is its 808; Lift, Coastal and Sail have their own bass (below)
       const s0 = Math.max(sg.start, introEnd);
       if (sg.end <= s0) return;
       const midi = 33 + mod(tonicPc + sg.chord.root - 33, 12);
@@ -1187,7 +1224,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       return tones;
     };
     const keysFrom = introEnd;
-    if (mixer && feel && !groove && !lift && !coastal && !sail) {
+    if (mixer && feel && !groove && !lift && !coastal && !sail && !live) {
       // Studio: the arpeggio follows the plan — its pattern bar by bar, its
       // register every 4 bars, out in a keys drop-out, lighter early and late.
       const sub = 0.5 * beat;
@@ -1231,12 +1268,12 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       }
     }
     // The landing: a rolled tonic chord on the end card, left to ring.
-    if (!groove && !lift && !coastal && !sail) {
+    if (!groove && !lift && !coastal && !sail && !live) {
       const tones = keyTones(tonic);
       tones.slice(0, 4).forEach((m, i) => keyNote(m, E + i * 0.07 + jitter(0.006), 0.9 - i * 0.08, Math.min(3.5, dur - E + 0.2), (i - 1.5) * 0.18));
     }
     // A soft bell on cuts that land on a beat (no more than one a bar).
-    if (!groove && !lift && !coastal && !sail) {
+    if (!groove && !lift && !coastal && !sail && !live) {
       let last = -Infinity;
       cuts.forEach((ct) => {
         if (ct < introEnd || ct >= E - 0.2) return;
@@ -1368,7 +1405,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         if (pos === 1 || pos === 3) snap(feel.time(t), 0.9 * pv);
       }
     };
-    if (p.rhythm !== "none" && !groove && !lift && !coastal && !sail) {
+    if (p.rhythm !== "none" && !groove && !lift && !coastal && !sail && !live) {
       const sub = 0.5 * beat;
       const from = p.rhythm === "full" ? introEnd : buildStart;
       let t = grid.phase + Math.ceil((from - grid.phase) / sub - 1e-6) * sub;
@@ -1427,7 +1464,13 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       [root, root + 12].forEach((m, k) => playNote(c, mixer.keys, { instrument: "piano", midi: m, at: E + k * 0.008, duration: Math.max(0.3, dur - E - 0.3), velocity: 0.55, release: 1.5, pan: -0.1 }));
     }
 
-    if (groove) {
+    if (live && livePlan && mixer) {
+      composeLivelyLayers({
+        c, master, noise, mixer, style: live, plan: livePlan, dur, beat, bar, phase: grid.phase, E, segs, tonicPc,
+      });
+    }
+
+    if (groove && !live) {
       composeGrooveLayers({
         c, master, reverb: verb, delayIn, noise, rand, jitter, dur, beat, bar, phase: grid.phase,
         introEnd, buildStart, E, segs, tonicPc, tonicRoot: tonic.root, level: p.keysLevel, mixer,
@@ -1441,14 +1484,14 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       });
     }
 
-    if (sail && mixer) {
+    if (sail && mixer && !live) {
       composeSailLayers({
         c, master, verb, noise, padOut, mixer, dur, beat, bar, phase: grid.phase,
         introEnd, drop: buildStart, E, segs, tonicPc, tonic,
       });
     }
 
-    if (coastal) {
+    if (coastal && !live) {
       composeCoastalLayers({
         c, master, reverb: verb, delayIn, noise, padOut, rand, jitter, dur, beat, bar, phase: grid.phase,
         introEnd, E, segs, cuts, tonicPc, level: p.keysLevel, drive: coastalDrive, mixer,
@@ -1477,7 +1520,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         playHit(c, mixer.bells, { name: "crash", at: E, velocity: 0.3, lowpassHz: 6000 });
       }
       // A soft low bloom under the tonic (Groove lands on its 808 instead).
-      if (!groove && !lift && !coastal && !sail) {
+      if (!groove && !lift && !coastal && !sail && !live) {
       const o = c.createOscillator(); o.type = "sine";
       o.frequency.setValueAtTime(62, E);
       o.frequency.exponentialRampToValueAtTime(44, E + 0.6);
@@ -1505,7 +1548,9 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
     // by K-weighted loudness (BS.1770) to -14 LUFS instead (Lift too, with a
     // lower sample ceiling so its true peak stays under -1 dBTP). Other moods: as
     // before. The studio engine levels every mood by K-weighted loudness.
-    levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart), studio || groove || lift || coastal ? -14 : null, lift || coastal ? -1.6 : -1);
+    // Lively (Oct 30): louder — about -11.5 LUFS, true peak under -1 dBTP.
+    if (live) levelLoud(rendered, 0, Math.floor(SR * fadeStart), -11.5, -1.4);
+    else levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart), studio || groove || lift || coastal ? -14 : null, lift || coastal ? -1.6 : -1);
     return rendered;
   } finally {
     // Anything still queued for the sampler (a render that failed part-way) is dropped.
@@ -3102,4 +3147,628 @@ function composeSailLayers(g: {
   const hold = Math.max(0.2, Math.min(1.6, dur - E - 0.1));
   playNote(c, mixer.bass, { instrument: "bass", midi: 36 + mod(rootPc - 36, 12), at: E, duration: hold, velocity: 0.8, release: 0.3 });
   subNote(36 + mod(rootPc - 36, 12), E, hold, 0.8);
+}
+
+// ── Lively (Oct 30): a produced-pop arrangement for the lively moods ───────
+
+/**
+ * Charlie (Oct 30): "make the music sound more mainstream … a little more
+ * lively." In the studio engine, Upbeat, Groove, Coastal Drive and Sail are
+ * now arranged like a produced track rather than a loop with layers:
+ *   intro (≈4 bars, filtered) → build (snare roll, noise riser, reversed
+ *   crash, the music's filter opening) → DROP ON A PHOTO CUT (full kit, the
+ *   hook) → breakdown (no kick; pad, strings, the hook softly on keys) → a
+ *   1-bar build → the FINAL DROP on the bar line nearest a cut (the hook with
+ *   an octave double and a strings counter-line) → a thinned last bar into
+ *   the end card's cadence.
+ * The groove: kick and sub locked (pad, chords and sub pump under every
+ * kick), clap + snare layered on 2 and 4, 16th hats with accents and the odd
+ * open hat, ghost snares, a fill closing every 4-bar phrase (a bigger one
+ * every 8, never the same fill twice running), a crash on each section
+ * change, swing where the mood wants it. The hook: a seeded 2-bar phrase
+ * that comes back in every section, its ending different each time it is
+ * played. Mastered louder (≈ -11.5 LUFS, true peak ≤ -1 dBTP; levelLoud).
+ * The other moods are unchanged.
+ */
+type LiveStyle = {
+  /** Four on the floor, or a syncopated hip-hop kick with an 808 locked to it. */
+  kick: "four" | "hiphop";
+  /** 16th swing: where the second 16th of each 8th falls (0.5 = straight). */
+  swing: number;
+  /** The chord instrument ("pad": the pad is the chords) and how it plays. */
+  chords: SampledInstrument;
+  chordStyle: "stabs" | "held" | "offbeat";
+  /** The hook voice: the soft synth lead, or a sampled instrument. */
+  hook: "synth" | SampledInstrument;
+  /** The hook's double in the final drop (an octave up; the guitar an octave down). */
+  double: SampledInstrument;
+  bass: "pump8" | "offbeat" | "808";
+  /** Nylon arpeggios in the drops. */
+  guitar: boolean;
+  /** Sidechain depth on the pad (gain at the bottom of the duck; the chords dip a little less). */
+  pump: number;
+  /** Major or minor scale for the hook (Coastal Drive's harmony is minor). */
+  minorHook: boolean;
+};
+
+const LIVE_STYLES: Partial<Record<MusicMood, LiveStyle>> = {
+  upbeat:        { kick: "four",   swing: 0.5,  chords: "piano",  chordStyle: "stabs",   hook: "synth",  double: "piano", bass: "pump8",   guitar: false, pump: 0.5,  minorHook: false },
+  groove:        { kick: "hiphop", swing: 0.56, chords: "epiano", chordStyle: "held",    hook: "epiano", double: "piano", bass: "808",     guitar: false, pump: 0.6,  minorHook: true },
+  coastal_drive: { kick: "four",   swing: 0.54, chords: "epiano", chordStyle: "offbeat", hook: "synth",  double: "nylon", bass: "offbeat", guitar: true,  pump: 0.55, minorHook: true },
+  sail:          { kick: "four",   swing: 0.5,  chords: "pad",    chordStyle: "held",    hook: "synth",  double: "nylon", bass: "offbeat", guitar: true,  pump: 0.5,  minorHook: false },
+};
+
+/** Lively sub (sine) and 808 levels, straight to the master (set by measurement). */
+const LIVE_SUB = 0.16;
+const LIVE_808 = 0.16;
+
+/** The lively arrangement's section boundaries (seconds): build 1, drop 1, breakdown, build 2, final drop. */
+type LivePlan = { b1: number; d1: number; bk: number; b2: number; d2: number };
+type LiveSection = "intro" | "build1" | "drop1" | "breakdown" | "build2" | "drop2" | "end";
+
+/**
+ * Sections from the first drop (already on a cut and a downbeat): a 1–2 bar
+ * build before it; then, room permitting, drop 1, a 2–4 bar breakdown, a
+ * 1-bar build, and the final drop on the bar line with a cut nearest it.
+ * Short reels: no breakdown — the final drop's double comes in halfway.
+ */
+function planLively(d1: number, bar: number, E: number, cuts: number[]): LivePlan {
+  const b1 = Math.max(0, d1 - (d1 >= 5 * bar - 1e-3 ? 2 : 1) * bar);
+  const R = Math.floor((E - d1) / bar + 1e-6);
+  if (R < 7) {
+    const d2 = R >= 4 ? d1 + Math.floor(R / 2) * bar : E;
+    return { b1, d1, bk: d2, b2: d2, d2 };
+  }
+  let bestK = clamp(Math.round(R * 0.6), 6, R - 3), bestS = Infinity;
+  for (let k = 6; k <= R - 3; k++) {
+    const t = d1 + k * bar;
+    let d = Infinity;
+    cuts.forEach((ct) => { d = Math.min(d, Math.abs(ct - t)); });
+    const s = Math.min(d, bar) + 0.02 * Math.abs(k - R * 0.6);
+    if (s < bestS) { bestS = s; bestK = k; }
+  }
+  const d2 = d1 + bestK * bar;
+  const brk = bestK >= 10 ? 4 : 2;
+  return { b1, d1, bk: d2 - (brk + 1) * bar, b2: d2 - bar, d2 };
+}
+
+/**
+ * Loudness for the lively moods: K-weighted loudness to `target` LUFS
+ * through a look-ahead peak limiter (1.5 ms look-ahead, 80 ms release,
+ * sample ceiling -1.6 dBFS), measured again after limiting and corrected
+ * once, then a 4× true-peak check that trims the whole track if any
+ * inter-sample peak would pass `tpDb` dBTP. Called with -1.4 dBTP: the
+ * reel's AAC encode adds up to ~0.4 dB of overshoot (measured), so the
+ * delivered file stays under -1 dBTP.
+ */
+function levelLoud(buf: AudioBuffer, from: number, to: number, target = -11.5, tpDb = -1) {
+  const chans: Float32Array[] = [];
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) chans.push(buf.getChannelData(ch));
+  const n = buf.length, sr = buf.sampleRate;
+  let a = clamp(from, 0, n), b = clamp(to, 0, n);
+  if (b - a < sr) { a = 0; b = n; }
+  const lufs = (xs: Float32Array[]) => {
+    let ms = 0;
+    xs.forEach((x) => { ms += kWeightedMeanSquare(x, a, b); });
+    return -0.691 + 10 * Math.log10(Math.max(1e-12, ms));
+  };
+  const orig = chans.map((x) => x.slice());
+  const l0 = lufs(orig);
+  if (!isFinite(l0) || l0 < -70) return;
+  const ceil = Math.pow(10, -1.6 / 20);
+  const L = Math.max(1, Math.round(0.0015 * sr));
+  const rel = 1 / (0.08 * sr);
+  const need = new Float32Array(n), mn = new Float32Array(n), env = new Float32Array(n);
+  const render = (gain: number) => {
+    for (let i = 0; i < n; i++) {
+      let pk = 0;
+      for (let ch = 0; ch < orig.length; ch++) { const v = Math.abs(orig[ch][i] * gain); if (v > pk) pk = v; }
+      need[i] = pk > ceil ? ceil / pk : 1;
+    }
+    // mn[i] = min(need[i … i+2L]) — a sliding minimum looking ahead.
+    const dq = new Int32Array(n);
+    let h = 0, tl = 0;
+    for (let i = n - 1; i >= 0; i--) {
+      while (tl > h && need[dq[tl - 1]] >= need[i]) tl--;
+      dq[tl++] = i;
+      while (dq[h] > i + 2 * L) h++;
+      mn[i] = need[dq[h]];
+    }
+    // A moving average of that over the L samples before (a smooth attack that
+    // is already down when the peak arrives), then a linear release.
+    let sum = 0, prev = 1;
+    for (let i = 0; i < n; i++) {
+      sum += mn[i];
+      if (i >= L) sum -= mn[i - L];
+      const avg = sum / Math.min(i + 1, L);
+      prev = Math.min(avg, prev + rel, 1);
+      env[i] = prev;
+    }
+    for (let ch = 0; ch < orig.length; ch++) {
+      const s = orig[ch], d = chans[ch];
+      for (let i = 0; i < n; i++) d[i] = s[i] * gain * env[i];
+    }
+  };
+  let gain = Math.pow(10, (target - l0) / 20);
+  render(gain);
+  const l1 = lufs(chans);
+  gain *= Math.pow(10, clamp(target - l1, -3, 3) / 20);
+  render(gain);
+  // True peak (4×): interpolate between samples near the top with a short windowed sinc.
+  const TAPS = 8;
+  const kern: number[][] = [1, 2, 3].map((ph) => {
+    const k: number[] = [];
+    for (let j = -TAPS + 1; j <= TAPS; j++) {
+      const x = j - ph / 4;
+      const sinc = Math.abs(x) < 1e-9 ? 1 : Math.sin(Math.PI * x) / (Math.PI * x);
+      const w = 0.5 + 0.5 * Math.cos((Math.PI * x) / TAPS);
+      k.push(sinc * w);
+    }
+    return k;
+  });
+  let tp = 0;
+  const near = ceil * 0.8;
+  chans.forEach((d) => {
+    for (let i = TAPS; i < n - TAPS; i++) {
+      const v = Math.abs(d[i]);
+      if (v > tp) tp = v;
+      if (v < near && Math.abs(d[i + 1]) < near) continue;
+      kern.forEach((k) => {
+        let s = 0;
+        for (let j = 0; j < k.length; j++) s += d[i - TAPS + 1 + j] * k[j];
+        const av = Math.abs(s);
+        if (av > tp) tp = av;
+      });
+    }
+  });
+  const tpMax = Math.pow(10, tpDb / 20);
+  if (tp > tpMax) {
+    const s = tpMax / tp;
+    chans.forEach((d) => { for (let i = 0; i < n; i++) d[i] *= s; });
+  }
+}
+
+function composeLivelyLayers(g: {
+  c: OfflineAudioContext; master: AudioNode; noise: AudioBuffer; mixer: StudioMix; style: LiveStyle; plan: LivePlan;
+  dur: number; beat: number; bar: number; phase: number; E: number; segs: Seg[]; tonicPc: number;
+}) {
+  const { c, master, noise, mixer, style: S, plan: P, dur, beat, bar, phase, E, segs, tonicPc } = g;
+  const rnd = mixer.rand;
+  const s8 = beat / 2, s16 = beat / 4;
+  const chordAt = (t: number): Chord => {
+    for (let i = segs.length - 1; i >= 0; i--) if (t >= segs[i].start - 1e-4) return segs[i].chord;
+    return segs[0].chord;
+  };
+  const sec = (t: number): LiveSection =>
+    t >= E - 1e-3 ? "end" : t < P.b1 - 1e-3 ? "intro" : t < P.d1 - 1e-3 ? "build1" : t < P.bk - 1e-3 ? "drop1"
+      : t < P.b2 - 1e-3 ? "breakdown" : t < P.d2 - 1e-3 ? "build2" : "drop2";
+  const isDrop = (s: LiveSection) => s === "drop1" || s === "drop2";
+  const isBuild = (s: LiveSection) => s === "build1" || s === "build2";
+  const secStart = (s: LiveSection) => (s === "build1" ? P.b1 : s === "drop1" ? P.d1 : s === "breakdown" ? P.bk : s === "build2" ? P.b2 : s === "drop2" ? P.d2 : 0);
+  /** The second 16th of each 8th, swung late. */
+  const swung = (t: number) => (Math.abs(mod((t - phase) / s16, 2) - 1) < 0.02 ? t + (S.swing - 0.5) * 2 * s16 : t);
+  const hum = (t: number, amt = 0.005) => Math.max(0, t + (rnd() - 0.5) * 2 * amt);
+  const vv = (v: number) => clamp(v * (1 + (rnd() - 0.5) * 0.2), 0.02, 1);
+  const preDropBeat = (t: number) => (t >= P.d1 - beat - 1e-3 && t < P.d1 - 1e-3) || (P.d2 < E && P.b2 < P.d2 && t >= P.d2 - beat - 1e-3 && t < P.d2 - 1e-3);
+  const thin = (t: number) => t >= E - bar - 1e-3; // the end card's thinned last bar
+
+  // ── Routing: the music's filter opens over each build and closes for the breakdown ──
+  const pts: [number, number][] = [[Math.max(0.05, P.b1), 2600], [P.d1, 16000]];
+  if (P.b2 > P.bk + 1e-3) pts.push([P.bk, 16000], [P.bk + 0.4, 2400], [P.b2, 2600], [P.d2, 16000]);
+  const sweep = () => {
+    const f = c.createBiquadFilter(); f.type = "lowpass"; f.Q.value = 0.6;
+    f.frequency.setValueAtTime(1400, 0);
+    let last = 0;
+    pts.forEach(([t, v]) => { if (!(t > last + 1e-3) || t > dur) return; f.frequency.exponentialRampToValueAtTime(v, t); last = t; });
+    return f;
+  };
+  const chain = (dest: AudioNode) => { const inp = c.createGain(); const f = sweep(); inp.connect(f); f.connect(dest); return inp; };
+  const padPump = c.createGain(); padPump.connect(mixer.strings);
+  const chordPump = c.createGain(); chordPump.connect(mixer.keys);
+  const padIn = chain(padPump), chordIn = chain(chordPump);
+  // The hook: a gentle de-ess (-2.5 dB around 4.2 kHz) before the pluck bus, so it is bright, not tinny.
+  const deess = c.createBiquadFilter(); deess.type = "peaking"; deess.frequency.value = 4200; deess.Q.value = 1; deess.gain.value = -2.5;
+  deess.connect(mixer.pluck);
+  const hookIn = chain(deess);
+  const guitarIn = chain(mixer.guitar);
+  const counterIn = c.createGain(); counterIn.connect(mixer.strings);
+  // High-pass everything but the kick and the sub: the finger bass too, at 40 Hz.
+  const bassHp = c.createBiquadFilter(); bassHp.type = "highpass"; bassHp.frequency.value = 40; bassHp.Q.value = 0.7; bassHp.connect(mixer.bass);
+  const subBus = c.createGain(); subBus.gain.value = LIVE_SUB; subBus.connect(master);
+  const subPump = c.createGain(); subPump.connect(subBus);
+  const b808 = c.createGain(); b808.gain.value = LIVE_808;
+  {
+    const sh = c.createWaveShaper();
+    const n = 1024, curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) { const x = (i / (n - 1)) * 2 - 1; curve[i] = Math.tanh(1.8 * x) / Math.tanh(1.8); }
+    sh.curve = curve; sh.oversample = "2x";
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 600;
+    b808.connect(sh); sh.connect(lp); lp.connect(master);
+  }
+  /** The sidechain pump: pad, chords and sub dip under each kick and recover over 55% of a beat. */
+  let lastPump = -Infinity;
+  const pump = (t: number) => {
+    if (t - lastPump < beat * 0.55) return;
+    lastPump = t;
+    const dips: [GainNode, number][] = [[padPump, S.pump], [chordPump, Math.min(1, S.pump + 0.2)]];
+    if (S.bass !== "808") dips.push([subPump, 0.4]);
+    dips.forEach(([node, d]) => {
+      node.gain.setValueAtTime(1, t);
+      node.gain.linearRampToValueAtTime(d, t + 0.008);
+      node.gain.linearRampToValueAtTime(1, t + 0.55 * beat);
+    });
+  };
+
+  // ── Voices ──
+  const hit = (dest: AudioNode, name: DrumHit, at: number, vel: number, o: { pan?: number; choke?: number; lowpassHz?: number; pitch?: number; reverse?: boolean } = {}) => {
+    if (!(at >= 0) || (!o.reverse && at >= dur - 0.02)) return;
+    // No per-hit velocity low-pass unless asked: a filter on every 16th hat made
+    // the dense arrangement slow to render (the hats and shaker are bright anyway).
+    playHit(c, dest, { name, at, velocity: clamp(vel, 0.02, 1), lowpassHz: 20000, ...o });
+  };
+  const kick = (t: number, vel: number) => { hit(mixer.kit, "kick", t, vel, { choke: 0.32, lowpassHz: 4000 }); mixer.duck(t); pump(t); };
+  const clap = (t: number, vel: number) => { hit(mixer.perc, "snap", hum(t, 0.003), vel * 0.75); hit(mixer.kit, "snare", t, vel * 0.55, { lowpassHz: 7000 }); };
+  const subNote = (midi: number, t0: number, len: number, vel: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02 || len <= 0.02) return;
+    const f = mtof(midi);
+    const o = c.createOscillator(); o.type = "sine"; o.frequency.value = f;
+    const o2 = c.createOscillator(); o2.type = "sine"; o2.frequency.value = f * 2;
+    const g2 = c.createGain(); g2.gain.value = 0.25;
+    const gn = c.createGain();
+    const off = Math.min(dur, s0 + len);
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(vel, s0 + 0.006);
+    gn.gain.setValueAtTime(vel, Math.max(s0 + 0.006, off));
+    gn.gain.linearRampToValueAtTime(0, off + 0.04);
+    o.connect(gn); o2.connect(g2); g2.connect(gn); gn.connect(subPump);
+    const stop = Math.min(dur, off + 0.06);
+    o.start(s0); o2.start(s0); o.stop(stop); o2.stop(stop);
+  };
+  /** The 808: a sine with a fast pitch drop (its punch), held, through a soft tanh; an optional glide in. */
+  const n808 = (midi: number, t0: number, len: number, vel: number, from: number | null) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.02 || len <= 0.02) return;
+    const o = c.createOscillator(); o.type = "sine";
+    o.frequency.setValueAtTime(mtof(from ?? midi + 12), s0);
+    o.frequency.exponentialRampToValueAtTime(mtof(midi), s0 + (from !== null ? 0.09 : 0.03));
+    const gn = c.createGain();
+    const off = Math.min(dur, s0 + len);
+    gn.gain.setValueAtTime(0, s0);
+    gn.gain.linearRampToValueAtTime(vel, s0 + 0.004);
+    gn.gain.linearRampToValueAtTime(vel * 0.65, Math.max(s0 + 0.005, off));
+    gn.gain.linearRampToValueAtTime(0, off + 0.05);
+    o.connect(gn); gn.connect(b808);
+    o.start(s0); o.stop(Math.min(dur, off + 0.07));
+  };
+  /** The hook's synth: three detuned saws (soft attack, a modest filter sweep) — a lead, not a pluck. */
+  const lead = (midi: number, t0: number, len: number, vel: number, pan: number) => {
+    const s0 = Math.max(0, t0);
+    if (s0 >= dur - 0.03) return;
+    const f = mtof(midi);
+    const mix = c.createGain(); mix.gain.value = 0.33;
+    const oscs = [-9, 0, 9].map((dt) => { const o = c.createOscillator(); o.type = "sawtooth"; o.frequency.value = f; o.detune.value = dt; o.connect(mix); return o; });
+    const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.Q.value = 0.7;
+    lp.frequency.setValueAtTime(Math.min(5200, f * 4 + 1500 * vel), s0);
+    lp.frequency.exponentialRampToValueAtTime(Math.max(900, f * 2.5), s0 + 0.25);
+    const env = c.createGain();
+    const off = s0 + Math.max(0.05, len);
+    env.gain.setValueAtTime(0, s0);
+    env.gain.linearRampToValueAtTime(vel, s0 + 0.012);
+    env.gain.linearRampToValueAtTime(vel * 0.7, Math.min(off, s0 + 0.2));
+    env.gain.setValueAtTime(vel * 0.7, off);
+    env.gain.linearRampToValueAtTime(0, off + 0.12);
+    const pn = makePan(c, pan);
+    mix.connect(lp); lp.connect(env); env.connect(pn); pn.connect(hookIn);
+    const stop = Math.min(dur, off + 0.14);
+    oscs.forEach((o) => { o.start(s0); o.stop(stop); });
+  };
+  const hookVoice = (midi: number, t: number, len: number, vel: number) => {
+    if (S.hook === "synth") lead(midi, t, len, vel * 0.8, (rnd() - 0.5) * 0.3);
+    else playNote(c, hookIn, { instrument: S.hook, midi, at: Math.max(0, t), duration: len, velocity: vel, release: 0.3, pan: (rnd() - 0.5) * 0.3 });
+  };
+
+  // ── Chord tones ──
+  const rootOf = (ch: Chord) => mod(tonicPc + ch.root, 12);
+  const voicing = (ch: Chord, low = 55) => ch.pad.map((iv) => low + mod(rootOf(ch) + iv - low, 12)).sort((x, y) => x - y);
+
+  // ── The hook: a seeded 2-bar phrase (16th steps, lengths in 16ths) ──
+  const RH: [number, number][][] = [
+    [[0, 2], [3, 1], [4, 2], [6, 2], [10, 2], [12, 4], [16, 2], [19, 1], [20, 2], [22, 2], [26, 6]],
+    [[0, 3], [3, 3], [6, 2], [8, 4], [14, 2], [16, 3], [19, 3], [22, 2], [24, 6]],
+    [[2, 2], [4, 2], [6, 4], [10, 2], [12, 2], [18, 2], [20, 2], [22, 4], [28, 4]],
+    [[0, 2], [2, 2], [4, 4], [8, 2], [11, 3], [14, 2], [16, 4], [20, 2], [22, 2], [24, 8]],
+    [[0, 4], [6, 2], [8, 2], [10, 4], [16, 2], [18, 2], [20, 2], [22, 2], [24, 8]],
+  ];
+  const rhythm = RH[Math.floor(rnd() * RH.length)];
+  const SCALE = S.minorHook ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const scale: number[] = [];
+  for (let m = 57; m <= 81; m++) if (SCALE.indexOf(mod(m - tonicPc, 12)) >= 0) scale.push(m);
+  const degs: number[] = [];
+  {
+    let d = Math.floor(scale.length / 2) + Math.floor(rnd() * 3) - 1;
+    rhythm.forEach((_, i) => {
+      if (i > 0) { const r = rnd(); d += r < 0.3 ? 1 : r < 0.55 ? -1 : r < 0.7 ? 2 : r < 0.85 ? -2 : 0; }
+      d = clamp(d, 2, scale.length - 3);
+      degs.push(d);
+    });
+  }
+  /** Endings, rotated so no two appearances in a row end the same way: root, third, fifth (held), a step off (open), or a rest. */
+  const ENDINGS = 5;
+  let endNo = Math.floor(rnd() * ENDINGS), lastEnd = -1;
+  const nextEnding = () => { let e = endNo++ % ENDINGS; if (e === lastEnd) e = endNo++ % ENDINGS; lastEnd = e; return e; };
+  const nearestPc = (m: number, pcs: number[], avoid = -1) => {
+    for (let d = 0; d <= 6; d++) {
+      for (const s of [d, -d]) { const pc = mod(m + s, 12); if (pcs.indexOf(pc) >= 0 && pc !== avoid) return m + s; }
+    }
+    return m;
+  };
+  /** Play the hook phrase from t0. mode: how much of it (teaser = its first bar), and who plays it. */
+  const playPhrase = (t0: number, mode: "teaser" | "full" | "soft", vel: number, dbl: boolean, until: number) => {
+    const ending = mode === "full" ? nextEnding() : -1;
+    const notes = rhythm.map(([st, len], i) => ({ st, len, i }));
+    let last = -1;
+    notes.forEach(({ st, len, i }) => {
+      if (mode === "teaser" && st >= 16) return;
+      if (mode === "soft" && st % 4 !== 0) return;
+      const t = t0 + st * s16;
+      if (t < 0 || t >= until - 0.02 || t >= E - 0.05) return;
+      const ch = chordAt(t + 0.01);
+      const pcs = [0].concat(ch.pad).map((iv) => mod(rootOf(ch) + iv, 12));
+      let m = scale[degs[i]];
+      if (st % 8 === 0) m = nearestPc(m, pcs); // strong 8ths sit on a chord tone
+      let l = len * s16 * (mode === "soft" ? 1.8 : 0.92);
+      const isLast = i === notes.length - 1;
+      if (isLast && ending >= 0) {
+        if (ending === 0) m = nearestPc(m, [pcs[0]]);
+        else if (ending === 1) m = nearestPc(m, [pcs[1] ?? pcs[0]]);
+        else if (ending === 2) { m = nearestPc(m + 3, [pcs[2] ?? pcs[0]]); l *= 1.5; }
+        else if (ending === 3) m = scale[clamp(degs[i] - 1, 0, scale.length - 1)];
+        else return; // a rest where the phrase would end
+      }
+      l = Math.min(l, until - t - 0.02, E - t - 0.03);
+      if (l <= 0.03) return;
+      const accent = st % 4 === 0 ? 1 : 0.85;
+      const v = vv(vel * accent);
+      if (mode === "soft") playNote(c, hookIn, { instrument: S.chords === "pad" ? "nylon" : S.chords, midi: m, at: hum(t), duration: l, velocity: v * 0.8, release: 0.5 });
+      else hookVoice(m, hum(t, 0.003), l, v);
+      if (dbl) {
+        const dm = S.double === "nylon" ? m - 12 : m + 12;
+        playNote(c, hookIn, { lowpassHz: 20000, instrument: S.double, midi: dm, at: hum(t, 0.003), duration: l, velocity: v * 0.5, release: 0.35, pan: 0.35 });
+      }
+      last = m;
+    });
+    return last;
+  };
+
+  // ── Bar by bar ──
+  const firstBarT = phase - Math.ceil(phase / bar - 1e-9) * bar;
+  const FILLS = 4;
+  let fillNo = Math.floor(rnd() * FILLS), lastFill = -1;
+  const KICKS = [[0, 7, 10], [0, 3, 10], [0, 6, 9, 14], [0, 10, 11], [0, 7, 11], [0, 3, 8, 11]];
+  const kickBlocks: number[][] = [];
+  let lastHook = -1;
+  let prevCounter = -1;
+  let prev808: number | null = null;
+  const CH_RHY: [number, number][][] = [
+    [[0, 0.45], [0.75, 0.4], [1.5, 0.4], [2.5, 0.4], [3.25, 0.4]],
+    [[0.5, 0.4], [1.5, 0.4], [2.5, 0.4], [3.5, 0.4]],
+    [[0, 0.9], [1.5, 0.45], [2.5, 0.9], [3.5, 0.4]],
+    [[0, 0.4], [1, 0.4], [1.75, 0.4], [2.5, 0.4], [3.5, 0.4]],
+  ];
+  for (let b0 = firstBarT, bi = 0; b0 < E - 1e-3; b0 += bar, bi++) {
+    const s = sec(b0 + 1e-3);
+    const k = Math.round((b0 - secStart(s)) / bar);
+    const nextS = sec(b0 + bar + 1e-3);
+    const sectionEnds = nextS !== s;
+    const lastBar = thin(b0 + 1e-3);
+    const ch = chordAt(b0 + 0.01);
+    const root = rootOf(ch);
+    const introHalf = s === "intro" && b0 >= P.b1 - Math.max(bar, P.b1 / 2) - 1e-3;
+    const full = isDrop(s) ? (s === "drop2" ? 1 : 0.9) : isBuild(s) ? 0.75 : 0.6;
+    const blk = Math.floor(bi / 4);
+
+    // Crash on section changes (and every 8 bars of a drop), soft into the breakdown.
+    if (k === 0 && isDrop(s) && b0 > 0.1) hit(mixer.perc, "crash", b0, s === "drop2" ? 0.6 : 0.55);
+    else if (isDrop(s) && k > 0 && k % 8 === 0) hit(mixer.perc, "crash", b0, 0.4);
+    if (k === 0 && s === "breakdown") hit(mixer.perc, "crash", b0, 0.32);
+    // Into each drop: a reversed crash and a noise sweep over the build.
+    if (k === 0 && isBuild(s)) {
+      const drop = s === "build1" ? P.d1 : P.d2;
+      hit(mixer.perc, "crash", drop, 0.32, { reverse: true, lowpassHz: 8000 });
+      const len = drop - b0;
+      if (len > 0.5) {
+        const src = c.createBufferSource(); src.buffer = noise; src.loop = true;
+        const bp = c.createBiquadFilter(); bp.type = "bandpass"; bp.Q.value = 1.3;
+        bp.frequency.setValueAtTime(350, b0); bp.frequency.exponentialRampToValueAtTime(7500, drop);
+        const gn = c.createGain();
+        gn.gain.setValueAtTime(0.0001, b0); gn.gain.exponentialRampToValueAtTime(0.05, drop - 0.02); gn.gain.linearRampToValueAtTime(0, drop + 0.06);
+        src.connect(bp); bp.connect(gn); gn.connect(master);
+        src.start(b0); src.stop(Math.min(dur, drop + 0.1));
+      }
+    }
+
+    // ── Drums ──
+    const drumsOn = isDrop(s) || isBuild(s) || introHalf;
+    // Fills close each 4-bar phrase of a drop (bigger every 8), never the same one twice running.
+    const fillHere = isDrop(s) && !lastBar && ((k % 4 === 3) || sectionEnds);
+    const bigFill = fillHere && (k % 8 === 7 || nextS === "breakdown");
+    let fill = -1;
+    if (fillHere) { fill = fillNo++ % FILLS; if (fill === lastFill) fill = fillNo++ % FILLS; lastFill = fill; }
+    const fillFrom = bigFill ? 2 : 3;
+    if (S.kick === "hiphop" && kickBlocks[blk] === undefined) {
+      let a = Math.floor(rnd() * KICKS.length);
+      if (blk > 0 && KICKS[a] === kickBlocks[blk - 1]) a = (a + 1) % KICKS.length;
+      kickBlocks[blk] = KICKS[a];
+    }
+    const kpat = S.kick === "four" ? [0, 4, 8, 12] : kickBlocks[blk];
+    const openAt = rnd() < 0.6 ? 14 : 6; // the bar's open hat (and of 4, or and of 2)
+    const ghosts = [7, 9, 15].filter(() => rnd() < 0.4);
+    for (let st = 0; st < 16; st++) {
+      const t0 = b0 + st * s16;
+      if (t0 < 0 || t0 >= E - 1e-3 || !drumsOn) continue;
+      const beatNo = st >> 2;
+      const t = swung(t0);
+      if (preDropBeat(t0)) continue; // the gap before a drop
+      const inFill = fill >= 0 && beatNo >= fillFrom;
+      // Kick
+      if (s === "intro") {
+        if (S.kick === "four" && (st === 0 || st === 8)) kick(t0, 0.55);
+      } else if (isBuild(s)) {
+        if (S.kick === "four" ? st % 4 === 0 : kpat.indexOf(st) >= 0) kick(t0, 0.7);
+      } else if (isDrop(s)) {
+        const skip = lastBar && st > 0 && (S.kick === "hiphop" || st !== 8);
+        if (!skip && kpat.indexOf(st) >= 0) kick(t0, st === 0 ? 1 : 0.88);
+      }
+      // Clap + snare on 2 and 4 in the drops
+      if (isDrop(s) && (st === 4 || st === 12) && !(inFill && beatNo === 3) && !(lastBar && st === 12)) clap(t0, (s === "drop2" ? 0.95 : 0.88));
+      // Ghost snares
+      if (isDrop(s) && !inFill && !lastBar && ghosts.indexOf(st) >= 0) hit(mixer.kit, "snare", t, vv(0.14), { lowpassHz: 5000 });
+      // Hats: 16ths with accents in the drops (an open hat once a bar), 8ths in the build and intro
+      if (!inFill && !(lastBar && st >= 8)) {
+        if (isDrop(s)) {
+          if (st === openAt) hit(mixer.perc, "hat_open", t, vv(0.36 * full), { choke: s16 * 1.8, pan: -0.2 });
+          else if (!(st === openAt + 1)) hit(mixer.perc, "hat", t, vv((st % 4 === 0 ? 0.5 : st % 4 === 2 ? 0.38 : 0.22) * full), { pan: 0.22 });
+        } else if (st % 2 === 0) {
+          hit(mixer.perc, "hat", t, vv((st % 4 === 2 ? 0.32 : 0.2) * full), { pan: 0.22 });
+        }
+        if ((S.guitar || S.kick === "four") && isDrop(s) && st % 2 === 1) hit(mixer.perc, "shaker", t, vv(0.2), { pan: -0.3 });
+      }
+      // The build's snare roll: 8ths, then 16ths, rising
+      if (isBuild(s)) {
+        const drop = s === "build1" ? P.d1 : P.d2;
+        const x = clamp((t0 - b0 + (b0 - secStart(s))) / Math.max(0.1, drop - secStart(s)), 0, 1);
+        const step = x < 0.5 ? 2 : 1;
+        if (st % step === 0) hit(mixer.kit, "snare", t0, 0.15 + 0.55 * x, { lowpassHz: 3000 + 6000 * x });
+      }
+      // Fills
+      if (inFill) {
+        const fb = st - fillFrom * 4; // 16ths into the fill
+        if (bigFill && beatNo === 2) { if (st % 2 === 0) hit(mixer.kit, "snare", t0, 0.35 + 0.05 * fb); continue; }
+        const q = st - 12;
+        if (fill === 0) hit(mixer.kit, "snare", t0, 0.35 + 0.15 * q);
+        else if (fill === 1) hit(mixer.kit, q < 2 ? "tom_hi" : "tom_lo", t0, 0.55 + 0.08 * q);
+        else if (fill === 2) { if (q !== 1) hit(mixer.kit, q === 3 ? "tom_lo" : "snare", t0, 0.45 + 0.1 * q); }
+        else if (q >= 2) { clap(t0, 0.6 + 0.15 * (q - 2)); }
+      }
+    }
+
+    // ── Bass and sub ──
+    if (s !== "intro" || introHalf) {
+      const bm = 36 + mod(root - 36, 12);
+      const sm = 28 + mod(root - 28, 12);
+      if (s === "intro" || s === "breakdown") {
+        subNote(sm + 12, b0, bar * 0.95, 0.5);
+        if (s === "breakdown") playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: bm, at: b0, duration: bar * 0.9, velocity: 0.45, release: 0.4 });
+      } else if (S.bass === "808") {
+        kpat.forEach((st, i) => {
+          const t = b0 + st * s16;
+          if (t >= E - 0.05 || preDropBeat(t) || (lastBar && st > 0)) return;
+          const nxt = i + 1 < kpat.length ? kpat[i + 1] : 16;
+          let m = 31 + mod(root - 31, 12);
+          if (i > 0 && rnd() < 0.2) m += 12;
+          const glide = prev808 !== null && prev808 !== m && rnd() < 0.3 ? prev808 : null;
+          const len = Math.min((nxt - st) * s16 - 0.03, E - t - 0.03);
+          n808(m, t, len, isBuild(s) ? 0.7 : 0.95, glide);
+          playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: m + 12, at: t, duration: Math.max(0.08, len), velocity: 0.45, release: 0.1 });
+          prev808 = m;
+        });
+      } else {
+        for (let e8 = 0; e8 < 8; e8++) {
+          const t = b0 + e8 * s8;
+          if (t >= E - 0.05 || preDropBeat(t)) continue;
+          if (lastBar && e8 >= 4) break;
+          const off = e8 % 2 === 1;
+          if (S.bass === "offbeat" && !off && e8 % 4 !== 0) continue;
+          let m = bm;
+          if (S.bass === "pump8" && e8 === 7 && rnd() < 0.4) m += 12;
+          const v = (off ? 0.88 : 0.7) * (isBuild(s) ? 0.8 : 1);
+          const len = (S.bass === "offbeat" && !off ? s8 * 0.95 : s8 * 0.9);
+          playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: m, at: swung(t), duration: len, velocity: v, release: 0.12 });
+        }
+        // The sub: a beat at a time on the root, pumped under the kick.
+        for (let q = 0; q < 4; q++) {
+          const t = b0 + q * beat;
+          if (t >= E - 0.05 || preDropBeat(t) || (lastBar && q >= 2)) continue;
+          subNote(sm + 12, t, beat * 0.98, isBuild(s) ? 0.6 : 0.8);
+        }
+      }
+    }
+
+    // ── Pad (pumped; strings join it in the breakdown) held through each chord, and the chords ──
+    const vt = voicing(ch);
+    const padVel = s === "breakdown" ? 0.72 : s === "intro" ? 0.5 : 0.58;
+    const seg = segs.find((sg) => b0 + 0.01 >= sg.start - 1e-4 && b0 + 0.01 < sg.end);
+    const bounds = [P.b1, P.d1, P.bk, P.b2, P.d2, E].filter((x) => x > b0 + 1e-3);
+    const secEnd = bounds.length ? Math.min(...bounds) : E;
+    if (bi === 0 || k === 0 || (seg && Math.abs(seg.start - b0) < 1e-3)) {
+      const padEnd = Math.min(seg ? seg.end : b0 + bar, secEnd);
+      const at = Math.max(0, b0);
+      if (padEnd - at > 0.05) vt.forEach((m, i) => {
+        const pan = (i / Math.max(1, vt.length - 1) - 0.5) * 1.1;
+        playNote(c, padIn, { instrument: "pad", midi: m, at, duration: padEnd - at, velocity: padVel, attack: k === 0 ? 0.3 : 0.08, release: 0.6, pan, detuneCents: i % 2 ? 6 : -6 });
+        if (s === "breakdown" || s === "drop2") playNote(c, counterIn, { instrument: "strings", midi: m + 12, at: at + 0.02, duration: padEnd - at, velocity: s === "breakdown" ? 0.42 : 0.3, attack: 0.25, release: 0.8, pan: -pan });
+      });
+    }
+    if (S.chords !== "pad" && s !== "end") {
+      const cv = voicing(ch, S.chords === "piano" ? 57 : 55);
+      const strike = (t: number, len: number, v: number) => cv.forEach((m, i) => {
+        if (t >= E - 0.05) return;
+        playNote(c, chordIn, { lowpassHz: 20000, instrument: S.chords, midi: m, at: Math.max(0, hum(t) + i * 0.008), duration: Math.max(0.08, Math.min(len, E - t - 0.03)), velocity: vv(v * (1 - 0.05 * i)), release: 0.3, pan: (i / Math.max(1, cv.length - 1) - 0.5) * 0.9 });
+      });
+      if (s === "intro" || s === "breakdown" || lastBar) strike(b0, bar * 0.95, 0.4);
+      else if (S.chordStyle === "stabs") {
+        const r = CH_RHY[mixer.plan.pattern(b0 + 0.01) % CH_RHY.length];
+        r.forEach(([pos, len]) => { const t = b0 + pos * beat; if (!preDropBeat(t)) strike(swung(t), len * beat, isDrop(s) ? 0.6 : 0.45); });
+      } else if (S.chordStyle === "offbeat") {
+        [0.5, 1.5, 2.5, 3.5].forEach((pos) => { const t = b0 + pos * beat; if (!preDropBeat(t)) strike(t, beat * 0.35, isDrop(s) ? 0.55 : 0.42); });
+      } else {
+        strike(b0, bar * 0.9, isDrop(s) ? 0.55 : 0.45);
+        if (isDrop(s) && mixer.plan.pattern(b0 + 0.01) % 2 === 1) strike(b0 + 2.5 * beat, beat, 0.35);
+      }
+    }
+
+    // ── Nylon arpeggios in the drops (below C5) ──
+    if (S.guitar && isDrop(s)) {
+      const pat = STUDIO_PATTERNS[mixer.plan.pattern(b0 + 0.01)];
+      const tones = voiceTones(ch.arp.map((iv) => 52 + mod(root - 52, 12) + iv), { inv: mixer.plan.voicing(b0 + 0.01).inv, oct: 0 }, 71);
+      for (let e8 = 0; e8 < 8; e8++) {
+        const t = b0 + e8 * s8;
+        if (!pat.mask[e8] || t >= E - 0.05 || (lastBar && e8 >= 4)) continue;
+        playNote(c, guitarIn, { lowpassHz: 20000, instrument: "nylon", midi: tones[pat.order[e8] % tones.length], at: hum(swung(t)), duration: s8 * 1.4, velocity: vv(0.4), release: 0.3, pan: 0.4 });
+      }
+    }
+
+    // ── The hook (2-bar phrases from each section's start) and, in the final drop, the counter-line ──
+    if (k % 2 === 0 && b0 > -bar) {
+      const until = Math.min(E, b0 + 2 * bar);
+      const start = b0; // notes before 0 are skipped, so the phrase stays on the grid
+      if (introHalf) lastHook = playPhrase(start, "teaser", 0.5, false, until);
+      else if (isBuild(s)) lastHook = playPhrase(start, "teaser", 0.62, false, Math.min(until, s === "build1" ? P.d1 : P.d2) - beat);
+      else if (isDrop(s)) lastHook = playPhrase(start, "full", s === "drop2" ? 0.92 : 0.85, s === "drop2", until);
+      else if (s === "breakdown") lastHook = playPhrase(start, "soft", 0.5, false, until);
+    }
+    if (s === "drop2" && !lastBar) {
+      // The counter-line: one long note a bar, the chord's 3rd or 5th, moving as little as it can.
+      const pcs = [ch.pad[0], ch.pad[1] ?? ch.pad[0]].map((iv) => mod(root + iv, 12));
+      let best = 60, bd = 99;
+      for (let m = 52; m <= 64; m++) if (pcs.indexOf(mod(m, 12)) >= 0) { const d = prevCounter < 0 ? Math.abs(m - 58) : Math.abs(m - prevCounter); if (d < bd) { bd = d; best = m; } }
+      prevCounter = best;
+      playNote(c, counterIn, { instrument: "strings", midi: best, at: b0, duration: bar * 0.95, velocity: 0.48, attack: 0.15, release: 0.5, pan: -0.3 });
+    }
+  }
+
+  // ── The end card: the home chord rings out, the hook lands on its root ──
+  const home = segs[segs.length - 1].chord;
+  const hr = rootOf(home);
+  const ring = Math.max(0.3, Math.min(2.4, dur - E - 0.1));
+  kick(E, 0.85);
+  hit(mixer.perc, "crash", E, 0.38);
+  voicing(home).forEach((m, i) => playNote(c, padIn, { instrument: "pad", midi: m, at: E, duration: ring, velocity: 0.6, release: 1.2, pan: (i - 1.5) * 0.3 }));
+  if (S.chords !== "pad") voicing(home, S.chords === "piano" ? 57 : 55).forEach((m, i) => playNote(c, chordIn, { instrument: S.chords, midi: m, at: E + i * 0.02, duration: ring, velocity: 0.5, release: 1, pan: (i - 1.5) * 0.25 }));
+  const land = nearestPc(lastHook > 0 ? lastHook : 67, [hr]);
+  hookVoice(land, E + 0.01, Math.min(1.8, ring), 0.7);
+  playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: 36 + mod(hr - 36, 12), at: E, duration: Math.min(2, ring), velocity: 0.8, release: 0.3 });
+  if (S.bass === "808") n808(31 + mod(hr - 31, 12), E, Math.min(2.2, ring), 0.9, null);
+  else subNote(28 + mod(hr - 28, 12) + 12, E, Math.min(2, ring), 0.8);
 }
