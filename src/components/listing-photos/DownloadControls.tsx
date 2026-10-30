@@ -26,6 +26,38 @@ export function DownloadSizeSelect({ value, onChange, disabled }: {
 }
 
 /**
+ * One muted line under the photo toolbar on browsers where Download All saves
+ * straight into a folder (Chrome / Edge on a computer). Dismissible; the
+ * choice is remembered in this browser.
+ */
+export function FolderDownloadHint({ show }: { show: boolean }) {
+  const KEY = "yp_folder_hint_dismissed";
+  const [dismissed, setDismissed] = useState(true);
+  useEffect(() => {
+    try { setDismissed(localStorage.getItem(KEY) === "1"); } catch { setDismissed(false); }
+  }, []);
+  if (!show || dismissed) return null;
+  return (
+    <p className="mt-2 text-xs text-ink-400 flex items-start gap-2">
+      <span>
+        Download All puts the photos straight into a folder you choose — no zip to open. Windows will ask you to pick a
+        folder and allow the Portal to save there.
+      </span>
+      <button
+        onClick={() => {
+          setDismissed(true);
+          try { localStorage.setItem(KEY, "1"); } catch { /* private mode */ }
+        }}
+        aria-label="Dismiss"
+        className="shrink-0 text-ink-400 hover:text-ink-700 font-bold leading-none"
+      >
+        ×
+      </button>
+    </p>
+  );
+}
+
+/**
  * Admin page: the Save / share panel — pinned to the bottom of the screen so
  * it's in reach wherever the page is scrolled, and above the lightbox.
  */

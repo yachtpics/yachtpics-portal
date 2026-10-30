@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
+import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
 import { folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, writeZip } from "@/lib/zipDownload";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
@@ -82,6 +83,8 @@ export default function ClientGalleryView({
   }, [galleryId]);
 
   const available = photos.filter((p) => p.url);
+  // Chrome / Edge on a computer: "Download all" saves straight into a folder; the zip is "or as a .zip".
+  const useFolder = canFolder && available.length > 1;
   const availableVideos = videos.filter((v) => v.url);
   const safeName = title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "gallery";
 
@@ -350,7 +353,7 @@ export default function ClientGalleryView({
         </div>
         {!expired && available.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {canFolder && available.length > 1 && (sepLabel !== null ? (
+          {useFolder && (sepLabel !== null ? (
             <button
               onClick={() => sepAbort.current?.abort()}
               className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-2 min-h-[44px]"
@@ -359,17 +362,17 @@ export default function ClientGalleryView({
             </button>
           ) : (
             <button
-              onClick={saveSeparately}
+              onClick={downloadAll}
               disabled={busy}
-              title="Pick a folder (e.g. Downloads) and the photos are saved into a new folder for this gallery — no zip. Use this if your computer blocks zip files."
-              className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet disabled:opacity-40"
+              className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-2 min-h-[44px] disabled:opacity-40"
             >
-              Save to a folder
+              or as a .zip
             </button>
           ))}
           <button
-            onClick={downloadAll}
+            onClick={useFolder ? saveSeparately : downloadAll}
             disabled={busy}
+            title={useFolder ? "Pick a folder — the photos are saved straight into it" : undefined}
             className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-50"
           >
             {sepLabel ?? (busy ? `Preparing… ${progress}%` : `⬇ Download all photos (${available.length})`)}
@@ -378,6 +381,7 @@ export default function ClientGalleryView({
         )}
       </div>
 
+      {!expired && <FolderDownloadHint show={useFolder} />}
       {!busy && sepDone && <p className="mt-3 text-sm text-ink-600">{sepDone}</p>}
 
       {busy && (

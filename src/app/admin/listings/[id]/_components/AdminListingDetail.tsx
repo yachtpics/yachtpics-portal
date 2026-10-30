@@ -22,7 +22,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 import {
   ADMIN_PHOTO_CAPABILITIES, type PhotoMessage,
   useListingPhotos, usePhotoActions, useOriginalSave, useSizedDownloads,
-  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, SavePanel, DownloadSizeSelect,
+  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, SavePanel, DownloadSizeSelect, FolderDownloadHint,
   PhotoFileInputs, UploadProgress, UploadFailedNotice,
 } from "@/components/listing-photos";
 
@@ -1228,6 +1228,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </div>
           <PhotoFileInputs actions={photoActions} />
         </div>
+        {photos.length > 0 && <div className="-mt-2 mb-4"><FolderDownloadHint show={!!sized.saveToFolder} /></div>}
 
         {/* Deleting media is permanent — the file leaves storage entirely, so
             these name what's going rather than asking a bare "Are you sure?". */}

@@ -27,7 +27,7 @@ import SortableVideoList from "@/components/SortableVideoList";
 import {
   BROKER_PHOTO_CAPABILITIES, type PhotoMessage,
   useListingPhotos, usePhotoActions, useSizedDownloads,
-  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, DownloadSizeSelect,
+  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, DownloadSizeSelect, FolderDownloadHint,
   PhotoFileInputs, UploadProgress, UploadFailedNotice, UncategorizedPrompt,
 } from "@/components/listing-photos";
 
@@ -864,6 +864,11 @@ export default function BrokerListingPage() {
         </div>
         <PhotoFileInputs actions={photoActions} />
       </div>
+      {visiblePhotos.length > 0 && (
+        <div className="-mt-2 mb-4">
+          <FolderDownloadHint show={!!downloads.saveToFolder} />
+        </div>
+      )}
 
       {/* Readiness — what's done, what would make the listing land better */}
       <ListingReadiness

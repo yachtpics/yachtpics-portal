@@ -7,7 +7,7 @@ export {
 } from "./useDownloads";
 export { default as PhotoGrid, type PhotoGridProps } from "./PhotoGrid";
 export { PhotoLightbox } from "./Lightbox";
-export { DownloadSizeSelect, SavePanel } from "./DownloadControls";
+export { DownloadSizeSelect, SavePanel, FolderDownloadHint } from "./DownloadControls";
 export { PhotoToolbar, DeletePhotosDialogs } from "./PhotoToolbar";
 export { PhotoFileInputs, UploadProgress, UploadFailedNotice, UncategorizedPrompt } from "./UploadStatus";
 export { default as OrientedThumbnail } from "./OrientedThumbnail";

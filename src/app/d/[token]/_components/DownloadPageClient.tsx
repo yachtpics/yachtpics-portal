@@ -5,6 +5,7 @@ import { folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, save
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
 import PresentedThrough from "@/components/PresentedThrough";
+import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
 
 type Photo = {
   id: string;
@@ -58,6 +59,8 @@ export default function DownloadPageClient({
   const sepAbort = useRef<AbortController | null>(null);
   const available = photos.filter((p) => p.url);
   const availableVideos = videos.filter((v) => v.downloadUrl);
+  // Chrome / Edge on a computer: "Download all" saves straight into a folder; the zip is "or as a .zip".
+  const useFolder = canFolder && available.length > 1;
   const safeName = vesselName.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "vessel";
 
   function logDownload(count: number) {
@@ -192,8 +195,9 @@ export default function DownloadPageClient({
             </div>
             <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
-              onClick={downloadAll}
+              onClick={useFolder ? saveSeparately : downloadAll}
               disabled={busy || available.length === 0}
+              title={useFolder ? "Pick a folder — the photos are saved straight into it" : undefined}
               className="bg-accent-500 hover:bg-accent-400 disabled:opacity-40 disabled:cursor-not-allowed text-ink-950 text-sm font-semibold px-5 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
             >
               {sepLabel ?? (busy ? `Downloading… ${progress}%` : `⬇ Download all (${available.length})`)}
@@ -205,14 +209,13 @@ export default function DownloadPageClient({
               >
                 Cancel
               </button>
-            ) : canFolder && available.length > 1 && (
+            ) : useFolder && (
               <button
-                onClick={saveSeparately}
+                onClick={downloadAll}
                 disabled={busy}
-                title="Pick a folder (e.g. Downloads) and the photos are saved into a new folder for this boat — no zip. Use this if your computer blocks zip files."
-                className="border border-white/30 hover:border-accent-400 text-white text-sm font-medium px-4 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet disabled:opacity-40"
+                className="text-sm text-white/70 hover:text-white underline underline-offset-2 px-2 min-h-[44px] disabled:opacity-40"
               >
-                Save to a folder
+                or as a .zip
               </button>
             )}
             </div>
@@ -236,6 +239,7 @@ export default function DownloadPageClient({
             </p>
           )}
           {!busy && sepDone && <p className="mt-3 text-sm text-white/80">{sepDone}</p>}
+          <FolderDownloadHint show={useFolder} />
         </div>
       </div>
 

@@ -237,7 +237,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
           onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
         });
         if (!result.ok) {
-          alert(canFolder ? `${result.error}\n\nOr use the Folder button next to it — it saves the photos into a folder, no zip.` : result.error);
+          alert(canFolder ? `${result.error}\n\nOr click Photos — it saves the photos straight into a folder, no zip.` : result.error);
           return;
         }
         written = result.written;
@@ -417,9 +417,9 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         {/* Download Photos */}
         <div className="relative">
           <button
-            onClick={() => handleDownload("zip")}
+            onClick={() => handleDownload(canFolder ? "folder" : "zip")}
             disabled={downloading}
-            title="Download all photos as ZIP"
+            title={canFolder ? "Pick a folder — the photos are saved straight into it" : "Download all photos as ZIP"}
             className={`${quickAction}
               ${downloadDone
                 ? "border-success-200 bg-success-50 text-success-700"
@@ -456,14 +456,16 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
           </button>
         </div>
         {canFolder && (
+        // Chrome / Edge on a computer: "Photos" saves into a folder; this is
+        // the zip instead — and Cancel while the folder save runs.
         <button
-          onClick={() => handleDownload("folder")}
+          onClick={() => (separateLabel !== null ? separateAbort.current?.abort() : handleDownload("zip"))}
           disabled={downloading && separateLabel === null}
-          title={separateLabel !== null ? "Cancel saving to the folder" : "Save all photos to a folder (no zip) — for computers that block zip files"}
-          className={`${quickAction} border-hairline-strong bg-white text-ink-500 hover:border-accent-500 hover:text-ink-700 disabled:opacity-60 disabled:cursor-not-allowed`}
+          title={separateLabel !== null ? "Cancel saving to the folder" : "Download all photos as one .zip instead"}
+          className="text-xs text-ink-500 hover:text-ink-900 underline underline-offset-2 px-1 disabled:opacity-60 disabled:cursor-not-allowed"
         >
-          <span className="hidden sm:inline">{separateLabel !== null ? `${separateLabel} · Cancel` : "Folder"}</span>
-          <span className="sm:hidden">{separateLabel !== null ? separateLabel : "Folder"}</span>
+          <span className="hidden sm:inline">{separateLabel !== null ? `${separateLabel} · Cancel` : "zip"}</span>
+          <span className="sm:hidden">{separateLabel !== null ? separateLabel : "zip"}</span>
         </button>
         )}
 

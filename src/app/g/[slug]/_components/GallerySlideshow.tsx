@@ -6,6 +6,7 @@ import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefr
 import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/photoAlt";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
+import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
 import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type ZipTarget } from "@/lib/zipDownload";
 
 type GalleryPhoto = {
@@ -159,6 +160,8 @@ export default function GallerySlideshow({
   // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs that block zip files).
   const [canFolder, setCanFolder] = useState(false);
   useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
+  // Chrome / Edge on a computer: Download saves straight into a folder; the zip is "or as a .zip".
+  const useFolder = canFolder && photos.length > 1;
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [zipFailed, setZipFailed] = useState(false);
   const sepAbort = useRef<AbortController | null>(null);
@@ -496,14 +499,15 @@ export default function GallerySlideshow({
         <div className="flex items-center gap-2 shrink-0">
           {downloadsEnabled && photos.length > 0 && (
             <button
-              onClick={downloadAllPhotos}
+              onClick={useFolder ? savePhotosSeparately : downloadAllPhotos}
               disabled={downloadingAll}
+              title={useFolder ? "Pick a folder — the photos are saved straight into it" : undefined}
               className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-accent-500 bg-accent-500 text-white shadow-elev-1 hover:bg-accent-600 disabled:opacity-60 transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
             >
-              {sepLabel ?? (downloadingAll ? `Zipping… ${dlProgress}%` : videos.length > 0 ? "⤓ Download photos" : "⤓ Download all")}
+              {sepLabel ?? (downloadingAll ? (useFolder ? `Saving… ${dlProgress}%` : `Zipping… ${dlProgress}%`) : videos.length > 0 ? "⤓ Download photos" : "⤓ Download all")}
             </button>
           )}
-          {downloadsEnabled && canFolder && photos.length > 1 && (sepLabel !== null ? (
+          {downloadsEnabled && useFolder && (sepLabel !== null ? (
             <button
               onClick={() => sepAbort.current?.abort()}
               className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 transition-colors duration-base ease-quiet"
@@ -512,12 +516,11 @@ export default function GallerySlideshow({
             </button>
           ) : (
             <button
-              onClick={savePhotosSeparately}
+              onClick={downloadAllPhotos}
               disabled={downloadingAll}
-              title="Save to a folder — pick a folder and the photos are saved into it, no zip (for computers that block zip files)."
-              className="hidden sm:inline-flex items-center text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 disabled:opacity-60 transition-colors duration-base ease-quiet"
+              className="text-xs text-ink-500 hover:text-ink-900 underline underline-offset-2 px-1 min-h-[44px] disabled:opacity-60"
             >
-              Save to a folder
+              or as a .zip
             </button>
           ))}
           {slides.length > 1 && view === "slideshow" && (
@@ -562,6 +565,12 @@ export default function GallerySlideshow({
             )}
           </span>
           <button onClick={() => setDlError("")} className="shrink-0 font-bold text-warn-700 hover:text-warn-800" aria-label="Dismiss">×</button>
+        </div>
+      )}
+
+      {downloadsEnabled && useFolder && (
+        <div className="mx-4 sm:mx-6">
+          <FolderDownloadHint show />
         </div>
       )}
 

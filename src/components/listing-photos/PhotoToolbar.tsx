@@ -48,15 +48,17 @@ export function PhotoToolbar({
   const n = a.selectedIds.size;
   const broker = variant === "broker";
 
-  const plainBtn = "bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap";
-  const separate = (run?: (() => void) | null) => run && (
+    // Oct 30: where the browser can save to a folder (Chrome / Edge on a
+  // computer), Download All / Download N save straight into a folder and the
+  // zip is a quiet "or as a .zip" link beside them. Elsewhere: the zip.
+  const FOLDER_TIP = "Pick a folder — the photos are saved straight into it";
+  const zipLink = (folder: (() => void) | null | undefined, zip: () => void) => folder && (
     <button
-      onClick={run}
+      onClick={zip}
       disabled={downloadBusy}
-      title="Pick a folder (e.g. Downloads) and the photos are saved into a new folder for this boat — no zip. Use this if your computer blocks zip files."
-      className={plainBtn}
+      className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-1 whitespace-nowrap disabled:opacity-50"
     >
-      Save to a folder
+      or as a .zip
     </button>
   );
   const extras = (
@@ -105,13 +107,14 @@ export function PhotoToolbar({
             </button>
             {sizeSelect}
             <button
-              onClick={onDownloadAll}
+              onClick={onSaveToFolder ?? onDownloadAll}
               disabled={downloadBusy}
+              title={onSaveToFolder ? FOLDER_TIP : undefined}
               className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
             >
               {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
             </button>
-            {separate(onSaveToFolder)}
+            {zipLink(onSaveToFolder, onDownloadAll)}
             {extras}
             <button
               onClick={() => a.setConfirmDeleteAll(true)}
@@ -153,13 +156,14 @@ export function PhotoToolbar({
                 </div>
                 {sizeSelect}
                 <button
-                  onClick={onDownloadSelected}
+                  onClick={onSaveToFolderSelected ?? onDownloadSelected}
                   disabled={downloadBusy}
+                  title={onSaveToFolderSelected ? FOLDER_TIP : undefined}
                   className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors"
                 >
                   {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
                 </button>
-                {separate(onSaveToFolderSelected)}
+                {zipLink(onSaveToFolderSelected, onDownloadSelected)}
                 {extras}
                 <button
                   onClick={() => a.setConfirmDeleteSelected(true)}
@@ -188,13 +192,14 @@ export function PhotoToolbar({
           </button>
           {sizeSelect}
           <button
-            onClick={onDownloadAll}
+            onClick={onSaveToFolder ?? onDownloadAll}
             disabled={downloadBusy}
+            title={onSaveToFolder ? FOLDER_TIP : undefined}
             className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
           >
             {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
           </button>
-          {separate(onSaveToFolder)}
+          {zipLink(onSaveToFolder, onDownloadAll)}
           {extras}
           {onSaveOriginals && (
             <button
@@ -251,13 +256,14 @@ export function PhotoToolbar({
               </div>
               {sizeSelect}
               <button
-                onClick={onDownloadSelected}
+                onClick={onSaveToFolderSelected ?? onDownloadSelected}
                 disabled={downloadBusy}
+                title={onSaveToFolderSelected ? FOLDER_TIP : undefined}
                 className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap"
               >
                 {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
               </button>
-              {separate(onSaveToFolderSelected)}
+              {zipLink(onSaveToFolderSelected, onDownloadSelected)}
               {extras}
               {onSaveOriginalsSelected && (
                 <button
