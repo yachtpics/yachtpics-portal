@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { openZipTarget, saveFilesSeparately, writeZip } from "@/lib/zipDownload";
+import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type FolderTarget } from "@/lib/zipDownload";
 
 // Zips stream through src/lib/zipDownload.ts (client-zip, a few KB — unlike
 // JSZip, which used to be loaded on demand here and held the whole zip in memory).
@@ -46,9 +46,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadDone, setDownloadDone] = useState(false);
   const [noPhotos, setNoPhotos] = useState(false);
-  // "Save as separate files" (no zip — office PCs that block zips): progress + cancel.
+  // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs
+  // that block zips): progress + cancel.
   const [separateLabel, setSeparateLabel] = useState<string | null>(null);
   const separateAbort = useRef<AbortController | null>(null);
+  const [canFolder, setCanFolder] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
 
   // Share state
   const [shareCopied, setShareCopied] = useState(false);
@@ -145,18 +148,24 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     }
   }
 
-  async function handleDownload(mode: "zip" | "separate" = "zip") {
+  async function handleDownload(mode: "zip" | "folder" = "zip"): Promise<void> {
     if (downloading) {
-      // The Files button doubles as Cancel while separate files are saving.
-      if (mode === "separate") separateAbort.current?.abort();
+      // The Folder button doubles as Cancel while saving to a folder.
+      if (mode === "folder") separateAbort.current?.abort();
       return;
     }
     // Streaming zip (src/lib/zipDownload.ts): the Save dialog opens first,
     // while the click still counts as a gesture; then the photos stream into
     // it one by one (any size). Browsers without the dialog get zip parts.
-    // "separate": every photo as its own download, no zip.
+    // "folder": the photos are written into a folder the broker picks.
     const zipBase = `${listing.vessel_name ?? "photos"}-photos`;
-    const target = mode === "zip" ? await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size: "full" }) : null;
+    let folder: Extract<FolderTarget, { kind: "folder" }> | null = null;
+    if (mode === "folder") {
+      const f = await openFolderTarget(`${listing.vessel_name ?? "Photos"} – Full resolution`, { listingId: listing.id, size: "full" });
+      if (f.kind === "cancelled") return;
+      if (f.kind === "folder") folder = f;
+    }
+    const target = folder ? null : await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size: "full" });
     if (target?.kind === "cancelled") return;
     setDownloading(true);
     setDownloadProgress(0);
@@ -195,12 +204,13 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       });
 
       let written = 0;
-      if (!target) {
-        const vessel = (listing.vessel_name ?? "").replace(/[\\/:*?"<>|]+/g, " ").trim();
+      if (folder) {
         const ctl = new AbortController();
         separateAbort.current = ctl;
-        const res = await saveFilesSeparately(
-          entries.map((e) => ({ ...e, name: vessel ? `${vessel} – ${e.name}` : e.name })),
+        setSeparateLabel("…");
+        const res = await saveToFolder(
+          folder,
+          entries,
           {
             signal: ctl.signal,
             context: { listingId: listing.id, size: "full" },
@@ -212,18 +222,22 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         );
         separateAbort.current = null;
         written = res.written;
+        if (res.fallback) {
+          fallBack = true;
+          return;
+        }
         if (!res.cancelled && res.written === 0) {
           alert("The photos couldn't be downloaded. Please try again in a moment.");
           return;
         }
-      } else {
+      } else if (target) {
         const result = await writeZip(target, entries, {
           baseName: zipBase,
           context: { listingId: listing.id, size: "full" },
           onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
         });
         if (!result.ok) {
-          fallBack = window.confirm(`${result.error}\n\nSave the photos as separate files instead (no zip)?`);
+          alert(canFolder ? `${result.error}\n\nOr use the Folder button next to it — it saves the photos into a folder, no zip.` : result.error);
           return;
         }
         written = result.written;
@@ -247,8 +261,8 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       setSeparateLabel(null);
       separateAbort.current = null;
     }
-    // The zip failed and the broker chose separate files: same photos, no zip.
-    if (fallBack) void handleDownload("separate");
+    // The folder couldn't be written to: the zip instead.
+    if (fallBack) void handleDownload("zip");
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -441,15 +455,17 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
             )}
           </button>
         </div>
+        {canFolder && (
         <button
-          onClick={() => handleDownload("separate")}
+          onClick={() => handleDownload("folder")}
           disabled={downloading && separateLabel === null}
-          title={separateLabel !== null ? "Cancel saving separate files" : "Save all photos as separate files (no zip) — for computers that block zip files"}
+          title={separateLabel !== null ? "Cancel saving to the folder" : "Save all photos to a folder (no zip) — for computers that block zip files"}
           className={`${quickAction} border-hairline-strong bg-white text-ink-500 hover:border-accent-500 hover:text-ink-700 disabled:opacity-60 disabled:cursor-not-allowed`}
         >
-          <span className="hidden sm:inline">{separateLabel !== null ? `${separateLabel} · Cancel` : "Files"}</span>
-          <span className="sm:hidden">{separateLabel !== null ? separateLabel : "Files"}</span>
+          <span className="hidden sm:inline">{separateLabel !== null ? `${separateLabel} · Cancel` : "Folder"}</span>
+          <span className="sm:hidden">{separateLabel !== null ? separateLabel : "Folder"}</span>
         </button>
+        )}
 
         {/* Send to Client — active plans only */}
         {!locked && (

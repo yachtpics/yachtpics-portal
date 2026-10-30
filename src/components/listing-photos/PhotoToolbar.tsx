@@ -14,7 +14,7 @@ import type { PhotoActions } from "./usePhotoActions";
 export function PhotoToolbar({
   variant, actions, photoCount, customCategories, downloadAllCount, downloadBusy, busyLabel,
   onDownloadAll, onDownloadSelected, sizeSelect, onSaveOriginals, onSaveOriginalsSelected, saveOriginalsBusy,
-  onSaveSeparately, onSaveSeparatelySelected, onCancelDownload, onRetrySeparately,
+  onSaveToFolder, onSaveToFolderSelected, onCancelDownload, onRetryToFolder,
 }: {
   variant: PhotoVariant;
   actions: PhotoActions;
@@ -34,28 +34,29 @@ export function PhotoToolbar({
   onSaveOriginals?: () => void;
   onSaveOriginalsSelected?: () => void;
   saveOriginalsBusy?: boolean;
-  /** "Save as separate files" — every photo as its own download, no zip
-   *  (office computers that block zip files). All / the selection. */
-  onSaveSeparately?: () => void;
-  onSaveSeparatelySelected?: () => void;
-  /** Shown while a cancellable download runs (separate files). */
+  /** "Save to a folder" (Chrome / Edge on a computer) — photos written into
+   *  a folder the user picks, no zip. All / the selection; omit / null
+   *  where the browser can't. */
+  onSaveToFolder?: (() => void) | null;
+  onSaveToFolderSelected?: (() => void) | null;
+  /** Shown while a cancellable download runs (save to a folder). */
   onCancelDownload?: (() => void) | null;
-  /** After a zip failed: one click saves the same photos as separate files. */
-  onRetrySeparately?: (() => void) | null;
+  /** After a zip failed: one click saves the same photos to a folder. */
+  onRetryToFolder?: (() => void) | null;
 }) {
   const a = actions;
   const n = a.selectedIds.size;
   const broker = variant === "broker";
 
   const plainBtn = "bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap";
-  const separate = (run?: () => void) => run && (
+  const separate = (run?: (() => void) | null) => run && (
     <button
       onClick={run}
       disabled={downloadBusy}
-      title="Every photo as its own file, no zip — use this if your computer blocks zip files. Your browser may ask once to allow multiple downloads."
+      title="Pick a folder (e.g. Downloads) and the photos are saved into a new folder for this boat — no zip. Use this if your computer blocks zip files."
       className={plainBtn}
     >
-      Save as separate files
+      Save to a folder
     </button>
   );
   const extras = (
@@ -65,12 +66,12 @@ export function PhotoToolbar({
           Cancel
         </button>
       )}
-      {!downloadBusy && onRetrySeparately && (
+      {!downloadBusy && onRetryToFolder && (
         <button
-          onClick={onRetrySeparately}
+          onClick={onRetryToFolder}
           className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap"
         >
-          Save as separate files instead
+          Save to a folder instead
         </button>
       )}
     </>
@@ -110,7 +111,7 @@ export function PhotoToolbar({
             >
               {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
             </button>
-            {separate(onSaveSeparately)}
+            {separate(onSaveToFolder)}
             {extras}
             <button
               onClick={() => a.setConfirmDeleteAll(true)}
@@ -158,7 +159,7 @@ export function PhotoToolbar({
                 >
                   {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
                 </button>
-                {separate(onSaveSeparatelySelected)}
+                {separate(onSaveToFolderSelected)}
                 {extras}
                 <button
                   onClick={() => a.setConfirmDeleteSelected(true)}
@@ -193,7 +194,7 @@ export function PhotoToolbar({
           >
             {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
           </button>
-          {separate(onSaveSeparately)}
+          {separate(onSaveToFolder)}
           {extras}
           {onSaveOriginals && (
             <button
@@ -256,7 +257,7 @@ export function PhotoToolbar({
               >
                 {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
               </button>
-              {separate(onSaveSeparatelySelected)}
+              {separate(onSaveToFolderSelected)}
               {extras}
               {onSaveOriginalsSelected && (
                 <button

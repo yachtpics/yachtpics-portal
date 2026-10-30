@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { formatBytes, openZipTarget, saveFilesSeparately, writeZip } from "@/lib/zipDownload";
+import { useEffect, useRef, useState } from "react";
+import { folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, writeZip } from "@/lib/zipDownload";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
 import PresentedThrough from "@/components/PresentedThrough";
@@ -50,7 +50,9 @@ export default function DownloadPageClient({
   const [progress, setProgress] = useState(0);
   const [zipError, setZipError] = useState<string | null>(null);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  // "Save as separate files" (no zip — office PCs that block zip files).
+  // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs that block zip files).
+  const [canFolder, setCanFolder] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [sepDone, setSepDone] = useState<string | null>(null);
   const sepAbort = useRef<AbortController | null>(null);
@@ -82,8 +84,12 @@ export default function DownloadPageClient({
     }
   }
 
+  // Call straight from the click: the folder picker needs it.
   async function saveSeparately() {
     if (busy || available.length === 0) return;
+    const folder = await openFolderTarget(`${vesselName} – Photos`);
+    if (folder.kind === "cancelled") return;
+    if (folder.kind === "unsupported") return downloadAll();
     setBusy(true);
     setProgress(0);
     setZipError(null);
@@ -91,10 +97,10 @@ export default function DownloadPageClient({
     setSepLabel("Preparing…");
     const ctl = new AbortController();
     sepAbort.current = ctl;
-    const vessel = vesselName.replace(/[\\/:*?"<>|]+/g, " ").trim();
-    const res = await saveFilesSeparately(
+    const res = await saveToFolder(
+      folder,
       available.map((photo, k) => ({
-        name: `${vessel ? `${vessel} – ` : ""}${String(k + 1).padStart(2, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+        name: `${String(k + 1).padStart(2, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
         url: photo.url,
       })),
       {
@@ -110,9 +116,13 @@ export default function DownloadPageClient({
     setSepLabel(null);
     setBusy(false);
     setProgress(0);
-    if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved.`);
+    if (res.fallback) {
+      setZipError("That folder couldn't be written to — use Download all instead.");
+      return;
+    }
+    if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved to ${folder.path}.`);
     else if (res.written === 0) setZipError("The photos couldn't be downloaded. Please try again in a moment.");
-    else setSepDone(`Done — ${res.written} photos saved as separate files (${formatBytes(res.bytes)})${res.failed ? `; ${res.failed} couldn't be downloaded` : ""}.`);
+    else setSepDone(`Saved ${res.written} photos to ${folder.path} (${formatBytes(res.bytes)})${res.failed ? `; ${res.failed} couldn't be downloaded` : ""}.`);
   }
 
   async function downloadAll() {
@@ -195,14 +205,14 @@ export default function DownloadPageClient({
               >
                 Cancel
               </button>
-            ) : available.length > 1 && (
+            ) : canFolder && available.length > 1 && (
               <button
                 onClick={saveSeparately}
                 disabled={busy}
-                title="Every photo as its own file, no zip — use this if your computer blocks zip files. Your browser may ask once to allow multiple downloads."
+                title="Pick a folder (e.g. Downloads) and the photos are saved into a new folder for this boat — no zip. Use this if your computer blocks zip files."
                 className="border border-white/30 hover:border-accent-400 text-white text-sm font-medium px-4 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet disabled:opacity-40"
               >
-                Save as separate files
+                Save to a folder
               </button>
             )}
             </div>
@@ -218,9 +228,9 @@ export default function DownloadPageClient({
           {!busy && zipError && (
             <p className="mt-3 text-sm text-danger-300">
               {zipError}{" "}
-              {available.length > 1 && (
+              {canFolder && available.length > 1 && (
                 <button onClick={saveSeparately} className="underline underline-offset-2 text-white hover:text-accent-300 font-medium">
-                  Save as separate files instead
+                  Save to a folder instead
                 </button>
               )}
             </p>

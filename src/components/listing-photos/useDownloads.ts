@@ -8,7 +8,7 @@ import {
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { formatBytes, openZipTarget, partLimitBytes, saveFilesSeparately, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
+import { formatBytes, openZipTarget, partLimitBytes, folderSaveSupported, openFolderTarget, saveToFolder, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
 
 // Two ways photos leave a listing page, one per role:
 //
@@ -69,10 +69,13 @@ export function useSizedDownloads(opts: {
   const [downloadProgress, setDownloadProgress] = useState(0);
   /** What the zip is doing, e.g. "12 of 194 photos · 480 MB" (null when idle). */
   const [downloadLabel, setDownloadLabel] = useState<string | null>(null);
-  /** "Save as separate files" running — it can be cancelled. */
-  const [savingSeparately, setSavingSeparately] = useState(false);
+  /** "Save to a folder" running — it can be cancelled. */
+  const [savingToFolder, setSavingToFolder] = useState(false);
+  /** This browser can "Save to a folder" (Chrome / Edge on a computer) — known after mount. */
+  const [canFolder, setCanFolder] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
   const abortRef = useRef<AbortController | null>(null);
-  /** The photos of a zip that just failed — offered as separate files. */
+  /** The photos of a zip that just failed — offered "Save to a folder instead". */
   const [zipFailed, setZipFailed] = useState<ListingPhoto[] | null>(null);
   // Download size for every download button on the page (remembered per browser).
   const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("web"); // Web & MLS by default (Oct 29): fast, and what most downloads are for
@@ -164,35 +167,40 @@ export function useSizedDownloads(opts: {
   };
 
   /**
-   * "Save as separate files" (Oct 30): every photo as its own download, no
-   * zip — for office computers that block zip files. One photo at a time
-   * (src/lib/zipDownload.ts saveFilesSeparately), at the chosen size, named
-   * "Sea Dream – 01 Salon (2048px).jpg" so they sort in listing order.
+   * "Save to a folder" (Oct 30) — Chrome / Edge on a computer: the broker
+   * picks a folder once and the photos are written straight into a new
+   * "<Vessel> – Web & MLS" folder inside it (src/lib/zipDownload.ts
+   * saveToFolder), at the chosen size, named "01 Salon.jpg" in listing order.
+   * No zip and no Chrome download queue — for office computers that block
+   * zips. Call it straight from the click (the folder picker needs it).
+   * If the folder can't be used, it falls back to the zip.
    */
-  async function saveSeparately(targets: ListingPhoto[]) {
+  async function saveToFolderAction(targets: ListingPhoto[]) {
     if (targets.length === 0 || downloading) return;
+    const size = downloadSize;
+    const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
+    const vessel = vesselName ? cleanName(vesselName) : "";
+    const folder = await openFolderTarget(`${vessel || "Photos"} – ${sizeInfo.short}`, { listingId, size });
+    if (folder.kind === "cancelled") return;
+    if (folder.kind === "unsupported") {
+      await downloadPhotos(targets);
+      return;
+    }
     setZipFailed(null);
     setDownloading(true);
-    setSavingSeparately(true);
+    setSavingToFolder(true);
     setDownloadProgress(0);
     setDownloadLabel("Preparing…");
     const ctl = new AbortController();
     abortRef.current = ctl;
-    const size = downloadSize;
-    const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
-    const vessel = vesselName ? cleanName(vesselName) : "";
     const { urls, ext } = await signForDownload(targets, size);
     const extFor = extWith(ext);
     const pad = Math.max(2, String(targets.length).length);
     const entries = targets.map((photo, i) => {
       const label = cleanName(photo.category ?? "Photo") || "Photo";
-      const nn = targets.length > 1 ? `${String(i + 1).padStart(pad, "0")} ` : "";
-      return {
-        name: `${vessel ? `${vessel} – ` : ""}${nn}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${extFor(photo)}`,
-        url: ctl.signal.aborted ? null : urls[photo.id],
-      };
+      return { name: `${String(i + 1).padStart(pad, "0")} ${label}.${extFor(photo)}`, url: urls[photo.id] };
     });
-    const result = await saveFilesSeparately(entries, {
+    const result = await saveToFolder(folder, entries, {
       signal: ctl.signal,
       context: { listingId, size },
       onProgress: (p) => {
@@ -202,25 +210,30 @@ export function useSizedDownloads(opts: {
     });
     abortRef.current = null;
     setDownloading(false);
-    setSavingSeparately(false);
+    setSavingToFolder(false);
     setDownloadProgress(0);
     setDownloadLabel(null);
+    if (result.fallback) {
+      onMessage({ kind: "error", text: "That folder couldn't be written to — downloading a zip instead.", ms: 8000 });
+      await downloadPhotos(targets);
+      return;
+    }
     if (result.written > 0) logDownload(result.written);
     if (result.cancelled) {
-      onMessage({ kind: "success", text: `Stopped — ${result.written} of ${targets.length} photos saved.`, ms: 6000 });
+      onMessage({ kind: "success", text: `Stopped — ${result.written} of ${targets.length} photos saved to ${folder.path}.`, ms: 8000 });
       return;
     }
     onFinished();
     if (result.written === 0) {
       onMessage({ kind: "error", text: "The photos couldn't be downloaded. Please try again in a moment.", ms: 10000 });
     } else if (result.failed > 0) {
-      onMessage({ kind: "error", text: `Done — saved ${result.written} photos as separate files. ${result.failed} couldn't be downloaded; try ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`, ms: 10000 });
+      onMessage({ kind: "error", text: `Saved ${result.written} photos to ${folder.path}. ${result.failed} couldn't be downloaded; try ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`, ms: 12000 });
     } else {
-      onMessage({ kind: "success", text: `Done — saved ${result.written} photo${result.written !== 1 ? "s" : ""} as separate files (${formatBytes(result.bytes)}).`, ms: 6000 });
+      onMessage({ kind: "success", text: `Saved ${result.written} photo${result.written !== 1 ? "s" : ""} to ${folder.path} (${formatBytes(result.bytes)}).`, ms: 8000 });
     }
   }
 
-  /** Stop "Save as separate files" (photos already saved stay saved). */
+  /** Stop "Save to a folder" (photos already saved stay saved). */
   function cancelDownload() {
     abortRef.current?.abort();
   }
@@ -322,7 +335,7 @@ export function useSizedDownloads(opts: {
     setDownloadLabel(null);
     if (!result.ok) {
       setZipFailed(targets);
-      onMessage({ kind: "error", text: `${result.error} Or use Save as separate files.`, ms: 12000 });
+      onMessage({ kind: "error", text: canFolder ? `${result.error} Or use Save to a folder.` : result.error, ms: 12000 });
       return;
     }
     logDownload(result.written);
@@ -344,9 +357,11 @@ export function useSizedDownloads(opts: {
 
   return {
     downloading, downloadProgress, downloadLabel, downloadSize, setDownloadSize, downloadTitle, downloadPhotos,
-    saveSeparately, savingSeparately, cancelDownload,
-    /** After a failed zip: save the same photos as separate files (null when nothing failed). */
-    retrySeparately: zipFailed ? () => saveSeparately(zipFailed) : null,
+    /** "Save to a folder" — null where the browser can't (Safari, Firefox, phones). */
+    saveToFolder: canFolder ? saveToFolderAction : null,
+    savingToFolder, cancelDownload,
+    /** After a failed zip: the same photos to a folder (null when nothing failed / unsupported). */
+    retryToFolder: zipFailed && canFolder ? () => saveToFolderAction(zipFailed) : null,
   };
 }
 

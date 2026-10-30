@@ -6,7 +6,7 @@ import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefr
 import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/photoAlt";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
-import { openZipTarget, saveFilesSeparately, writeZip, type ZipTarget } from "@/lib/zipDownload";
+import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type ZipTarget } from "@/lib/zipDownload";
 
 type GalleryPhoto = {
   id: string;
@@ -156,7 +156,9 @@ export default function GallerySlideshow({
   const [downloadingOne, setDownloadingOne] = useState(false);
 
   const [dlError, setDlError] = useState("");
-  // "Save as separate files" (no zip — office PCs that block zip files).
+  // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs that block zip files).
+  const [canFolder, setCanFolder] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [zipFailed, setZipFailed] = useState(false);
   const sepAbort = useRef<AbortController | null>(null);
@@ -296,8 +298,12 @@ export default function GallerySlideshow({
     }
   }, [downloadingAll, photos, title, logDownload, freshUrls, fetchFile]);
 
+  // Call straight from the click: the folder picker needs it.
   const savePhotosSeparately = useCallback(async () => {
     if (downloadingAll || photos.length === 0) return;
+    const folder = await openFolderTarget(`${title} – Photos`);
+    if (folder.kind === "cancelled") return;
+    if (folder.kind === "unsupported") return downloadAllPhotos();
     setDownloadingAll(true);
     setDlProgress(0);
     setDlError("");
@@ -307,10 +313,10 @@ export default function GallerySlideshow({
     sepAbort.current = ctl;
     try {
       const fresh = await freshUrls();
-      const name = title.replace(/[\\/:*?"<>|]+/g, " ").trim();
-      const res = await saveFilesSeparately(
+      const res = await saveToFolder(
+        folder,
         photos.map((p, k) => ({
-          name: `${name ? `${name} – ` : ""}${String(k + 1).padStart(3, "0")} ${p.category ?? "Photo"}.jpg`,
+          name: `${String(k + 1).padStart(3, "0")} ${p.category ?? "Photo"}.jpg`,
           url: fresh?.photos?.[k] ?? p.downloadUrl,
         })),
         {
@@ -322,15 +328,16 @@ export default function GallerySlideshow({
         }
       );
       if (res.written > 0) logDownload(res.written, "single");
-      if (!res.cancelled && res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
-      else if (!res.cancelled && res.failed) setDlError(`${res.failed} photo${res.failed === 1 ? "" : "s"} couldn't be downloaded. Refresh the page and download ${res.failed === 1 ? "it" : "them"} on ${res.failed === 1 ? "its" : "their"} own.`);
+      if (res.fallback) setDlError("That folder couldn't be written to — use Download instead.");
+      else if (!res.cancelled && res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
+      else if (!res.cancelled && res.failed) setDlError(`Saved ${res.written} photos to ${folder.path}; ${res.failed} couldn't be downloaded. Refresh the page and download ${res.failed === 1 ? "it" : "them"} on ${res.failed === 1 ? "its" : "their"} own.`);
     } finally {
       sepAbort.current = null;
       setSepLabel(null);
       setDownloadingAll(false);
       setDlProgress(0);
     }
-  }, [downloadingAll, photos, title, logDownload, freshUrls]);
+  }, [downloadingAll, photos, title, logDownload, freshUrls, downloadAllPhotos]);
 
   const hasVideo = videos.length > 0;
   const [view, setView] = useState<"slideshow" | "grid" | "video">(
@@ -496,7 +503,7 @@ export default function GallerySlideshow({
               {sepLabel ?? (downloadingAll ? `Zipping… ${dlProgress}%` : videos.length > 0 ? "⤓ Download photos" : "⤓ Download all")}
             </button>
           )}
-          {downloadsEnabled && photos.length > 1 && (sepLabel !== null ? (
+          {downloadsEnabled && canFolder && photos.length > 1 && (sepLabel !== null ? (
             <button
               onClick={() => sepAbort.current?.abort()}
               className="text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 transition-colors duration-base ease-quiet"
@@ -507,10 +514,10 @@ export default function GallerySlideshow({
             <button
               onClick={savePhotosSeparately}
               disabled={downloadingAll}
-              title="Save as separate files — every photo as its own file, no zip (for computers that block zip files). Your browser may ask once to allow multiple downloads."
+              title="Save to a folder — pick a folder and the photos are saved into it, no zip (for computers that block zip files)."
               className="hidden sm:inline-flex items-center text-xs font-medium px-3 min-h-[44px] rounded-ctl border border-hairline bg-white text-ink-600 shadow-elev-1 hover:text-ink-900 disabled:opacity-60 transition-colors duration-base ease-quiet"
             >
-              Save as separate files
+              Save to a folder
             </button>
           ))}
           {slides.length > 1 && view === "slideshow" && (
@@ -545,11 +552,11 @@ export default function GallerySlideshow({
         <div className="mx-4 sm:mx-6 mt-3 bg-warn-50 border border-warn-200 text-warn-800 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
           <span>
             {dlError}
-            {zipFailed && photos.length > 1 && (
+            {zipFailed && canFolder && photos.length > 1 && (
               <>
                 {" "}
                 <button onClick={savePhotosSeparately} className="underline underline-offset-2 font-medium text-warn-900 hover:text-ink-900">
-                  Save as separate files instead
+                  Save to a folder instead
                 </button>
               </>
             )}

@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
-import { formatBytes, openZipTarget, saveFilesSeparately, writeZip } from "@/lib/zipDownload";
+import { folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, writeZip } from "@/lib/zipDownload";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null; thumbUrl?: string | null };
@@ -45,7 +45,9 @@ export default function ClientGalleryView({
   const [progress, setProgress] = useState(0);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [dlError, setDlError] = useState("");
-  // "Save as separate files" (no zip — office PCs that block zip files).
+  // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs that block zip files).
+  const [canFolder, setCanFolder] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [sepDone, setSepDone] = useState("");
   const [zipFailed, setZipFailed] = useState(false);
@@ -233,8 +235,12 @@ export default function ClientGalleryView({
     }
   }
 
+  // Call straight from the click: the folder picker needs it.
   async function saveSeparately() {
     if (busy || expired || available.length === 0) return;
+    const folder = await openFolderTarget(`${title} – Photos`);
+    if (folder.kind === "cancelled") return;
+    if (folder.kind === "unsupported") return downloadAll();
     setBusy(true);
     setProgress(0);
     setDlError("");
@@ -244,10 +250,10 @@ export default function ClientGalleryView({
     const ctl = new AbortController();
     sepAbort.current = ctl;
     const fresh = await freshUrls();
-    const name = title.replace(/[\\/:*?"<>|]+/g, " ").trim();
-    const res = await saveFilesSeparately(
+    const res = await saveToFolder(
+      folder,
       available.map((photo, k) => ({
-        name: `${name ? `${name} – ` : ""}${String(k + 1).padStart(3, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+        name: `${String(k + 1).padStart(3, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
         url: fresh?.photos?.[photo.id] ?? photo.url,
       })),
       {
@@ -263,10 +269,11 @@ export default function ClientGalleryView({
     setSepLabel(null);
     setBusy(false);
     setProgress(0);
-    if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved.`);
+    if (res.fallback) setDlError("That folder couldn't be written to — use Download all photos instead.");
+    else if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved to ${folder.path}.`);
     else if (res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
-    else if (res.failed) setDlError(`Saved ${res.written} photos as separate files; ${res.failed} couldn't be downloaded. Refresh the page and download them on their own.`);
-    else setSepDone(`Done — ${res.written} photos saved as separate files (${formatBytes(res.bytes)}).`);
+    else if (res.failed) setDlError(`Saved ${res.written} photos to ${folder.path}; ${res.failed} couldn't be downloaded. Refresh the page and download them on their own.`);
+    else setSepDone(`Saved ${res.written} photos to ${folder.path} (${formatBytes(res.bytes)}).`);
   }
 
   async function downloadAll() {
@@ -343,7 +350,7 @@ export default function ClientGalleryView({
         </div>
         {!expired && available.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 shrink-0">
-          {available.length > 1 && (sepLabel !== null ? (
+          {canFolder && available.length > 1 && (sepLabel !== null ? (
             <button
               onClick={() => sepAbort.current?.abort()}
               className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-2 min-h-[44px]"
@@ -354,10 +361,10 @@ export default function ClientGalleryView({
             <button
               onClick={saveSeparately}
               disabled={busy}
-              title="Every photo as its own file, no zip — use this if your computer blocks zip files. Your browser may ask once to allow multiple downloads."
+              title="Pick a folder (e.g. Downloads) and the photos are saved into a new folder for this gallery — no zip. Use this if your computer blocks zip files."
               className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet disabled:opacity-40"
             >
-              Save as separate files
+              Save to a folder
             </button>
           ))}
           <button
@@ -383,11 +390,11 @@ export default function ClientGalleryView({
         <div className="mt-3 bg-warn-50 border border-warn-200 text-warn-800 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">
           <span>
             {dlError}
-            {zipFailed && available.length > 1 && (
+            {zipFailed && canFolder && available.length > 1 && (
               <>
                 {" "}
                 <button onClick={saveSeparately} className="underline underline-offset-2 font-medium text-warn-900 hover:text-ink-900">
-                  Save as separate files instead
+                  Save to a folder instead
                 </button>
               </>
             )}

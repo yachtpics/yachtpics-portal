@@ -1182,10 +1182,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               onSaveOriginals={() => save.savePhotos(photos)}
               onSaveOriginalsSelected={() => save.savePhotos(photos.filter((p) => photoActions.selectedIds.has(p.id)))}
               saveOriginalsBusy={photoBusy}
-              onSaveSeparately={() => sized.saveSeparately(photos)}
-              onSaveSeparatelySelected={() => sized.saveSeparately(photos.filter((p) => photoActions.selectedIds.has(p.id)))}
-              onCancelDownload={sized.savingSeparately ? sized.cancelDownload : null}
-              onRetrySeparately={sized.retrySeparately}
+              onSaveToFolder={sized.saveToFolder && (() => sized.saveToFolder?.(photos))}
+              onSaveToFolderSelected={sized.saveToFolder && (() => sized.saveToFolder?.(photos.filter((p) => photoActions.selectedIds.has(p.id))))}
+              onCancelDownload={sized.savingToFolder ? sized.cancelDownload : null}
+              onRetryToFolder={sized.retryToFolder}
             />
             {photos.length > 1 && !photoActions.selectMode && (
               <span className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</span>

@@ -419,90 +419,167 @@ function isTooLarge(e: unknown): boolean {
   return /too large|quota|out of memory|allocation|insecure|array buffer|exceeds/i.test(msg);
 }
 
-export type SeparateProgress = { done: number; total: number; failed: number; bytes: number };
-export type SeparateResult = { written: number; failed: number; bytes: number; cancelled: boolean };
+// ── Save to a folder (Oct 30) ─────────────────────────────────────────────
+// Chrome holds script-started downloads after the first for confirmation
+// (every "separate file" ended as .crdownload on Charlie's PC), and scans
+// zips (Kyle Blom's "file too large"). Writing straight into a folder the
+// user picks (File System Access API, Chrome / Edge on a computer) avoids
+// Chrome's download pipeline altogether. Elsewhere: the zip.
+
+type DirHandle = {
+  name: string;
+  getDirectoryHandle: (name: string, o?: { create?: boolean }) => Promise<DirHandle>;
+  getFileHandle: (name: string, o?: { create?: boolean }) => Promise<{ createWritable: () => Promise<WritableStream<Uint8Array>> }>;
+  removeEntry: (name: string) => Promise<void>;
+};
+type DirPickerWindow = Window & { showDirectoryPicker?: (o?: unknown) => Promise<DirHandle> };
+
+/** "Save to a folder" works here: Chrome / Edge on a computer (not phones, not embedded browsers). */
+export function folderSaveSupported(): boolean {
+  if (typeof window === "undefined") return false;
+  return typeof (window as DirPickerWindow).showDirectoryPicker === "function" && !isTouchDevice() && !isEmbeddedWebView();
+}
+
+/** Characters a Windows / macOS file name can't have; no trailing dots / spaces. */
+function safeFileName(n: string): string {
+  return n.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "photo";
+}
+
+export type FolderTarget =
+  | { kind: "folder"; dir: DirHandle; path: string }
+  | { kind: "cancelled" }
+  /** The picker or the subfolder failed — use the zip instead. */
+  | { kind: "unsupported" };
 
 /**
- * "Save as separate files" (Oct 30) — no zip at all, for computers that
- * refuse zip files (office policy / antivirus: Kyle Blom). Each photo is
- * fetched and saved with a plain <a download>, the way a single photo is,
- * one at a time and paced so Chrome asks "allow multiple downloads" once and
- * isn't flooded.
- *
- * Object URLs are NOT revoked while Chrome may still be reading them — it
- * queues downloads, and revoking early leaves "<name>.jpg.crdownload" files
- * (Pomboo, Oct 30). They are released after the run (≥ 300 s, longer for big
- * sets; ≥ 5 min so a pending "allow multiple downloads" prompt has time). Memory: the saved blobs stay held until then; if more than ~300 MB
- * is held (Full resolution), the oldest is released only once it has had
- * max(30 s, its size at 1 MB/s) — waiting for that before the next photo.
- * `name` is the file name (any "folder/" part is dropped). Pass an
- * AbortSignal to cancel between / during photos.
+ * Ask for a folder (call FIRST in the click handler — the picker needs the
+ * click's user activation), then make "<subfolder>" inside it, or
+ * "<subfolder> (2)" … if that name is taken.
  */
-export async function saveFilesSeparately(
+export async function openFolderTarget(subfolder: string, ctx: ZipContext = {}): Promise<FolderTarget> {
+  const w = window as DirPickerWindow;
+  if (!folderSaveSupported() || !w.showDirectoryPicker) return { kind: "unsupported" };
+  let step = "dirPicker";
+  try {
+    const parent = await w.showDirectoryPicker({ mode: "readwrite", startIn: "downloads", id: "yp-photos" });
+    step = "subfolder";
+    const base = safeFileName(subfolder);
+    let name = base;
+    for (let n = 2; n < 100; n++) {
+      try {
+        await parent.getDirectoryHandle(name, { create: false });
+        name = `${base} (${n})`; // taken
+      } catch {
+        break; // free
+      }
+    }
+    const dir = await parent.getDirectoryHandle(name, { create: true });
+    return { kind: "folder", dir, path: `${parent.name}/${dir.name}` };
+  } catch (e) {
+    if (step === "dirPicker" && e instanceof DOMException && e.name === "AbortError") return { kind: "cancelled" };
+    reportZipIssue(step, e, { ...ctx, mode: "folder→zip" });
+    return { kind: "unsupported" };
+  }
+}
+
+export type FolderProgress = { done: number; total: number; failed: number; bytes: number };
+export type FolderResult = {
+  written: number; failed: number; bytes: number; cancelled: boolean;
+  /** Writing failed before any photo was saved — use the zip instead. */
+  fallback: boolean;
+};
+
+/**
+ * Write every photo into the folder: fetched two at a time and streamed
+ * straight into its file (no whole-file Blob). Each photo is tried three
+ * times; one that still fails is skipped, counted and removed. Cancel with
+ * the AbortSignal (the file being written is removed). `name` is the file
+ * name inside the folder ("01 Salon.jpg").
+ */
+export async function saveToFolder(
+  target: Extract<FolderTarget, { kind: "folder" }>,
   entries: { name: string; url: string | null | undefined }[],
-  opts: { onProgress?: (p: SeparateProgress) => void; signal?: AbortSignal; gapMs?: number; context?: ZipContext } = {}
-): Promise<SeparateResult> {
-  const MB = 1024 * 1024;
-  const HELD_CAP = 300 * MB;
-  const p: SeparateProgress = { done: 0, total: entries.length, failed: 0, bytes: 0 };
+  opts: { onProgress?: (p: FolderProgress) => void; signal?: AbortSignal; context?: ZipContext } = {}
+): Promise<FolderResult> {
+  const { dir } = target;
+  const p: FolderProgress = { done: 0, total: entries.length, failed: 0, bytes: 0 };
   const report = () => opts.onProgress?.({ ...p });
   report();
-  const baseGap = opts.gapMs ?? 600;
-  /** Saved files whose object URL is still alive, oldest first. */
-  const held: { url: string; size: number; at: number }[] = [];
-  let heldBytes = 0;
-  const minAge = (size: number) => Math.max(30_000, (size / MB) * 1000);
-  const release = (h: { url: string; size: number }) => {
-    URL.revokeObjectURL(h.url);
-    heldBytes -= h.size;
-  };
-  const finish = (cancelled: boolean): SeparateResult => {
-    // Everything still held: release after the downloads have surely read it.
-    const rest = held.splice(0);
-    const total = rest.reduce((t, h) => t + h.size, 0);
-    if (rest.length) setTimeout(() => rest.forEach(release), Math.max(300_000, (total / MB) * 1000));
-    return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled };
-  };
+  let written = 0;
+  let fallback = false;
+  let next = 0;
+  const used = new Set<string>();
+  const names = entries.map((e) => {
+    let n = safeFileName(e.name.split("/").pop() || e.name);
+    if (used.has(n.toLowerCase())) {
+      const dot = n.lastIndexOf(".");
+      const [stem, ext] = dot > 0 ? [n.slice(0, dot), n.slice(dot)] : [n, ""];
+      let k = 2;
+      while (used.has(`${stem} (${k})${ext}`.toLowerCase())) k++;
+      n = `${stem} (${k})${ext}`;
+    }
+    used.add(n.toLowerCase());
+    return n;
+  });
 
-  for (let i = 0; i < entries.length; i++) {
-    if (opts.signal?.aborted) return finish(true);
-    // Keep the held blobs under the cap: release the oldest once it's old
-    // enough for its download to have finished reading it.
-    while (heldBytes > HELD_CAP && held.length) {
-      const wait = held[0].at + minAge(held[0].size) - Date.now();
-      if (wait > 0) await sleep(Math.min(wait, 1000));
-      else release(held.shift()!);
-      if (opts.signal?.aborted) return finish(true);
-    }
+  async function writeOne(i: number): Promise<void> {
     const e = entries[i];
-    let size = 0;
-    try {
-      if (!e.url) throw new Error("no link");
-      const res = await fetchWithRetry(e.url, opts.signal ? { signal: opts.signal } : undefined);
-      const blob = await res.blob();
-      size = blob.size;
-      const file = e.name.split("/").pop() || e.name;
-      const url = URL.createObjectURL(blob);
-      held.push({ url, size, at: Date.now() });
-      heldBytes += size;
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = file;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      p.bytes += size;
-    } catch (err) {
-      if (opts.signal?.aborted) return finish(true);
-      p.failed++;
-      reportZipIssue("separate", err, { ...opts.context, mode: "separate", bytes: p.bytes, done: p.done, total: p.total });
+    const name = names[i];
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (opts.signal?.aborted || fallback) return;
+      if (attempt > 0) await sleep(800 * attempt);
+      let counted = 0;
+      let writeStep = false;
+      try {
+        if (!e.url) throw new Error("no link");
+        const res = await fetchWithRetry(e.url, opts.signal ? { signal: opts.signal } : undefined);
+        if (!res.body) throw new Error("empty response");
+        writeStep = true;
+        const fh = await dir.getFileHandle(name, { create: true });
+        const writable = await fh.createWritable();
+        await res.body
+          .pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, ctl) {
+              counted += chunk.byteLength;
+              p.bytes += chunk.byteLength;
+              ctl.enqueue(chunk);
+            },
+          }))
+          .pipeTo(writable, opts.signal ? { signal: opts.signal } : undefined);
+        written++;
+        p.done++;
+        report();
+        return;
+      } catch (err) {
+        p.bytes -= counted;
+        lastErr = err;
+        if (writeStep) await dir.removeEntry(name).catch(() => {});
+        if (opts.signal?.aborted) return;
+        // The folder itself can't be written (blocked / no permission):
+        // nothing saved yet → stop and let the caller use the zip.
+        if (writeStep && written === 0 && !(err instanceof TypeError)) {
+          if (fallback) return; // the other worker already reported it
+          fallback = true;
+          reportZipIssue("folder-write", err, { ...opts.context, mode: "folder→zip", bytes: p.bytes, done: p.done, total: p.total });
+          return;
+        }
+      }
     }
+    p.failed++;
     p.done++;
     report();
-    // Pace the clicks: 600 ms, plus 100 ms per MB over 5 MB.
-    if (i + 1 < entries.length) await sleep(baseGap + Math.max(0, (size - 5 * MB) / MB) * 100);
+    reportZipIssue("folder", lastErr, { ...opts.context, mode: "folder", bytes: p.bytes, done: p.done, total: p.total });
   }
-  return finish(false);
+
+  const worker = async () => {
+    while (!opts.signal?.aborted && !fallback && next < entries.length) {
+      const i = next++;
+      await writeOne(i);
+    }
+  };
+  await Promise.all([worker(), worker()]);
+  return { written, failed: p.failed, bytes: p.bytes, cancelled: !!opts.signal?.aborted, fallback };
 }
 
 /** "1.2 GB" / "340 MB" for progress text. */

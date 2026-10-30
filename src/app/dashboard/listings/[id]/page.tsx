@@ -836,10 +836,10 @@ export default function BrokerListingPage() {
             onDownloadAll={() => requireDownloadLicense(() => downloads.downloadPhotos(visiblePhotos))}
             onDownloadSelected={() => requireDownloadLicense(() => downloads.downloadPhotos(selectedPhotos))}
             sizeSelect={<DownloadSizeSelect value={downloads.downloadSize} onChange={downloads.setDownloadSize} disabled={downloads.downloading} />}
-            onSaveSeparately={() => requireDownloadLicense(() => downloads.saveSeparately(visiblePhotos))}
-            onSaveSeparatelySelected={() => requireDownloadLicense(() => downloads.saveSeparately(selectedPhotos))}
-            onCancelDownload={downloads.savingSeparately ? downloads.cancelDownload : null}
-            onRetrySeparately={downloads.retrySeparately}
+            onSaveToFolder={downloads.saveToFolder && (() => requireDownloadLicense(() => downloads.saveToFolder?.(visiblePhotos)))}
+            onSaveToFolderSelected={downloads.saveToFolder && (() => requireDownloadLicense(() => downloads.saveToFolder?.(selectedPhotos)))}
+            onCancelDownload={downloads.savingToFolder ? downloads.cancelDownload : null}
+            onRetryToFolder={downloads.retryToFolder}
           />
 
           {hasAccess(accessStatus) ? (
