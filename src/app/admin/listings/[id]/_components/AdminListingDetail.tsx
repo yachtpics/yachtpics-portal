@@ -21,8 +21,8 @@ import { arrayMove } from "@dnd-kit/sortable";
 // lightbox, saving originals) is shared with the broker listing page.
 import {
   ADMIN_PHOTO_CAPABILITIES, type PhotoMessage,
-  useListingPhotos, usePhotoActions, useOriginalSave,
-  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, SavePanel,
+  useListingPhotos, usePhotoActions, useOriginalSave, useSizedDownloads,
+  PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, SavePanel, DownloadSizeSelect,
   PhotoFileInputs, UploadProgress, UploadFailedNotice,
 } from "@/components/listing-photos";
 
@@ -199,6 +199,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     onMessage: onPhotoMessage,
     onFinished: photoActions.clearSelection,
   });
+  // Sized downloads (Full / Web & MLS / Social) through the same streaming
+  // zip as the broker page. Not logged: photo_downloads has no role column,
+  // so an admin download would show as the broker's in Download Activity.
+  const sized = useSizedDownloads({
+    listingId: listing.id,
+    vesselName: listing.vessel_name,
+    onMessage: onPhotoMessage,
+    onFinished: photoActions.clearSelection,
+    logDownloads: false,
+    sizeStorageKey: "yp_admin_download_size",
+  });
+  const photoBusy = sized.downloading || save.saveLocked;
   // Held until confirmed — deleting media is permanent, so nothing irreversible
   // happens on a single click.
   const [pendingVideoDelete, setPendingVideoDelete] = useState<{ id: string; storagePath: string; name: string } | null>(null);
@@ -1162,9 +1174,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               actions={photoActions}
               photoCount={photos.length}
               customCategories={photoState.customCategories}
-              downloadBusy={save.saveLocked}
-              onDownloadAll={() => save.savePhotos(photos)}
-              onDownloadSelected={() => save.savePhotos(photos.filter((p) => photoActions.selectedIds.has(p.id)))}
+              downloadBusy={photoBusy}
+              busyLabel={sized.downloading ? (sized.downloadLabel ?? `Downloading... ${sized.downloadProgress}%`) : null}
+              onDownloadAll={() => sized.downloadPhotos(photos)}
+              onDownloadSelected={() => sized.downloadPhotos(photos.filter((p) => photoActions.selectedIds.has(p.id)))}
+              sizeSelect={<DownloadSizeSelect value={sized.downloadSize} onChange={sized.setDownloadSize} disabled={photoBusy} />}
+              onSaveOriginals={() => save.savePhotos(photos)}
+              onSaveOriginalsSelected={() => save.savePhotos(photos.filter((p) => photoActions.selectedIds.has(p.id)))}
+              saveOriginalsBusy={photoBusy}
             />
             {photos.length > 1 && !photoActions.selectMode && (
               <span className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</span>
@@ -1255,11 +1272,12 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             heroPhotoId={heroPhotoId}
             customCategories={photoState.customCategories}
             replacing={photoActions.replacing}
-            downloadBusy={save.saveLocked}
+            downloadBusy={photoBusy}
+            downloadTitle={sized.downloadTitle}
             onOpen={setLightboxIndex}
             onToggleSelect={photoActions.toggleSelect}
             onSetHero={photoActions.setHero}
-            onDownload={(photo) => save.savePhotos([photo])}
+            onDownload={(photo) => sized.downloadPhotos([photo])}
             onToggleVisibility={(photo) => photoActions.toggleVisibility(photo.id, photo.is_visible)}
             onUpdateCategory={(photoId, cat) => { photoActions.updateCategory(photoId, cat); }}
             onDelete={(photo) => photoActions.deletePhoto(photo.id, photo.storage_path)}

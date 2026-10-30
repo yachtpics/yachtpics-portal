@@ -13,7 +13,7 @@ import type { PhotoActions } from "./usePhotoActions";
  */
 export function PhotoToolbar({
   variant, actions, photoCount, customCategories, downloadAllCount, downloadBusy, busyLabel,
-  onDownloadAll, onDownloadSelected, sizeSelect,
+  onDownloadAll, onDownloadSelected, sizeSelect, onSaveOriginals, onSaveOriginalsSelected, saveOriginalsBusy,
 }: {
   variant: PhotoVariant;
   actions: PhotoActions;
@@ -26,8 +26,13 @@ export function PhotoToolbar({
   busyLabel?: string | null;
   onDownloadAll: () => void;
   onDownloadSelected: () => void;
-  /** broker: the download size menu, shown beside each download button. */
+  /** The download size menu, shown beside each download button. */
   sizeSelect?: ReactNode;
+  /** admin: "Save originals" (full-size originals to the drive / share sheet),
+   *  a separate button beside the sized downloads. */
+  onSaveOriginals?: () => void;
+  onSaveOriginalsSelected?: () => void;
+  saveOriginalsBusy?: boolean;
 }) {
   const a = actions;
   const n = a.selectedIds.size;
@@ -134,21 +139,31 @@ export function PhotoToolbar({
         <>
           <button
             onClick={() => a.setSelectMode(true)}
-            className="text-sm text-ink-500 hover:text-ink-700 border border-hairline-strong px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
+            className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
           >
             Select
           </button>
+          {sizeSelect}
           <button
             onClick={onDownloadAll}
             disabled={downloadBusy}
-            title="Full-size originals. On a phone they open in the share sheet (10 at a time) — Save image, Instagram, Facebook."
-            className="text-sm text-ink-700 hover:text-ink-900 border border-hairline-strong hover:border-accent-500 disabled:opacity-50 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
+            className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
           >
-            Download all
+            {downloadBusy && busyLabel ? busyLabel : `Download All (${downloadAllCount ?? photoCount})`}
           </button>
+          {onSaveOriginals && (
+            <button
+              onClick={onSaveOriginals}
+              disabled={saveOriginalsBusy}
+              title="Full-size originals for your own copy (not logged). On a phone they open in the share sheet (10 at a time) — Save image, Instagram, Facebook."
+              className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50"
+            >
+              Save originals
+            </button>
+          )}
           <button
             onClick={() => a.setConfirmDeleteAll(true)}
-            className="text-sm text-danger-600 hover:text-danger-700 border border-hairline-strong hover:border-danger-300 px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet"
+            className="bg-white border border-hairline-strong hover:border-danger-300 text-danger-600 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors"
           >
             Delete All
           </button>
@@ -189,13 +204,24 @@ export function PhotoToolbar({
                   </button>
                 )}
               </div>
+              {sizeSelect}
               <button
                 onClick={onDownloadSelected}
                 disabled={downloadBusy}
-                className="bg-ink-950 hover:bg-ink-800 disabled:opacity-50 text-white text-sm font-semibold px-4 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet whitespace-nowrap"
+                className="bg-accent-500 hover:bg-accent-400 disabled:opacity-50 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors whitespace-nowrap"
               >
-                {`Download ${n}`}
+                {downloadBusy && busyLabel ? busyLabel : `Download ${n}`}
               </button>
+              {onSaveOriginalsSelected && (
+                <button
+                  onClick={onSaveOriginalsSelected}
+                  disabled={saveOriginalsBusy}
+                  title="Full-size originals of the selected photos for your own copy (not logged)."
+                  className="bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2.5 rounded-lg transition-colors disabled:opacity-50 whitespace-nowrap"
+                >
+                  Save originals
+                </button>
+              )}
               <button
                 onClick={() => a.setConfirmDeleteSelected(true)}
                 disabled={a.deleting}

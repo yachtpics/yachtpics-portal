@@ -15,8 +15,10 @@ import { formatBytes, openZipTarget, writeZip, type ZipEntry, type ZipTarget } f
 //  • useSizedDownloads — broker page. Size menu (Full / Web & MLS / Social),
 //    links signed by /api/listings/[id]/photos/download-urls at download
 //    time, zip for several, every download logged for the broker.
-//  • useOriginalSave — admin page. Full-size originals for Charlie's own copy
-//    (no licence, no download log); on a phone they go to the share sheet.
+//    The admin page uses it too (logDownloads: false, own remembered size).
+//  • useOriginalSave — admin page "Save originals". Full-size originals for
+//    Charlie's own copy (no licence, no download log); on a phone they go to
+//    the share sheet.
 
 /** Download sizes offered to brokers. Resized ones are Supabase transforms
  *  signed by /api/listings/[id]/photos/download-urls (long edge capped). */
@@ -55,8 +57,14 @@ export function useSizedDownloads(opts: {
   onMessage: OnPhotoMessage;
   /** After a successful download (the page leaves select mode). */
   onFinished: () => void;
+  /** Record each download in photo_downloads (the listing's Download
+   *  Activity). Default true; the admin page passes false — the table has no
+   *  role column, so an admin's download would read as a broker's. */
+  logDownloads?: boolean;
+  /** localStorage key for the remembered size (admin keeps its own). */
+  sizeStorageKey?: string;
 }) {
-  const { listingId, vesselName, onMessage, onFinished } = opts;
+  const { listingId, vesselName, onMessage, onFinished, logDownloads = true, sizeStorageKey = "yp_download_size" } = opts;
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   /** What the zip is doing, e.g. "12 of 194 photos · 480 MB" (null when idle). */
@@ -65,14 +73,23 @@ export function useSizedDownloads(opts: {
   const [downloadSize, setDownloadSizeState] = useState<DownloadSize>("web"); // Web & MLS by default (Oct 29): fast, and what most downloads are for
   function setDownloadSize(v: DownloadSize) {
     setDownloadSizeState(v);
-    try { localStorage.setItem("yp_download_size", v); } catch { /* private mode */ }
+    try { localStorage.setItem(sizeStorageKey, v); } catch { /* private mode */ }
   }
   useEffect(() => {
     try {
-      const v = localStorage.getItem("yp_download_size");
+      const v = localStorage.getItem(sizeStorageKey);
       if (v === "full" || v === "web" || v === "social") setDownloadSizeState(v);
     } catch { /* private mode */ }
-  }, []);
+  }, [sizeStorageKey]);
+
+  function logDownload(photoCount: number) {
+    if (!logDownloads) return;
+    fetch(`/api/listings/${listingId}/log-download`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ photoCount }),
+    }).catch(() => {});
+  }
 
   /** Tooltip for the per-photo download button — names the chosen size. */
   const downloadTitle = downloadSize === "full"
@@ -161,11 +178,7 @@ export function useSizedDownloads(opts: {
         const filename = `${vessel ? `${vessel} – ` : ""}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${ext}`;
         triggerDownload(blob, filename);
         // Log download silently (fire-and-forget)
-        fetch(`/api/listings/${listingId}/log-download`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photoCount: 1 }),
-        }).catch(() => {});
+        logDownload(1);
         onFinished();
       } catch {
         onMessage({ kind: "error", text: "That photo couldn't be downloaded. Please try again in a moment.", ms: 6000 });
@@ -202,11 +215,7 @@ export function useSizedDownloads(opts: {
       onMessage({ kind: "error", text: result.error, ms: 10000 });
       return;
     }
-    fetch(`/api/listings/${listingId}/log-download`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ photoCount: result.written }),
-    }).catch(() => {});
+    logDownload(result.written);
     onFinished();
     if (result.failed > 0) {
       onMessage({
