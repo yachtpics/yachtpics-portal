@@ -426,9 +426,15 @@ export type SeparateResult = { written: number; failed: number; bytes: number; c
  * "Save as separate files" (Oct 30) — no zip at all, for computers that
  * refuse zip files (office policy / antivirus: Kyle Blom). Each photo is
  * fetched and saved with a plain <a download>, the way a single photo is,
- * ONE AT A TIME with a short gap so Chrome asks "allow multiple downloads"
- * once and nothing is dropped. Only the photo being saved is held in memory
- * (its object URL is released a few seconds after the save starts).
+ * one at a time and paced so Chrome asks "allow multiple downloads" once and
+ * isn't flooded.
+ *
+ * Object URLs are NOT revoked while Chrome may still be reading them — it
+ * queues downloads, and revoking early leaves "<name>.jpg.crdownload" files
+ * (Pomboo, Oct 30). They are released after the run (≥ 300 s, longer for big
+ * sets; ≥ 5 min so a pending "allow multiple downloads" prompt has time). Memory: the saved blobs stay held until then; if more than ~300 MB
+ * is held (Full resolution), the oldest is released only once it has had
+ * max(30 s, its size at 1 MB/s) — waiting for that before the next photo.
  * `name` is the file name (any "folder/" part is dropped). Pass an
  * AbortSignal to cancel between / during photos.
  */
@@ -436,37 +442,67 @@ export async function saveFilesSeparately(
   entries: { name: string; url: string | null | undefined }[],
   opts: { onProgress?: (p: SeparateProgress) => void; signal?: AbortSignal; gapMs?: number; context?: ZipContext } = {}
 ): Promise<SeparateResult> {
+  const MB = 1024 * 1024;
+  const HELD_CAP = 300 * MB;
   const p: SeparateProgress = { done: 0, total: entries.length, failed: 0, bytes: 0 };
   const report = () => opts.onProgress?.({ ...p });
   report();
-  const gap = opts.gapMs ?? 400;
+  const baseGap = opts.gapMs ?? 600;
+  /** Saved files whose object URL is still alive, oldest first. */
+  const held: { url: string; size: number; at: number }[] = [];
+  let heldBytes = 0;
+  const minAge = (size: number) => Math.max(30_000, (size / MB) * 1000);
+  const release = (h: { url: string; size: number }) => {
+    URL.revokeObjectURL(h.url);
+    heldBytes -= h.size;
+  };
+  const finish = (cancelled: boolean): SeparateResult => {
+    // Everything still held: release after the downloads have surely read it.
+    const rest = held.splice(0);
+    const total = rest.reduce((t, h) => t + h.size, 0);
+    if (rest.length) setTimeout(() => rest.forEach(release), Math.max(300_000, (total / MB) * 1000));
+    return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled };
+  };
+
   for (let i = 0; i < entries.length; i++) {
-    if (opts.signal?.aborted) return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled: true };
+    if (opts.signal?.aborted) return finish(true);
+    // Keep the held blobs under the cap: release the oldest once it's old
+    // enough for its download to have finished reading it.
+    while (heldBytes > HELD_CAP && held.length) {
+      const wait = held[0].at + minAge(held[0].size) - Date.now();
+      if (wait > 0) await sleep(Math.min(wait, 1000));
+      else release(held.shift()!);
+      if (opts.signal?.aborted) return finish(true);
+    }
     const e = entries[i];
+    let size = 0;
     try {
       if (!e.url) throw new Error("no link");
       const res = await fetchWithRetry(e.url, opts.signal ? { signal: opts.signal } : undefined);
       const blob = await res.blob();
+      size = blob.size;
       const file = e.name.split("/").pop() || e.name;
       const url = URL.createObjectURL(blob);
+      held.push({ url, size, at: Date.now() });
+      heldBytes += size;
       const a = document.createElement("a");
       a.href = url;
       a.download = file;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
-      p.bytes += blob.size;
+      p.bytes += size;
     } catch (err) {
-      if (opts.signal?.aborted) return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled: true };
+      if (opts.signal?.aborted) return finish(true);
       p.failed++;
       reportZipIssue("separate", err, { ...opts.context, mode: "separate", bytes: p.bytes, done: p.done, total: p.total });
     }
     p.done++;
     report();
-    if (i + 1 < entries.length) await sleep(gap);
+    // Pace the clicks: 600 ms, plus 100 ms per MB over 5 MB.
+    if (i + 1 < entries.length) await sleep(baseGap + Math.max(0, (size - 5 * MB) / MB) * 100);
   }
-  return { written: p.done - p.failed, failed: p.failed, bytes: p.bytes, cancelled: false };
+  return finish(false);
 }
 
 /** "1.2 GB" / "340 MB" for progress text. */
