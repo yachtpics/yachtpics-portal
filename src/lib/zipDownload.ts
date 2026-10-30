@@ -12,7 +12,7 @@
  *  - Chrome / Edge desktop (showSaveFilePicker): the zip is written straight
  *    into the file the user picks, photo by photo, as each one downloads —
  *    memory stays flat whatever the size. Zip64, store mode (photos are
- *    already compressed), via client-zip.
+ *    already compressed), written by writeStoredZip below.
  *  - Elsewhere (Safari, iPhone, Firefox): the photos are split into parts of
  *    at most 400 MB (150 MB on phones / tablets), each zip streamed from
  *    photos fetched one at a time and saved as "<name> (part 1 of N).zip";
@@ -28,7 +28,164 @@
  * writeZip().
  */
 
-import { makeZip } from "client-zip";
+// ── The zip writer (Oct 30) ───────────────────────────────────────────────
+// client-zip streams each photo with unknown CRC / size: every local header
+// carried zeros, a data descriptor (flag bit 3) and "version 4.5" (ZIP64).
+// Windows' built-in zip folder then misreads the files — Kyle Blom opened
+// the zip in Explorer without extracting and dragged photos into an
+// uploader: "file too large" (the old JSZip zips worked). So zips are now
+// written here, store mode, one photo at a time held in memory: CRC and
+// sizes go in the local header, no data descriptor, version 2.0 — the
+// classic layout every unzipper reads. ZIP64 only where the spec needs it
+// (an entry starting past 4 GB, or > 65 535 entries / a 4 GB+ archive);
+// Explorer can't open those anyway and "Save to a folder" covers them.
+
+/** One file for writeStoredZip: the whole photo in memory, CRC computed here. */
+export type StoredFile = { name: string; data: Uint8Array; lastModified?: Date };
+
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+
+function crc32(buf: Uint8Array): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+/** MS-DOS date / time (local), as zip headers store them. */
+function dosDateTime(d: Date): { time: number; date: number } {
+  const y = Math.max(1980, Math.min(2107, d.getFullYear()));
+  return {
+    time: (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1),
+    date: ((y - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate(),
+  };
+}
+
+const MAX32 = 0xffffffff;
+
+/**
+ * A zip (store mode) of these files, as a stream. Each file's local header
+ * carries its CRC-32 and sizes; no data descriptors. Non-ASCII names are
+ * flagged UTF-8 (bit 11) so Windows shows them right.
+ */
+export function writeStoredZip(files: AsyncIterable<StoredFile>): ReadableStream<Uint8Array> {
+  const enc = new TextEncoder();
+  async function* gen(): AsyncGenerator<Uint8Array> {
+    const central: Uint8Array[] = [];
+    let offset = 0; // where the next local header starts
+    let count = 0;
+    for await (const f of files) {
+      const name = enc.encode(f.name);
+      const flags = /[\u0080-\uffff]/.test(f.name) ? 0x0800 : 0;
+      const size = f.data.byteLength;
+      if (size >= MAX32) throw new RangeError("A single file over 4 GB can't go in this zip.");
+      const crc = crc32(f.data);
+      const { time, date } = dosDateTime(f.lastModified ?? new Date());
+      const far = offset >= MAX32; // this entry starts past 4 GB → ZIP64 offset
+      const version = far ? 45 : 20;
+
+      const lh = new DataView(new ArrayBuffer(30));
+      lh.setUint32(0, 0x04034b50, true);
+      lh.setUint16(4, version, true);
+      lh.setUint16(6, flags, true);
+      lh.setUint16(8, 0, true); // stored
+      lh.setUint16(10, time, true);
+      lh.setUint16(12, date, true);
+      lh.setUint32(14, crc, true);
+      lh.setUint32(18, size, true);
+      lh.setUint32(22, size, true);
+      lh.setUint16(26, name.length, true);
+      lh.setUint16(28, 0, true);
+      yield new Uint8Array(lh.buffer);
+      yield name;
+      yield f.data;
+
+      const cd = new DataView(new ArrayBuffer(46));
+      cd.setUint32(0, 0x02014b50, true);
+      cd.setUint16(4, version, true); // made by: MS-DOS / FAT, spec version
+      cd.setUint16(6, version, true);
+      cd.setUint16(8, flags, true);
+      cd.setUint16(10, 0, true);
+      cd.setUint16(12, time, true);
+      cd.setUint16(14, date, true);
+      cd.setUint32(16, crc, true);
+      cd.setUint32(20, size, true);
+      cd.setUint32(24, size, true);
+      cd.setUint16(28, name.length, true);
+      cd.setUint16(30, far ? 12 : 0, true);
+      cd.setUint32(38, 0x20, true); // FAT "archive" attribute
+      cd.setUint32(42, far ? MAX32 : offset, true);
+      central.push(new Uint8Array(cd.buffer), name);
+      if (far) {
+        const x = new DataView(new ArrayBuffer(12));
+        x.setUint16(0, 0x0001, true);
+        x.setUint16(2, 8, true);
+        x.setBigUint64(4, BigInt(offset), true);
+        central.push(new Uint8Array(x.buffer));
+      }
+      offset += 30 + name.length + size;
+      count++;
+    }
+
+    let cdSize = 0;
+    for (const c of central) {
+      yield c;
+      cdSize += c.byteLength;
+    }
+    const cdStart = offset;
+    if (count >= 0xffff || cdStart >= MAX32 || cdSize >= MAX32) {
+      const z = new DataView(new ArrayBuffer(56 + 20));
+      z.setUint32(0, 0x06064b50, true);
+      z.setBigUint64(4, BigInt(44), true);
+      z.setUint16(12, 45, true);
+      z.setUint16(14, 45, true);
+      z.setBigUint64(24, BigInt(count), true);
+      z.setBigUint64(32, BigInt(count), true);
+      z.setBigUint64(40, BigInt(cdSize), true);
+      z.setBigUint64(48, BigInt(cdStart), true);
+      z.setUint32(56, 0x07064b50, true);
+      z.setBigUint64(64, BigInt(cdStart + cdSize), true);
+      z.setUint32(72, 1, true);
+      yield new Uint8Array(z.buffer);
+    }
+    const e = new DataView(new ArrayBuffer(22));
+    e.setUint32(0, 0x06054b50, true);
+    e.setUint16(8, Math.min(count, 0xffff), true);
+    e.setUint16(10, Math.min(count, 0xffff), true);
+    e.setUint32(12, Math.min(cdSize, MAX32), true);
+    e.setUint32(16, Math.min(cdStart, MAX32), true);
+    yield new Uint8Array(e.buffer);
+  }
+  const it = gen();
+  return new ReadableStream<Uint8Array>({
+    async pull(ctl) {
+      const { value, done } = await it.next();
+      if (done) ctl.close();
+      else ctl.enqueue(value);
+    },
+    async cancel(reason) {
+      await it.throw?.(reason).catch(() => {});
+    },
+  });
+}
+
+/** A whole photo as bytes (fetch → ArrayBuffer), or null if it can't be had. */
+async function fetchBytes(url: string | null | undefined): Promise<Uint8Array | null> {
+  if (!url) return null;
+  try {
+    const res = await fetchWithRetry(url);
+    return new Uint8Array(await res.arrayBuffer());
+  } catch {
+    return null;
+  }
+}
 
 export type ZipEntry = {
   /** Path inside the zip, e.g. "Sea Dream/01 Salon.jpg". */
@@ -185,46 +342,29 @@ export async function writeZip(
     const sp = progress;
     const reportStream = () => { if (progress === sp) report(); };
     let abandoned = false;
-    // One photo downloading ahead while the previous one is written.
-    const start = (e: ZipEntry): Promise<Response | null> =>
-      e.url ? fetchWithRetry(e.url).catch(() => null) : Promise.resolve(null);
-
-    const files = async function* () {
-      let next: Promise<Response | null> | null = entries.length ? start(entries[0]) : null;
+    // One photo downloading ahead while the previous one is written; each
+    // is held whole (CRC + size go in its header) — two in memory at most.
+    const files = async function* (): AsyncGenerator<StoredFile> {
+      let next: Promise<Uint8Array | null> | null = entries.length ? fetchBytes(entries[0].url) : null;
       for (let i = 0; i < entries.length; i++) {
-        const res = await next;
-        if (abandoned) { res?.body?.cancel().catch(() => {}); return; }
-        next = i + 1 < entries.length ? start(entries[i + 1]) : null;
-        if (!res || !res.body) {
+        const data = await next;
+        if (abandoned) return;
+        next = i + 1 < entries.length ? fetchBytes(entries[i + 1].url) : null;
+        if (!data) {
           sp.failed++;
           sp.done++;
           reportStream();
           continue;
         }
-        const counted = res.body.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({
-            transform(chunk, ctl) {
-              sp.bytes += chunk.byteLength;
-              ctl.enqueue(chunk);
-            },
-            flush() {
-              sp.done++;
-              reportStream();
-            },
-          })
-        );
-        const len = Number(res.headers.get("content-length"));
-        yield {
-          name: entries[i].name,
-          input: counted,
-          lastModified: new Date(),
-          ...(Number.isFinite(len) && len > 0 ? { size: len } : {}),
-        };
+        yield { name: entries[i].name, data, lastModified: new Date() };
+        sp.bytes += data.byteLength;
+        sp.done++;
+        reportStream();
       }
     };
 
     try {
-      await makeZip(files()).pipeTo(target.writable);
+      await writeStoredZip(files()).pipeTo(target.writable);
       const written = total - sp.failed;
       if (written === 0) {
         reportZipIssue("stream-empty", new Error("no photos fetched"), { ...opts.context, mode: "stream", bytes: sp.bytes, done: sp.done, total });
@@ -308,46 +448,25 @@ export async function writeZip(
     report();
 
     // Photos fetched lazily, one at a time, as the zip asks for them.
-    const files = async function* () {
+    const files = async function* (): AsyncGenerator<StoredFile> {
       for (const e of group) {
-        let res: Response | null = null;
-        try {
-          if (!e.url) throw new Error("no link");
-          res = await fetchWithRetry(e.url);
-        } catch {
-          res = null;
-        }
-        if (!res || !res.body) {
+        const data = await fetchBytes(e.url);
+        if (!data) {
           progress.failed++;
           progress.done++;
           report();
           continue;
         }
-        const counted = res.body.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({
-            transform(chunk, ctl) {
-              progress.bytes += chunk.byteLength;
-              ctl.enqueue(chunk);
-            },
-            flush() {
-              progress.done++;
-              groupWritten++;
-              report();
-            },
-          })
-        );
-        const len = Number(res.headers.get("content-length"));
-        yield {
-          name: e.name,
-          input: counted,
-          lastModified: new Date(),
-          ...(Number.isFinite(len) && len > 0 ? { size: len } : {}),
-        };
+        yield { name: e.name, data, lastModified: new Date() };
+        progress.bytes += data.byteLength;
+        progress.done++;
+        groupWritten++;
+        report();
       }
     };
 
     try {
-      const zip = await new Response(makeZip(files())).blob();
+      const zip = await new Response(writeStoredZip(files())).blob();
       if (groupWritten > 0) {
         partNo++;
         const totalParts = partNo + queue.length;

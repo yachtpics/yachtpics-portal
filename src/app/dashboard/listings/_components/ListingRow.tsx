@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type FolderTarget } from "@/lib/zipDownload";
 
-// Zips stream through src/lib/zipDownload.ts (client-zip, a few KB — unlike
+// Zips stream through src/lib/zipDownload.ts (its own small store-mode writer — unlike
 // JSZip, which used to be loaded on demand here and held the whole zip in memory).
 
 type Listing = {
