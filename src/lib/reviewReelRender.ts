@@ -75,7 +75,7 @@ export type ReviewRenderOptions = {
   fonts: { serif: string; sans: string };
   music: { mood: MusicMood; seed: number } | null;
   /** Whose number goes on the end card. */
-  phone?: YpPhone;
+  phone?: YpPhone | "both";
   onProgress?: (p: { phase: "preparing" | "rendering" | "finishing"; pct: number }) => void;
   cancelled?: () => boolean;
 };
@@ -190,7 +190,14 @@ export async function renderReviewReel(o: ReviewRenderOptions): Promise<ReviewRe
     W, H, sc, alpha: 1, st,
     serifFamily: o.fonts.serif, sans: o.fonts.sans,
     name: "", builder: "", logo, yp: true, broker: null,
-    card: { ...YACHTPICS_CARD, phone: YACHTPICS_PHONES[o.phone ?? "charlie"].phone },
+    // A review is both photographers' work: the card carries both names and
+    // numbers unless one of them is picked.
+    card: {
+      ...YACHTPICS_CARD,
+      phone: o.phone && o.phone !== "both"
+        ? YACHTPICS_PHONES[o.phone].phone
+        : `${YACHTPICS_PHONES.charlie.label} ${YACHTPICS_PHONES.charlie.phone}   ·   ${YACHTPICS_PHONES.samantha.label} ${YACHTPICS_PHONES.samantha.phone}`,
+    },
   });
   if (logo) { try { logo.close(); } catch { /* closed */ } logo = null; }
 

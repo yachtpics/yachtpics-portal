@@ -63,7 +63,7 @@ export default function ReviewReelBuilder() {
   const [framing, setFraming] = useState<ReviewFraming>("fill");
   const [music, setMusic] = useState<MusicChoice>("off");
   const [seed, setSeed] = useState(() => seedFromString(initial.from + initial.to));
-  const [phone, setPhone] = useState<YpPhone>("charlie");
+  const [phone, setPhone] = useState<YpPhone | "both">("both");
   const [line1, setLine1] = useState("");
   const [line1Edited, setLine1Edited] = useState(false);
   const [line2, setLine2] = useState("");
@@ -611,13 +611,16 @@ export default function ReviewReelBuilder() {
               <div className="text-xs text-ink-600 flex flex-col gap-1.5 sm:col-span-2">
                 <span className="label-caps text-ink-500">End card</span>
                 <div className="flex flex-wrap gap-2 items-center">
+                  <button type="button" disabled={busy} onClick={() => { setPhone("both"); stale(); }} className={chip(phone === "both")}>
+                    Charlie &amp; Samantha &middot; both numbers
+                  </button>
                   {(Object.keys(YACHTPICS_PHONES) as YpPhone[]).map((k) => (
                     <button key={k} type="button" disabled={busy} onClick={() => { setPhone(k); stale(); }} className={chip(phone === k)}>
                       {YACHTPICS_PHONES[k].label} · {YACHTPICS_PHONES[k].phone}
                     </button>
                   ))}
                 </div>
-                <span className="text-ink-400">The YachtPics end card every branded reel closes on: logo, &ldquo;Powered by the YachtPics Portal&rdquo;, this number and yachtpics.com.</span>
+                <span className="text-ink-400">The YachtPics end card every branded reel closes on: logo, &ldquo;Powered by the YachtPics Portal&rdquo;, both names and numbers (or one of them) and yachtpics.com.</span>
               </div>
             </div>
             <div className="flex flex-col items-center gap-1.5">
