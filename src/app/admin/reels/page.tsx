@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { REEL_PROMO_START, REEL_PROMO_END, reelPromoCountdown, REEL_ANNOUNCEMENT_TYPE as ANNOUNCEMENT_TYPE } from "@/lib/reelPromo";
@@ -270,7 +271,12 @@ export default async function ReelsPage() {
   return (
     <div className="px-6 py-8 max-w-6xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-display text-ink-900">Reels</h1>
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <h1 className="text-display text-ink-900">Reels</h1>
+          <Link href="/admin/reels/review" className="text-xs font-semibold px-3 py-2 rounded-ctl border border-hairline-strong text-ink-700 hover:border-ink-400">
+            In Review reel &rarr;
+          </Link>
+        </div>
         <p className="text-ink-500 mt-1 text-sm">
           {announcedAt
             ? <>Everything made since the announcement went out on {fmtDay(announcedAt)}.</>

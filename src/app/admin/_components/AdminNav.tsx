@@ -29,6 +29,7 @@ import {
   Anchor,
   ListChecks,
   HardDrive,
+  CalendarRange,
   type LucideIcon,
 } from "lucide-react";
 
@@ -61,6 +62,7 @@ const navItems: NavItem[] = [
   { label: "Storage", href: "/admin/storage", icon: HardDrive },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
   { label: "Reel Studio", href: "/admin/reel-studio", icon: Wand2, short: "Studio" },
+  { label: "In Review", href: "/admin/reels/review", icon: CalendarRange, short: "Review" },
   { label: "Showroom Loop", href: "/admin/showroom", icon: MonitorPlay, short: "Showroom" },
   { label: "Reel Service", href: "/admin/reel-service", icon: Repeat, short: "Service" },
   { label: "Social Accounts", href: "/dashboard/profile#social-accounts", icon: Share2, short: "Social" },
@@ -91,6 +93,7 @@ const NAV_PRIORITY = [
   "/admin/metrics",
   "/admin/reels",
   "/admin/reel-studio",
+  "/admin/reels/review",
   "/admin/reel-service",
   "/admin/emails",
 ];
@@ -111,7 +114,10 @@ const sidebarNavItems = orderBy(NAV_PRIORITY);
 const mobileNavItems = sidebarNavItems;
 
 function isActive(pathname: string, href: string) {
-  return pathname === href || (href !== "/admin" && pathname.startsWith(href));
+  if (pathname === href) return true;
+  if (href === "/admin" || !pathname.startsWith(href)) return false;
+  // A more specific item owns its own pages (In Review lives under Reels).
+  return !navItems.some((n) => n.href !== href && n.href.startsWith(href) && pathname.startsWith(n.href));
 }
 
 export default function AdminNav() {

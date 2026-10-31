@@ -111,7 +111,9 @@ export type PrivateBucketTarget =
   | { listingId: string; socialUpload: true }
   | { galleryId: string }
   /** Reel Service (admin only): reel-service/{broker}/{period}/{job}.mp4 */
-  | { reelServiceJobId: string };
+  | { reelServiceJobId: string }
+  /** Admin In Review reel handed to a phone: reel-shares/review/{ts}-{name}.mp4 */
+  | { reviewShare: true };
 
 export type PrivateBucketUploadResult =
   | { ok: true; path: string; playbackUrl: string | null }

@@ -38,6 +38,12 @@ export function sanitizeVideoContentType(raw: unknown): string {
 /** Where short-lived reel hand-offs live. Swept by the daily cron after 48h. */
 export const REEL_SHARE_PREFIX = "reel-shares/";
 
+/**
+ * Admin "In Review" reels handed to a phone (Oct 31): reel-shares/review/…,
+ * inside the share prefix so the same 48 h sweep clears them.
+ */
+export const REVIEW_SHARE_PREFIX = `${REEL_SHARE_PREFIX}review/`;
+
 /** Reel Service deliveries: reel-service/{broker_id}/{YYYY-MM}/{job_id}.mp4 */
 export const REEL_SERVICE_PREFIX = "reel-service/";
 
@@ -59,7 +65,7 @@ export const SOCIAL_COVER_MAX_BYTES = 10 * 1024 * 1024;
 export async function resolveVideoUploadTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown; socialCover?: unknown }
+  body: { listingId?: unknown; galleryId?: unknown; filename?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown; socialCover?: unknown; reviewShare?: unknown }
 ): Promise<VideoUploadTarget> {
   const filename = sanitizeVideoFilename(body?.filename);
 
@@ -76,6 +82,13 @@ export async function resolveVideoUploadTarget(
     if (!job) return NextResponse.json({ error: "Reel job not found" }, { status: 404 });
     const prefix = `${REEL_SERVICE_PREFIX}${job.broker_id}/${job.period}/`;
     return { prefix, path: `${prefix}${job.id}.mp4` };
+  }
+
+  // An admin In Review reel going to the admin's own phone (no listing).
+  if (body?.reviewShare === true) {
+    const { data: me } = await svc.from("profiles").select("role").eq("id", userId).maybeSingle();
+    if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
+    return { prefix: REVIEW_SHARE_PREFIX, path: `${REVIEW_SHARE_PREFIX}${Date.now()}-${filename}` };
   }
 
   // A listing reel going to Facebook / Instagram. Admin only while posting
@@ -138,7 +151,7 @@ export async function resolveVideoUploadTarget(
 export async function assertPathBelongsToTarget(
   svc: SupabaseClient,
   userId: string,
-  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown; socialCover?: unknown },
+  body: { listingId?: unknown; galleryId?: unknown; share?: unknown; reelServiceJobId?: unknown; socialUpload?: unknown; socialCover?: unknown; reviewShare?: unknown },
   path: unknown
 ): Promise<NextResponse | { path: string }> {
   if (typeof path !== "string" || !path) {
