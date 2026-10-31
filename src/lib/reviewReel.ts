@@ -9,10 +9,10 @@
  *   • which boats: listings.photographed_at (else created_at) inside the
  *     period, in Eastern time; pocket listings (showcase_opt_out) and test
  *     brokers left out; sold boats kept (they were shot).
- *   • which photo: pickProfilePhoto below.
+ *   • which photo: pickProfilePhoto below (cover, else first Profiles photo;
+ *     a boat with neither is left out).
  *   • timing: reviewTimeline below; the renderer is src/lib/reviewReelRender.ts.
  */
-import { isExterior } from "@/lib/reelStyles";
 
 // ── Formats ────────────────────────────────────────────────────────────────
 
@@ -205,38 +205,24 @@ export function isTestBroker(b: { first_name: string | null; last_name: string |
 
 // ── Which photo ────────────────────────────────────────────────────────────
 
-/** Categories that make a boat's "profile" shot, best first. */
-const PROFILE_TIERS: string[][] = [
-  ["profiles", "profile"],
-  ["profiles running", "running"],
-  ["aerial"],
-  ["port", "starboard", "bow", "stern"],
-];
-
 export type PickablePhoto = { id: string; category?: string | null };
 
 /**
- * The one photo for a boat. `ordered` = the listing's visible photos in its
- * own order (orderPhotos: manual order, or the canonical category order with
- * display_order inside each category).
- *   1. the listing's hero photo, if it is visible;
- *   2. the first Profiles photo, then Profiles Running, then Aerial, then a
- *      Port / Starboard / Bow / Stern shot;
- *   3. the first other exterior (reelStyles' isExterior);
- *   4. the first photo.
+ * The one photo for a boat — Charlie's rule (Oct 31). `ordered` = the
+ * listing's visible photos in its own order (orderPhotos: manual order, or
+ * the canonical category order with display_order inside each category).
+ *   1. the listing's cover (hero) photo, if one is set and visible;
+ *   2. otherwise the first "Profiles" photo.
+ * Nothing else: no Running / Aerial / side / other fallback. Null = the boat
+ * stays out of the reel (the page lists it under "Not included — no profile
+ * photo", where a photo can be chosen by hand).
  */
 export function pickProfilePhoto<T extends PickablePhoto>(ordered: T[], heroId: string | null | undefined): T | null {
-  if (ordered.length === 0) return null;
   if (heroId) {
     const h = ordered.find((p) => p.id === heroId);
     if (h) return h;
   }
-  for (let t = 0; t < PROFILE_TIERS.length; t++) {
-    const tier = PROFILE_TIERS[t];
-    const hit = ordered.find((p) => tier.indexOf((p.category ?? "").trim().toLowerCase()) >= 0);
-    if (hit) return hit;
-  }
-  return ordered.find((p) => isExterior(p.category)) ?? ordered[0];
+  return ordered.find((p) => (p.category ?? "").trim().toLowerCase() === "profiles") ?? null;
 }
 
 // ── API shapes ─────────────────────────────────────────────────────────────
@@ -253,6 +239,7 @@ export type ReviewBoat = {
   shotDateGuessed: boolean;
   sold: boolean;
   photoCount: number;
+  /** The reel photo. On a boat in `noProfile` (no cover, no Profiles photo) id is "" until one is chosen by hand. */
   photo: { id: string; category: string | null; thumb: string | null };
 };
 

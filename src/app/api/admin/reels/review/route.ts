@@ -23,13 +23,15 @@ type BrokerRow = { id: string; first_name: string | null; last_name: string | nu
 
 /**
  * GET /api/admin/reels/review?from=YYYY-MM-DD&to=YYYY-MM-DD   (admin)
- *   → { boats: ReviewBoat[], excluded: { pocket, test, noPhotos } }
+ *   → { boats: ReviewBoat[], noProfile: ReviewBoat[], excluded: { pocket, test, noPhotos, noProfile } }
  *
  * The boats YachtPics shot in the period (Eastern dates, `to` inclusive):
  * photographed_at in range, or — with no photographed_at — created_at in
  * range. Pocket listings (showcase_opt_out) and test brokers are left out;
  * sold boats stay in. Each boat comes with its profile photo
- * (pickProfilePhoto) and a 600 px tile for it. Oldest first.
+ * (pickProfilePhoto: cover, else first Profiles photo) and a 600 px tile for
+ * it. Boats with neither come back separately in `noProfile` (photo id "") —
+ * not in the reel unless a photo is chosen by hand. Oldest first.
  */
 export async function GET(req: NextRequest) {
   const auth = await requireAdmin();
@@ -88,17 +90,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const picked: { l: ListingRow; photo: PhotoRow; count: number }[] = [];
+  const picked: { l: ListingRow; photo: PhotoRow | null; count: number }[] = [];
   listings.forEach((l) => {
     const ordered = orderPhotos(photosBy[l.id] ?? [], { manual: l.photo_order_manual === true, heroId: l.hero_photo_id });
-    const photo = pickProfilePhoto(ordered, l.hero_photo_id);
-    if (!photo) { noPhotos++; return; }
-    picked.push({ l, photo, count: ordered.length });
+    if (ordered.length === 0) { noPhotos++; return; }
+    picked.push({ l, photo: pickProfilePhoto(ordered, l.hero_photo_id), count: ordered.length });
   });
 
-  const thumbs = await signReviewPhotos(svc, picked.map((x) => x.photo), 600, 6 * 3600);
+  const thumbs = await signReviewPhotos(svc, picked.map((x) => x.photo).filter((p): p is PhotoRow => !!p), 600, 6 * 3600);
 
-  const boats: ReviewBoat[] = picked.map(({ l, photo, count }) => {
+  const withPhotos: ReviewBoat[] = picked.map(({ l, photo, count }) => {
     const b = brokers[l.broker_id];
     const len = l.length_ft ? `${Math.round(Number(l.length_ft))}′` : "";
     const mm = [l.make, l.model].filter(Boolean).join(" ");
@@ -111,9 +112,11 @@ export async function GET(req: NextRequest) {
       shotDateGuessed: !l.photographed_at,
       sold: !!l.sold_at,
       photoCount: count,
-      photo: { id: photo.id, category: photo.category, thumb: thumbs[photo.id] ?? null },
+      photo: photo ? { id: photo.id, category: photo.category, thumb: thumbs[photo.id] ?? null } : { id: "", category: null, thumb: null },
     };
   }).sort((a, b) => (Date.parse(a.shotAt) || 0) - (Date.parse(b.shotAt) || 0) || a.name.localeCompare(b.name));
 
-  return NextResponse.json({ boats, excluded: { pocket, test, noPhotos } });
+  const boats = withPhotos.filter((b) => !!b.photo.id);
+  const noProfile = withPhotos.filter((b) => !b.photo.id);
+  return NextResponse.json({ boats, noProfile, excluded: { pocket, test, noPhotos, noProfile: noProfile.length } });
 }

@@ -48,7 +48,10 @@ export default function ReviewReelBuilder() {
   const [from, setFrom] = useState(initial.from);
   const [to, setTo] = useState(initial.to);
   const [boats, setBoats] = useState<Boat[]>([]);
-  const [excluded, setExcluded] = useState<{ pocket: number; test: number; noPhotos: number } | null>(null);
+  const [excluded, setExcluded] = useState<{ pocket: number; test: number; noPhotos: number; noProfile?: number } | null>(null);
+  /** No cover and no Profiles photo: out of the reel unless a photo is chosen by hand. */
+  const [noProfile, setNoProfile] = useState<Boat[]>([]);
+  const [showNoProfile, setShowNoProfile] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
   const loadSeq = useRef(0);
@@ -154,18 +157,21 @@ export default function ReviewReelBuilder() {
   // ── Boats ──
   const loadBoats = useCallback(async (f: string, t: string, apply?: SavedReviewReel) => {
     const seq = ++loadSeq.current;
-    setLoading(true); setLoadError(""); setBoats([]); setExcluded(null); setSwapFor(null);
+    setLoading(true); setLoadError(""); setBoats([]); setNoProfile([]); setExcluded(null); setSwapFor(null);
     try {
       const res = await fetch(`/api/admin/reels/review?from=${f}&to=${t}`);
       const j = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(j?.error ?? "Couldn’t load the boats.");
       if (seq !== loadSeq.current) return;
       let list: Boat[] = ((j.boats ?? []) as ReviewBoat[]).map((b) => ({ ...b, included: true }));
+      let left: Boat[] = ((j.noProfile ?? []) as ReviewBoat[]).map((b) => ({ ...b, included: false }));
       if (apply) {
         // A saved reel: its order, its ticks and its photo choices; boats added
         // to the period since come last, unticked.
         const by: Record<string, Boat> = {};
         list.forEach((b) => { by[b.listingId] = b; });
+        // A boat with no profile photo that was given one by hand comes back in.
+        left.forEach((b) => { by[b.listingId] = b; });
         const ordered: Boat[] = [];
         const swapped: string[] = [];
         apply.items.forEach((it) => {
@@ -177,6 +183,7 @@ export default function ReviewReelBuilder() {
         });
         list.forEach((b) => { if (by[b.listingId]) ordered.push({ ...b, included: false }); });
         list = ordered;
+        left = left.filter((b) => !!by[b.listingId]);
         // Tiles (and categories) for the photos chosen by hand.
         void Promise.all(swapped.map((id) => fetchOptions(id).then((opts) => {
           if (seq !== loadSeq.current || !opts) return;
@@ -188,6 +195,7 @@ export default function ReviewReelBuilder() {
         })));
       }
       setBoats(list);
+      setNoProfile(left);
       setExcluded(j.excluded ?? null);
     } catch (e) {
       if (seq === loadSeq.current) setLoadError(e instanceof Error ? e.message : "Couldn’t load the boats.");
@@ -309,6 +317,19 @@ export default function ReviewReelBuilder() {
       return null;
     }
   }
+  /** Set a boat's photo; a boat from "no profile photo" joins the reel at its date. */
+  function choosePhoto(boat: Boat, photo: Boat["photo"]) {
+    if (!noProfile.some((b) => b.listingId === boat.listingId)) { update(boat.listingId, { photo }); return; }
+    setNoProfile((l) => l.filter((b) => b.listingId !== boat.listingId));
+    setBoats((bs) => {
+      const add: Boat = { ...boat, photo, included: true };
+      const t = Date.parse(add.shotAt) || 0;
+      const at = bs.findIndex((b) => (Date.parse(b.shotAt) || 0) > t);
+      return at < 0 ? bs.concat(add) : bs.slice(0, at).concat(add, bs.slice(at));
+    });
+    stale();
+  }
+
   function openSwap(id: string) {
     setSwapFor(id); setOptionsError("");
     if (!options[id]) void fetchOptions(id);
@@ -389,7 +410,7 @@ export default function ReviewReelBuilder() {
   const inputCls = "text-sm border border-hairline-strong rounded-ctl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-accent-500";
   const chip = (on: boolean) => `text-xs font-medium px-3 py-1.5 rounded-ctl border ${on ? "bg-accent-500 text-ink-950 border-accent-500" : "bg-white text-ink-600 border-hairline-strong hover:border-ink-400"}`;
   const card = "bg-white border border-hairline rounded-card shadow-elev-1 p-5";
-  const swapBoat = swapFor ? boats.find((b) => b.listingId === swapFor) ?? null : null;
+  const swapBoat = swapFor ? boats.find((b) => b.listingId === swapFor) ?? noProfile.find((b) => b.listingId === swapFor) ?? null : null;
   const fr = REVIEW_FRAMES[format];
 
   return (
@@ -426,7 +447,7 @@ export default function ReviewReelBuilder() {
           <div className="flex items-start justify-between gap-3 flex-wrap mb-3">
             <div>
               <p className="text-sm font-semibold text-ink-900">
-                {boats.length === 0 ? "No boats in this period" : `${n} of ${boats.length} boat${boats.length === 1 ? "" : "s"} · ${formatRunTime(duration)}`}
+                {boats.length === 0 ? "No boats with a profile photo in this period" : `${n} of ${boats.length} boat${boats.length === 1 ? "" : "s"} · ${formatRunTime(duration)}`}
               </p>
               <p className="text-xs text-ink-400 mt-0.5">
                 {reviewTitle(from, to).replace(/ in review$/, "")}
@@ -463,6 +484,29 @@ export default function ReviewReelBuilder() {
               </DndContext>
             </>
           )}
+          {noProfile.length > 0 && (
+            <div className="mt-4 border-t border-hairline pt-3">
+              <button type="button" onClick={() => setShowNoProfile((v) => !v)} className="text-xs text-ink-500 hover:text-ink-700">
+                {showNoProfile ? "▾" : "▸"} Not included &mdash; no profile photo ({noProfile.length})
+              </button>
+              {showNoProfile && (
+                <>
+                  <p className="text-xs text-ink-400 mt-1 mb-2">No cover photo and no &ldquo;Profiles&rdquo; photo, so these are left out. Choose a photo by hand to add one to the reel.</p>
+                  <ul className="divide-y divide-hairline border border-hairline rounded-ctl">
+                    {noProfile.map((b) => (
+                      <li key={b.listingId} className="flex items-center justify-between gap-3 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-ink-900 truncate">{b.name}</p>
+                          <p className="text-[11px] text-ink-400 truncate">{fmtDate(b.shotAt)}{b.shotDateGuessed ? "*" : ""}{b.brokerName ? ` · ${b.brokerName}` : ""} · {b.photoCount} photos</p>
+                        </div>
+                        <button type="button" disabled={busy} onClick={() => openSwap(b.listingId)} className="text-[11px] text-accent-700 hover:underline shrink-0">Use another photo</button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -485,7 +529,7 @@ export default function ReviewReelBuilder() {
                   const on = p.id === swapBoat.photo.id;
                   return (
                     <button key={p.id} type="button" title={p.category ?? ""}
-                      onClick={() => { update(swapBoat.listingId, { photo: { id: p.id, category: p.category, thumb: p.thumb } }); setSwapFor(null); }}
+                      onClick={() => { choosePhoto(swapBoat, { id: p.id, category: p.category, thumb: p.thumb }); setSwapFor(null); }}
                       className={`relative aspect-[4/3] bg-ink-100 rounded-sm overflow-hidden ${on ? "ring-2 ring-accent-500" : "hover:ring-2 hover:ring-ink-300"}`}>
                       {p.thumb && <RetryImg src={p.thumb} alt={p.category ?? ""} loading="lazy" className="w-full h-full object-cover" />}
                       <span className="absolute bottom-0 left-0 right-0 bg-ink-950/60 text-white text-[10px] truncate px-1">{on ? "✓ " : ""}{p.category ?? "Other"}</span>
