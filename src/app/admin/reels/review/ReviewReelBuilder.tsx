@@ -557,12 +557,12 @@ export default function ReviewReelBuilder() {
                 <span className="text-ink-400">{fr.hint} · {fr.w}&times;{fr.h}</span>
               </div>
               <div className="text-xs text-ink-600 flex flex-col gap-1.5">
-                <span className="label-caps text-ink-500">Seconds per boat &middot; {secPerBoat.toFixed(1)} s</span>
-                <input type="range" min={SEC_PER_BOAT_MIN} max={SEC_PER_BOAT_MAX} step={0.1} value={secPerBoat} disabled={busy}
+                <span className="label-caps text-ink-500">Seconds per boat &middot; {secPerBoat.toFixed(2)} s</span>
+                <input type="range" min={SEC_PER_BOAT_MIN} max={SEC_PER_BOAT_MAX} step={0.05} value={secPerBoat} disabled={busy}
                   onChange={(e) => { setSecPerBoat(Number(e.target.value)); setSecManual(true); stale(); }} className="accent-accent-500" />
                 <span className="text-ink-400">
                   {secManual
-                    ? <>Set by hand. <button type="button" className="underline" onClick={() => { setSecManual(false); stale(); }}>Back to automatic ({defaultSecPerBoat(n).toFixed(1)} s)</button></>
+                    ? <>Set by hand. <button type="button" className="underline" onClick={() => { setSecManual(false); stale(); }}>Back to automatic ({defaultSecPerBoat(n).toFixed(2)} s)</button></>
                     : "Automatic: 1.0 s up to 60 boats, 0.7 s up to 150, 0.5 s above."}
                 </span>
               </div>
@@ -631,7 +631,7 @@ export default function ReviewReelBuilder() {
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <div>
                 <p className="text-sm font-semibold text-ink-900">
-                  {n ? `${n} boat${n === 1 ? "" : "s"} × ${secPerBoat.toFixed(1)} s · ${formatRunTime(duration)}` : "No boats ticked"}
+                  {n ? `${n} boat${n === 1 ? "" : "s"} × ${secPerBoat.toFixed(2)} s · ${formatRunTime(duration)}` : "No boats ticked"}
                 </p>
                 <p className="text-xs text-ink-400 mt-0.5">
                   {fr.w}&times;{fr.h} MP4 made in this browser (Chrome or Edge on a computer) &mdash; keep this tab open and in front until it finishes.

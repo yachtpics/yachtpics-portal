@@ -29,7 +29,7 @@ export type ReviewFraming = "fill" | "whole";
 
 // ── Timing ─────────────────────────────────────────────────────────────────
 
-export const SEC_PER_BOAT_MIN = 0.4;
+export const SEC_PER_BOAT_MIN = 0.15;
 export const SEC_PER_BOAT_MAX = 2.0;
 export const OPEN_CARD_SEC = 2.6;
 /** ReelMaker's end hold on a YachtPics-branded reel (3.0 + 1.5). */
@@ -41,7 +41,7 @@ export const END_XFADE = 0.5;
 
 /** 1.0 s up to 60 boats, 0.7 s up to 150, 0.5 s beyond. */
 export function defaultSecPerBoat(n: number): number {
-  return n <= 60 ? 1.0 : n <= 150 ? 0.7 : 0.5;
+  return n <= 60 ? 0.6 : n <= 150 ? 0.4 : 0.3;
 }
 
 /** A quick crossfade, never more than ~45% of a boat's time. */
