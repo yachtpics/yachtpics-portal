@@ -37,7 +37,8 @@ function fmtDate(iso: string | null, opts: Intl.DateTimeFormatOptions = { month:
 export default async function SellerReportPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/auth/login");
+  // Keep the destination through sign-in (the monthly email links here).
+  if (!user) redirect(`/auth/login?next=${encodeURIComponent(`/report/listing/${params.id}`)}`);
 
   // RLS lets the owner / assistant / co-broker / admin read it; otherwise null.
   const { data: access } = await supabase.from("listings").select("id").eq("id", params.id).single();

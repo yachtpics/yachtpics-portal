@@ -5,8 +5,9 @@ export const dynamic = "force-dynamic";
 // Give the dispatcher real headroom. Without this, a Hobby function is killed at
 // ~10s — long enough for trial-reminders (which sends one email at a time) to
 // eat the whole budget, so the second job of the day (Tue: tips, Mon: announce)
-// never got triggered. 60s is the Hobby max.
-export const maxDuration = 60;
+// never got triggered. 60s was the Hobby max; on Pro (Nov 2026) the dispatcher
+// gets 300 s so it can wait for the monthly report send on the 1st.
+export const maxDuration = 300;
 
 // Single daily dispatcher. Vercel's Hobby plan caps a project at 2 cron jobs, so
 // instead of one cron per task we run ONE cron daily (13:00 UTC) and fan out to
@@ -27,6 +28,9 @@ export const maxDuration = 60;
 //   • social           — EVERY DAY (due Instagram posts + unfinished IG reels)
 //   • derivatives      — EVERY DAY (~50 s of photo thumbnail backfill)
 //   • jobs/work        — EVERY DAY (POST; wakes the background job worker)
+//   • monthly-report   — EVERY DAY (self-gated: "Schedule automatically" switch
+//                        on + ET date is the 1st + last month not yet sent;
+//                        src/lib/monthlyReport.ts)
 const PROD = "https://portal.yachtpics.com";
 
 export async function GET(req: NextRequest) {
@@ -87,6 +91,11 @@ export async function GET(req: NextRequest) {
   // still without them (uploads whose browser request never arrived, gallery
   // photos, anything the admin backfill hasn't reached). ~50 s, newest first.
   jobs.push("/api/cron/derivatives");
+  // "Your boats this month": sends last month's numbers to every broker with
+  // live listings (+ assistants). Self-gated — a no-op unless Charlie switched
+  // on "Schedule automatically", today is the 1st (ET) and that month hasn't
+  // gone out; email_log dedups per recipient.
+  jobs.push("/api/cron/monthly-report");
 
   // Fire every job in PARALLEL. Each fetch triggers its own independent
   // serverless invocation with its own timeout, so a slow first job can never
