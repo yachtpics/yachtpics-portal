@@ -5,6 +5,9 @@ import { reelNudgeHtml } from "@/lib/reelNudgeEmail";
 import { slideshowPublishUpdate } from "@/lib/slideshowPublish";
 import { buildEverydayDockCard } from "@/lib/dockCardAssets";
 
+/** Attach the everyday dock card to the photos-ready email (and publish a never-published slideshow for it). Off until Charlie decides. */
+const DOCK_CARD_IN_DELIVERY_EMAIL = false;
+
 export const runtime = "nodejs";
 // Building the dock card fetches and resizes the cover photo.
 export const maxDuration = 60;
@@ -57,9 +60,12 @@ export async function POST(req: NextRequest) {
     // as the Oct 29 "Slideshow ready" preparer does. A slideshow the broker
     // UNPUBLISHED (it has a slug) is left alone: the email says the card will
     // be ready once it's published.
+    // Charlie (Nov 1): OFF for now while he decides how much of the card to
+    // give away without a plan. Flip DOCK_CARD_IN_DELIVERY_EMAIL to put the
+    // card (and the auto-publish) back into every delivery.
     let dockCard: { status: "attached" | "button" | "unpublished" | "none"; detail?: string } = { status: "none" };
     const attachments: { filename: string; content: string }[] = [];
-    try {
+    if (DOCK_CARD_IN_DELIVERY_EMAIL) try {
       const { data: ss } = await supabase
         .from("listings")
         .select("slideshow_slug, slideshow_published")
