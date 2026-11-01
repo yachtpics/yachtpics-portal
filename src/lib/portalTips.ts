@@ -262,6 +262,17 @@ export const TIPS: Tip[] = [
     ctaLabel: "Edit a listing",
     ctaPath: "/dashboard/listings",
   },
+  {
+    slug: "download-folder",
+    subject: "Tip: your photos, straight into a folder",
+    headline: "Downloading your photos just got simpler",
+    body: [
+      "In Chrome or Edge on a computer, Download All now puts the photos straight into a folder you choose \u2014 named for the boat, numbered in listing order, with nothing to unzip. Your computer asks you to pick a folder and to let the Portal save there; Downloads is fine.",
+      "Web & MLS (2048px) is the default and the right size for listing sites and email. Choose Full resolution only for print, and click \u201cor as a .zip\u201d if you\u2019d rather have a single file to send.",
+    ],
+    ctaLabel: "Open a listing",
+    ctaPath: "/dashboard/listings",
+  },
 ];
 
 export const TIP_BY_SLUG: Record<string, Tip> = Object.fromEntries(TIPS.map((t) => [t.slug, t]));
