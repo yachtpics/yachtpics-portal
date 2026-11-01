@@ -467,12 +467,13 @@ export function monthlySubject(r: MonthlyRecipient, month: string): string {
 }
 
 function summaryLine(t: { boats: number; views: number; downloads: number; scans: number }): string {
-  return [
-    `${plural(t.boats, "boat", "boats")} in the Portal`,
-    plural(t.views, "buyer view", "buyer views"),
-    plural(t.downloads, "photo download", "photo downloads"),
-    plural(t.scans, "dock-card scan", "dock-card scans"),
-  ].join(" &middot; ");
+  // Boats and downloads always; views and dock-card scans only when > 0, so
+  // it never reads "0 buyer views" / "0 dock-card scans".
+  const bits = [`${plural(t.boats, "boat", "boats")} in the Portal`];
+  if (t.views > 0) bits.push(plural(t.views, "buyer view", "buyer views"));
+  bits.push(plural(t.downloads, "photo download", "photo downloads"));
+  if (t.scans > 0) bits.push(plural(t.scans, "dock-card scan", "dock-card scans"));
+  return bits.join(" &middot; ");
 }
 
 function listingRow(l: ReportListing, month: string, img: EmailImage | null): string {
@@ -489,8 +490,9 @@ function listingRow(l: ReportListing, month: string, img: EmailImage | null): st
   let body = "";
   if (s.views > 0) {
     const bits = [plural(s.views, "buyer view", "buyer views"), plural(s.visitors, "visitor", "visitors")];
-    if (s.scans) bits.push(plural(s.scans, "dock-card scan", "dock-card scans"));
-    if (s.inquiries) bits.push(plural(s.inquiries, "inquiry", "inquiries"));
+    // Scans and inquiries only when this boat has some (never "0 …").
+    if (s.scans > 0) bits.push(plural(s.scans, "dock-card scan", "dock-card scans"));
+    if (s.inquiries > 0) bits.push(plural(s.inquiries, "inquiry", "inquiries"));
     body += line(`<strong style="color:#0c1420;">${bits.join(" &middot; ")}</strong>`);
     if (s.topPhoto) body += line(`Lingered on most: ${esc(s.topPhoto)}`, "#6b7280");
   } else {
