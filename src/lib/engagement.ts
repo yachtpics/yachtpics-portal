@@ -29,6 +29,9 @@ export type EngagementSummary = {
   /** Dock-card QR scans per boat show (views whose source is a show key),
    * counted as distinct visits. Only shows with at least one scan. */
   showScans: { showKey: string; label: string; scans: number }[];
+  /** Everyday dock-card QR scans (source "yp_card", Nov 1), distinct visits.
+   * Counted separately from the show cards above. */
+  cardScans: number;
   firstViewAt: string | null;
   lastViewAt: string | null;
 };
@@ -95,6 +98,17 @@ export async function buildEngagement(
     if (scans > 0) showScans.push({ showKey: sh.key, label: sh.short_name, scans });
   }
 
+  // Everyday dock card (source yp_card) — distinct visits, like the show lines.
+  let cardScans = 0;
+  {
+    const sess = new Set<string>();
+    for (const v of vs) {
+      if (v.source !== "yp_card") continue;
+      if (v.session_id) sess.add(v.session_id); else cardScans++;
+    }
+    cardScans += sess.size;
+  }
+
   const photoMeta = new Map((photos ?? []).map((p) => [p.id, p]));
   const perPhoto = new Map<string, { dwell: number; favs: number; looks: number }>();
   let favoritesTotal = 0, tourClicks = 0, videoPlays = 0, detailsViews = 0;
@@ -139,6 +153,7 @@ export async function buildEngagement(
     detailsViews,
     leads: leads ?? 0,
     showScans,
+    cardScans,
     firstViewAt: vs.length ? vs[0].viewed_at : null,
     lastViewAt: vs.length ? vs[vs.length - 1].viewed_at : null,
   };

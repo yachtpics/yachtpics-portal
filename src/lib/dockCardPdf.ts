@@ -10,6 +10,14 @@
 // left and the QR code on the right (ivory keeps any logo legible and gives
 // the code a clean quiet zone); a thin footer with the show and a discreet
 // "YachtPics Portal".
+//
+// Everyday ("evergreen") variant (Nov 1): no show. Leave showName/showShort/
+// showDates out and the card is not tied to a date — the QR caption moves
+// from under the code into the footer, right-aligned beneath the code in the
+// accent colour ("SCAN FOR EVERY PHOTO AND THE VIDEO"), the code sits centred
+// in the ivory panel, and the Portal mark takes the footer's left. The dark
+// band's third line is the boat's location (the route falls back to her
+// brokerage when the listing has none), so the band is never short a line.
 
 import {
   PDFDocument, StandardFonts, rgb, clip, endPath, popGraphicsState, pushGraphicsState,
@@ -33,9 +41,10 @@ export type DockCardInput = {
   email: string | null;
   logo: DockCardImage | null;
   qrUrl: string;
-  showName: string;          // "Fort Lauderdale International Boat Show"
-  showShort: string;         // "FLIBS 2026"
-  showDates: string;         // "October 28 – November 1"
+  /** Omit all three for the everyday card (no show). */
+  showName?: string | null;  // "Fort Lauderdale International Boat Show"
+  showShort?: string | null; // "FLIBS 2026"
+  showDates?: string | null; // "October 28 – November 1"
   brandAccent?: string | null; // broker's accent (#rrggbb), optional
   brandGround?: string | null; // broker's background (#rrggbb), used when dark
 };
@@ -125,7 +134,8 @@ export async function buildDockCardPdf(input: DockCardInput): Promise<Uint8Array
   const u = W / 360; // every measurement below is in 5×7 points, scaled
 
   const doc = await PDFDocument.create();
-  doc.setTitle(`${pdfSafe(input.vesselName) || "Dock card"} — ${pdfSafe(input.showShort)}`);
+  const evergreen = !pdfSafe(input.showName) && !pdfSafe(input.showShort);
+  doc.setTitle(`${pdfSafe(input.vesselName) || "Dock card"} — ${evergreen ? "Dock card" : pdfSafe(input.showShort)}`);
   doc.setAuthor(pdfSafe(input.brokerName ?? input.brokerage ?? "YachtPics Portal"));
   doc.setCreator("YachtPics Portal");
   doc.setProducer("YachtPics Portal");
@@ -182,7 +192,9 @@ export async function buildDockCardPdf(input: DockCardInput): Promise<Uint8Array
   // QR code — vector modules, black on ivory.
   const qrSize = 76 * u;
   const qrX = W - m - qrSize;
-  const qrY = footerH + 22 * u;
+  // Show card: raised to leave room for its caption. Everyday card: centred
+  // (its call to action is in the footer, right under the code).
+  const qrY = evergreen ? footerH + (panelH - qrSize) / 2 : footerH + 22 * u;
   const qr = QRCode.create(input.qrUrl, { errorCorrectionLevel: "M" });
   const n = qr.modules.size;
   const cell = qrSize / n;
@@ -194,11 +206,13 @@ export async function buildDockCardPdf(input: DockCardInput): Promise<Uint8Array
       }
     }
   }
-  const scanCap = fitText("Scan for the slideshow and video", sans, qrSize + 14 * u, 6.5 * u, 5 * u);
-  page.drawText(scanCap.text, {
-    x: qrX + qrSize - widthOf(scanCap.text, sans, scanCap.size),
-    y: footerH + 10 * u, size: scanCap.size, font: sans, color: TEXT_MUTED,
-  });
+  if (!evergreen) {
+    const scanCap = fitText("Scan for the slideshow and video", sans, qrSize + 14 * u, 6.5 * u, 5 * u);
+    page.drawText(scanCap.text, {
+      x: qrX + qrSize - widthOf(scanCap.text, sans, scanCap.size),
+      y: footerH + 10 * u, size: scanCap.size, font: sans, color: TEXT_MUTED,
+    });
+  }
 
   // Broker block
   const leftW = qrX - 16 * u - m;
@@ -242,6 +256,15 @@ export async function buildDockCardPdf(input: DockCardInput): Promise<Uint8Array
   const markSize = 6 * u;
   const markW = widthOf(mark, sans, markSize, 0.6 * u);
   const footY = footerH / 2 - 2.2 * u;
+  if (evergreen) {
+    // The call to action, right-aligned under the code, in the accent; the
+    // Portal mark quietly on the left.
+    drawTracked(page, mark, { x: m, y: footY, size: markSize, font: sans, color: FOOTER_MARK, tracking: 0.6 * u });
+    const ctaMax = W - 2 * m - markW - 12 * u;
+    const cta = fitText("SCAN FOR EVERY PHOTO AND THE VIDEO", sansBold, ctaMax, 6.5 * u, 5 * u, 1.2 * u);
+    drawTracked(page, cta.text, { x: W - m - widthOf(cta.text, sansBold, cta.size, 1.2 * u), y: footY, size: cta.size, font: sansBold, color: accent, tracking: 1.2 * u });
+    return doc.save();
+  }
   drawTracked(page, mark, { x: W - m - markW, y: footY, size: markSize, font: sans, color: FOOTER_MARK, tracking: 0.6 * u });
   const showMax = W - 2 * m - markW - 12 * u;
   const longShow = `${pdfSafe(input.showName)}  ·  ${pdfSafe(input.showDates)}`.toUpperCase();

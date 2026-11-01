@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { createClient as createServiceClient, type SupabaseClient } from "@supabase/supabase-js";
-import { buildDockCardPdf, imageKind, pdfSafe, type DockCardImage, type DockCardSize } from "@/lib/dockCardPdf";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { buildDockCardPdf, pdfSafe, type DockCardSize } from "@/lib/dockCardPdf";
 import { dockCardUrl, getCurrentShows, showDatesLabel, type BoatShow } from "@/lib/boatShows";
-import { lookupPhotoPaths, readOriginal, resizedOriginalBytes } from "@/lib/photoStore";
+import { brokerLogo, coverPhoto } from "@/lib/dockCardAssets";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,81 +18,9 @@ export const maxDuration = 30;
  *   https://portal.yachtpics.com/s/{slug}?from={show}#video
  * Cover = the listing's chosen cover (else first visible photo), fetched
  * server-side as a ≤2000 px JPEG/PNG transform of the original (the stored
- * 2000 px copies are WebP, which PDFs can't carry).
+ * 2000 px copies are WebP, which PDFs can't carry). Cover / logo helpers:
+ * src/lib/dockCardAssets.ts (shared with the everyday card, /dock-card).
  */
-
-const FETCH_TIMEOUT_MS = 12_000;
-
-async function fetchBytes(url: string, accept?: string): Promise<Uint8Array | null> {
-  const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: accept ? { Accept: accept } : undefined, cache: "no-store" });
-    if (!res.ok) return null;
-    return new Uint8Array(await res.arrayBuffer());
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(t);
-  }
-}
-
-function asImage(bytes: Uint8Array | null): DockCardImage | null {
-  if (!bytes) return null;
-  const kind = imageKind(bytes);
-  return kind ? { bytes, kind } : null;
-}
-
-async function coverPhoto(svc: SupabaseClient, listingId: string): Promise<DockCardImage | null> {
-  const { data } = await svc.rpc("listing_hero_photos", { p_listing_ids: [listingId] });
-  const path = ((data ?? []) as { storage_path: string }[])[0]?.storage_path;
-  if (!path) return null;
-  // Original on R2 (Oct 28): a 2000 px JPEG/PNG made here with sharp from
-  // the original (upright, q85 — as the transform below). If sharp can't
-  // decode it (e.g. HEIC), the staged Supabase resize; the full-size file is
-  // never the fallback.
-  const row = (await lookupPhotoPaths(svc, [path])).get(path);
-  if (row?.storage_backend === "r2") {
-    try {
-      const { bytes } = await readOriginal(svc, row);
-      const { makeJpegOrPng } = await import("@/lib/photoSharp");
-      const out = await makeJpegOrPng(bytes, 2000, path.toLowerCase().endsWith(".png"), 85);
-      const img = asImage(new Uint8Array(out));
-      if (img) return img;
-    } catch {
-      /* staged fallback below */
-    }
-    const bytes = await resizedOriginalBytes(svc, path, 2000, 85);
-    return bytes ? asImage(bytes) : null;
-  }
-  const bucket = svc.storage.from("listing-photos");
-  // Resized, upright (transforms honour EXIF), and in the original's format —
-  // asking for JPEG/PNG keeps Supabase from answering in WebP.
-  const { data: signed } = await bucket.createSignedUrl(path, 120, {
-    transform: { width: 2000, height: 2000, resize: "contain", quality: 85 },
-  });
-  if (signed?.signedUrl) {
-    const img = asImage(await fetchBytes(signed.signedUrl, "image/jpeg,image/png;q=0.9"));
-    if (img) return img;
-  }
-  // Fallback: the original file (still JPEG/PNG only).
-  const { data: blob } = await bucket.download(path);
-  if (!blob || blob.size > 25 * 1024 * 1024) return null;
-  return asImage(new Uint8Array(await blob.arrayBuffer()));
-}
-
-/** Broker logos are public files in our own Supabase storage; fetch nothing else. */
-async function brokerLogo(url: string | null): Promise<DockCardImage | null> {
-  if (!url) return null;
-  try {
-    const u = new URL(url);
-    const ours = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL!).host;
-    if (u.protocol !== "https:" || u.host !== ours) return null;
-  } catch {
-    return null;
-  }
-  return asImage(await fetchBytes(url, "image/png,image/jpeg;q=0.9"));
-}
 
 function fileName(vessel: string, show: string, size: DockCardSize): string {
   const base = `${vessel} - ${show} dock card${size === "letter" ? " (letter)" : ""}`;

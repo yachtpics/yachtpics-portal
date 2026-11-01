@@ -6,6 +6,7 @@ import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import { useState, useRef, useEffect } from "react";
 import CoBrokerManager from "./CoBrokerManager";
 import YpShareCard from "./YpShareCard";
+import DockCardButton from "@/components/DockCardButton";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
@@ -1041,6 +1042,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>
         {slideshowPublished && slideshowSlug && (
           <p className="text-xs text-ink-400 mt-3 break-all">{typeof window !== "undefined" ? window.location.origin : ""}/s/{slideshowSlug}</p>
+        )}
+        {slideshowPublished && slideshowSlug && (
+          <div className="mt-3"><DockCardButton listingId={listing.id} /></div>
         )}
       </div>
 

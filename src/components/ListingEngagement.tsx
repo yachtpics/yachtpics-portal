@@ -158,9 +158,12 @@ export default function ListingEngagement({ listingId, thumbs, reloadKey = 0 }: 
                   );
                 })()}
               </ul>
-              {(data.showScans?.length ?? 0) > 0 && (
+              {((data.showScans?.length ?? 0) > 0 || (data.cardScans ?? 0) > 0) && (
                 <div className="mt-3 text-xs text-ink-500 space-y-1">
-                  {data.showScans.map((sc) => (
+                  {(data.cardScans ?? 0) > 0 && (
+                    <p>Dock card scanned: <span className="font-semibold text-ink-800 tabular-nums">{data.cardScans}</span></p>
+                  )}
+                  {(data.showScans ?? []).map((sc) => (
                     <p key={sc.showKey}>Scanned at {sc.label}: <span className="font-semibold text-ink-800 tabular-nums">{sc.scans}</span></p>
                   ))}
                 </div>

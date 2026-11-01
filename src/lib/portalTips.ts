@@ -273,6 +273,17 @@ export const TIPS: Tip[] = [
     ctaLabel: "Open a listing",
     ctaPath: "/dashboard/listings",
   },
+  {
+    slug: "dock-card-everyday",
+    subject: "Tip: a dock card for every showing",
+    headline: "Leave her dock card aboard",
+    body: [
+      "Every boat with a published slideshow has a printable dock card: her photograph, her specifications, your name, and a QR code that opens her slideshow and video on a buyer\u2019s phone.",
+      "Open a listing and choose Dock card in the Client Slideshow section, 5\u00d77 or Letter. Set it at the boarding steps or in the salon for showings. Every scan is counted on her Seller Report.",
+    ],
+    ctaLabel: "Print a dock card",
+    ctaPath: "/dashboard/listings",
+  },
 ];
 
 export const TIP_BY_SLUG: Record<string, Tip> = Object.fromEntries(TIPS.map((t) => [t.slug, t]));

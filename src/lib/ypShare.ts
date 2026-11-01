@@ -15,13 +15,14 @@
  * the path. Columns: migration 20261101b_yp_share_link.sql (a trigger stops
  * anyone but an admin / the service role changing them).
  *
- * Views through it are recorded with source "yp_site", "yp_social", or
- * "yachtpics" (no / unknown ?via), grouped as "YachtPics" in reporting.
+ * Views through it are recorded with source "yp_site", "yp_social",
+ * "yp_card" (the everyday dock card's QR, ?via=card) or "yachtpics" (no /
+ * unknown ?via), grouped as "YachtPics" in reporting.
  */
 
 export const YP_SHARE_ORIGIN = "https://portal.yachtpics.com";
 
-export type YpVia = "site" | "social";
+export type YpVia = "site" | "social" | "card";
 
 export type YpShareRow = {
   slideshow_published?: boolean | null;
@@ -53,16 +54,21 @@ export function ypShareUrl(row: YpShareRow | null | undefined, via?: YpVia): str
 }
 
 /** ?via= → the source stored on slideshow_views / slideshow_events / listing_leads. */
-export function ypSourceFromVia(via: unknown): "yp_site" | "yp_social" | "yachtpics" {
+export function ypSourceFromVia(via: unknown): "yp_site" | "yp_social" | "yp_card" | "yachtpics" {
   const v = typeof via === "string" ? via.trim().toLowerCase() : "";
   if (v === "site") return "yp_site";
   if (v === "social") return "yp_social";
+  if (v === "card") return "yp_card"; // the everyday dock card's QR (Nov 1)
   return "yachtpics";
 }
 
-export const YP_SOURCES = ["yp_site", "yp_social", "yachtpics"] as const;
+export const YP_SOURCES = ["yp_card", "yp_site", "yp_social", "yachtpics"] as const;
+
+/** The everyday dock card's QR source — counted as a "dock-card scan". */
+export const YP_CARD_SOURCE = "yp_card";
 
 export const YP_SOURCE_LABEL: Record<string, string> = {
+  yp_card: "Dock card",
   yp_site: "yachtpics.com",
   yp_social: "YachtPics social",
   yachtpics: "YachtPics link",

@@ -193,6 +193,8 @@ const sections = [
       "Dock card (PDF): a print-ready card, 5 × 7 in or Letter, with her cover photograph, year, length, make and model, her dock or slip, your logo, name, brokerage, phone and email, and a QR code. It needs a published slideshow; until then the button stays off and reads 'Publish the slideshow first'.",
       "The QR code opens her full slideshow on the buyer's phone, starting on the video when she has one. Nothing to install and no login.",
       "Engagement on the listing shows 'Scanned at FLIBS 2026' with the number of visits that came from the dock card, and those visits appear as their own line under Where views come from.",
+      "Everyday dock card: every boat with a published slideshow also has a dock card that isn't tied to a show — My Listings → listing → Client Slideshow → Dock card, 5 × 7 in or Letter. Same card, no show line. Print it and leave it aboard for showings: at the boarding steps or in the salon. It works whether or not you have a plan.",
+      "Everyday dock card scans show on Engagement as 'Dock card scanned', and in Where views come from as 'Dock card' under YachtPics — counted separately from boat-show cards.",
     ],
   },
   {
@@ -310,6 +312,7 @@ const quickRef = [
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
   ["Mark a boat for a boat show", "My Listings → listing → Boat shows → tick the show, add the dock / slip, Save"],
   ["Download a boat show dock card", "My Listings → listing → Boat shows → Dock card (PDF)"],
+  ["Print an everyday dock card", "My Listings → listing → Client Slideshow → Dock card (5×7 or Letter)"],
   ["Create or edit your website", "Sidebar → Website"],
   ["Add your website to your plan (+$50/mo, included with Elite)", "Sidebar → Website → Add website (or Billing)"],
   ["Remove your website", "Sidebar → Website → Remove website (or Billing)"],

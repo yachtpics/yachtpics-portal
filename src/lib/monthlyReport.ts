@@ -32,8 +32,9 @@ import { BILLING_PATH, PLAN_FROM_PRICE } from "@/lib/planValue";
  *   views        slideshow_views rows
  *   visitors     distinct session_id + sessionless views
  *   top photo    slideshow_events dwell seconds + 15 per favorite (category)
- *   scans        slideshow_views whose source is a boat_shows key (dock-card
- *                QR codes carry ?src={show key}), distinct visits
+ *   scans        slideshow_views whose source is a boat_shows key (show dock
+ *                cards' QR codes carry ?from={show key}) or yp_card (the
+ *                everyday dock card, /yp/{token}?via=card), distinct visits
  *   YachtPics    views whose source is yp_site / yp_social / yachtpics (the
  *                YachtPics share link, src/lib/ypShare.ts) — shown as one
  *                "Views from YachtPics" line per boat when > 0
@@ -138,11 +139,13 @@ export type ListingStats = {
   ypSite: number;
   ypSocial: number;
   ypOther: number;
+  /** Views from the everyday dock card's QR (source yp_card). */
+  ypCard: number;
   /** Ever sent to a client (client_sends), any month. */
   everSent: boolean;
 };
 
-const EMPTY_STATS: ListingStats = { views: 0, visitors: 0, scans: 0, downloads: 0, inquiries: 0, topPhoto: null, ypSite: 0, ypSocial: 0, ypOther: 0, everSent: false };
+const EMPTY_STATS: ListingStats = { views: 0, visitors: 0, scans: 0, downloads: 0, inquiries: 0, topPhoto: null, ypSite: 0, ypSocial: 0, ypOther: 0, ypCard: 0, everSent: false };
 
 /** The month's numbers for many listings — one query per table. */
 export async function loadMonthStats(svc: SupabaseClient, listingIds: string[], month: string): Promise<Map<string, ListingStats>> {
@@ -181,12 +184,15 @@ export async function loadMonthStats(svc: SupabaseClient, listingIds: string[], 
     if (v.source === "yp_site") s.ypSite++;
     else if (v.source === "yp_social") s.ypSocial++;
     else if (v.source === "yachtpics") s.ypOther++;
+    else if (v.source === "yp_card") s.ypCard++;
     if (v.session_id) {
       const set = sessions.get(v.listing_id) ?? new Set<string>();
       set.add(v.session_id);
       sessions.set(v.listing_id, set);
     } else s.visitors++;
-    if (v.source && showKeys.has(v.source)) {
+    // Dock-card scans: a show card's QR (source = a show key) or the
+    // everyday dock card's (source yp_card, Nov 1) — both "dock-card scans".
+    if (v.source && (showKeys.has(v.source) || v.source === "yp_card")) {
       if (v.session_id) {
         const set = scanSessions.get(v.listing_id) ?? new Set<string>();
         set.add(v.session_id);
@@ -253,6 +259,8 @@ export type ReportListing = {
   vessel: string;
   spec: string;
   stats: ListingStats;
+  /** The everyday dock card can be printed (published slideshow + YachtPics link on). */
+  dockCard?: boolean;
 };
 
 export type BrokerBlock = {
@@ -329,9 +337,9 @@ async function visibleListingIds(svc: SupabaseClient, ids: string[]): Promise<Se
 
 /** Everyone who gets this month's email (and who's left out, by reason). */
 export async function planMonthlyReport(svc: SupabaseClient, month: string): Promise<MonthlyPlan> {
-  type L = { id: string; broker_id: string; vessel_name: string | null; year: number | null; length_ft: number | null; make: string | null; model: string | null; photographed_at: string | null; created_at: string | null };
+  type L = { id: string; broker_id: string; vessel_name: string | null; year: number | null; length_ft: number | null; make: string | null; model: string | null; photographed_at: string | null; created_at: string | null; slideshow_published: boolean | null; yp_share_enabled: boolean | null };
   const all = await pageAll<L>((a, b) =>
-    svc.from("listings").select("id, broker_id, vessel_name, year, length_ft, make, model, photographed_at, created_at")
+    svc.from("listings").select("id, broker_id, vessel_name, year, length_ft, make, model, photographed_at, created_at, slideshow_published, yp_share_enabled")
       .eq("status", "active").is("sold_at", null).order("id").range(a, b));
   const visible = await visibleListingIds(svc, all.map((l) => l.id));
   const live = all.filter((l) => visible.has(l.id));
@@ -367,7 +375,7 @@ export async function planMonthlyReport(svc: SupabaseClient, month: string): Pro
       .map((l) => ({ l, s: stats.get(l.id) ?? { ...EMPTY_STATS } }))
       .sort((x, y) => y.s.views - x.s.views || when(y.l) - when(x.l));
     if (mine.length === 0) continue;
-    const listings = mine.map(({ l, s }) => ({ id: l.id, vessel: vesselOf(l), spec: specOf(l), stats: s }));
+    const listings = mine.map(({ l, s }) => ({ id: l.id, vessel: vesselOf(l), spec: specOf(l), stats: s, dockCard: l.slideshow_published === true && l.yp_share_enabled === true }));
     blocks.set(b.id, {
       brokerId: b.id,
       name: fullName(b),
@@ -511,6 +519,7 @@ function listingRow(l: ReportListing, month: string, img: EmailImage | null): st
     if (s.topPhoto) body += line(`Lingered on most: ${esc(s.topPhoto)}`, "#6b7280");
     // Where views came from — only the YachtPics group, only when > 0 (Nov 1).
     const yp: string[] = [];
+    if (s.ypCard > 0) yp.push(`${s.ypCard} from the dock card`);
     if (s.ypSite > 0) yp.push(`${s.ypSite} from yachtpics.com`);
     if (s.ypSocial > 0) yp.push(`${s.ypSocial} from YachtPics social`);
     if (s.ypOther > 0) yp.push(`${s.ypOther} from a YachtPics link`);
@@ -521,6 +530,8 @@ function listingRow(l: ReportListing, month: string, img: EmailImage | null): st
   }
   if (s.downloads) body += line(`${plural(s.downloads, "photo", "photos")} downloaded`, "#6b7280");
   body += s.views > 0 ? link(reportUrl, "See her Seller Report") : link(sendUrl, "Send her slideshow");
+  // The everyday dock card (Nov 1) — signed-out readers sign in and come back.
+  if (l.dockCard) body += `<p style="margin:4px 0 0;font-size:12px;line-height:1.5;"><a href="${PORTAL}/api/listings/${l.id}/dock-card?size=5x7" style="color:#6b7280;text-decoration:underline;">Print her dock card</a></p>`;
 
   const thumb = img
     ? `<a href="${listingUrl}" style="display:block;"><img src="${esc(img.url)}" alt="${v}" width="112" height="${Math.max(1, Math.round((112 * img.height) / img.width))}" style="display:block;width:112px;height:auto;border:0;border-radius:6px;" /></a>`

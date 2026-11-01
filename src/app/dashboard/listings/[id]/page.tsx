@@ -20,6 +20,7 @@ import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
 import BoatShowCard from "@/components/BoatShowCard";
+import DockCardButton from "@/components/DockCardButton";
 import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import SortableVideoList from "@/components/SortableVideoList";
 // Photo management (grid, upload, replace, delete, order, categories, cover,
@@ -1516,6 +1517,15 @@ export default function BrokerListingPage() {
               </button>
             </div>
           </>
+        )}
+
+        {/* Dock card (Nov 1) — works with or without a plan: its QR is the
+            YachtPics always-live link, not the broker's /s link. */}
+        {listing.slideshow_published && listing.slideshow_slug && (
+          <div className="mt-3 flex items-center gap-3 flex-wrap">
+            <DockCardButton listingId={id} />
+            <p className="text-xs text-ink-500">Print it and leave it aboard. Every scan is counted on her Seller Report.</p>
+          </div>
         )}
 
         {listing.slideshow_published && !hasAccess(accessStatus) && (

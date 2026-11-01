@@ -227,9 +227,52 @@ export const FLIBS26_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
   html: announcementFlibs26Html,
 };
 
-/** In send order. The FLIBS note is the live one; the two Walkthrough
- * campaigns' windows closed Oct 16 and stay listed for their counts. */
-export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [FLIBS26_ANNOUNCEMENT_CAMPAIGN, EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
+/* ------------------------------------------------------------------ *
+ * Everyday dock card (Nov 1) — "A dock card for every boat".
+ * Brokers AND assistants (audience "all"). DRAFT: goes nowhere until Charlie
+ * approves it on /admin/announce; then the next daily run (~13:00 UTC, 9am ET)
+ * sends it, deduped per recipient in email_log, links tracked. Copy also in
+ * docs/announce-dock-card.md. The button lands on My Listings (signed-out
+ * readers sign in first and are returned there).
+ * ------------------------------------------------------------------ */
+export const ANNOUNCEMENT_DOCK_CARD_TYPE = "announcement_dock_card_2026_11";
+export const ANNOUNCEMENT_DOCK_CARD_SUBJECT = "A dock card for every boat";
+export const ANNOUNCEMENT_DOCK_CARD_SEND_AFTER = "2026-11-01T00:00:00Z";
+export const ANNOUNCEMENT_DOCK_CARD_SEND_BEFORE = "2026-12-01T13:00:00Z";
+const DOCK_CARD_BUTTON_URL = "https://portal.yachtpics.com/dashboard/listings";
+
+export function announcementDockCardHtml(opts: { firstName: string; unsubToken?: string }): string {
+  const { firstName, unsubToken } = opts;
+  return announcementShell({
+    eyebrow: "New in the Portal",
+    headline: "A dock card for every boat.",
+    unsubToken,
+    body: [
+      p(`Hi ${firstName},`),
+      p(`Every boat we have photographed now has a printable dock card: her photograph, her specifications, your name, and a QR code that opens her slideshow and video.`),
+      p(`Print it and leave it aboard. Set it at the boarding steps or in the salon for showings.`),
+      p(`Every scan is counted on her Seller Report.`),
+      callout(`Open a listing and choose ${calloutStrong("Dock card")} in the Client Slideshow section. 5&times;7 or Letter.`),
+      button(DOCK_CARD_BUTTON_URL, "Print a dock card"),
+    ].join("\n\n      "),
+  });
+}
+
+export const DOCK_CARD_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
+  type: ANNOUNCEMENT_DOCK_CARD_TYPE,
+  subject: ANNOUNCEMENT_DOCK_CARD_SUBJECT,
+  sendAfter: ANNOUNCEMENT_DOCK_CARD_SEND_AFTER,
+  sendBefore: ANNOUNCEMENT_DOCK_CARD_SEND_BEFORE,
+  audience: "all",
+  excludeSentTypes: [],
+  label: "A dock card for every boat",
+  description: "Every boat with a published slideshow now has a printable everyday dock card (QR opens her slideshow and video; scans counted on the Seller Report). Every broker and assistant. Button opens My Listings.",
+  html: announcementDockCardHtml,
+};
+
+/** In send order. The dock-card note is the newest; FLIBS closed Oct 27 and
+ * the two Walkthrough campaigns Oct 16 — they stay listed for their counts. */
+export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [DOCK_CARD_ANNOUNCEMENT_CAMPAIGN, FLIBS26_ANNOUNCEMENT_CAMPAIGN, EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
 
 export function getAnnouncementCampaign(type: string | null | undefined): AnnouncementCampaign | null {
   if (!type) return null;
