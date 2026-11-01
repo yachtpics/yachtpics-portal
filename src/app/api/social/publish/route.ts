@@ -1,3 +1,4 @@
+import { validCreditBrokerId } from "@/lib/reelCredit";
 import { NextRequest, NextResponse } from "next/server";
 import { MAX_CAPTION, SOCIAL_PLATFORMS, SOCIAL_PUBLISHING_FOR_BROKERS, metaConfigured, type SocialPlatform } from "@/lib/meta/config";
 import { POST_COLUMNS, loadConnection, loadReelSource, socialViewer, startPost, type SocialPostRow, type SocialSourceKind } from "@/lib/meta/server";
@@ -110,7 +111,10 @@ export async function POST(req: NextRequest) {
       if (!coverSize) return NextResponse.json({ error: "The cover image didn't finish uploading. Try again." }, { status: 400 });
       if (coverSize > SOCIAL_COVER_MAX_BYTES) return NextResponse.json({ error: "The cover image is over 10 MB." }, { status: 400 });
     }
-    source = { brokerId: listing.broker_id, sourceId: listing.id, videoPath, coverPath: coverPath || null };
+    // The broker the reel credits (owner or a co-broker; else the owner) —
+    // the post is filed under them and "Listed by @handle" names them.
+    const credited = (await validCreditBrokerId(viewer.svc, listing.id, body?.creditBrokerId)) ?? listing.broker_id;
+    source = { brokerId: credited, sourceId: listing.id, videoPath, coverPath: coverPath || null };
   } else {
     const job = await loadReelSource(viewer.svc, jobId);
     if ("error" in job) return NextResponse.json({ error: job.error }, { status: 400 });

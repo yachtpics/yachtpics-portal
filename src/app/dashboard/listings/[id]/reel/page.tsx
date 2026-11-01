@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { loadListingReelSource } from "@/lib/listingReelSource";
+import { fetchReelCredit, loadListingReelSource } from "@/lib/listingReelSource";
+import { normalizeHex } from "@/lib/reelStyles";
 import ReelMaker, { type ReelSource } from "@/components/ReelMaker";
 import DeliveredReelStrip from "@/components/DeliveredReelStrip";
 
@@ -36,6 +37,19 @@ export default function ListingReelPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  // Admin's Credit chip: swap the card and colours to the picked broker
+  // (owner or a co-broker), keeping everything else on the page as it is.
+  async function changeCredit(brokerId: string) {
+    const c = await fetchReelCredit(id, brokerId);
+    if (!c) return;
+    setSource((prev) => prev && ({
+      ...prev,
+      creditBrokerId: c.creditBrokerId,
+      broker: c.card,
+      brand: { accent: normalizeHex(c.brand.accent), ground: normalizeHex(c.brand.ground) },
+    }));
+  }
+
   if (loading) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Loading…</div>;
   if (!source) return <div className="flex items-center justify-center h-64 text-ink-400 text-sm">Listing not found.</div>;
 
@@ -43,7 +57,7 @@ export default function ListingReelPage() {
   return (
     <>
       <DeliveredReelStrip listingId={id} />
-      <ReelMaker source={source} />
+      <ReelMaker source={source.isAdmin ? { ...source, onCreditChange: changeCredit } : source} />
     </>
   );
 }

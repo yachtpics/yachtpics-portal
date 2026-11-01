@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
+import { validCreditBrokerId } from "@/lib/reelCredit";
 import { claimedRenders, reelsUnlimited, remainingOf, REELS_PER_LISTING } from "@/lib/reelAllowance";
 
 export const runtime = "nodejs";
@@ -82,10 +83,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: false, unlimited: false, remaining: 0 }, { status: 402 });
     }
 
+    // Filed under the broker the reel credits (owner or co-broker, checked).
+    const creditedId = (await validCreditBrokerId(a.svc, listingId, body?.creditBrokerId)) ?? a.brokerId;
     const { error } = await a.svc.from("reel_events").insert({
       kind: "claim",
       listing_id: listingId,
-      broker_id: a.brokerId,
+      broker_id: creditedId,
       user_id: a.userId,
       role,
       render_id: renderId,

@@ -9,7 +9,7 @@ import { REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 import ReelMaker, { type ReelAutoConfig, type ReelAutoItem, type ReelAutoProgress, type ReelSource } from "@/components/ReelMaker";
 import { jobMusic, type ReelServiceSettings } from "@/lib/reelService";
 
-export type RenderJob = { id: string; listing_id: string; look: string; settings: ReelServiceSettings | null };
+export type RenderJob = { id: string; listing_id: string; look: string; settings: ReelServiceSettings | null; broker_id?: string };
 export type RenderOutcome = { ok: true; note: string } | { ok: false; error: string };
 
 async function postJob(id: string, body: Record<string, unknown>) {
@@ -66,7 +66,8 @@ export default function ReelServiceRenderer({
         await postJob(job.id, { action: "rendering" });
         onProgress("Loading listing", 0);
         const supabase = createClient();
-        const source = await loadListingReelSource(supabase, job.listing_id);
+        // Credits the broker the job is for (owner or a co-broker of the listing).
+        const source = await loadListingReelSource(supabase, job.listing_id, { creditBrokerId: job.broker_id ?? null });
         if (!source) throw new Error("The listing couldn’t be loaded.");
         if (!source.isAdmin) throw new Error("Only an admin can render Reel Service reels.");
 

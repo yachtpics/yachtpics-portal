@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     ? body.shape
     : undefined;
 
-  await logReelEvent({ userId: user.id, kind, listingId, shape });
+  await logReelEvent({ userId: user.id, kind, listingId, shape, creditBrokerId: body?.creditBrokerId });
 
   return NextResponse.json({ success: true });
 }

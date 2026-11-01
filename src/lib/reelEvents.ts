@@ -1,3 +1,4 @@
+import { validCreditBrokerId } from "@/lib/reelCredit";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 
 /**
@@ -66,6 +67,8 @@ export async function logReelEvent(opts: {
   kind: ReelEventKind;
   listingId?: string | null;
   shape?: ReelShape;
+  /** Who the reel credits (owner or a co-broker) — checked against the listing; else the owner. */
+  creditBrokerId?: unknown;
 }): Promise<void> {
   try {
     const service = createServiceClient(
@@ -83,15 +86,10 @@ export async function logReelEvent(opts: {
 
     // The broker comes from the listing, never from the caller — an assistant's
     // reel is the broker's uptake, and nothing client-side gets to say whose.
+    // (Nov 1: a co-broker's reel is filed under the co-broker it credits —
+    // still checked server-side: only the owner or a co-broker of the listing.)
     let brokerId: string | null = null;
-    if (listingId) {
-      const { data: listing } = await service
-        .from("listings")
-        .select("broker_id")
-        .eq("id", listingId)
-        .maybeSingle();
-      brokerId = listing?.broker_id ?? null;
-    }
+    if (listingId) brokerId = await validCreditBrokerId(service, listingId, opts.creditBrokerId);
 
     const s = opts.shape ?? {};
 

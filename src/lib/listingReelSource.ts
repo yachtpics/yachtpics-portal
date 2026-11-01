@@ -5,6 +5,7 @@ import { normalizeHex } from "@/lib/reelStyles";
 import { isDepthLooksSubscriber } from "@/lib/depthLooksRelease";
 import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components/ReelMaker";
+import type { BrokerCard } from "@/lib/yachtpicsBrand";
 import { photoDrawUrls } from "@/lib/photoStoreClient";
 
 /**
@@ -20,14 +21,37 @@ import { photoDrawUrls } from "@/lib/photoStoreClient";
 type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number; derivatives_at?: string | null; storage_backend?: string | null };
 type VideoRow = { id: string; title: string | null; filename: string | null; thumbnail_path: string | null; display_order: number | null };
 
-export async function loadListingReelSource(supabase: SupabaseClient, id: string): Promise<ReelSource | null> {
+/** Who the reel credits, from /api/reels/credit (src/lib/reelCredit.ts). Null if the call fails. */
+export async function fetchReelCredit(listingId: string, brokerId?: string | null): Promise<{
+  creditBrokerId: string;
+  card: BrokerCard;
+  brand: { accent: string | null; ground: string | null };
+  options: { id: string; name: string; isOwner: boolean }[] | null;
+} | null> {
+  try {
+    const q = `listingId=${encodeURIComponent(listingId)}${brokerId ? `&brokerId=${encodeURIComponent(brokerId)}` : ""}`;
+    const res = await fetch(`/api/reels/credit?${q}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    const d = await res.json();
+    return typeof d?.creditBrokerId === "string" && d.card ? d : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * opts.creditBrokerId — admin only: who the reel is for (the Reel Service
+ * renderer passes the job's broker). Everyone else gets the acting broker the
+ * server works out: the owner, the co-broker who opened it, the broker an
+ * assistant works for (Nov 1 — co-broker reels used to credit the owner).
+ */
+export async function loadListingReelSource(supabase: SupabaseClient, id: string, opts: { creditBrokerId?: string | null } = {}): Promise<ReelSource | null> {
   const { data: l } = await supabase.from("listings")
     .select("vessel_name, year, make, model, vessel_type, length_ft, location, asking_price, staterooms, broker_id, hero_photo_id, photo_order_manual")
     .eq("id", id).single();
   if (!l) return null;
   const listing = l as ListingData;
   const { data: { user: me } } = await supabase.auth.getUser();
-  const isOwner = !!me && me.id === l.broker_id;
   let admin = false;
   if (me) {
     const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
@@ -57,26 +81,43 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
         .then((d) => isDepthLooksSubscriber(d?.status))
         .catch(() => false);
 
-  const [{ data: prof }, { data: det }, { data: ph }, { count }, { data: vids }, isSubscriber] = await Promise.all([
-    supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
-    supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
+  const [credit, { data: ph }, { count }, { data: vids }, isSubscriber] = await Promise.all([
+    fetchReelCredit(id, opts.creditBrokerId),
     supabase.from("photos").select("id, storage_path, category, filename, display_order, derivatives_at, storage_backend").eq("listing_id", id).eq("is_visible", true).order("display_order"),
     supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
     // The listing's videos, offered as clips in the listing's own order.
     supabase.from("videos").select("id, title, filename, thumbnail_path, display_order").eq("listing_id", id).order("display_order"),
     subscriberCheck,
   ]);
-  const broker = {
-    // No placeholder here: an end card reading "Broker" over a phone number
-    // is worse than no line at all. drawEndCard skips an empty name.
-    name: [prof?.first_name, prof?.last_name].filter(Boolean).join(" "),
-    brokerage: det?.brokerage_name ?? null,
-    phone: prof?.phone ?? null,
-    email: prof?.display_email ?? null,
-    website: det?.brokerage_website ?? null,
-    logoUrl: det?.logo_url ?? null,
-  };
-  const brand = { accent: normalizeHex(det?.brand_accent), ground: normalizeHex(det?.brand_ground) };
+  // The credited broker's card and colours. If the credit lookup fails, the
+  // owner's, read directly as before. (No placeholder name: an end card
+  // reading "Broker" over a phone number is worse than no line at all.)
+  let creditBrokerId: string = l.broker_id;
+  let broker: BrokerCard;
+  let brandRaw: { accent: string | null | undefined; ground: string | null | undefined };
+  if (credit) {
+    creditBrokerId = credit.creditBrokerId;
+    broker = credit.card;
+    brandRaw = credit.brand;
+  } else {
+    const [{ data: prof }, { data: det }] = await Promise.all([
+      supabase.from("profiles").select("first_name, last_name, phone, display_email").eq("id", l.broker_id).maybeSingle(),
+      supabase.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", l.broker_id).maybeSingle(),
+    ]);
+    broker = {
+      name: [prof?.first_name, prof?.last_name].filter(Boolean).join(" "),
+      brokerage: det?.brokerage_name ?? null,
+      phone: prof?.phone ?? null,
+      email: prof?.display_email ?? null,
+      website: det?.brokerage_website ?? null,
+      logoUrl: det?.logo_url ?? null,
+    };
+    brandRaw = { accent: det?.brand_accent, ground: det?.brand_ground };
+  }
+  const brand = { accent: normalizeHex(brandRaw.accent), ground: normalizeHex(brandRaw.ground) };
+  // "Owner" in ReelMaker's sense: the credited broker is the one at the
+  // keyboard, so colour changes save to their own profile.
+  const isOwner = !!me && me.id === creditBrokerId;
 
   // Same order the slideshow uses: cover first, then the walk-through.
   const ordered = orderPhotos((ph ?? []) as Photo[], { manual: l.photo_order_manual === true, heroId: l.hero_photo_id });
@@ -163,6 +204,8 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
     isOwner,
     locked,
     brand,
+    creditBrokerId,
+    creditOptions: credit?.options ?? null,
     videoCount: count ?? 0,
   };
 }

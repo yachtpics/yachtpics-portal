@@ -56,6 +56,8 @@ export type SocialSource =
       durationSec: number; width: number; height: number;
       blob: Blob; renderId: string;
       uploadCover: (cover: Blob, atSec: number, onProgress: (pct: number) => void) => Promise<string>;
+      /** Who the reel credits (owner or a co-broker) — "Listed by @handle" follows it. */
+      creditBrokerId?: string;
     };
 
 /** Cover picker: how many frames to offer, and the thumbnail's pixel width (2× its 56 px on screen). */
@@ -324,6 +326,7 @@ export default function SocialPostDialog({ source, title, defaultCaption, broker
         body = {
           sourceKind: "listing_reel", listingId: source.id, videoPath, coverPath,
           durationSec: source.durationSec, width: source.width, height: source.height,
+          creditBrokerId: source.creditBrokerId ?? null,
         };
       } else {
         body = { jobId: source.id };

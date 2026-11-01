@@ -315,6 +315,17 @@ export type ReelSource = {
   locked: boolean;
   /** The broker's remembered colours, where the source has them. */
   brand?: BrandColors;
+  /**
+   * The broker the reel credits (Nov 1): the owner, or the co-broker / the
+   * assisted broker it was made under — src/lib/reelCredit.ts. The end card,
+   * caption and brand colours are theirs; records are filed under them.
+   * Left out (the Studio): the listing's broker_id.
+   */
+  creditBrokerId?: string;
+  /** Admins only: who the reel can credit (owner + co-brokers), for the Credit chip. */
+  creditOptions?: { id: string; name: string; isOwner: boolean }[] | null;
+  /** Admins only: switch who the reel credits (the page swaps the card and colours). */
+  onCreditChange?: (brokerId: string) => void;
   /** Videos already on the listing — the display order a new one takes. */
   videoCount?: number;
   /**
@@ -612,6 +623,12 @@ export default function ReelMaker({
   useEffect(() => {
     if (source.brand) setBrand(source.brand);
   }, [source.brand]);
+
+  /** A different credited broker (admin's Credit chip): the finished film is out of date. */
+  useEffect(() => {
+    setResult(null);
+    setPhase("idle");
+  }, [source.creditBrokerId]);
 
   /**
    * The Studio's branding picker owns the YachtPics switch while it is set; the
@@ -1268,7 +1285,7 @@ export default function ReelMaker({
       void fetch("/api/reel-events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, listingId, shape }),
+        body: JSON.stringify({ kind, listingId, shape, creditBrokerId: source.creditBrokerId ?? null }),
         keepalive: true,
       }).catch(() => {});
     } catch { /* tracking never breaks the page */ }
@@ -1309,7 +1326,7 @@ export default function ReelMaker({
       const res = await fetch("/api/reels/claim", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, renderId }),
+        body: JSON.stringify({ listingId, renderId, creditBrokerId: source.creditBrokerId ?? null }),
       });
       if (res.status === 402) {
         setAllowance((a) => ({ unlimited: false, used: Math.max(a?.used ?? 0, 2), remaining: 0 }));
@@ -2985,12 +3002,14 @@ export default function ReelMaker({
     setResult(null);
     setPhase("idle");
     // Only the broker's own hand writes to their profile.
+    // (isOwner = the credited broker is the one signed in — a co-broker's
+    // colours go on the co-broker's own profile.)
     if (!listing || !isOwner) return;
     if (brandSaveRef.current) clearTimeout(brandSaveRef.current);
     brandSaveRef.current = setTimeout(() => {
       supabase.from("broker_details")
         .update({ brand_accent: next.accent ?? null, brand_ground: next.ground ?? null })
-        .eq("id", listing.broker_id)
+        .eq("id", source.creditBrokerId ?? listing.broker_id)
         .then(() => { /* best effort */ });
     }, 600);
   }
@@ -3459,6 +3478,24 @@ export default function ReelMaker({
         </p>
         {brandError && <p className="mt-1.5 text-xs text-danger-700">{brandError}</p>}
       </div>
+
+      {/* Admin only: who the reel is for — the owner or a co-broker (Nov 1). */}
+      {isAdmin && source.onCreditChange && source.creditOptions && source.creditOptions.length > 1 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2">
+          <p className="label-caps text-ink-500 mr-1">Credit</p>
+          {source.creditOptions.map((o) => (
+            <button
+              key={o.id}
+              onClick={() => { if (o.id !== source.creditBrokerId) source.onCreditChange?.(o.id); }}
+              disabled={busy}
+              className={chip(o.id === source.creditBrokerId)}
+            >
+              {o.name}{o.isOwner ? "" : " \u00b7 co-broker"}
+            </button>
+          ))}
+          <span className="text-xs text-ink-400">The end card, caption and colours follow who you pick.</span>
+        </div>
+      )}
 
       {/* Admin only: brand the film as YachtPics — our own advertising. */}
       {isAdmin && (
@@ -4024,6 +4061,7 @@ export default function ReelMaker({
                   kind: "listing_reel", id: listingId, upload: uploadForSocial,
                   durationSec: socialSeconds, width: SPEC[result.format].w, height: SPEC[result.format].h,
                   blob: result.blob, renderId: result.renderId, uploadCover: uploadCoverForSocial,
+                  creditBrokerId: source.creditBrokerId,
                 }}
                 title={`${listing.vessel_name ?? "Listing"} \u00b7 Reel \u00b7 ${result.seconds}s`}
                 defaultCaption={socialCaption(listing, broker)}
