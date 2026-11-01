@@ -34,6 +34,9 @@ import { BILLING_PATH, PLAN_FROM_PRICE } from "@/lib/planValue";
  *   top photo    slideshow_events dwell seconds + 15 per favorite (category)
  *   scans        slideshow_views whose source is a boat_shows key (dock-card
  *                QR codes carry ?src={show key}), distinct visits
+ *   YachtPics    views whose source is yp_site / yp_social / yachtpics (the
+ *                YachtPics share link, src/lib/ypShare.ts) — shown as one
+ *                "Views from YachtPics" line per boat when > 0
  *   downloads    photo_downloads.photo_count summed (admins' downloads left out)
  *   inquiries    listing_leads (slideshow Inquire) + site_leads tagged to the
  *                listing (broker website)
@@ -127,11 +130,19 @@ export type ListingStats = {
   inquiries: number;
   /** Category of the photo buyers lingered on most, or null. */
   topPhoto: string | null;
+  /**
+   * Views YachtPics brought in through its share link (Nov 1,
+   * src/lib/ypShare.ts): from yachtpics.com boat pages (source yp_site), from
+   * our reels (yp_social), and the bare link (yachtpics). Part of `views`.
+   */
+  ypSite: number;
+  ypSocial: number;
+  ypOther: number;
   /** Ever sent to a client (client_sends), any month. */
   everSent: boolean;
 };
 
-const EMPTY_STATS: ListingStats = { views: 0, visitors: 0, scans: 0, downloads: 0, inquiries: 0, topPhoto: null, everSent: false };
+const EMPTY_STATS: ListingStats = { views: 0, visitors: 0, scans: 0, downloads: 0, inquiries: 0, topPhoto: null, ypSite: 0, ypSocial: 0, ypOther: 0, everSent: false };
 
 /** The month's numbers for many listings — one query per table. */
 export async function loadMonthStats(svc: SupabaseClient, listingIds: string[], month: string): Promise<Map<string, ListingStats>> {
@@ -167,6 +178,9 @@ export async function loadMonthStats(svc: SupabaseClient, listingIds: string[], 
     if (!want.has(v.listing_id)) continue;
     const s = get(v.listing_id);
     s.views++;
+    if (v.source === "yp_site") s.ypSite++;
+    else if (v.source === "yp_social") s.ypSocial++;
+    else if (v.source === "yachtpics") s.ypOther++;
     if (v.session_id) {
       const set = sessions.get(v.listing_id) ?? new Set<string>();
       set.add(v.session_id);
@@ -495,6 +509,12 @@ function listingRow(l: ReportListing, month: string, img: EmailImage | null): st
     if (s.inquiries > 0) bits.push(plural(s.inquiries, "inquiry", "inquiries"));
     body += line(`<strong style="color:#0c1420;">${bits.join(" &middot; ")}</strong>`);
     if (s.topPhoto) body += line(`Lingered on most: ${esc(s.topPhoto)}`, "#6b7280");
+    // Where views came from — only the YachtPics group, only when > 0 (Nov 1).
+    const yp: string[] = [];
+    if (s.ypSite > 0) yp.push(`${s.ypSite} from yachtpics.com`);
+    if (s.ypSocial > 0) yp.push(`${s.ypSocial} from YachtPics social`);
+    if (s.ypOther > 0) yp.push(`${s.ypOther} from a YachtPics link`);
+    if (yp.length) body += line(`Views from YachtPics: ${yp.join(" &middot; ")}`, "#6b7280");
   } else {
     body += line(s.everSent ? `No buyer views in ${monthName(month)}` : "No buyer views yet &mdash; her slideshow hasn&rsquo;t been sent", "#6b7280");
     if (s.inquiries) body += line(plural(s.inquiries, "inquiry", "inquiries"));

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { EngagementSummary } from "@/lib/engagement";
+import { splitYpSources, YP_SOURCE_LABEL } from "@/lib/ypShare";
 
 /**
  * The Engagement panel on a listing page: who's looking, for how long, and at
@@ -130,12 +131,32 @@ export default function ListingEngagement({ listingId, thumbs, reloadKey = 0 }: 
             <div>
               <p className="label-caps text-ink-500 mb-2">Where views come from</p>
               <ul className="text-sm">
-                {data.bySource.map((s) => (
-                  <li key={s.source} className="flex justify-between py-1.5 border-b border-hairline">
-                    <span className="text-ink-700">{SOURCE_LABEL[s.source] ?? showLabel(s.source) ?? s.source}</span>
-                    <span className="text-ink-900 font-medium tabular-nums">{s.views}</span>
-                  </li>
-                ))}
+                {(() => {
+                  // Own sources, then YachtPics' (yachtpics.com, our reels) as one group — Nov 1.
+                  const { own, yp, ypTotal } = splitYpSources(data.bySource);
+                  return (
+                    <>
+                      {own.map((s) => (
+                        <li key={s.source} className="flex justify-between py-1.5 border-b border-hairline">
+                          <span className="text-ink-700">{SOURCE_LABEL[s.source] ?? showLabel(s.source) ?? s.source}</span>
+                          <span className="text-ink-900 font-medium tabular-nums">{s.views}</span>
+                        </li>
+                      ))}
+                      {yp.length > 0 && (
+                        <li className="flex justify-between py-1.5 border-b border-hairline">
+                          <span className="text-ink-900 font-medium">YachtPics</span>
+                          <span className="text-ink-900 font-medium tabular-nums">{ypTotal}</span>
+                        </li>
+                      )}
+                      {yp.map((s) => (
+                        <li key={s.source} className="flex justify-between py-1.5 pl-3 border-b border-hairline">
+                          <span className="text-ink-700">{YP_SOURCE_LABEL[s.source] ?? s.source}</span>
+                          <span className="text-ink-900 font-medium tabular-nums">{s.views}</span>
+                        </li>
+                      ))}
+                    </>
+                  );
+                })()}
               </ul>
               {(data.showScans?.length ?? 0) > 0 && (
                 <div className="mt-3 text-xs text-ink-500 space-y-1">

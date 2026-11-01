@@ -18,6 +18,8 @@ type Row = {
   model: string | null;
   in_showcase: boolean;
   showcase_opt_out: boolean;
+  /** The YachtPics share link is live (published + switched on) — Nov 1. */
+  yp_link?: boolean;
 };
 
 type StatusFilter = "all" | "active" | "sold" | "archived";
@@ -145,6 +147,9 @@ export default function AdminListingsBrowser({ listings }: { listings: Row[] }) 
                     }`}>
                       {listing.status}
                     </span>
+                    {listing.yp_link && (
+                      <span className="block text-[11px] text-accent-700 mt-1" title="YachtPics share link is live (always on, whatever the broker's plan)">YachtPics link</span>
+                    )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button

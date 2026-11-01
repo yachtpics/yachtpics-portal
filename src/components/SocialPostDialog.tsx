@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pagePicture } from "./SocialAccounts";
+import { withSlideshowLine } from "@/lib/ypShare";
 
 /**
  * "Post to Facebook / Instagram" for one finished reel — a Reel Service reel
@@ -111,8 +112,11 @@ function localInputValue(d: Date) {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export default function SocialPostDialog({ source, title, defaultCaption, brokerId, onClose }: {
-  source: SocialSource; title: string; defaultCaption: string; brokerId?: string; onClose: () => void;
+export default function SocialPostDialog({ source, title, defaultCaption, brokerId, listingId, onClose }: {
+  source: SocialSource; title: string; defaultCaption: string; brokerId?: string;
+  /** The boat the reel is of (Reel Service jobs; a listing reel's id already is it) — for the "Every photo:" line. */
+  listingId?: string;
+  onClose: () => void;
 }) {
   const sourceId = source.id;
   const isListing = source.kind === "listing_reel";
@@ -122,6 +126,22 @@ export default function SocialPostDialog({ source, title, defaultCaption, broker
   const [fb, setFb] = useState(true);
   const [ig, setIg] = useState(true);
   const [caption, setCaption] = useState(defaultCaption);
+  // "Every photo: {YachtPics share link}?via=social" as the caption's last
+  // line (Nov 1, src/lib/ypShare.ts) when the boat has a published slideshow
+  // and the link is on. Admin-only route; anyone else gets nothing appended.
+  // Views from it report as "YachtPics social".
+  const shareListingId = source.kind === "listing_reel" ? source.id : listingId;
+  useEffect(() => {
+    if (!shareListingId) return;
+    let cancelled = false;
+    fetch(`/api/admin/listings/${encodeURIComponent(shareListingId)}/yp-share`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d: { socialUrl?: string | null } | null) => {
+        if (!cancelled && d?.socialUrl) setCaption((c) => withSlideshowLine(c, d.socialUrl));
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [shareListingId]);
   const [when, setWhen] = useState<"now" | "later">("now");
   const [at, setAt] = useState(() => {
     const d = new Date(Date.now() + 24 * 3600 * 1000);

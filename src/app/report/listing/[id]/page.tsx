@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { splitYpSources, YP_SOURCE_LABEL } from "@/lib/ypShare";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
@@ -187,12 +188,31 @@ export default async function SellerReportPage({ params }: { params: { id: strin
               <p style={{ margin: "0 0 8px", fontSize: 9, color: "#6d7581", textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 600 }}>Where views come from</p>
               {eng.bySource.length === 0 ? (
                 <p style={{ margin: 0, fontSize: 12, color: "#99a2ad" }}>No views yet.</p>
-              ) : eng.bySource.map((s) => (
-                <div key={s.source} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", borderBottom: "1px solid #eef0f2" }}>
-                  <span style={{ color: "#343d4a" }}>{sourceLabel[s.source] ?? s.source}</span>
-                  <span style={{ color: "#0c1420", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{s.views}</span>
-                </div>
-              ))}
+              ) : (() => {
+                // The broker's own sources, then YachtPics' (yachtpics.com
+                // boat pages, our reels) grouped under one heading — Nov 1.
+                const { own, yp, ypTotal } = splitYpSources(eng.bySource);
+                const row = (label: string, views: number, key: string, indent = false) => (
+                  <div key={key} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "5px 0", paddingLeft: indent ? 10 : 0, borderBottom: "1px solid #eef0f2" }}>
+                    <span style={{ color: "#343d4a" }}>{label}</span>
+                    <span style={{ color: "#0c1420", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{views}</span>
+                  </div>
+                );
+                return (
+                  <>
+                    {own.map((s) => row(sourceLabel[s.source] ?? s.source, s.views, s.source))}
+                    {yp.length > 0 && (
+                      <>
+                        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: "8px 0 5px", borderBottom: "1px solid #eef0f2" }}>
+                          <span style={{ color: "#0c1420", fontWeight: 600 }}>YachtPics</span>
+                          <span style={{ color: "#0c1420", fontWeight: 600, fontVariantNumeric: "tabular-nums" }}>{ypTotal}</span>
+                        </div>
+                        {yp.map((s) => row(YP_SOURCE_LABEL[s.source] ?? s.source, s.views, s.source, true))}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
               <div style={{ marginTop: 14, fontSize: 12, color: "#343d4a", lineHeight: 1.7 }}>
                 {eng.videoPlays > 0 && <div>Video played <strong>{eng.videoPlays}</strong> {eng.videoPlays === 1 ? "time" : "times"}</div>}
                 {eng.tourClicks > 0 && <div>360° tour opened <strong>{eng.tourClicks}</strong> {eng.tourClicks === 1 ? "time" : "times"}</div>}

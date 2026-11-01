@@ -5,6 +5,7 @@ import BoatShowCard from "@/components/BoatShowCard";
 import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import { useState, useRef, useEffect } from "react";
 import CoBrokerManager from "./CoBrokerManager";
+import YpShareCard from "./YpShareCard";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
@@ -1042,6 +1043,9 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           <p className="text-xs text-ink-400 mt-3 break-all">{typeof window !== "undefined" ? window.location.origin : ""}/s/{slideshowSlug}</p>
         )}
       </div>
+
+      {/* YachtPics share link (Nov 1) — admin only; brokers keep their own gated /s/ link. */}
+      <YpShareCard listingId={listing.id} published={slideshowPublished} />
 
       {/* Inquiries (leads from the public slideshow) */}
       <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 mb-6">

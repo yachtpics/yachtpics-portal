@@ -1,20 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  canViewSlideshow,
-  getPublishedSlideshow,
-  serviceClient,
-  signSlideshowExtras,
-  slideshowRows,
-  SLIDESHOW_TTL,
-} from "@/lib/publicSlideshow";
-import { signPhotosAtSize } from "@/lib/publicPhotoUrls";
-import { rateLimited } from "@/lib/simpleRateLimit";
+import { canViewSlideshow, getPublishedSlideshow } from "@/lib/publicSlideshow";
+import { handleSlideshowUrls } from "@/lib/slideshowUrlsHandler";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
-
-const MAX_IDS = 60;
 
 /**
  * POST /api/s/[slug]/urls
@@ -45,43 +35,11 @@ const MAX_IDS = 60;
 export async function POST(req: NextRequest, { params }: { params: { slug: string } }) {
   const slug = (params.slug ?? "").slice(0, 120);
   if (!slug) return NextResponse.json({ error: "Not found" }, { status: 404 });
-
-  const ip = (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
-  if (rateLimited(`s-urls:${slug}:${ip}`, 60, 60_000)) {
-    return NextResponse.json({ error: "Too many requests" }, { status: 429, headers: { "Retry-After": "20" } });
-  }
-
-  let body: { ids?: unknown; size?: unknown } = {};
-  try {
-    body = await req.json();
-  } catch {
-    /* empty body = extras refresh */
-  }
-  const ids = Array.isArray(body.ids)
-    ? Array.from(new Set(body.ids.filter((x): x is string => typeof x === "string" && x.length <= 64))).slice(0, MAX_IDS)
-    : null;
-  const size = body.size === "full" ? "full" : "thumb";
-
-  try {
+  // Same rule as the page: published under this slug, and the owner's plan
+  // live unless the caller is the owner/team/admin. (Shared handler:
+  // src/lib/slideshowUrlsHandler.ts.)
+  return handleSlideshowUrls(req, `s-urls:${slug}`, async () => {
     const listing = await getPublishedSlideshow(slug);
-    if (!listing || !(await canViewSlideshow(listing))) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
-    const supabase = serviceClient();
-    const rows = await slideshowRows(listing);
-
-    if (ids) {
-      const wanted = new Set(ids);
-      const items = rows.photos.filter((p) => wanted.has(p.id));
-      const signed = await signPhotosAtSize(supabase, items, size, SLIDESHOW_TTL);
-      const photos: Record<string, { thumb?: string; full?: string }> = {};
-      for (const [id, url] of Object.entries(signed)) photos[id] = size === "full" ? { full: url } : { thumb: url };
-      return NextResponse.json({ photos }, { headers: { "Cache-Control": "no-store" } });
-    }
-
-    const extras = await signSlideshowExtras(supabase, listing, rows.videos);
-    return NextResponse.json({ photos: {}, ...extras }, { headers: { "Cache-Control": "no-store" } });
-  } catch {
-    return NextResponse.json({ error: "Couldn't refresh links" }, { status: 500 });
-  }
+    return listing && (await canViewSlideshow(listing)) ? listing : null;
+  });
 }

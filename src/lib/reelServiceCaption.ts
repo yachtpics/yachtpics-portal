@@ -18,6 +18,12 @@ import { signResizedPath } from "@/lib/photoStore";
  * in the same register as the Reel Maker's "Write it again". Without AI, or if
  * the model fails, the next templated variant.
  *
+ * The "Every photo: {YachtPics share link}?via=social" line (Nov 1) is NOT
+ * written into the stored caption — brokers see and copy these captions on
+ * /dashboard/reels, and the share link is YachtPics' own (always live, views
+ * reported as "YachtPics social"). SocialPostDialog appends it when WE post
+ * the reel to Facebook / Instagram (src/lib/ypShare.ts withSlideshowLine).
+ *
  * Counters (migration 20261023b): caption_variant, caption_rewrites,
  * caption_rewritten_at. Before that migration is applied everything still
  * works — just without the cap, and the template rotates on the current

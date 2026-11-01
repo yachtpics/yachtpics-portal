@@ -5,7 +5,9 @@ import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
 import { withVideoUrls } from "@/lib/videoUrls";
-import { signPhotosAtSize, type PhotoSize } from "@/lib/publicPhotoUrls";
+import { signPhotosAtSize, signOneTransformed, OG_TRANSFORM, type PhotoSize } from "@/lib/publicPhotoUrls";
+import { cleanYpToken, ypShareLive } from "@/lib/ypShare";
+import type { Metadata } from "next";
 
 /**
  * Shared by the buyer slideshow page (/s/[slug]), its link preview
@@ -61,6 +63,29 @@ export const getPublishedSlideshow = cache(async (slug: string): Promise<Slidesh
     .eq("slideshow_published", true)
     .maybeSingle();
   return (data as SlideshowListing | null) ?? null;
+});
+
+/**
+ * The YachtPics share link (/yp/{token}, Nov 1 — src/lib/ypShare.ts): the
+ * listing behind a token, ONLY when ypShareLive (published + slug + admin
+ * switch on). The broker's plan is not consulted — that is the point of this
+ * link — and this is the only place that bypass exists: /s/[slug] and
+ * /api/s/[slug]/urls keep using canViewSlideshow. Returns the real slideshow
+ * slug too (views/events/inquiries are recorded against it). Before
+ * migration 20261101b the columns don't exist → null (404).
+ */
+export const getYpSharedSlideshow = cache(async (rawToken: string): Promise<{ listing: SlideshowListing; slug: string } | null> => {
+  const token = cleanYpToken(rawToken);
+  if (!token) return null;
+  const { data, error } = await serviceClient()
+    .from("listings")
+    .select(`${LISTING_COLUMNS}, slideshow_slug, slideshow_published, yp_share_enabled, yp_share_token`)
+    .eq("yp_share_token", token)
+    .maybeSingle();
+  if (error || !data) return null;
+  const row = data as SlideshowListing & { slideshow_slug: string | null; slideshow_published: boolean | null; yp_share_enabled: boolean | null; yp_share_token: string | null };
+  if (!ypShareLive(row)) return null;
+  return { listing: row, slug: row.slideshow_slug as string };
 });
 
 /** Is the owning broker's plan live (or office-covered)? Cached per request. */
@@ -244,4 +269,112 @@ export function vesselHeadline(l: { vessel_name: string | null; year: number | n
   const name = (l.vessel_name ?? "").trim();
   if (name && extras) return `${name} — ${extras}`;
   return name || extras || [l.make, l.model].filter(Boolean).join(" ") || "Yacht";
+}
+
+/** Neutral link preview for anything not showable. */
+export const NEUTRAL_SLIDESHOW_METADATA: Metadata = {
+  title: "YachtPics Portal",
+  description: "Yacht photography presented by YachtPics.",
+};
+
+/** Seven days: link-preview crawlers (iMessage, WhatsApp, Facebook) re-fetch lazily. */
+const OG_TTL = 60 * 60 * 24 * 7;
+
+/**
+ * Rich link preview for a listing the caller has ALREADY decided is showable:
+ * vessel name + spec line + "Presented by …", and the hero photo as a
+ * 1200×630 card. Shared by /s/[slug] and /yp/[token]. Never throws.
+ */
+export async function slideshowMetadata(listing: SlideshowListing): Promise<Metadata> {
+  try {
+    const supabase = serviceClient();
+    const [{ photos }, { profile, brokerDetails }] = await Promise.all([
+      slideshowRows(listing),
+      getBrokerCard(listing.broker_id),
+    ]);
+    const hero = photos[0];
+    const image = hero ? await signOneTransformed(supabase, hero.storage_path, OG_TRANSFORM, OG_TTL) : null;
+
+    const title = vesselHeadline(listing);
+    const specs = [
+      listing.year,
+      listing.length_ft ? `${listing.length_ft}′` : null,
+      [listing.make, listing.model].filter(Boolean).join(" ") || null,
+      listing.vessel_type,
+      listing.location,
+    ].filter(Boolean).join(" · ");
+    const brokerName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ").trim();
+    const presented = brokerName
+      ? `Presented by ${brokerName}${brokerDetails?.brokerage_name ? `, ${brokerDetails.brokerage_name}` : ""}.`
+      : brokerDetails?.brokerage_name ? `Presented by ${brokerDetails.brokerage_name}.` : "";
+    const description = [specs ? `${specs}.` : "", presented].filter(Boolean).join(" ") || "Photos and video on YachtPics.";
+
+    return {
+      title,
+      description,
+      openGraph: {
+        title,
+        description,
+        type: "website",
+        siteName: "YachtPics Portal",
+        ...(image ? { images: [{ url: image, width: OG_TRANSFORM.width, height: OG_TRANSFORM.height, alt: title }] } : {}),
+      },
+      twitter: {
+        card: image ? "summary_large_image" : "summary",
+        title,
+        description,
+        ...(image ? { images: [image] } : {}),
+      },
+    };
+  } catch {
+    return NEUTRAL_SLIDESHOW_METADATA;
+  }
+}
+
+/**
+ * Everything the buyer viewer needs besides the listing: broker card, photos
+ * with first-paint links, videos with links, deck plan. Shared by /s/[slug]
+ * and /yp/[token] so the two render identically.
+ */
+export async function slideshowViewerData(listing: SlideshowListing) {
+  const supabase = serviceClient();
+  // Broker card + photo/video rows (cached — shared with generateMetadata),
+  // then ONE light signing step.
+  const [{ profile, brokerDetails }, rows] = await Promise.all([
+    getBrokerCard(listing.broker_id),
+    slideshowRows(listing),
+  ]);
+  const [firstPaint, extras] = await Promise.all([
+    signFirstPaint(supabase, rows.photos, SLIDESHOW_TTL),
+    signSlideshowExtras(supabase, listing, rows.videos),
+  ]);
+
+  const photos = rows.photos.map((photo) => ({
+    id: photo.id,
+    category: photo.category,
+    filename: photo.filename,
+    url: firstPaint[photo.id]?.full ?? null,
+    thumbUrl: firstPaint[photo.id]?.thumb ?? null,
+  }));
+
+  // Same shape the viewer always got, plus posterUrl (null when no still exists).
+  const videos = rows.videos.map((v) => ({
+    id: v.id,
+    storage_path: v.storage_path,
+    storage_host: v.storage_host,
+    filename: v.filename,
+    title: v.title ?? null,
+    url: extras.videos[v.id]?.url ?? null,
+    posterUrl: extras.videos[v.id]?.posterUrl ?? null,
+  }));
+
+  const broker = {
+    name: [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Broker",
+    brokerage: brokerDetails?.brokerage_name ?? null,
+    phone: profile?.phone ?? null,
+    website: brokerDetails?.brokerage_website ?? null,
+    logoUrl: brokerDetails?.logo_url ?? null,
+  };
+
+  return { broker, photos, videos, deckPlanUrl: extras.deckPlanUrl };
 }

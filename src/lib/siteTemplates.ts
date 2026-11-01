@@ -158,6 +158,11 @@ export type BoatPageData = {
   photos: string[];
   /** Video published to the public site. Empty for photo-only boats. */
   videos: SiteVideo[];
+  /**
+   * The YachtPics share link (?via=site) when the boat has a published
+   * slideshow — "View the full slideshow →" near the top. Null = no button.
+   */
+  slideshowUrl?: string | null;
 };
 
 /** One video on a boat page, already copied to the public media host. */
@@ -313,6 +318,7 @@ ${nav(2)}
       <p class="kicker">${esc(d.brokerageName)}</p>
       <h1>${esc(d.label)}</h1>
       ${specs.length ? `<p>${esc(specs.join(" · "))}</p>` : ""}
+      ${d.slideshowUrl ? `<p class="yp-showwrap"><a class="yp-showbtn" href="${esc(d.slideshowUrl)}" target="_blank" rel="noopener">View the full slideshow &rarr;</a></p>` : ""}
     </div>
   </div>
 
@@ -368,6 +374,9 @@ ${nav(2)}
 </main>
 
 <style>
+.yp-showwrap{margin-top:22px}
+.yp-showbtn{display:inline-block;padding:12px 22px;background:var(--gold);color:#fff;font-size:13px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;text-decoration:none;border:1px solid var(--gold);transition:background .2s,color .2s}
+.yp-showbtn:hover{background:transparent;color:var(--gold)}
 .yp-videowrap{margin:0}
 .yp-videowrap + .yp-videowrap{margin-top:36px}
 .yp-videocap{margin:0 0 12px}

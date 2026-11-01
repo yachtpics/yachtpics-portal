@@ -1,4 +1,5 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { ypShareUrl, type YpShareRow } from "@/lib/ypShare";
 import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, brokerageDisplayName, type BoatPageData } from "@/lib/siteTemplates";
 import { orderPhotos } from "@/lib/photoOrder";
 import { includesPhotos, includesVideo, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
@@ -112,7 +113,8 @@ async function syncVideos(
 //
 // Note this deliberately does NOT touch /s/[slug]: that route is subscription
 // gated ("the live client slideshow is a paid feature") and must never be what
-// feeds the public website.
+// feeds the public website. The boat page's "View the full slideshow" button
+// uses the YachtPics share link (/yp/{token}) instead, which is always live.
 
 const PUBLIC_BUCKET = "site-photos";
 const PRIVATE_BUCKET = "listing-photos";
@@ -673,6 +675,20 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     .update({ site_slug: slug, published_at: new Date().toISOString() })
     .eq("id", l.id);
 
+  // "View the full slideshow →" (Nov 1): the YachtPics share link — always
+  // live whatever the broker's plan (src/lib/ypShare.ts), tagged ?via=site so
+  // those views report as "yachtpics.com". Read separately so a missing
+  // column (migration 20261101b not applied) just leaves the button off.
+  let slideshowUrl: string | null = null;
+  {
+    const { data: yp, error: ypErr } = await svc
+      .from("listings")
+      .select("slideshow_published, slideshow_slug, yp_share_enabled, yp_share_token")
+      .eq("id", l.id)
+      .maybeSingle();
+    if (!ypErr) slideshowUrl = ypShareUrl(yp as YpShareRow | null, "site");
+  }
+
   const data: BoatPageData = {
     label,
     slug,
@@ -690,6 +706,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     brokerPhone: broker?.phone ?? null,
     photos,
     videos,
+    slideshowUrl,
   };
 
   const files: SiteFile[] = [{ path: `${brokerage.site_page}/${slug}/index.html`, content: boatPage(data) }];

@@ -2,6 +2,7 @@ import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import AdminListingsBrowser from "./_components/AdminListingsBrowser";
+import { ypShareLive, type YpShareRow } from "@/lib/ypShare";
 
 export default async function AdminListingsPage() {
   // Role check lives in the page, not only the layout — see requireAdminPage.
@@ -10,7 +11,7 @@ export default async function AdminListingsPage() {
   // extra round trip in front of it.
   const supabase = await createClient();
 
-  const [, { data: listingsRaw }] = await Promise.all([
+  const [, { data: listingsRaw }, ypRes] = await Promise.all([
     requireAdminPage(),
     supabase
       .from("listings")
@@ -19,7 +20,16 @@ export default async function AdminListingsPage() {
       profiles:broker_id(first_name, last_name)
     `)
       .order("updated_at", { ascending: false }),
+    // YachtPics share link (Nov 1): read on its own so a missing column
+    // (migration 20261101b not applied) just leaves the indicator off.
+    supabase
+      .from("listings")
+      .select("id, slideshow_published, slideshow_slug, yp_share_enabled, yp_share_token")
+      .eq("slideshow_published", true),
   ]);
+  const ypLive = new Set<string>(
+    ypRes.error ? [] : ((ypRes.data ?? []) as (YpShareRow & { id: string })[]).filter((r) => ypShareLive(r)).map((r) => r.id)
+  );
 
   const listings = (listingsRaw ?? []).map((l) => {
     const b = (Array.isArray(l.profiles) ? l.profiles[0] : l.profiles) as { first_name: string | null; last_name: string | null } | null;
@@ -37,6 +47,7 @@ export default async function AdminListingsPage() {
       model: (l.model ?? null) as string | null,
       in_showcase: (l.in_showcase ?? false) as boolean,
       showcase_opt_out: (l.showcase_opt_out ?? false) as boolean,
+      yp_link: ypLive.has(l.id as string),
     };
   });
 

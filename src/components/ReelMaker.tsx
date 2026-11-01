@@ -228,6 +228,8 @@ const SOCIAL_MAX_SEC = 90;
  * The draft caption for posting a listing reel (admin): only what the listing
  * and the broker's card say — name, year / make / model / length, where she
  * lies, who presents her — and a quiet sign-off. Editable in the dialog.
+ * SocialPostDialog then appends "Every photo: {YachtPics share link}?via=social"
+ * when the boat has a published slideshow (Nov 1, src/lib/ypShare.ts).
  */
 function socialCaption(listing: ListingData, broker: BrokerCard | null): string {
   const lines: string[] = [];
