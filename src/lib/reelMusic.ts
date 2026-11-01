@@ -393,13 +393,13 @@ function makeImpulse(ctx: BaseAudioContext, sec: number, rand: () => number): Au
  * Every mood keeps the noise riser into the end card and its sub bloom.
  */
 const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
-  calm: ["pad", "strings", "piano", "bass"],
-  cinematic: ["strings", "pad", "piano", "drums"],
-  elegant: ["epiano", "piano", "nylon", "bass", "drums"],
+  calm: ["pad", "strings", "piano", "bass", "drums"],
+  cinematic: ["strings", "pad", "piano", "bass", "drums"],
+  elegant: ["piano", "strings", "bass", "drums"],
   upbeat: ["piano", "pad", "strings", "bass", "drums"],
   groove: ["pad", "epiano", "piano", "strings", "bass", "drums"],
-  lift: ["pad", "piano", "strings", "drums"],
-  coastal: ["epiano", "nylon", "bass", "drums"],
+  lift: ["pad", "piano", "strings", "bass", "drums"],
+  coastal: ["epiano", "nylon", "pad", "strings", "bass", "drums"],
   coastal_drive: ["epiano", "nylon", "bass", "pad", "strings", "drums"],
   sail: ["pad", "strings", "nylon", "bass", "drums"],
 };
@@ -411,7 +411,7 @@ const STUDIO_INSTRUMENTS: Record<MusicMood, InstrumentName[]> = {
  * compressor, seeing the body of the track around -15 dBFS, works 1–2 dB.
  */
 const STUDIO_DRIVE_DB: Record<MusicMood, number> = {
-  calm: -2.2, cinematic: -3.2, elegant: -2.3, upbeat: -4.3, groove: -6.4, lift: -2.6, coastal: -5.9, coastal_drive: -7.2, sail: -5,
+  calm: -5.2, cinematic: -8, elegant: -5.9, upbeat: -4.3, groove: -6.4, lift: -4.6, coastal: -6.8, coastal_drive: -7.2, sail: -5,
 };
 
 /** How much of the classic sub bass stays under the finger bass (Calm and Cinematic keep it all). */
@@ -425,27 +425,27 @@ type StudioBus = keyof typeof STUDIO_TRIM;
 
 /**
  * The studio mix sheet: each bus's level per mood, in dB on top of
- * STUDIO_TRIM. Set by measurement (Oct 23): every bus rendered solo, its
- * gated loudness compared with the mood's lead, and the whole mix kept at
- * the classic engine's loudness so the synth parts that stay (sub, 808,
- * riser) keep the weight they had.
+ * STUDIO_TRIM. Set by measurement: every bus rendered solo and its gated
+ * loudness compared with the mood's lead. Since Oct 30 every mood plays the
+ * lively arrangement (composeLivelyLayers), balanced around its hook (the
+ * pluck bus) and the sine sub/808 that goes straight to the master:
+ *   Upbeat, Groove, Coastal Drive, Sail, Lift — chords -3 LU, pad -6, finger
+ *     bass -5, sub/808 -4 (Groove's 808 +1), kick and snare -1, hats -6,
+ *     guitar -8.
+ *   Coastal — fuller low end (sub -3, bass -3), chords and kit -3, perc -6.
+ *   Calm — pads -3, bass -6, sub -4, the soft pulse -8, the shaker faint.
+ *   Elegant — strings and piano chords -4, bass -6, brushes -6 to -8.
+ *   Cinematic (v3, Nov 1) — the low strings and ostinato -3, the wide strings
+ *     and pad -5, the kick-and-tom drive -2, bass -6, sub -5, the cymbals -10.
  */
 const STUDIO_MIX: Record<MusicMood, Partial<Record<StudioBus, number>>> = {
-  // Lead: the piano; the bed 2 LU under it, the finger bass well under the sub.
-  calm: { keys: 6.7, bed: -7.6, bass: 2.7, bells: 15.2 },
-  // Lead: the strings; piano 4 LU under, the pulse far back.
-  cinematic: { bed: -1.4, keys: 2.9, kit: 2, bells: 8.8 },
-  elegant: { keys: 4.3, bed: -1.4, guitar: 0.5, bass: -2.7, kit: 3.6, perc: 7.1, bells: 14.4 },
-  // Upbeat, Groove, Coastal Drive and Sail: the lively arrangement (Oct 30), set
-  // by measurement around the hook (pluck bus = 0): chords -3 LU, pad -6, finger
-  // bass -5, sub/808 -4 (Groove's 808 +1), kick and snare -1, hats -6, guitar -8.
+  calm: { pluck: 8.6, strings: -1.5, bass: -0.3, kit: 6.4, perc: 12 },
+  cinematic: { pluck: 6.1, keys: 5.3, strings: -0.3, bass: 1.7, kit: 8.9, perc: 5.2 },
+  elegant: { pluck: 6.7, keys: 5.7, strings: -1.6, bass: -0.4, kit: 7.3, perc: 13.1 },
   upbeat: { pluck: 5.8, keys: 3.3, strings: -3.2, bass: -3.8, kit: 5.7, perc: 7.6 },
   groove: { keys: 3.1, strings: -2.2, bass: 1.6, kit: 6.6, perc: 8 },
-  lift: { keys: -0.5, bed: -12.8, strings: -4.5, kit: -1.6, perc: 0.9, bells: 8.6 },
-  // Lead: the vibes; the guitars 2 LU under, the Rhodes bed 6.
-  // Oct 23, owner's ear ("a little tinny"): finger bass +2.5 dB, Rhodes +1.5 dB,
-  // Coastal's kick +1.5 dB (and the guitar bus EQ'd warmer — see makeStudio).
-  coastal: { keys: 4.3, guitar: 3.1, bed: 1, bass: 0.7, kit: 4.4, perc: 10.1 },
+  lift: { pluck: 5.2, keys: 4.3, strings: -3, bass: -3.4, kit: 5.9, perc: 7.7 },
+  coastal: { pluck: -0.6, keys: 1.2, strings: -4.3, guitar: 7.1, bass: -0.2, kit: 6.1, perc: 8.5 },
   coastal_drive: { pluck: 4.5, keys: 1.7, strings: -2.8, guitar: 7.2, bass: -1.9, kit: 5.8, perc: 7.7 },
   sail: { pluck: 6.2, strings: -2.7, guitar: 6.6, bass: -2.5, kit: 4.5, perc: 7.8 },
 };
@@ -785,6 +785,11 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   const p: MoodParams = studio && opts.mood === "coastal_drive" ? { ...MOOD.coastal_drive, tempo: [120, 124] }
     // Studio Upbeat (Oct 30, "more lively"): a pop tempo.
     : studio && opts.mood === "upbeat" ? { ...MOOD.upbeat, tempo: [112, 120] }
+    // Studio Coastal (Oct 30): a laid-back mid-tempo pocket; Lift: an anthem-house tempo.
+    : studio && opts.mood === "coastal" ? { ...MOOD.coastal, tempo: [96, 104] }
+    : studio && opts.mood === "lift" ? { ...MOOD.lift, tempo: [124, 128] }
+    // Studio Cinematic (v3, Nov 1): 88–96 BPM, always a minor key (hopeful progressions).
+    : studio && opts.mood === "cinematic" ? { ...MOOD.cinematic, tempo: [88, 96], minorChance: 1 }
     : MOOD[opts.mood];
   /** The lively arrangement's style (studio Upbeat, Groove, Coastal Drive, Sail — Oct 30); null otherwise. */
   const live: LiveStyle | null = studio ? LIVE_STYLES[opts.mood] ?? null : null;
@@ -869,7 +874,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
   if (buildStart < introEnd) buildStart = introEnd;
   if (buildStart > E - bar) buildStart = Math.max(introEnd, E - bar);
   if ((lift || sail) && liftDrop !== null) buildStart = clamp(liftDrop, introEnd, Math.max(introEnd, E - bar));
-  const livePlan: LivePlan | null = live && liveDrop !== null ? planLively(liveDrop, bar, E, cuts) : null;
+  const livePlan: LivePlan | null = live && liveDrop !== null ? planLively(liveDrop, bar, E, cuts, !!live.compactPlan) : null;
   if (livePlan) buildStart = livePlan.d1;
   if (coastal) buildStart = introEnd;
 
@@ -1435,7 +1440,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
     }
 
     // Studio extras that have no classic counterpart (and so no draw on `rand`).
-    if (mixer && opts.mood === "elegant") {
+    if (mixer && !live && opts.mood === "elegant") {
       // Nylon-guitar dyads on the off-beats of the build: the chord's third and fifth, low and soft.
       const DYADS = [[0.5, 2.5], [1.5, 3.5], [0.5, 1.5, 3], [2.5]];
       for (let t = grid.phase + Math.ceil((buildStart - grid.phase) / bar - 1e-6) * bar; t < E - 0.1; t += bar) {
@@ -1450,7 +1455,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
         });
       }
     }
-    if (mixer && opts.mood === "cinematic") {
+    if (mixer && !live && opts.mood === "cinematic") {
       // Piano low octaves on the downbeats: on each chord before the build, every bar after it.
       for (let t = grid.phase + Math.ceil((introEnd - grid.phase) / bar - 1e-6) * bar; t < E - 0.1; t += bar) {
         const onChord = segs.some((sg) => Math.abs(sg.start - t) < 1e-3);
@@ -1466,7 +1471,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
 
     if (live && livePlan && mixer) {
       composeLivelyLayers({
-        c, master, noise, mixer, style: live, plan: livePlan, dur, beat, bar, phase: grid.phase, E, segs, tonicPc,
+        c, master, noise, mixer, style: live, plan: livePlan, dur, beat, bar, phase: grid.phase, E, segs, tonicPc, cuts, minor,
       });
     }
 
@@ -1477,7 +1482,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       });
     }
 
-    if (lift) {
+    if (lift && !live) {
       composeLiftLayers({
         c, master, reverb: verb, delayIn, noise, padOut, rand, jitter, dur, beat, bar, phase: grid.phase,
         introEnd, drop: buildStart, E, segs, tonicPc, tonic, level: p.keysLevel, mixer,
@@ -1514,7 +1519,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
       src.connect(bp); bp.connect(g); g.connect(pn); pn.connect(master);
       const rs = c.createGain(); rs.gain.value = 0.8; g.connect(rs); rs.connect(verb);
       src.start(t0); src.stop(Math.min(dur, E + 0.6));
-      if (mixer && opts.mood === "cinematic") {
+      if (mixer && !live && opts.mood === "cinematic") {
         // A long, very quiet reversed crash into the end card, and the crash itself on it.
         playHit(c, mixer.bells, { name: "crash", at: E, velocity: 0.42, reverse: true, lowpassHz: 7000 });
         playHit(c, mixer.bells, { name: "crash", at: E, velocity: 0.3, lowpassHz: 6000 });
@@ -1549,7 +1554,7 @@ async function composeTrack(opts: ComposeOptions, studio: boolean): Promise<Audi
     // lower sample ceiling so its true peak stays under -1 dBTP). Other moods: as
     // before. The studio engine levels every mood by K-weighted loudness.
     // Lively (Oct 30): louder — about -11.5 LUFS, true peak under -1 dBTP.
-    if (live) levelLoud(rendered, 0, Math.floor(SR * fadeStart), -11.5, -1.4);
+    if (live) levelLoud(rendered, 0, Math.floor(SR * fadeStart), live.lufs ?? -11.5, -1.4);
     else levelMaster(rendered, Math.floor(SR * Math.max(0, introEnd)), Math.floor(SR * fadeStart), studio || groove || lift || coastal ? -14 : null, lift || coastal ? -1.6 : -1);
     return rendered;
   } finally {
@@ -3177,18 +3182,57 @@ type LiveStyle = {
   swing: number;
   /** The chord instrument ("pad": the pad is the chords) and how it plays. */
   chords: SampledInstrument;
-  chordStyle: "stabs" | "held" | "offbeat";
+  chordStyle: "stabs" | "held" | "offbeat" | "eighths";
   /** The hook voice: the soft synth lead, or a sampled instrument. */
   hook: "synth" | SampledInstrument;
   /** The hook's double in the final drop (an octave up; the guitar an octave down). */
   double: SampledInstrument;
-  bass: "pump8" | "offbeat" | "808";
+  bass: "pump8" | "offbeat" | "808" | "held";
   /** Nylon arpeggios in the drops. */
   guitar: boolean;
   /** Sidechain depth on the pad (gain at the bottom of the duck; the chords dip a little less). */
   pump: number;
-  /** Major or minor scale for the hook (Coastal Drive's harmony is minor). */
+  /** Major or minor scale for the hook (Coastal Drive's harmony is minor; otherwise the key's own mode). */
   minorHook: boolean;
+  /**
+   * The kit (Oct 30, all moods): "full" (the default — the pop kit), "pocket"
+   * (Coastal: light kick, rim and soft clap, swung shaker), "pulse" (Calm: a
+   * soft kick on 1 and 3, a shaker in the last section), "brush" (Elegant:
+   * enters with the first section — shaker, rim, soft kick, a soft clap at
+   * the lift) or "taiko" (Cinematic: low toms pitched down, kick2, high-tom
+   * accents, a snare in the final section, hits on cuts).
+   */
+  perc?: "full" | "pocket" | "pulse" | "brush" | "taiko" | "trailer";
+  /** No hard drops: no gap before a section, no snare roll, no crashes (Calm). */
+  gentle?: boolean;
+  /** The noise riser and reversed crash into a drop (default: unless gentle). */
+  riser?: boolean;
+  /** The sustained bed's instrument (default the pad). */
+  padInstr?: SampledInstrument;
+  /** Who plays the hook softly in the breakdown (default: the chord instrument, or nylon over a pad). */
+  softHook?: SampledInstrument;
+  /** The chords' lowest note (default 57 for piano, 55 otherwise). */
+  chordLow?: number;
+  /** A low strings 8th-note ostinato through the builds and drops (Cinematic). */
+  ostinato?: boolean;
+  /** Integrated loudness target, LUFS (default -11.5). */
+  lufs?: number;
+  /** Who plays the hook in the full sections, if not the hook voice (Cinematic: strings). */
+  hookBig?: SampledInstrument;
+  /** The piano doubles the hook in the full sections, centred (Cinematic). */
+  pianoDouble?: boolean;
+  /** The breakdown is solo piano and pad: no strings, chords or bass (Cinematic). */
+  soloBreak?: boolean;
+  /** The end card thins to piano and pad: no kick, crash, chords or bass (Cinematic). */
+  thinEnd?: boolean;
+  /** Fewer bars to work with (a slow tempo): keep the final section at least 2 bars (see planLively). */
+  compactPlan?: boolean;
+  /** The ostinato only in the full sections (Cinematic v3). */
+  ostinatoDropsOnly?: boolean;
+  /** The final section's counter-line high and moving — two notes a bar (Cinematic v3). */
+  counterHigh?: boolean;
+  /** A reversed-cymbal swell into every section and, subtly, into the end card (Cinematic v3). */
+  swells?: boolean;
 };
 
 const LIVE_STYLES: Partial<Record<MusicMood, LiveStyle>> = {
@@ -3196,6 +3240,24 @@ const LIVE_STYLES: Partial<Record<MusicMood, LiveStyle>> = {
   groove:        { kick: "hiphop", swing: 0.56, chords: "epiano", chordStyle: "held",    hook: "epiano", double: "piano", bass: "808",     guitar: false, pump: 0.6,  minorHook: true },
   coastal_drive: { kick: "four",   swing: 0.54, chords: "epiano", chordStyle: "offbeat", hook: "synth",  double: "nylon", bass: "offbeat", guitar: true,  pump: 0.55, minorHook: true },
   sail:          { kick: "four",   swing: 0.5,  chords: "pad",    chordStyle: "held",    hook: "synth",  double: "nylon", bass: "offbeat", guitar: true,  pump: 0.5,  minorHook: false },
+  // The rest (Oct 30, "the same treatment on all moods"), each keeping its character:
+  // Coastal: warm and laid back — Rhodes hook over a nylon double, a pocket kit, mid-tempo.
+  coastal:       { kick: "four",   swing: 0.55, chords: "epiano", chordStyle: "held",    hook: "epiano", double: "nylon", bass: "offbeat", guitar: true,  pump: 0.85, minorHook: true,  perc: "pocket", lufs: -12 },
+  // Calm: no hard drops — a gentle pulse, warm pads, a piano hook, a lift in the second half.
+  calm:          { kick: "four",   swing: 0.5,  chords: "pad",    chordStyle: "held",    hook: "piano",  double: "piano", bass: "held",    guitar: false, pump: 1,    minorHook: false, perc: "pulse", gentle: true, softHook: "piano", lufs: -13 },
+  // Elegant: piano and strings, a brushed kit from the first section, a cinematic swell at the lift.
+  elegant:       { kick: "four",   swing: 0.54, chords: "piano",  chordStyle: "held",    hook: "piano",  double: "strings", bass: "held",  guitar: false, pump: 1,    minorHook: false, perc: "brush", gentle: true, riser: true, padInstr: "strings", softHook: "piano", chordLow: 48, lufs: -12 },
+  // Cinematic (v2, Nov 1 — Charlie: the toms version was "not really sure what it is"): a
+  // familiar trailer / epic-documentary sound. Sustained low strings and a warm pad, a
+  // piano hook, strings carrying the melody in the big sections with a high string line
+  // in the final one, a long riser and a soft roll into a single big hit on a cut, a
+  // solo-piano breakdown, a piano-and-pad end. v3 (Samantha: "a little pep"): 88–96 BPM,
+  // a half-time pulse in the intro moving to a straight 4/4 kick with toms on the and-of-2
+  // and on 4 in the big sections, a driving 8th-note string ostinato under the melody there,
+  // a cymbal swell into every section, and a brighter, moving high counter-line at the end.
+  cinematic:     { kick: "four",   swing: 0.5,  chords: "strings", chordStyle: "held",   hook: "piano",  double: "strings", bass: "held",  guitar: false, pump: 1,    minorHook: false, perc: "trailer", chordLow: 43, softHook: "piano", hookBig: "strings", pianoDouble: true, soloBreak: true, thinEnd: true, compactPlan: true, ostinato: true, ostinatoDropsOnly: true, counterHigh: true, swells: true, lufs: -12 },
+  // Lift: the full kit and hook, brighter and more anthemic — driving 8th-note piano chords.
+  lift:          { kick: "four",   swing: 0.5,  chords: "piano",  chordStyle: "eighths", hook: "synth",  double: "piano", bass: "pump8",   guitar: false, pump: 0.5,  minorHook: false },
 };
 
 /** Lively sub (sine) and 808 levels, straight to the master (set by measurement). */
@@ -3212,15 +3274,17 @@ type LiveSection = "intro" | "build1" | "drop1" | "breakdown" | "build2" | "drop
  * 1-bar build, and the final drop on the bar line with a cut nearest it.
  * Short reels: no breakdown — the final drop's double comes in halfway.
  */
-function planLively(d1: number, bar: number, E: number, cuts: number[]): LivePlan {
+function planLively(d1: number, bar: number, E: number, cuts: number[], compact = false): LivePlan {
   const b1 = Math.max(0, d1 - (d1 >= 5 * bar - 1e-3 ? 2 : 1) * bar);
   const R = Math.floor((E - d1) / bar + 1e-6);
   if (R < 7) {
     const d2 = R >= 4 ? d1 + Math.floor(R / 2) * bar : E;
     return { b1, d1, bk: d2, b2: d2, d2 };
   }
-  let bestK = clamp(Math.round(R * 0.6), 6, R - 3), bestS = Infinity;
-  for (let k = 6; k <= R - 3; k++) {
+  // compact (slow moods with few bars): a 2-bar first drop is allowed, so the final section keeps at least 2 bars.
+  const kMin = compact ? 5 : 6, kMax = compact ? R - 2 : R - 3;
+  let bestK = clamp(Math.round(R * 0.6), kMin, kMax), bestS = Infinity;
+  for (let k = kMin; k <= kMax; k++) {
     const t = d1 + k * bar;
     let d = Infinity;
     cuts.forEach((ct) => { d = Math.min(d, Math.abs(ct - t)); });
@@ -3331,6 +3395,8 @@ function levelLoud(buf: AudioBuffer, from: number, to: number, target = -11.5, t
 function composeLivelyLayers(g: {
   c: OfflineAudioContext; master: AudioNode; noise: AudioBuffer; mixer: StudioMix; style: LiveStyle; plan: LivePlan;
   dur: number; beat: number; bar: number; phase: number; E: number; segs: Seg[]; tonicPc: number;
+  /** The reel's cuts (Cinematic hits them) and whether the key is minor. */
+  cuts: number[]; minor: boolean;
 }) {
   const { c, master, noise, mixer, style: S, plan: P, dur, beat, bar, phase, E, segs, tonicPc } = g;
   const rnd = mixer.rand;
@@ -3349,7 +3415,7 @@ function composeLivelyLayers(g: {
   const swung = (t: number) => (Math.abs(mod((t - phase) / s16, 2) - 1) < 0.02 ? t + (S.swing - 0.5) * 2 * s16 : t);
   const hum = (t: number, amt = 0.005) => Math.max(0, t + (rnd() - 0.5) * 2 * amt);
   const vv = (v: number) => clamp(v * (1 + (rnd() - 0.5) * 0.2), 0.02, 1);
-  const preDropBeat = (t: number) => (t >= P.d1 - beat - 1e-3 && t < P.d1 - 1e-3) || (P.d2 < E && P.b2 < P.d2 && t >= P.d2 - beat - 1e-3 && t < P.d2 - 1e-3);
+  const preDropBeat = (t: number) => !S.gentle && ((t >= P.d1 - beat - 1e-3 && t < P.d1 - 1e-3) || (P.d2 < E && P.b2 < P.d2 && t >= P.d2 - beat - 1e-3 && t < P.d2 - 1e-3));
   const thin = (t: number) => t >= E - bar - 1e-3; // the end card's thinned last bar
 
   // ── Routing: the music's filter opens over each build and closes for the breakdown ──
@@ -3463,9 +3529,14 @@ function composeLivelyLayers(g: {
     const stop = Math.min(dur, off + 0.14);
     oscs.forEach((o) => { o.start(s0); o.stop(stop); });
   };
-  const hookVoice = (midi: number, t: number, len: number, vel: number) => {
+  const hookVoice = (midi: number, t: number, len: number, vel: number, big = false) => {
+    if (big && S.hookBig) {
+      playNote(c, hookIn, { instrument: S.hookBig, midi, at: Math.max(0, t), duration: len, velocity: vel, release: 0.6, attack: 0.05, pan: 0 });
+      if (S.pianoDouble) playNote(c, hookIn, { instrument: "piano", midi, at: Math.max(0, t), duration: len, velocity: vel * 0.55, release: 0.5, pan: 0 });
+      return;
+    }
     if (S.hook === "synth") lead(midi, t, len, vel * 0.8, (rnd() - 0.5) * 0.3);
-    else playNote(c, hookIn, { instrument: S.hook, midi, at: Math.max(0, t), duration: len, velocity: vel, release: 0.3, pan: (rnd() - 0.5) * 0.3 });
+    else playNote(c, hookIn, { instrument: S.hook, midi, at: Math.max(0, t), duration: len, velocity: vel, release: S.hook === "strings" ? 0.6 : 0.3, attack: S.hook === "strings" ? 0.05 : undefined, pan: (rnd() - 0.5) * 0.3 });
   };
 
   // ── Chord tones ──
@@ -3481,7 +3552,7 @@ function composeLivelyLayers(g: {
     [[0, 4], [6, 2], [8, 2], [10, 4], [16, 2], [18, 2], [20, 2], [22, 2], [24, 8]],
   ];
   const rhythm = RH[Math.floor(rnd() * RH.length)];
-  const SCALE = S.minorHook ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
+  const SCALE = S.minorHook || g.minor ? [0, 2, 3, 5, 7, 8, 10] : [0, 2, 4, 5, 7, 9, 11];
   const scale: number[] = [];
   for (let m = 57; m <= 81; m++) if (SCALE.indexOf(mod(m - tonicPc, 12)) >= 0) scale.push(m);
   const degs: number[] = [];
@@ -3530,15 +3601,114 @@ function composeLivelyLayers(g: {
       if (l <= 0.03) return;
       const accent = st % 4 === 0 ? 1 : 0.85;
       const v = vv(vel * accent);
-      if (mode === "soft") playNote(c, hookIn, { instrument: S.chords === "pad" ? "nylon" : S.chords, midi: m, at: hum(t), duration: l, velocity: v * 0.8, release: 0.5 });
-      else hookVoice(m, hum(t, 0.003), l, v);
+      if (mode === "soft") playNote(c, hookIn, { instrument: S.softHook ?? (S.chords === "pad" ? "nylon" : S.chords), midi: m, at: hum(t), duration: l, velocity: v * 0.8, release: 0.5 });
+      else hookVoice(m, hum(t, 0.003), l, v, mode === "full");
       if (dbl) {
         const dm = S.double === "nylon" ? m - 12 : m + 12;
-        playNote(c, hookIn, { lowpassHz: 20000, instrument: S.double, midi: dm, at: hum(t, 0.003), duration: l, velocity: v * 0.5, release: 0.35, pan: 0.35 });
+        if (S.hookBig) playNote(c, counterIn, { lowpassHz: 20000, instrument: S.double, midi: dm, at: hum(t, 0.003), duration: l, velocity: v * 0.5, release: 0.6, attack: 0.05, pan: -0.45 });
+        else playNote(c, hookIn, { lowpassHz: 20000, instrument: S.double, midi: dm, at: hum(t, 0.003), duration: l, velocity: v * 0.5, release: 0.35, pan: 0.35 });
       }
       last = m;
     });
     return last;
+  };
+
+  /**
+   * The kit for the moods that aren't the pop kit (S.perc; see LiveStyle):
+   * Coastal's pocket, Calm's pulse, Elegant's brushes, Cinematic's taiko.
+   * Varied every 4 bars by the plan, out in the gap before a drop.
+   */
+  const moodDrums = (b0: number, s: LiveSection, lastBar: boolean, introHalf: boolean) => {
+    const dv = mixer.plan.drums(b0 + 0.01);
+    for (let st = 0; st < 16; st++) {
+      const t0 = b0 + st * s16;
+      if (t0 < 0 || t0 >= E - 1e-3 || preDropBeat(t0)) continue;
+      const t = swung(t0);
+      if (S.perc === "pulse") {
+        if (!(isDrop(s) || s === "build2")) continue;
+        if ((st === 0 || st === 8) && !(lastBar && st === 8)) kick(t0, 0.5);
+        if (s === "drop2" && st % 2 === 0 && !lastBar) hit(mixer.perc, "shaker", t, vv(st % 4 === 2 ? 0.22 : 0.14), { pan: -0.3 });
+      } else if (S.perc === "brush") {
+        if (!(isDrop(s) || s === "build2" || s === "breakdown")) continue;
+        if (s === "breakdown") { if (st % 8 === 4) hit(mixer.perc, "shaker", t, vv(0.14), { pan: -0.3 }); continue; }
+        if (st % 2 === 0 && !(lastBar && st >= 8)) hit(mixer.perc, "shaker", t, vv(st % 4 === 2 ? 0.3 : 0.18), { pan: -0.3 });
+        if ((st === 0 || (st === 8 && dv !== 2)) && !(lastBar && st > 0)) kick(t0, 0.55);
+        if ((st === 4 || st === 12) && !(lastBar && st === 12)) {
+          hit(mixer.perc, "rim", t, vv(0.4), { pan: -0.1 });
+          if (s === "drop2") hit(mixer.perc, "snap", t, vv(0.32));
+        }
+        if (dv === 1 && st === 14 && isDrop(s) && !lastBar) hit(mixer.perc, "hat", t, vv(0.2), { pan: 0.2 });
+      } else if (S.perc === "pocket") {
+        if (!(isDrop(s) || isBuild(s) || introHalf)) continue;
+        if (!isDrop(s)) {
+          if (st === 0) kick(t0, 0.5);
+          if (st % 2 === 1) hit(mixer.perc, "shaker", t, vv(0.14), { pan: -0.3 });
+          continue;
+        }
+        const kp = dv === 3 ? [0, 8, 11] : dv === 1 ? [0, 7, 8] : [0, 6, 8];
+        if (kp.indexOf(st) >= 0 && !(lastBar && st > 0)) kick(t0, st === 0 ? 0.8 : 0.62);
+        const rims = dv === 2 ? [4, 14] : [4, 12];
+        if (rims.indexOf(st) >= 0 && !(lastBar && st > 8)) { hit(mixer.perc, "rim", t, vv(0.5), { pan: -0.1 }); hit(mixer.perc, "snap", t, vv(s === "drop2" ? 0.34 : 0.26)); }
+        if (!(lastBar && st >= 8)) {
+          hit(mixer.perc, "shaker", t, vv(st % 4 === 2 ? 0.3 : st % 2 === 0 ? 0.2 : 0.12), { pan: -0.3 });
+          if (st % 4 === 2) hit(mixer.perc, "hat", t, vv(0.18), { pan: 0.25 });
+        }
+      } else if (S.perc === "trailer") {
+        // Cinematic: a deep, clean kick and low toms — a half-time pulse in the intro,
+        // a straight 4/4 kick with toms on the and-of-2 and on 4 in the big sections.
+        const deep = (at: number, v: number) => { hit(mixer.kit, "kick", at, v, { choke: 0.6, lowpassHz: 2000 }); mixer.duck(at); };
+        if (s === "breakdown") continue;
+        if (s === "intro") {
+          if (!introHalf) continue;
+          if (st === 0) deep(t0, 0.45);
+          if (st === 8) hit(mixer.kit, "tom_lo", t0, vv(0.4), { lowpassHz: 20000 });
+          continue;
+        }
+        if (isBuild(s)) {
+          // The kick on 1, and a soft snare-and-tom roll over the last stretch, rising.
+          const drop = s === "build1" ? P.d1 : P.d2;
+          const x = clamp((t0 - secStart(s)) / Math.max(0.1, drop - secStart(s)), 0, 1);
+          if (st === 0) deep(t0, 0.5);
+          if (x >= 0.35 && st % (x < 0.7 ? 2 : 1) === 0) hit(mixer.kit, x > 0.88 ? "tom_lo" : "snare", t0, 0.12 + 0.38 * x, { lowpassHz: x > 0.88 ? 20000 : 2500 + 4000 * x });
+          continue;
+        }
+        if (lastBar && st > 0) continue;
+        const isHit = st === 0 && (Math.abs(b0 - P.d1) < 1e-3 || Math.abs(b0 - P.d2) < 1e-3);
+        if (st % 4 === 0) deep(t0, isHit ? 1 : st === 0 ? 0.92 : 0.8);
+        if (isHit) hit(mixer.kit, "tom_lo", t0, 0.95, { lowpassHz: 20000 });
+        if (st === 6) hit(mixer.kit, "tom_lo", t0, vv(0.62), { lowpassHz: 20000 });
+        if (st === 12) hit(mixer.kit, "tom_lo", t0, vv(0.74), { lowpassHz: 20000 });
+        if ((dv === 1 || dv === 3) && st === 14) hit(mixer.kit, "tom_hi", t0, vv(0.4), { lowpassHz: 20000 });
+        if (s === "drop2" && dv !== 2 && st === 10) hit(mixer.kit, "tom_hi", t0, vv(0.34), { lowpassHz: 20000 });
+      } else if (S.perc === "taiko") {
+        if (s === "intro") { if (introHalf && st === 0) hit(mixer.kit, "tom_lo", t0, 0.4, { pitch: -5, lowpassHz: 20000 }); continue; }
+        if (s === "breakdown") { if (st === 0) hit(mixer.kit, "tom_lo", t0, 0.35, { pitch: -7, lowpassHz: 20000 }); continue; }
+        if (isBuild(s)) {
+          // A taiko roll: 8ths, then 16ths, rising, high toms on the last beat.
+          const drop = s === "build1" ? P.d1 : P.d2;
+          const x = clamp((t0 - secStart(s)) / Math.max(0.1, drop - secStart(s)), 0, 1);
+          if (st % (x < 0.5 ? 2 : 1) === 0) hit(mixer.kit, x > 0.85 ? "tom_hi" : "tom_lo", t0, 0.3 + 0.55 * x, { pitch: x > 0.85 ? -2 : -5, lowpassHz: 20000 });
+          continue;
+        }
+        const pat = dv % 2 === 0 ? [0, 6, 8, 11] : [0, 3, 8, 10, 14];
+        if (lastBar && st > 0) continue;
+        if (pat.indexOf(st) >= 0) hit(mixer.kit, "tom_lo", t0, vv(st === 0 || st === 8 ? 0.85 : 0.6), { pitch: -5, lowpassHz: 20000 });
+        if (st === 0 || st === 8) { hit(mixer.kit, "kick2", t0, 0.8, { lowpassHz: 2000 }); mixer.duck(t0); }
+        if ((st === 12 || st === 14) && dv !== 3) hit(mixer.kit, "tom_hi", t0, vv(0.48), { pitch: -3, lowpassHz: 20000 });
+        if (s === "drop2" && (st === 4 || st === 12)) hit(mixer.kit, "snare", t0, vv(0.42), { lowpassHz: 6000 });
+      }
+    }
+  };
+  /** Cinematic: a low strings ostinato on the 8ths — root, fifth, octave — through the builds and drops. */
+  const ostinato = (b0: number, s: LiveSection, ch: Chord, lastBar: boolean, introHalf: boolean) => {
+    if (S.ostinatoDropsOnly ? !isDrop(s) : !(isDrop(s) || isBuild(s) || introHalf)) return;
+    const r = 40 + mod(rootOf(ch) - 40, 12);
+    const pat = mixer.plan.pattern(b0 + 0.01) % 2 === 0 ? [0, 0, 7, 0, 12, 0, 7, 0] : [0, 7, 12, 7, 0, 7, 12, 7];
+    for (let e8 = 0; e8 < 8; e8++) {
+      const t = b0 + e8 * s8;
+      if (t < 0 || t >= E - 0.05 || preDropBeat(t) || (lastBar && e8 >= 4)) continue;
+      playNote(c, chordIn, { lowpassHz: 20000, instrument: "strings", midi: r + pat[e8], at: t, duration: s8 * 0.85, velocity: vv((e8 % 2 === 0 ? 0.62 : 0.48) * (isDrop(s) ? 1 : 0.8)), attack: 0.01, release: 0.15, pan: (e8 % 2 ? 0.25 : -0.25) });
+    }
   };
 
   // ── Bar by bar ──
@@ -3569,11 +3739,15 @@ function composeLivelyLayers(g: {
     const blk = Math.floor(bi / 4);
 
     // Crash on section changes (and every 8 bars of a drop), soft into the breakdown.
-    if (k === 0 && isDrop(s) && b0 > 0.1) hit(mixer.perc, "crash", b0, s === "drop2" ? 0.6 : 0.55);
-    else if (isDrop(s) && k > 0 && k % 8 === 0) hit(mixer.perc, "crash", b0, 0.4);
-    if (k === 0 && s === "breakdown") hit(mixer.perc, "crash", b0, 0.32);
+    if (!S.gentle || S.riser) {
+      if (k === 0 && isDrop(s) && b0 > 0.1) hit(mixer.perc, "crash", b0, (s === "drop2" ? 0.6 : 0.55) * (S.gentle ? 0.6 : 1));
+      else if (!S.gentle && isDrop(s) && k > 0 && k % 8 === 0) hit(mixer.perc, "crash", b0, 0.4);
+      if (!S.gentle && k === 0 && s === "breakdown") hit(mixer.perc, "crash", b0, 0.32);
+    }
+    // Cinematic v3: a cymbal swell into the builds and the breakdown too (the drops have theirs below).
+    if (S.swells && k === 0 && b0 > 1 && (isBuild(s) || s === "breakdown")) hit(mixer.perc, "crash", b0, 0.24, { reverse: true, lowpassHz: 7000 });
     // Into each drop: a reversed crash and a noise sweep over the build.
-    if (k === 0 && isBuild(s)) {
+    if (k === 0 && isBuild(s) && (S.riser ?? !S.gentle)) {
       const drop = s === "build1" ? P.d1 : P.d2;
       hit(mixer.perc, "crash", drop, 0.32, { reverse: true, lowpassHz: 8000 });
       const len = drop - b0;
@@ -3604,7 +3778,8 @@ function composeLivelyLayers(g: {
     const kpat = S.kick === "four" ? [0, 4, 8, 12] : kickBlocks[blk];
     const openAt = rnd() < 0.6 ? 14 : 6; // the bar's open hat (and of 4, or and of 2)
     const ghosts = [7, 9, 15].filter(() => rnd() < 0.4);
-    for (let st = 0; st < 16; st++) {
+    if (S.perc && S.perc !== "full") moodDrums(b0, s, lastBar, introHalf);
+    else for (let st = 0; st < 16; st++) {
       const t0 = b0 + st * s16;
       if (t0 < 0 || t0 >= E - 1e-3 || !drumsOn) continue;
       const beatNo = st >> 2;
@@ -3657,9 +3832,21 @@ function composeLivelyLayers(g: {
     if (s !== "intro" || introHalf) {
       const bm = 36 + mod(root - 36, 12);
       const sm = 28 + mod(root - 28, 12);
-      if (s === "intro" || s === "breakdown") {
+      if (S.soloBreak && s === "breakdown") {
+        // solo piano and pad: no bass
+      } else if (s === "intro" || s === "breakdown") {
         subNote(sm + 12, b0, bar * 0.95, 0.5);
         if (s === "breakdown") playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: bm, at: b0, duration: bar * 0.9, velocity: 0.45, release: 0.4 });
+      } else if (S.bass === "held") {
+        // Root on 1 and 3 (the whole bar in the builds), the sub under it.
+        const halves = isBuild(s) ? [0] : [0, 2];
+        halves.forEach((q) => {
+          const t = b0 + q * beat;
+          if (t >= E - 0.05 || preDropBeat(t) || (lastBar && q > 0)) return;
+          const len = Math.min((halves.length > 1 ? 2 : 4) * beat * 0.95, E - t - 0.03);
+          playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: bm, at: t, duration: len, velocity: isDrop(s) ? 0.72 : 0.6, release: 0.25 });
+          subNote(sm + 12, t, len, isDrop(s) ? 0.75 : 0.6);
+        });
       } else if (S.bass === "808") {
         kpat.forEach((st, i) => {
           const t = b0 + st * s16;
@@ -3706,12 +3893,12 @@ function composeLivelyLayers(g: {
       const at = Math.max(0, b0);
       if (padEnd - at > 0.05) vt.forEach((m, i) => {
         const pan = (i / Math.max(1, vt.length - 1) - 0.5) * 1.1;
-        playNote(c, padIn, { instrument: "pad", midi: m, at, duration: padEnd - at, velocity: padVel, attack: k === 0 ? 0.3 : 0.08, release: 0.6, pan, detuneCents: i % 2 ? 6 : -6 });
-        if (s === "breakdown" || s === "drop2") playNote(c, counterIn, { instrument: "strings", midi: m + 12, at: at + 0.02, duration: padEnd - at, velocity: s === "breakdown" ? 0.42 : 0.3, attack: 0.25, release: 0.8, pan: -pan });
+        playNote(c, padIn, { instrument: S.padInstr ?? "pad", midi: m, at, duration: padEnd - at, velocity: padVel, attack: k === 0 ? 0.3 : 0.08, release: 0.6, pan, detuneCents: i % 2 ? 6 : -6 });
+        if ((s === "breakdown" && !S.soloBreak) || s === "drop2") playNote(c, counterIn, { instrument: "strings", midi: m + 12, at: at + 0.02, duration: padEnd - at, velocity: s === "breakdown" ? 0.42 : 0.3, attack: 0.25, release: 0.8, pan: -pan });
       });
     }
-    if (S.chords !== "pad" && s !== "end") {
-      const cv = voicing(ch, S.chords === "piano" ? 57 : 55);
+    if (S.chords !== "pad" && s !== "end" && !(S.soloBreak && s === "breakdown")) {
+      const cv = voicing(ch, S.chordLow ?? (S.chords === "piano" ? 57 : 55));
       const strike = (t: number, len: number, v: number) => cv.forEach((m, i) => {
         if (t >= E - 0.05) return;
         playNote(c, chordIn, { lowpassHz: 20000, instrument: S.chords, midi: m, at: Math.max(0, hum(t) + i * 0.008), duration: Math.max(0.08, Math.min(len, E - t - 0.03)), velocity: vv(v * (1 - 0.05 * i)), release: 0.3, pan: (i / Math.max(1, cv.length - 1) - 0.5) * 0.9 });
@@ -3722,11 +3909,20 @@ function composeLivelyLayers(g: {
         r.forEach(([pos, len]) => { const t = b0 + pos * beat; if (!preDropBeat(t)) strike(swung(t), len * beat, isDrop(s) ? 0.6 : 0.45); });
       } else if (S.chordStyle === "offbeat") {
         [0.5, 1.5, 2.5, 3.5].forEach((pos) => { const t = b0 + pos * beat; if (!preDropBeat(t)) strike(t, beat * 0.35, isDrop(s) ? 0.55 : 0.42); });
+      } else if (S.chordStyle === "eighths") {
+        // Driving 8ths (quarters in the builds), the beats leaning in.
+        const step = isDrop(s) ? 0.5 : 1;
+        for (let pos = 0; pos < 4 - 1e-6; pos += step) {
+          const t = b0 + pos * beat;
+          if (!preDropBeat(t)) strike(t, beat * step * 0.8, (pos % 1 === 0 ? 0.55 : 0.42) * (isDrop(s) ? 1 : 0.85));
+        }
       } else {
         strike(b0, bar * 0.9, isDrop(s) ? 0.55 : 0.45);
         if (isDrop(s) && mixer.plan.pattern(b0 + 0.01) % 2 === 1) strike(b0 + 2.5 * beat, beat, 0.35);
       }
     }
+
+    if (S.ostinato) ostinato(b0, s, ch, lastBar, introHalf);
 
     // ── Nylon arpeggios in the drops (below C5) ──
     if (S.guitar && isDrop(s)) {
@@ -3748,7 +3944,19 @@ function composeLivelyLayers(g: {
       else if (isDrop(s)) lastHook = playPhrase(start, "full", s === "drop2" ? 0.92 : 0.85, s === "drop2", until);
       else if (s === "breakdown") lastHook = playPhrase(start, "soft", 0.5, false, until);
     }
-    if (s === "drop2" && !lastBar) {
+    if (s === "drop2" && !lastBar && S.counterHigh) {
+      // Cinematic v3: a brighter counter-line — high strings, two notes a bar, chord tones moving by step where they can.
+      [0, 2].forEach((half) => {
+        const t = b0 + half * beat;
+        if (t >= E - 0.1) return;
+        const chh = chordAt(t + 0.01);
+        const pcs = [chh.pad[0], chh.pad[1] ?? chh.pad[0], chh.pad[2] ?? chh.pad[0]].map((iv) => mod(rootOf(chh) + iv, 12));
+        let best = 79, bd = 99;
+        for (let m = 72; m <= 86; m++) if (pcs.indexOf(mod(m, 12)) >= 0) { const d = prevCounter < 0 ? Math.abs(m - 79) : Math.abs(m - prevCounter) || 3; if (d < bd) { bd = d; best = m; } }
+        prevCounter = best;
+        playNote(c, counterIn, { instrument: "strings", midi: best, at: t, duration: Math.min(2 * beat * 0.95, E - t - 0.05), velocity: 0.5, attack: 0.08, release: 0.5, pan: 0.45 });
+      });
+    } else if (s === "drop2" && !lastBar) {
       // The counter-line: one long note a bar, the chord's 3rd or 5th, moving as little as it can.
       const pcs = [ch.pad[0], ch.pad[1] ?? ch.pad[0]].map((iv) => mod(root + iv, 12));
       let best = 60, bd = 99;
@@ -3758,16 +3966,34 @@ function composeLivelyLayers(g: {
     }
   }
 
+  // Cinematic: a hit on each cut inside a drop (kick2, a low tom pitched down, a touch of crash) — at most one a bar.
+  if (S.perc === "taiko") {
+    let lastHit = -Infinity;
+    g.cuts.forEach((ct) => {
+      const s = sec(ct);
+      if (!isDrop(s) || ct >= E - bar || ct - lastHit < bar * 0.9) return;
+      if ([P.d1, P.d2, P.bk, P.b2].some((d) => Math.abs(ct - d) < 0.25)) return; // a section change has its own crash
+      lastHit = ct;
+      hit(mixer.kit, "kick2", ct, 0.9, { lowpassHz: 2200 });
+      hit(mixer.kit, "tom_lo", ct, 0.85, { pitch: -7, lowpassHz: 20000 });
+      hit(mixer.perc, "crash", ct, 0.22);
+    });
+  }
+
   // ── The end card: the home chord rings out, the hook lands on its root ──
   const home = segs[segs.length - 1].chord;
   const hr = rootOf(home);
   const ring = Math.max(0.3, Math.min(2.4, dur - E - 0.1));
-  kick(E, 0.85);
-  hit(mixer.perc, "crash", E, 0.38);
-  voicing(home).forEach((m, i) => playNote(c, padIn, { instrument: "pad", midi: m, at: E, duration: ring, velocity: 0.6, release: 1.2, pan: (i - 1.5) * 0.3 }));
-  if (S.chords !== "pad") voicing(home, S.chords === "piano" ? 57 : 55).forEach((m, i) => playNote(c, chordIn, { instrument: S.chords, midi: m, at: E + i * 0.02, duration: ring, velocity: 0.5, release: 1, pan: (i - 1.5) * 0.25 }));
+  if (!S.thinEnd) {
+    kick(E, 0.85);
+    hit(mixer.perc, "crash", E, 0.38);
+  }
+  if (S.swells) hit(mixer.perc, "crash", E, 0.2, { reverse: true, lowpassHz: 6500 }); // a subtle swell into the end card
+  voicing(home).forEach((m, i) => playNote(c, padIn, { instrument: S.padInstr ?? "pad", midi: m, at: E, duration: ring, velocity: 0.6, release: 1.2, pan: (i - 1.5) * 0.3 }));
+  if (S.chords !== "pad" && !S.thinEnd) voicing(home, S.chordLow ?? (S.chords === "piano" ? 57 : 55)).forEach((m, i) => playNote(c, chordIn, { instrument: S.chords, midi: m, at: E + i * 0.02, duration: ring, velocity: 0.5, release: 1, pan: (i - 1.5) * 0.25 }));
   const land = nearestPc(lastHook > 0 ? lastHook : 67, [hr]);
   hookVoice(land, E + 0.01, Math.min(1.8, ring), 0.7);
+  if (S.thinEnd) return; // piano and pad only
   playNote(c, bassHp, { lowpassHz: 20000, instrument: "bass", midi: 36 + mod(hr - 36, 12), at: E, duration: Math.min(2, ring), velocity: 0.8, release: 0.3 });
   if (S.bass === "808") n808(31 + mod(hr - 31, 12), E, Math.min(2.2, ring), 0.9, null);
   else subNote(28 + mod(hr - 28, 12) + 12, E, Math.min(2, ring), 0.8);
