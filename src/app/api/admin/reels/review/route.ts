@@ -118,5 +118,9 @@ export async function GET(req: NextRequest) {
 
   const boats = withPhotos.filter((b) => !!b.photo.id);
   const noProfile = withPhotos.filter((b) => !b.photo.id);
-  return NextResponse.json({ boats, noProfile, excluded: { pocket, test, noPhotos, noProfile: noProfile.length } });
+  // The period's real total: every boat shot (pocket listings included —
+  // they were photographed too), minus test accounts. The opening card and
+  // caption say this number, not how many made the cut for the reel.
+  const totalShot = all.length - test;
+  return NextResponse.json({ boats, noProfile, totalShot, excluded: { pocket, test, noPhotos, noProfile: noProfile.length } });
 }

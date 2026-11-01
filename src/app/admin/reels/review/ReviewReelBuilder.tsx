@@ -49,6 +49,8 @@ export default function ReviewReelBuilder() {
   const [to, setTo] = useState(initial.to);
   const [boats, setBoats] = useState<Boat[]>([]);
   const [excluded, setExcluded] = useState<{ pocket: number; test: number; noPhotos: number; noProfile?: number } | null>(null);
+  /** Every boat shot in the period (the number the card and caption use). */
+  const [totalShot, setTotalShot] = useState<number | null>(null);
   /** No cover and no Profiles photo: out of the reel unless a photo is chosen by hand. */
   const [noProfile, setNoProfile] = useState<Boat[]>([]);
   const [showNoProfile, setShowNoProfile] = useState(false);
@@ -101,11 +103,14 @@ export default function ReviewReelBuilder() {
   const inPlay = boats.filter((b) => b.included);
   const n = inPlay.length;
   const autoLine1 = reviewTitle(from, to);
-  const autoLine2 = boatsLine(n);
+  // The card counts the month's boats, not the reel's: a boat without a
+  // profile photo was still photographed.
+  const shot = totalShot ?? n;
+  const autoLine2 = boatsLine(shot);
   const title = line1Edited ? line1 : autoLine1;
   const sub = line2Edited ? line2 : autoLine2;
   const duration = n ? reviewDuration(n, secPerBoat) : 0;
-  const caption = reviewCaption(title, n);
+  const caption = reviewCaption(title, shot);
   const mood = resolveMood(music, "editorial");
   const busy = phase === "rendering";
 
@@ -197,6 +202,7 @@ export default function ReviewReelBuilder() {
       setBoats(list);
       setNoProfile(left);
       setExcluded(j.excluded ?? null);
+      setTotalShot(typeof j.totalShot === "number" ? j.totalShot : null);
     } catch (e) {
       if (seq === loadSeq.current) setLoadError(e instanceof Error ? e.message : "Couldn’t load the boats.");
     } finally {
