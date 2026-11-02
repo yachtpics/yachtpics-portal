@@ -1,6 +1,7 @@
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { ypShareUrl, type YpShareRow } from "@/lib/ypShare";
-import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, brokerageDisplayName, type BoatPageData } from "@/lib/siteTemplates";
+import { boatPage, brokeragePage, boatsIndexPage, boatSlug, boatLabel, brokerageDisplayName, displayMake, type BoatPageData } from "@/lib/siteTemplates";
+import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import { orderPhotos } from "@/lib/photoOrder";
 import { includesPhotos, includesVideo, isSiteMedia, type SiteMedia } from "@/lib/siteMedia";
 import { r2Configured, r2Exists, r2Put, r2PublicUrl, r2Delete, R2_BUCKET } from "@/lib/r2";
@@ -493,6 +494,174 @@ export async function renderSitePage(sitePage: string): Promise<SiteFile | null>
   return { path: `${page.filename}.html`, content: html };
 }
 
+// ─── latest-boats.json — the home page's "Just photographed" strip (Nov 2) ──
+//
+// yachtpics.com/index.html is hand-written, so it can't be regenerated on each
+// publish like the brokerage pages. Instead it loads this small JSON feed with
+// a few lines of vanilla JS. The feed rides along with every publish (the same
+// FTP upload as the boat page, sitemap.xml and yacht-photos.html) and every
+// takedown, so the strip is always current without anyone editing index.html.
+//
+// Order: newest SHOOT first — photographed_at, falling back to created_at.
+// NOT published_at: the "Re-publish live boats" job rewrites published_at on
+// every live boat (all 102 read Oct 30 05:03–06:43 after the last run), so it
+// says nothing about which boats are new.
+//
+// Photo: a ~600 px WebP "card" copy of the cover photo on the media host
+// (`{site_page}/{slug}/card-{photoId}.webp`, ~30 KB) — the originals are
+// ~1.5 MB each, too heavy for eight cards on the home page. The card is made
+// at publish (syncCoverCard) from the 600 px derivative the Portal already
+// keeps; a boat without one falls back to its full-size cover photo.
+
+export const LATEST_BOATS_PATH = "latest-boats.json";
+const LATEST_BOATS_MAX = 24;
+const SITE_URL = "https://www.yachtpics.com";
+
+export type LatestBoat = {
+  name: string;
+  spec: string;
+  brokerage: string;
+  url: string;
+  photo: string | null;
+  publishedAt: string | null;
+  photographedAt: string | null;
+};
+
+function cardKey(sitePage: string, slug: string, photoId: string): string {
+  return `${sitePage}/${slug}/card-${photoId}.webp`;
+}
+
+/** Photo id from a published photo URL (`…/{site_page}/{slug}/{photoId}.jpg`). */
+function photoIdFromUrl(url: string): string | null {
+  const file = url.split("?")[0].split("/").pop() ?? "";
+  const id = file.replace(/\.[a-z0-9]+$/i, "");
+  return /^[0-9a-f-]{36}$/i.test(id) ? id : null;
+}
+
+/**
+ * Put the card-size copy of a boat's cover photo on the media host, if it
+ * isn't there yet. Best effort: no derivative / no R2 → nothing happens and
+ * the feed uses the full-size cover instead.
+ */
+async function syncCoverCard(sitePage: string, slug: string, coverUrl: string | undefined): Promise<void> {
+  if (!coverUrl || !r2Configured()) return;
+  const id = photoIdFromUrl(coverUrl);
+  if (!id) return;
+  const key = cardKey(sitePage, slug, id);
+  try {
+    if (await r2Exists(key)) return;
+    const svc = service();
+    const { data: p } = await svc
+      .from("photos")
+      .select("id, storage_path, derivatives_at")
+      .eq("id", id)
+      .maybeSingle();
+    if (!p || !hasDerivatives(p as { derivatives_at: string | null })) return;
+    const { data: blob } = await svc.storage
+      .from(PRIVATE_BUCKET)
+      .download(derivativePath({ id: p.id as string, storage_path: p.storage_path as string }, 600));
+    if (!blob || blob.size === 0) return;
+    await r2Put(key, Buffer.from(await blob.arrayBuffer()), "image/webp");
+  } catch {
+    /* the feed falls back to the full-size cover */
+  }
+}
+
+type FeedListingRow = {
+  id: string;
+  vessel_name: string | null;
+  make: string | null;
+  length_ft: string | number | null;
+  site_page: string;
+  site_slug: string;
+  hero_photo_id: string | null;
+  photo_order_manual: boolean | null;
+  site_photos_backend: string | null;
+  photographed_at: string | null;
+  created_at: string | null;
+  published_at: string | null;
+};
+
+/**
+ * Render latest-boats.json: up to 24 live boat pages, newest shoot first.
+ * `justPublished` = the boat this publish is for — its live page now uses
+ * this build's photo backend even though the listing isn't marked yet.
+ */
+export async function renderLatestBoatsFeed(justPublished?: {
+  listingId: string;
+  photosBackend: SitePhotosBackend;
+}): Promise<SiteFile> {
+  const svc = service();
+  const { data } = await svc
+    .from("listings")
+    .select("id, vessel_name, make, length_ft, site_page, site_slug, hero_photo_id, photo_order_manual, site_photos_backend, photographed_at, created_at, published_at")
+    .eq("publish_to_site", true)
+    .eq("status", "active")
+    .eq("showcase_opt_out", false)
+    .not("site_page", "is", null)
+    .not("site_slug", "is", null);
+
+  const when = (r: FeedListingRow) => Date.parse(r.photographed_at ?? r.created_at ?? "") || 0;
+  const rows = ((data ?? []) as FeedListingRow[]).sort((a, b) => when(b) - when(a)).slice(0, LATEST_BOATS_MAX);
+
+  const pageNames = new Map<string, string>();
+  const pagesWanted = Array.from(new Set(rows.map((r) => r.site_page)));
+  if (pagesWanted.length) {
+    const { data: pages } = await svc.from("site_pages").select("filename, label").in("filename", pagesWanted);
+    for (const p of pages ?? []) pageNames.set(p.filename as string, brokerageDisplayName(p.filename as string, p.label as string));
+  }
+
+  // One small query per boat for its cover (the walk-the-boat order needs
+  // every visible photo's category), eight at a time.
+  const boats: LatestBoat[] = new Array(rows.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(8, rows.length) }, async () => {
+      while (next < rows.length) {
+        const k = next++;
+        const r = rows[k];
+        let photo: string | null = null;
+        try {
+          const { data: ph } = await svc
+            .from("photos")
+            .select("id, storage_path, category, display_order")
+            .eq("listing_id", r.id)
+            .eq("is_visible", true);
+          const cover = orderPhotos((ph ?? []) as { id: string; storage_path: string; category: string | null; display_order: number | null }[], {
+            manual: r.photo_order_manual === true,
+            heroId: r.hero_photo_id,
+          })[0];
+          if (cover) {
+            const card = cardKey(r.site_page, r.site_slug, cover.id);
+            if (r2Configured() && (await r2Exists(card).catch(() => false))) {
+              photo = r2PublicUrl(card);
+            } else {
+              const ext = (cover.storage_path.split(".").pop() || "jpg").toLowerCase();
+              const dest = `${r.site_page}/${r.site_slug}/${cover.id}.${ext}`;
+              const backend = justPublished?.listingId === r.id ? justPublished.photosBackend : r.site_photos_backend === "r2" ? "r2" : "supabase";
+              photo = backend === "r2" ? r2PublicUrl(dest) : publicPhotoUrl(dest);
+            }
+          }
+        } catch {
+          photo = null;
+        }
+        const len = r.length_ft != null && String(r.length_ft).trim() !== "" ? `${String(r.length_ft).trim()}′` : "";
+        boats[k] = {
+          name: r.vessel_name?.trim() || boatLabel({ lengthFt: r.length_ft == null ? null : String(r.length_ft), make: r.make, vesselName: null }),
+          spec: [len, displayMake(r.make)].filter(Boolean).join(" "),
+          brokerage: pageNames.get(r.site_page) ?? "",
+          url: `${SITE_URL}/${r.site_page}/${r.site_slug}/index.html`,
+          photo,
+          publishedAt: r.published_at,
+          photographedAt: r.photographed_at ?? r.created_at,
+        };
+      }
+    })
+  );
+
+  return { path: LATEST_BOATS_PATH, content: JSON.stringify(boats.filter(Boolean), null, 1) + "\n" };
+}
+
 /**
  * Build every file needed to publish a listing: its slideshow page plus the
  * regenerated brokerage page. Returns the files rather than uploading them, so
@@ -560,10 +729,11 @@ export async function unpublishFromSite(
     }
     if (sitePage) {
       const page = await renderSitePage(sitePage);
-      if (page) {
-        const res = await uploadFiles([page]);
-        if (res.error) return { warnings, error: res.error };
-      }
+      // The home page's "Just photographed" feed drops the boat too.
+      const files: SiteFile[] = [await renderLatestBoatsFeed()];
+      if (page) files.unshift(page);
+      const res = await uploadFiles(files);
+      if (res.error) return { warnings, error: res.error };
     }
   }
 
@@ -726,6 +896,11 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   // and refresh robots.txt, so Google discovers newly published boats.
   files.push(await renderSitemap());
   files.push(renderRobots());
+
+  // The home page's "Just photographed" strip: card-size cover on the media
+  // host first, then the feed (which looks for that card).
+  await syncCoverCard(brokerage.site_page, slug, photos[0]);
+  files.push(await renderLatestBoatsFeed({ listingId: l.id, photosBackend }));
 
   return { files, slug, label, photosBackend };
 }
