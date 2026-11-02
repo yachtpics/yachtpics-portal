@@ -91,7 +91,7 @@ function nav(depth: number): string {
         <li><a href="${b}index.html">Home</a></li>
         <li><a href="${b}gallery.html">Gallery</a></li>
         <li><a href="${b}video.html">Video</a></li>
-        <li><a href="${b}yacht-photos.html">Boats for sale</a></li>
+        <li><a href="${b}yacht-photos.html">Boats we've shot</a></li>
         <li><a href="${b}team.html">Team</a></li>
         <li><a href="${b}marine-news.php">Marine Blog</a></li>
         <li><a href="https://portal.yachtpics.com">Portal</a></li>
