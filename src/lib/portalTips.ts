@@ -263,6 +263,17 @@ export const TIPS: Tip[] = [
     ctaPath: "/dashboard/listings",
   },
   {
+    slug: "two-free-reels",
+    subject: "Tip: two reels, on us",
+    headline: "Two reels are included with every boat",
+    body: [
+      "Every listing comes with two reels, no plan needed. They\u2019re made from her photos in about a minute \u2014 open the listing and press Make a reel.",
+      "Pick a look, add music if you like, and send it to your phone. Post it the day the photos land, while the boat is new to the market.",
+    ],
+    ctaLabel: "Make a reel",
+    ctaPath: "/dashboard/listings",
+  },
+  {
     slug: "download-folder",
     subject: "Tip: your photos, straight into a folder",
     headline: "Downloading your photos just got simpler",
@@ -282,17 +293,6 @@ export const TIPS: Tip[] = [
       "Open a listing and choose Dock card in the Client Slideshow section, 5\u00d77 or Letter. Set it at the boarding steps or in the salon for showings. Every scan is counted on her Seller Report.",
     ],
     ctaLabel: "Print a dock card",
-    ctaPath: "/dashboard/listings",
-  },
-  {
-    slug: "two-free-reels",
-    subject: "Tip: two reels, on us",
-    headline: "Two reels are included with every boat",
-    body: [
-      "Every listing comes with two reels, no plan needed. They\u2019re made from her photos in about a minute \u2014 open the listing and press Make a reel.",
-      "Pick a look, add music if you like, and send it to your phone. Post it the day the photos land, while the boat is new to the market.",
-    ],
-    ctaLabel: "Make a reel",
     ctaPath: "/dashboard/listings",
   },
 ];
