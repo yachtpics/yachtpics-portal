@@ -11,6 +11,8 @@ import ShowBanner from "./_components/ShowBanner";
 import PlanNudgeBanner from "./_components/PlanNudgeBanner";
 import { allowanceMessage, listingAllowance } from "@/lib/listingAllowance";
 import { signResizedPaths } from "@/lib/photoStore";
+import { claimedCountsByListing, remainingOf } from "@/lib/reelAllowance";
+import { reelPromoActive } from "@/lib/reelPromo";
 
 export default async function ListingsPage({ searchParams = {} }: { searchParams?: { show?: string } }) {
   const supabase = await createClient();
@@ -132,6 +134,31 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
 
   const lockedListingIds = listings.filter((l) => l.broker_id && lockedOwners.has(l.broker_id)).map((l) => l.id);
 
+  // Free reels waiting (Nov 3): two included reels per boat on active listings
+  // whose owner has no plan (a plan is unlimited — nothing to count). Used
+  // counts come from the allowance's own rule (src/lib/reelAllowance.ts), for
+  // every boat in ONE query. Admins don't get the line; nor does anyone while
+  // an open house makes reels free for all.
+  let freeReels: { count: number; firstListingId: string } | null = null;
+  if (profile?.role !== "admin" && !reelPromoActive()) {
+    const freeActive = listings.filter((l) => l.status === "active" && l.broker_id && lockedOwners.has(l.broker_id));
+    if (freeActive.length > 0) {
+      try {
+        const used = await claimedCountsByListing(service, freeActive.map((l) => l.id));
+        let count = 0;
+        let first: string | null = null;
+        for (const l of freeActive) {
+          const left = remainingOf(used.get(l.id) ?? 0);
+          count += left;
+          if (left > 0 && !first) first = l.id;
+        }
+        if (count > 0 && first) freeReels = { count, firstListingId: first };
+      } catch {
+        freeReels = null; // a nudge only — never break the page
+      }
+    }
+  }
+
   // Cover photo per row, resolved server-side. One RPC (DISTINCT ON, honoring
   // the chosen hero_photo_id and falling back to the first visible photo) plus
   // signing — instead of 2-3 client round trips per row.
@@ -191,6 +218,15 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
           + New Listing
         </Link>
       </div>
+
+      {freeReels && (
+        <p className="-mt-3 mb-5 text-sm text-ink-500">
+          You have {freeReels.count} free reel{freeReels.count === 1 ? "" : "s"} waiting — two are included with every boat.{" "}
+          <Link href={`/dashboard/listings/${freeReels.firstListingId}/reel`} className="font-medium text-accent-700 hover:text-accent-600 transition-colors duration-fast whitespace-nowrap">
+            Make one &rarr;
+          </Link>
+        </p>
+      )}
 
       {nudges.map((n) => (
         <PlanNudgeBanner key={n.brokerId} brokerId={n.brokerId} message={n.message} suggestedName={n.suggestedName} assistantFor={n.firstName} />

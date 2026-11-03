@@ -19,6 +19,7 @@ import { reelPromoActive } from "@/lib/reelPromo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
 import ListingReadiness from "@/components/ListingReadiness";
+import ListingReadyStrip, { ReelAfterDownloadCard, reelNudgeApplies, useReelAllowance } from "@/components/ListingReadyStrip";
 import BoatShowCard from "@/components/BoatShowCard";
 import DockCardButton from "@/components/DockCardButton";
 import ReelServiceListingCard from "@/components/ReelServiceListingCard";
@@ -42,7 +43,7 @@ export default function BrokerListingPage() {
   const params = useParams();
   const id = params.id as string;
 
-  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean; showcase_opt_out: boolean; year: number | null; length_ft: number | null; make: string | null; asking_price: number | null; vessel_type: string | null; staterooms: number | null; description: string | null; tour_url: string | null } | null>(null);
+  const [listing, setListing] = useState<{ vessel_name: string | null; location: string | null; status: string; slideshow_slug: string | null; slideshow_published: boolean; is_shared: boolean; showcase_opt_out: boolean; year: number | null; length_ft: number | null; make: string | null; asking_price: number | null; vessel_type: string | null; staterooms: number | null; description: string | null; tour_url: string | null; youtube_url: string | null } | null>(null);
   const [optOutBusy, setOptOutBusy] = useState(false);
   const [heroFit, setHeroFit] = useState<"fit" | "fill">("fit");
   const [isBrokerageAdmin, setIsBrokerageAdmin] = useState(false);
@@ -87,10 +88,27 @@ export default function BrokerListingPage() {
     // Files go under the signed-in uploader's folder, as they always have here.
     ownerFolder: (userId) => userId,
   });
+  // Reel allowance for the Ready strip and the post-download nudge (one read).
+  const reelAllowance = useReelAllowance(id);
+  // Post-download nudge (Nov 3): set by a successful Download All / folder
+  // save ("Saved N photos…"), dismissed for the browser session.
+  const reelNudgeKey = `yp_reel_nudge_dismissed_${id}`;
+  const [downloadedOk, setDownloadedOk] = useState(false);
+  const [reelNudgeDismissed, setReelNudgeDismissed] = useState(false);
+  useEffect(() => {
+    try { setReelNudgeDismissed(sessionStorage.getItem(reelNudgeKey) === "1"); } catch { /* storage blocked */ }
+  }, [reelNudgeKey]);
+  function dismissReelNudge() {
+    setReelNudgeDismissed(true);
+    try { sessionStorage.setItem(reelNudgeKey, "1"); } catch { /* storage blocked */ }
+  }
   const downloads = useSizedDownloads({
     listingId: id,
     vesselName: listing?.vessel_name ?? null,
-    onMessage: onPhotoMessage,
+    onMessage: (m) => {
+      onPhotoMessage(m);
+      if (m.kind === "success" && m.text.startsWith("Saved ")) setDownloadedOk(true);
+    },
     onFinished: photoActions.clearSelection,
   });
   const dragCounter = useRef(0);
@@ -275,7 +293,7 @@ export default function BrokerListingPage() {
     ] = await Promise.all([
       supabase.from("profiles").select("role, is_brokerage_admin").eq("id", user.id).single(),
       supabase.from("listings")
-        .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit, year, length_ft, make, asking_price, vessel_type, staterooms, description, tour_url")
+        .select("vessel_name, location, status, slideshow_slug, slideshow_published, broker_id, is_shared, showcase_opt_out, hero_photo_id, hero_fit, year, length_ft, make, asking_price, vessel_type, staterooms, description, tour_url, youtube_url")
         .eq("id", id)
         .single(),
       supabase.from("photos")
@@ -869,6 +887,25 @@ export default function BrokerListingPage() {
         <div className="-mt-2 mb-4">
           <FolderDownloadHint show={!!downloads.saveToFolder} />
         </div>
+      )}
+
+      {/* Ready for this boat (Nov 3) — reels, slideshow, Seller Report, dock card, listing links */}
+      <ListingReadyStrip
+        listingId={id}
+        hasPlan={hasAccess(accessStatus)}
+        slideshowPublished={!!listing.slideshow_published}
+        slideshowSlug={listing.slideshow_slug}
+        youtubeUrl={listing.youtube_url ?? null}
+        hasVideo={videos.length > 0}
+        allowance={reelAllowance}
+        slideshowCopied={slideshowCopied}
+        onSend={() => { setSendSlideshow(!!listing.slideshow_published); setSendDocIds(new Set()); setSendVideoIds(new Set()); setSendModal(true); }}
+        onCopySlideshowLink={copyLink}
+        onMessage={(text, tone) => flash(text, tone, tone === "error" ? 8000 : 4000)}
+      />
+
+      {downloadedOk && !reelNudgeDismissed && reelNudgeApplies(reelAllowance) && (
+        <ReelAfterDownloadCard listingId={id} onDismiss={dismissReelNudge} />
       )}
 
       {/* Readiness — what's done, what would make the listing land better */}
@@ -1519,9 +1556,10 @@ export default function BrokerListingPage() {
           </>
         )}
 
-        {/* Dock card (Nov 1) — works with or without a plan: its QR is the
-            YachtPics always-live link, not the broker's /s link. */}
-        {listing.slideshow_published && listing.slideshow_slug && (
+        {/* Dock card (Nov 1) — a plan feature on the broker page (Nov 3,
+            consistent with the Ready strip, whose "With a plan" tile covers
+            free users). The admin listing page keeps its button. */}
+        {listing.slideshow_published && listing.slideshow_slug && hasAccess(accessStatus) && (
           <div className="mt-3 flex items-center gap-3 flex-wrap">
             <DockCardButton listingId={id} />
             <p className="text-xs text-ink-500">Print it and leave it aboard. Every scan is counted on her Seller Report.</p>

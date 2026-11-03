@@ -39,6 +39,22 @@ export async function reelsUnlimited(
 }
 
 /**
+ * THE counting rule, in one place: from claim rows in creation order, keep the
+ * distinct render ids, skipping admin claims and rows without a render id.
+ * claimedRenders (one listing) and claimedCountsByListing (many) both use it.
+ */
+function distinctClaims(rows: { render_id: string | null; role: string | null }[]): string[] {
+  const seen: Record<string, true> = {};
+  const out: string[] = [];
+  for (const r of rows) {
+    if (r.role === "admin" || !r.render_id) continue;
+    const id = r.render_id as string;
+    if (!seen[id]) { seen[id] = true; out.push(id); }
+  }
+  return out;
+}
+
+/**
  * The distinct renders already claimed on this listing since the open house
  * closed, oldest first (ties broken by row id, so every caller sees the same
  * order — the claim route relies on that to settle a race).
@@ -53,14 +69,56 @@ export async function claimedRenders(service: SupabaseClient, listingId: string)
     .order("created_at", { ascending: true })
     .order("id", { ascending: true });
   if (error) throw new Error(error.message);
-  const seen: Record<string, true> = {};
-  const out: string[] = [];
-  for (const r of data ?? []) {
-    if (r.role === "admin" || !r.render_id) continue;
-    const id = r.render_id as string;
-    if (!seen[id]) { seen[id] = true; out.push(id); }
+  return distinctClaims((data ?? []) as { render_id: string | null; role: string | null }[]);
+}
+
+/**
+ * Included reels used, for many listings in ONE query (My Listings line,
+ * monthly email). Same rule as claimedRenders; a listing with no claims is 0.
+ * `client` may be the service client or a user client — reel_events is
+ * admin-read under RLS, so pass the service client for broker pages.
+ */
+export async function claimedCountsByListing(client: SupabaseClient, listingIds: string[]): Promise<Map<string, number>> {
+  const out = new Map<string, number>();
+  listingIds.forEach((id) => out.set(id, 0));
+  if (listingIds.length === 0) return out;
+  const byListing = new Map<string, { render_id: string | null; role: string | null }[]>();
+  // Chunked only so the id list stays a sane URL length; one query per 150 boats.
+  for (let i = 0; i < listingIds.length; i += 150) {
+    const { data, error } = await client
+      .from("reel_events")
+      .select("listing_id, render_id, role")
+      .in("listing_id", listingIds.slice(i, i + 150))
+      .eq("kind", "claim")
+      .gt("created_at", REEL_PROMO_END)
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true });
+    if (error) throw new Error(error.message);
+    for (const r of (data ?? []) as { listing_id: string; render_id: string | null; role: string | null }[]) {
+      const list = byListing.get(r.listing_id) ?? [];
+      list.push(r);
+      byListing.set(r.listing_id, list);
+    }
   }
+  byListing.forEach((rows, id) => out.set(id, distinctClaims(rows).length));
   return out;
+}
+
+/**
+ * Reels taken off the page on this listing by anyone but YachtPics — download,
+ * send to phone, save to camera roll, add to listing. For a plan (unlimited)
+ * listing no claim is recorded, so this is how "has she had a reel made" is
+ * answered there. Counts events, not distinct reels (those rows carry no render id).
+ */
+export async function reelsTakenCount(service: SupabaseClient, listingId: string): Promise<number> {
+  const { count, error } = await service
+    .from("reel_events")
+    .select("id", { count: "exact", head: true })
+    .eq("listing_id", listingId)
+    .in("kind", ["download", "send_to_phone", "save_to_camera_roll", "added_to_listing", "claim"])
+    .or("role.is.null,role.neq.admin");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
 }
 
 export function remainingOf(used: number): number {

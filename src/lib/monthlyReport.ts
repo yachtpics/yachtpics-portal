@@ -9,6 +9,8 @@ import { sendResendBatch, type BatchEmail } from "@/lib/sendEmailBatch";
 import { logEmail } from "@/lib/logEmail";
 import { newEmailLogId, trackEmailHtml } from "@/lib/emailTracking";
 import { BILLING_PATH, PLAN_FROM_PRICE } from "@/lib/planValue";
+import { claimedCountsByListing, remainingOf } from "@/lib/reelAllowance";
+import { reelPromoActive } from "@/lib/reelPromo";
 
 /**
  * "Your boats this month" (Nov 1) — SERVER ONLY.
@@ -261,6 +263,8 @@ export type ReportListing = {
   stats: ListingStats;
   /** The everyday dock card can be printed (published slideshow + YachtPics link on). */
   dockCard?: boolean;
+  /** Included reels still unused (no-plan brokers only; 0/undefined = say nothing). */
+  freeReels?: number;
 };
 
 export type BrokerBlock = {
@@ -368,6 +372,18 @@ export async function planMonthlyReport(svc: SupabaseClient, month: string): Pro
   const liveOfReal = live.filter((l) => access.has(l.broker_id));
   const stats = await loadMonthStats(svc, liveOfReal.map((l) => l.id), month);
 
+  // Included reels left per boat (Nov 3) — only where the broker has no plan
+  // (a plan is unlimited: nothing extra is said). Same counting rule as the
+  // Reel page (src/lib/reelAllowance.ts), batched. A read failure just drops the line.
+  const freeLeft = new Map<string, number>();
+  if (!reelPromoActive()) {
+    const noPlanIds = liveOfReal.filter((l) => access.get(l.broker_id) === false).map((l) => l.id);
+    try {
+      const used = await claimedCountsByListing(svc, noPlanIds);
+      noPlanIds.forEach((id) => freeLeft.set(id, remainingOf(used.get(id) ?? 0)));
+    } catch { /* optional line */ }
+  }
+
   const when = (l: L) => Date.parse(l.photographed_at ?? l.created_at ?? "") || 0;
   const blocks = new Map<string, BrokerBlock>();
   for (const b of realBrokers) {
@@ -375,7 +391,7 @@ export async function planMonthlyReport(svc: SupabaseClient, month: string): Pro
       .map((l) => ({ l, s: stats.get(l.id) ?? { ...EMPTY_STATS } }))
       .sort((x, y) => y.s.views - x.s.views || when(y.l) - when(x.l));
     if (mine.length === 0) continue;
-    const listings = mine.map(({ l, s }) => ({ id: l.id, vessel: vesselOf(l), spec: specOf(l), stats: s, dockCard: l.slideshow_published === true && l.yp_share_enabled === true }));
+    const listings = mine.map(({ l, s }) => ({ id: l.id, vessel: vesselOf(l), spec: specOf(l), stats: s, dockCard: l.slideshow_published === true && l.yp_share_enabled === true, freeReels: freeLeft.get(l.id) ?? 0 }));
     blocks.set(b.id, {
       brokerId: b.id,
       name: fullName(b),
@@ -530,6 +546,10 @@ function listingRow(l: ReportListing, month: string, img: EmailImage | null): st
   }
   if (s.downloads) body += line(`${plural(s.downloads, "photo", "photos")} downloaded`, "#6b7280");
   body += s.views > 0 ? link(reportUrl, "See her Seller Report") : link(sendUrl, "Send her slideshow");
+  // Included reels still unused (Nov 3) — no-plan brokers only.
+  if (l.freeReels && l.freeReels > 0) {
+    body += link(`${listingUrl}/reel`, l.freeReels >= 2 ? "2 reels included &mdash; Make one" : "1 more reel included &mdash; Make one");
+  }
   // The everyday dock card (Nov 1) — signed-out readers sign in and come back.
   if (l.dockCard) body += `<p style="margin:4px 0 0;font-size:12px;line-height:1.5;"><a href="${PORTAL}/api/listings/${l.id}/dock-card?size=5x7" style="color:#6b7280;text-decoration:underline;">Print her dock card</a></p>`;
 

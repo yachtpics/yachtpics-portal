@@ -97,6 +97,7 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
     max_speed_kn: "",
     hull_material: "",
     tour_url: "",
+    youtube_url: "",
     deck_plan_path: "",
   });
 
@@ -109,7 +110,7 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
       // brokers and linked assistants. RLS allows reads by authenticated users.
       const { data } = await supabase
         .from("listings")
-        .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, tour_url, deck_plan_path")
+        .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, tour_url, youtube_url, deck_plan_path")
         .eq("id", id)
         .single();
 
@@ -139,6 +140,7 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
         max_speed_kn: data.max_speed_kn?.toString() ?? "",
         hull_material: data.hull_material ?? "",
         tour_url: data.tour_url ?? "",
+        youtube_url: data.youtube_url ?? "",
         deck_plan_path: data.deck_plan_path ?? "",
       });
       if (data.deck_plan_path) {
@@ -183,6 +185,7 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
         max_speed_kn: form.max_speed_kn ? parseFloat(form.max_speed_kn) : null,
         hull_material: form.hull_material || null,
         tour_url: form.tour_url || null,
+        youtube_url: form.youtube_url || null,
         deck_plan_path: form.deck_plan_path || null,
       }),
     });
@@ -346,13 +349,18 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
         </section>
 
         <section className="bg-white border border-hairline rounded-card shadow-elev-1 p-6">
-          <h2 className="text-h2 text-ink-900 mb-1">Virtual tour &amp; deck plan <span className="text-ink-400 font-normal text-sm">(optional)</span></h2>
-          <p className="text-ink-500 text-sm mb-4">Both appear on the client slideshow — a 360° Tour button up top, and the deck plan under Details.</p>
+          <h2 className="text-h2 text-ink-900 mb-1">Virtual tour, video &amp; deck plan <span className="text-ink-400 font-normal text-sm">(optional)</span></h2>
+          <p className="text-ink-500 text-sm mb-4">The tour and deck plan appear on the client slideshow — a 360° Tour button up top, and the deck plan under Details. The YouTube link sits on the listing page, ready to copy.</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className={labelClass}>360° tour link</label>
               <input className={inputClass} type="url" inputMode="url" value={form.tour_url} onChange={(e) => setForm({ ...form, tour_url: e.target.value })} placeholder="https://my.matterport.com/show/?m=…" />
               <p className="text-xs text-ink-400 mt-1">Matterport, VRCloud, Kuula, YouTube 360 — any link that opens the tour.</p>
+            </div>
+            <div>
+              <label className={labelClass}>YouTube video link</label>
+              <input className={inputClass} type="url" inputMode="url" value={form.youtube_url} onChange={(e) => setForm({ ...form, youtube_url: e.target.value })} placeholder="https://youtu.be/…" />
+              <p className="text-xs text-ink-400 mt-1">The boat&apos;s video on YouTube — ready to copy into your listing description.</p>
             </div>
             <div>
               <label className={labelClass}>Deck plan / GA</label>

@@ -8,8 +8,32 @@ import { useState } from "react";
  * always-live link, so it works with or without a plan. Size: 5×7 or Letter.
  * Opens the PDF in a new tab to print or save.
  */
-export default function DockCardButton({ listingId, className = "" }: { listingId: string; className?: string }) {
+export default function DockCardButton({ listingId, className = "", compact = false }: { listingId: string; className?: string; /** Small "Print" version for the listing page's Ready strip. */ compact?: boolean }) {
   const [size, setSize] = useState<"5x7" | "letter">("5x7");
+  if (compact) {
+    return (
+      <div className={`inline-flex items-stretch rounded-ctl border border-hairline-strong bg-white overflow-hidden ${className}`}>
+        <a
+          href={`/api/listings/${listingId}/dock-card?size=${size}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Her dock card: photo, specs, your name and a QR code to her slideshow and video"
+          className="flex items-center text-ink-700 hover:text-ink-900 hover:bg-ink-50 text-xs font-semibold px-2.5 py-1.5 transition-colors duration-fast"
+        >
+          Print
+        </a>
+        <select
+          value={size}
+          onChange={(e) => setSize(e.target.value === "letter" ? "letter" : "5x7")}
+          aria-label="Dock card size"
+          className="border-0 border-l border-hairline-strong bg-white text-xs text-ink-600 pl-1.5 pr-6 py-1 focus:ring-0"
+        >
+          <option value="5x7">5×7</option>
+          <option value="letter">Letter</option>
+        </select>
+      </div>
+    );
+  }
   return (
     <div className={`inline-flex items-stretch rounded-lg border border-hairline-strong bg-white overflow-hidden ${className}`}>
       <a

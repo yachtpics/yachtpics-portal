@@ -50,6 +50,7 @@ export async function PATCH(
       "max_speed_kn",
       "hull_material",
       "tour_url",
+      "youtube_url",
       "deck_plan_path",
     ];
 
@@ -64,6 +65,22 @@ export async function PATCH(
       let ok = false;
       try { ok = !!withScheme && ["http:", "https:"].includes(new URL(withScheme).protocol); } catch { ok = false; }
       updates.tour_url = ok ? withScheme.slice(0, 500) : null;
+    }
+
+    // The listing's YouTube video — only a youtube.com / youtu.be address is kept.
+    if ("youtube_url" in updates) {
+      const raw = typeof updates.youtube_url === "string" ? updates.youtube_url.trim() : "";
+      const withScheme = raw && !/^https?:\/\//i.test(raw) ? `https://${raw}` : raw;
+      let ok = false;
+      try {
+        const u = new URL(withScheme);
+        const host = u.hostname.toLowerCase().replace(/^(www\.|m\.)/, "");
+        ok = ["http:", "https:"].includes(u.protocol) && (host === "youtube.com" || host === "youtu.be");
+      } catch { ok = false; }
+      if (raw && !ok) {
+        return NextResponse.json({ error: "The YouTube link must be a youtube.com or youtu.be address." }, { status: 400 });
+      }
+      updates.youtube_url = ok ? withScheme.slice(0, 500) : null;
     }
 
     if (Object.keys(updates).length === 0) {

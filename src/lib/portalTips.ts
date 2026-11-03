@@ -284,6 +284,17 @@ export const TIPS: Tip[] = [
     ctaLabel: "Print a dock card",
     ctaPath: "/dashboard/listings",
   },
+  {
+    slug: "two-free-reels",
+    subject: "Tip: two reels, on us",
+    headline: "Two reels are included with every boat",
+    body: [
+      "Every listing comes with two reels, no plan needed. They\u2019re made from her photos in about a minute \u2014 open the listing and press Make a reel.",
+      "Pick a look, add music if you like, and send it to your phone. Post it the day the photos land, while the boat is new to the market.",
+    ],
+    ctaLabel: "Make a reel",
+    ctaPath: "/dashboard/listings",
+  },
 ];
 
 export const TIP_BY_SLUG: Record<string, Tip> = Object.fromEntries(TIPS.map((t) => [t.slug, t]));

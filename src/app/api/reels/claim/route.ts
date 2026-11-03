@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { validCreditBrokerId } from "@/lib/reelCredit";
-import { claimedRenders, reelsUnlimited, remainingOf, REELS_PER_LISTING } from "@/lib/reelAllowance";
+import { claimedRenders, reelsTakenCount, reelsUnlimited, remainingOf, REELS_PER_LISTING } from "@/lib/reelAllowance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 /**
  * The Reel allowance — see src/lib/reelAllowance.ts for the policy.
  *
- * GET  /api/reels/claim?listingId=   → { unlimited, used, remaining }
+ * GET  /api/reels/claim?listingId=   → { unlimited, used, remaining, made }
  *   Drives the "Included with this listing: N of 2 left" line.
  *
  * POST /api/reels/claim  { listingId, renderId }
@@ -53,9 +53,14 @@ export async function GET(req: NextRequest) {
 
   try {
     const { unlimited } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId });
-    if (unlimited) return NextResponse.json({ unlimited: true, used: 0, remaining: null });
+    // `made` (Nov 3, the listing page's "Ready for this boat" strip): for an
+    // unlimited listing nothing is claimed, so it counts reels taken instead.
+    if (unlimited) {
+      const made = await reelsTakenCount(a.svc, listingId).catch(() => 0);
+      return NextResponse.json({ unlimited: true, used: 0, remaining: null, made });
+    }
     const used = (await claimedRenders(a.svc, listingId)).length;
-    return NextResponse.json({ unlimited: false, used, remaining: remainingOf(used), included: REELS_PER_LISTING });
+    return NextResponse.json({ unlimited: false, used, remaining: remainingOf(used), included: REELS_PER_LISTING, made: used });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't read the allowance." }, { status: 500 });
   }
