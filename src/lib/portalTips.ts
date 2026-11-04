@@ -24,6 +24,17 @@ export const tipApprovalKey = (slug: string) => `tip_approved:${slug}`;
 
 export const TIPS: Tip[] = [
   {
+    slug: "two-free-reels",
+    subject: "Tip: two reels, on us",
+    headline: "Two reels are included with every boat",
+    body: [
+      "Every listing comes with two reels, no plan needed. They\u2019re made from her photos in about a minute \u2014 open the listing and press Make a reel.",
+      "Pick a look, add music if you like, and send it to your phone. Post it the day the photos land, while the boat is new to the market.",
+    ],
+    ctaLabel: "Make a reel",
+    ctaPath: "/dashboard/listings",
+  },
+  {
     slug: "publish-slideshow",
     subject: "Tip: the one step before you can send a listing",
     headline: "Publish, then share in seconds",
@@ -260,17 +271,6 @@ export const TIPS: Tip[] = [
       "Deck plans are one of the first things a serious buyer asks for, and almost nowhere else shows them next to the photographs.",
     ],
     ctaLabel: "Edit a listing",
-    ctaPath: "/dashboard/listings",
-  },
-  {
-    slug: "two-free-reels",
-    subject: "Tip: two reels, on us",
-    headline: "Two reels are included with every boat",
-    body: [
-      "Every listing comes with two reels, no plan needed. They\u2019re made from her photos in about a minute \u2014 open the listing and press Make a reel.",
-      "Pick a look, add music if you like, and send it to your phone. Post it the day the photos land, while the boat is new to the market.",
-    ],
-    ctaLabel: "Make a reel",
     ctaPath: "/dashboard/listings",
   },
   {
