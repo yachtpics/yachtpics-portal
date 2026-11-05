@@ -382,7 +382,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       fetch("/api/slideshow/view", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listingId, slug, source, sendToken, sessionId: getSessionId(slug), ...(site ? { site } : {}) }),
+        body: JSON.stringify({ listingId, slug, source, sendToken, sessionId: getSessionId(slug), referrer: document.referrer || undefined, ...(site ? { site } : {}) }),
       }).catch(() => {});
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
