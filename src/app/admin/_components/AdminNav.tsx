@@ -12,7 +12,7 @@ import {
   Ship,
   Camera,
   Image as ImageIcon,
-  ClipboardList,
+  Receipt,
   BarChart3,
   Mail,
   Clapperboard,
@@ -43,6 +43,8 @@ interface NavItem {
    * "Reels".
    */
   short?: string;
+  /** Only for logins that keep a book in Billing (billing_staff). */
+  billingOnly?: boolean;
 }
 
 const navItems: NavItem[] = [
@@ -56,7 +58,9 @@ const navItems: NavItem[] = [
   { label: "Shows", href: "/admin/shows", icon: Anchor },
   { label: "Recently Photographed", href: "/admin/showcase", icon: Camera },
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
-  { label: "Shoots & Invoices", href: "/admin/shoots", icon: ClipboardList },
+  // Billing replaced "Shoots & Invoices" (/admin/shoots, never used — the
+  // shoots and invoices tables are empty). Old route files stay for now.
+  { label: "Billing", href: "/admin/billing", icon: Receipt, billingOnly: true },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Jobs", href: "/admin/jobs", icon: ListChecks },
   { label: "Storage", href: "/admin/storage", icon: HardDrive },
@@ -88,6 +92,7 @@ const NAV_PRIORITY = [
   "/admin/brokers",
   "/admin/assistants",
   "/admin/listings",
+  "/admin/billing",
   "/admin/photo-categories",
   "/admin/shows",
   "/admin/metrics",
@@ -120,8 +125,9 @@ function isActive(pathname: string, href: string) {
   return !navItems.some((n) => n.href !== href && n.href.startsWith(href) && pathname.startsWith(n.href));
 }
 
-export default function AdminNav() {
+export default function AdminNav({ showBilling = false }: { showBilling?: boolean }) {
   const pathname = usePathname();
+  const visible = (items: NavItem[]) => items.filter((n) => !n.billingOnly || showBilling);
   const router = useRouter();
 
   const handleSignOut = async () => {
@@ -152,7 +158,7 @@ export default function AdminNav() {
 
       {/* Mobile bottom tab bar */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-ink-950 border-t border-hairline-inverse flex items-stretch overflow-x-auto">
-        {mobileNavItems.map((item) => {
+        {visible(mobileNavItems).map((item) => {
           const active = isActive(pathname, item.href);
           return (
             <Link
@@ -196,7 +202,7 @@ export default function AdminNav() {
         <div className="border-t border-hairline-inverse-soft my-4" />
 
         <nav className="flex-1 space-y-0.5">
-          {sidebarNavItems.map((item) => {
+          {visible(sidebarNavItems).map((item) => {
             const active = isActive(pathname, item.href);
             return (
               <Link
