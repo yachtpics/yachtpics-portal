@@ -44,9 +44,9 @@ export async function DELETE(req: NextRequest) {
 
     // 4. Delete broker-level records
     await supabase.from("broker_assistants").delete().eq("broker_id", brokerId);
-    await supabase.from("invoices").delete().eq("broker_id", brokerId);
     await supabase.from("notifications").delete().eq("user_id", brokerId);
-    await supabase.from("shoots").delete().eq("broker_id", brokerId);
+    // Billing records (billing_clients / billing_invoices) are kept on purpose
+    // when a broker's login is deleted — they're the business's books.
     await supabase.from("broker_details").delete().eq("id", brokerId);
     await supabase.from("subscriptions").delete().eq("broker_id", brokerId);
     await supabase.from("profiles").delete().eq("id", brokerId);

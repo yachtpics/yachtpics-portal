@@ -69,6 +69,9 @@ export async function GET(req: NextRequest) {
   // the Eastern weekday itself too, so a stray call can't write a Thursday piece.
   if (dow === 1) jobs.push("/api/cron/storage-report", "/api/cron/news-digest");
   if (dow === 2) jobs.push("/api/cron/tips");
+  // Billing backup: queues the weekly `billing_backup` job (all billing_*
+  // tables → private R2, newest 12 kept). Sunday.
+  if (dow === 0) jobs.push("/api/cron/billing-backup");
   if (dow === 4) jobs.push("/api/cron/storage-report");
   // Deletes the Supabase copies of migrated videos. Self-gated: sleeps until
   // Sept 7 2026 (a week after the migration), no-ops after Sept 30.

@@ -27,7 +27,7 @@ export type BillingStaff = {
 /** Missing table / column (migration not applied yet). */
 export function isMissingBillingTable(err: { code?: string; message?: string } | null | undefined): boolean {
   if (!err) return false;
-  if (err.code === "42P01" || err.code === "PGRST205" || err.code === "42883" || err.code === "PGRST202") return true;
+  if (err.code === "42P01" || err.code === "PGRST205" || err.code === "42883" || err.code === "PGRST202" || err.code === "42703") return true;
   return /does not exist|could not find the (table|function)/i.test(err.message ?? "");
 }
 

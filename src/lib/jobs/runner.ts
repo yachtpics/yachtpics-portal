@@ -20,6 +20,7 @@ import { runDerivativeBackfill } from "@/lib/photoDerivatives";
 import { isAiConfigured } from "@/lib/ai";
 import { labelCategories, labelListingPhotos } from "@/lib/labelPhotos";
 import { isMissingTable, jobsServiceClient } from "./queue";
+import { writeWeeklyBackup } from "@/lib/books/backup";
 import { photoOriginalsCleanup, photoOriginalsCopy, r2PhotoFinish, sitePhotosCleanup } from "./photoMigration";
 import {
   JobFatalError,
@@ -203,6 +204,22 @@ const relabelPhotos: JobHandler = async (job, { svc, deadlineMs }) => {
   return { cursor: { i, pos, labelled }, done, failed, total, log, finished };
 };
 
+// ─── billing_backup ─────────────────────────────────────────────────────────
+// Every billing_* table → one JSON file in the private R2 bucket
+// (billing-backups/YYYY-MM-DD.json), newest 12 kept. One batch; re-running the
+// same day just rewrites that day's file. Queued every Sunday by
+// /api/cron/billing-backup (src/lib/books/backup.ts).
+const billingBackup: JobHandler = async () => {
+  try {
+    const r = await writeWeeklyBackup(jobsServiceClient());
+    return { cursor: null, done: 1, failed: 0, total: 1, log: [`Wrote ${r.key} (${r.rows} rows); removed ${r.pruned} old backup${r.pruned === 1 ? "" : "s"}.`], finished: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/does not exist|could not find the table|isn't configured/i.test(msg)) throw new JobFatalError(msg);
+    throw e;
+  }
+};
+
 export const HANDLERS: Record<JobKind, JobHandler> = {
   republish_site: republishSite,
   derivatives_backfill: derivativesBackfill,
@@ -211,6 +228,7 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   photo_originals_cleanup: photoOriginalsCleanup,
   site_photos_cleanup: sitePhotosCleanup,
   r2_photo_finish: r2PhotoFinish,
+  billing_backup: billingBackup,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

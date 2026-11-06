@@ -31,9 +31,6 @@ interface NavItem {
   short: string;
 }
 
-// Shoots & Invoices (/dashboard/shoots) is hidden from the nav: the shoots
-// table is empty and invoicing lives in Zoho. The page itself stays in place.
-
 const brokerNavItems: NavItem[] = [
   { label: "Dashboard", href: "/dashboard", icon: LayoutGrid, short: "Home" },
   { label: "My Listings", href: "/dashboard/listings", icon: Ship, short: "Listings" },

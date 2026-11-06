@@ -16,19 +16,28 @@ import { Card, CardBody } from "@/components/ui";
 import ClientsPanel from "./_components/ClientsPanel";
 import CatalogPanel from "./_components/CatalogPanel";
 import SettingsPanel from "./_components/SettingsPanel";
+import InvoicesPanel from "./_components/InvoicesPanel";
+import DashboardPanel from "./_components/DashboardPanel";
+import NewInvoiceButton from "./_components/NewInvoiceButton";
+import { buildDashboard, listInvoices, type RangePreset } from "@/lib/books/reports";
+import { isDate } from "@/lib/books/api";
+import { INVOICING_NOT_READY, fmtMoney } from "@/lib/books/types";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Billing (Portal) — phase 1. Admin-only, and only for logins in
- * billing_staff (Charlie: YachtPics + YPDesigns, owner; Samantha: YachtPics).
- * Not the broker subscription page (/dashboard/billing). Invoices arrive in
- * phase 2; until the migration is applied this page says so and stops.
+ * Billing (Portal). Admin-only, and only for logins in billing_staff
+ * (Charlie: YachtPics + YPDesigns, owner; Samantha: YachtPics). Not the
+ * broker subscription page (/dashboard/billing). Each login sees only its
+ * own invoices. Before a migration is applied the affected tab says
+ * "not switched on yet" and the rest keeps working.
  */
 
-type Tab = "overview" | "clients" | "catalog" | "settings";
+type Tab = "overview" | "invoices" | "dashboard" | "clients" | "catalog" | "settings";
 const TABS: { key: Tab; label: string; ownerOnly?: boolean }[] = [
   { key: "overview", label: "Overview" },
+  { key: "invoices", label: "Invoices" },
+  { key: "dashboard", label: "Dashboard" },
   { key: "clients", label: "Clients" },
   { key: "catalog", label: "Catalog" },
   { key: "settings", label: "Settings", ownerOnly: true },
@@ -60,7 +69,7 @@ function Notice({ title, body }: { title: string; body: string }) {
   );
 }
 
-export default async function BillingPage({ searchParams }: { searchParams: { tab?: string; brand?: string } }) {
+export default async function BillingPage({ searchParams }: { searchParams: { tab?: string; brand?: string; range?: string; from?: string; to?: string } }) {
   // Role check lives in the page, not only the layout — see requireAdminPage.
   const { userId } = await requireAdminPage();
   const admin = booksServiceClient();
@@ -84,9 +93,9 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
   const staff: BillingStaff = found.staff;
   const view: StaffView = { ...staff };
   const tabs = TABS.filter((t) => !t.ownerOnly || staff.isOwner);
-  const tab: Tab = tabs.some((t) => t.key === searchParams.tab) ? (searchParams.tab as Tab) : "overview";
+  const tab: Tab = tabs.some((t) => t.key === searchParams.tab) ? (searchParams.tab as Tab) : "invoices";
   const brand: BrandKey = staff.brands.indexOf(searchParams.brand as BrandKey) !== -1 ? (searchParams.brand as BrandKey) : staff.brands[0] ?? "yachtpics";
-  const qs = (t: Tab) => `/admin/billing?tab=${t}${staff.brands.length > 1 ? `&brand=${brand}` : ""}`;
+  const qs = (t: Tab) => `/admin/billing?tab=${t}${staff.brands.length > 1 && t !== "invoices" && t !== "dashboard" ? `&brand=${brand}` : ""}`;
 
   let content: React.ReactNode = null;
 
@@ -102,6 +111,8 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
     );
     const brandItems = items.filter((i) => i.active && (i.brand === brand || i.brand === "both")).length;
     const unconfirmed = staff.isOwner ? items.filter((i) => i.active && !i.brand_confirmed).length : 0;
+    const month = await buildDashboard(admin, staff, { preset: "month", brand });
+    const last = month.dash ? month.dash.buckets[month.dash.buckets.length - 1] : null;
 
     content = (
       <div className="space-y-6">
@@ -126,10 +137,27 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
               </div>
             </div>
             <div className="rule" />
-            <p className="text-sm text-ink-600">
-              Invoicing arrives in the next phase. Your clients, items and brand details are being set up here first, so the first
-              invoice starts from a clean list. Zoho stays in use until then; open Zoho balances finish there.
-            </p>
+            {month.dash ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+                <div className="grid grid-cols-3 gap-4 sm:gap-8">
+                  <Link href={`/admin/billing?tab=invoices`} className="block">
+                    <p className="label-caps">Outstanding</p>
+                    <p className="text-2xl font-light tabular-nums text-ink-900">{fmtMoney(month.dash.totals.outstanding)}</p>
+                  </Link>
+                  <Link href={`/admin/billing?tab=dashboard&brand=${brand}`} className="block">
+                    <p className="label-caps">Overdue</p>
+                    <p className={`text-2xl font-light tabular-nums ${month.dash.totals.overdue ? "text-danger-700" : "text-ink-900"}`}>{fmtMoney(month.dash.totals.overdue)}</p>
+                  </Link>
+                  <Link href={`/admin/billing?tab=dashboard&brand=${brand}`} className="block">
+                    <p className="label-caps">Paid this month</p>
+                    <p className="text-2xl font-light tabular-nums text-ink-900">{fmtMoney(last ? last.paid : 0)}</p>
+                  </Link>
+                </div>
+                <NewInvoiceButton brand={brand} />
+              </div>
+            ) : (
+              <p className="text-sm text-ink-600">{INVOICING_NOT_READY} Clients, items and brands below work already.</p>
+            )}
           </CardBody>
         </Card>
 
@@ -157,6 +185,31 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
           </div>
         </div>
       </div>
+    );
+  }
+
+  if (tab === "invoices") {
+    const { rows, error } = await listInvoices(admin, staff, {});
+    content = error ? (
+      <Card><CardBody><p className="text-sm text-ink-600">{isMissingBillingTable(error) ? INVOICING_NOT_READY : error.message}</p></CardBody></Card>
+    ) : (
+      <InvoicesPanel rows={rows} staff={view} defaultBrand={brand} />
+    );
+  }
+
+  if (tab === "dashboard") {
+    const preset = (["month", "quarter", "year", "custom"].indexOf(searchParams.range ?? "") !== -1 ? searchParams.range : "month") as RangePreset;
+    const dBrand = staff.brands.indexOf(searchParams.brand as BrandKey) !== -1 ? (searchParams.brand as BrandKey) : "";
+    const { dash, error } = await buildDashboard(admin, staff, {
+      preset,
+      from: isDate(searchParams.from) ? searchParams.from : undefined,
+      to: isDate(searchParams.to) ? searchParams.to : undefined,
+      brand: dBrand,
+    });
+    content = !dash ? (
+      <Card><CardBody><p className="text-sm text-ink-600">{error && !isMissingBillingTable(error) ? error.message : INVOICING_NOT_READY}</p></CardBody></Card>
+    ) : (
+      <DashboardPanel dash={dash} preset={preset === "custom" && !(isDate(searchParams.from) && isDate(searchParams.to)) ? "month" : preset} brand={dBrand} brands={staff.brands} />
     );
   }
 
@@ -212,22 +265,26 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
   }
 
   if (tab === "settings" && staff.isOwner) {
-    const [{ data: brandRows }, { data: staffRows }, { data: staffBrandRows }] = await Promise.all([
+    const [{ data: brandRows }, { data: staffRows }, { data: staffBrandRows }, counters] = await Promise.all([
       admin.from("billing_brands").select("*").order("key"),
-      admin.from("billing_staff").select("profile_id, display_name, is_owner, card_fee_rate, active").order("is_owner", { ascending: false }),
-      admin.from("billing_staff_brands").select("profile_id, brand, from_name, reply_to_email, phone").order("brand"),
+      admin.from("billing_staff").select("*").order("is_owner", { ascending: false }),
+      admin.from("billing_staff_brands").select("*").order("brand"),
+      admin.from("billing_invoice_counters").select("owner_id, brand, next_number"),
     ]);
-    const sb = (staffBrandRows ?? []) as StaffBrand[];
+    const invoicingReady = !counters.error;
+    const nextNo: Record<string, number> = {};
+    ((counters.data ?? []) as { owner_id: string; brand: string; next_number: number }[]).forEach((c) => { nextNo[c.owner_id + "|" + c.brand] = c.next_number; });
+    const sb = ((staffBrandRows ?? []) as StaffBrand[]).map((x) => ({ ...x, next_number: nextNo[x.profile_id + "|" + x.brand] ?? 1001 }));
     const people: BillingStaffRow[] = ((staffRows ?? []) as Omit<BillingStaffRow, "brands">[]).map((s) => ({
       ...s,
       card_fee_rate: Number(s.card_fee_rate),
       brands: sb.filter((x) => x.profile_id === s.profile_id),
     }));
-    content = <SettingsPanel brands={(brandRows ?? []) as BillingBrand[]} people={people} />;
+    content = <SettingsPanel brands={(brandRows ?? []) as BillingBrand[]} people={people} invoicingReady={invoicingReady} />;
   }
 
   return (
-    <Shell subtitle={`${staff.displayName}'s book · clients, items and brands for your invoices.`}>
+    <Shell subtitle={`${staff.displayName}'s book · invoices, clients and items.`}>
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
         <nav className="flex gap-1 overflow-x-auto -mx-1 px-1" aria-label="Billing sections">
           {tabs.map((t) => (
@@ -242,7 +299,7 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
             </Link>
           ))}
         </nav>
-        {staff.brands.length > 1 && tab !== "settings" && (
+        {staff.brands.length > 1 && tab !== "settings" && tab !== "invoices" && tab !== "dashboard" && (
           <div className="inline-flex rounded-ctl border border-hairline-strong bg-white p-0.5 self-start" role="group" aria-label="Brand">
             {staff.brands.map((k) => (
               <Link

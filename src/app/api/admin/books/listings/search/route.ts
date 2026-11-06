@@ -1,0 +1,54 @@
+import { NextRequest, NextResponse } from "next/server";
+import { requireBillingStaff } from "@/lib/books/staff";
+
+export const runtime = "nodejs";
+
+/**
+ * GET ?q= — boat picker for YachtPics invoices: listings by vessel name,
+ * with length and broker, plus the billing client linked to that broker
+ * (billing_clients.broker_profile_id, matched by email) as a suggestion.
+ */
+export async function GET(req: NextRequest) {
+  const auth = await requireBillingStaff();
+  if (auth.error) return auth.error;
+  const { admin } = auth;
+  const q = (req.nextUrl.searchParams.get("q") ?? "").trim().replace(/[%_,()]/g, " ").slice(0, 60);
+  if (q.length < 2) return NextResponse.json({ listings: [] });
+
+  const { data, error } = await admin
+    .from("listings")
+    .select("id, vessel_name, length_ft, year, make, broker_id")
+    .ilike("vessel_name", `%${q}%`)
+    .order("updated_at", { ascending: false })
+    .limit(15);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const rows = (data ?? []) as { id: string; vessel_name: string | null; length_ft: number | string | null; year: number | null; make: string | null; broker_id: string | null }[];
+
+  const brokerIds: string[] = [];
+  rows.forEach((r) => { if (r.broker_id && brokerIds.indexOf(r.broker_id) === -1) brokerIds.push(r.broker_id); });
+  const brokers: Record<string, string> = {};
+  const clients: Record<string, { id: string; display_name: string }> = {};
+  if (brokerIds.length) {
+    const [{ data: ps }, { data: cs }] = await Promise.all([
+      admin.from("profiles").select("id, first_name, last_name").in("id", brokerIds),
+      admin.from("billing_clients").select("id, display_name, broker_profile_id, status").in("broker_profile_id", brokerIds),
+    ]);
+    (ps ?? []).forEach((p: { id: string; first_name: string | null; last_name: string | null }) => {
+      brokers[p.id] = [p.first_name, p.last_name].filter(Boolean).join(" ");
+    });
+    (cs ?? []).forEach((c: { id: string; display_name: string; broker_profile_id: string; status: string }) => {
+      const cur = clients[c.broker_profile_id];
+      if (!cur || c.status === "active") clients[c.broker_profile_id] = { id: c.id, display_name: c.display_name };
+    });
+  }
+  return NextResponse.json({
+    listings: rows.map((r) => ({
+      id: r.id,
+      name: r.vessel_name || "Untitled listing",
+      lengthFt: r.length_ft == null || r.length_ft === "" ? null : Number(r.length_ft),
+      detail: [r.year, r.make].filter(Boolean).join(" "),
+      broker: r.broker_id ? brokers[r.broker_id] || null : null,
+      suggestedClient: r.broker_id ? clients[r.broker_id] ?? null : null,
+    })),
+  });
+}

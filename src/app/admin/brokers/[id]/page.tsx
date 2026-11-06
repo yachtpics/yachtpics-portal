@@ -26,13 +26,12 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
   // Listings this broker co-brokers (owned by someone else) only needs the
   // broker id from the URL, so it rides in the same wave as everything else
   // instead of waiting behind it.
-  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: shoots }, { data: assistants }, { data: adminProfiles }, { data: sitePages }, { data: coBrokeredRows }] =
+  const [{ data: profile }, { data: details }, { data: subscription }, { data: listings }, { data: assistants }, { data: adminProfiles }, { data: sitePages }, { data: coBrokeredRows }] =
     await Promise.all([
       supabase.from("profiles").select("id, first_name, last_name, display_email, phone, address, office_phone, instagram_handle, facebook_url, birthday_month, birthday_day, created_at, invited_by, email_bounced_at, email_bounce_reason").eq("id", params.id).single(),
       supabase.from("broker_details").select("*").eq("id", params.id).single(),
       supabase.from("subscriptions").select("status, trial_ends_at, current_period_end, stripe_subscription_id, stripe_price_id").eq("broker_id", params.id).single(),
       supabase.from("listings").select("id, vessel_name, vessel_type, make, year, length_ft, location, status, updated_at, publish_to_site, site_page, showcase_opt_out").eq("broker_id", params.id).order("updated_at", { ascending: false }),
-      supabase.from("shoots").select("id, shoot_date, amount_cents, payment_status, invoice_number, listings:listing_id(vessel_name)").eq("broker_id", params.id).order("shoot_date", { ascending: false }).limit(10),
       supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id(id, first_name, last_name, display_email)").eq("broker_id", params.id),
       supabase.from("profiles").select("id, first_name, last_name").eq("role", "admin").order("first_name", { ascending: true }),
       supabase.from("site_pages").select("label, filename").eq("is_active", true).order("label"),
@@ -179,10 +178,10 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
             <p className="text-ink-500 text-sm mt-0.5">{details?.brokerage_name ?? "No brokerage"}</p>
           </div>
           <Link
-            href={`/admin/shoots/new?broker=${params.id}`}
+            href="/admin/billing?tab=invoices"
             className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-4 py-2.5 rounded-ctl transition-colors duration-fast ease-quiet"
           >
-            + New Invoice
+            Invoices
           </Link>
         </div>
       </div>
@@ -275,7 +274,6 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">
           <p className="label-caps mb-3">Activity</p>
           <p className="text-sm text-ink-900"><span className="text-2xl font-light tabular-nums">{listings?.length ?? 0}</span> listings</p>
-          <p className="text-sm text-ink-500 mt-1"><span className="font-semibold text-ink-900 tabular-nums">{shoots?.length ?? 0}</span> shoots on record</p>
           <p className="text-xs text-ink-500 mt-2">
             Member since {new Date(profile.created_at).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "America/New_York" })}
           </p>
@@ -378,47 +376,6 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           </ul>
         </div>
       )}
-
-      {/* Shoot history */}
-      <div className="bg-white border border-hairline rounded-card shadow-elev-1 mb-6">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
-          <h2 className="text-h2 text-ink-900">Shoot History</h2>
-          <Link href={`/admin/shoots/new?broker=${params.id}`} className="text-accent-700 hover:text-accent-800 text-sm font-medium transition-colors duration-fast ease-quiet">
-            + New invoice
-          </Link>
-        </div>
-        {!shoots || shoots.length === 0 ? (
-          <div className="py-10 text-center text-ink-400 text-sm">No shoots on record.</div>
-        ) : (
-          <ul className="divide-y divide-hairline">
-            {shoots.map((shoot) => {
-              const vessel = (shoot.listings as { vessel_name: string | null }[] | null)?.[0]?.vessel_name ?? "—";
-              const amount = shoot.amount_cents
-                ? `$${(shoot.amount_cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                : "—";
-              const date = shoot.shoot_date
-                ? new Date(shoot.shoot_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
-                : "—";
-              return (
-                <li key={shoot.id} className="px-6 py-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-ink-900">{vessel}</p>
-                    <p className="text-xs text-ink-500 mt-0.5 tabular-nums">{date} · {shoot.invoice_number ?? "No invoice #"}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <p className="text-sm font-medium text-ink-900 tabular-nums">{amount}</p>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
-                      shoot.payment_status === "paid" ? "bg-success-50 text-success-700 border-success-200"
-                      : shoot.payment_status === "cancelled" ? "bg-ink-100 text-ink-600 border-hairline"
-                      : "bg-warn-50 text-warn-700 border-warn-200"
-                    }`}>{shoot.payment_status}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </div>
 
       {/* Danger zone */}
       <div className="border border-danger-200 rounded-card px-6 py-4 flex items-center justify-between">

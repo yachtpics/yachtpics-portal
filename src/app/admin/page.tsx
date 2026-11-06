@@ -19,7 +19,7 @@ function money(n: number): string {
 
 export default async function AdminPage() {
   // Role check lives in the page, not only the layout — see requireAdminPage.
-  await requireAdminPage();
+  const { userId } = await requireAdminPage();
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -31,25 +31,22 @@ export default async function AdminPage() {
     { data: brokers },
     { data: subs },
     { count: listingCount },
-    { data: pendingShoots },
+    openInvoices,
     { data: storageRows },
     { count: views30 },
     { count: sends30 },
-    { data: recentShoots },
     { data: retiredPages },
     { count: photosWithoutDerivatives },
   ] = await Promise.all([
     service.from("profiles").select("id, first_name, last_name, display_email").eq("role", "broker"),
     service.from("subscriptions").select("broker_id, status, stripe_subscription_id, stripe_price_id, trial_ends_at"),
     service.from("listings").select("*", { count: "exact", head: true }),
-    service.from("shoots").select("amount_cents").eq("payment_status", "pending"),
+    // This login's own open invoices in Billing (errors — e.g. not billing
+    // staff, or the phase 2 migration not applied — just show a dash).
+    service.from("billing_invoices").select("balance_due").eq("owner_id", userId).in("status", ["sent", "partial"]),
     service.rpc("storage_usage"),
     service.from("slideshow_views").select("*", { count: "exact", head: true }).gte("viewed_at", since30),
     service.from("client_sends").select("*", { count: "exact", head: true }).gte("sent_at", since30),
-    service.from("shoots")
-      .select("id, shoot_date, amount_cents, payment_status, profiles:broker_id(first_name, last_name), listings:listing_id(vessel_name)")
-      .order("created_at", { ascending: false })
-      .limit(5),
     // Only deactivated pages that STILL have a file on the server need cleanup.
     // Without the has_page filter, a page you'd already deleted kept reappearing
     // here on every refresh.
@@ -112,9 +109,9 @@ export default async function AdminPage() {
   const usedGB = usedBytes / GB;
   const storagePct = Math.min(100, (usedGB / INCLUDED_GB) * 100);
 
-  // ---- Pending invoice revenue ----
-  const pendingCents = (pendingShoots ?? []).reduce((sum, s) => sum + (s.amount_cents ?? 0), 0);
-  const pendingCount = (pendingShoots ?? []).length;
+  // ---- Your open invoices (Billing) ----
+  const openRows = openInvoices.error ? null : ((openInvoices.data ?? []) as { balance_due: number | string }[]);
+  const openDue = (openRows ?? []).reduce((sum, r) => sum + Number(r.balance_due ?? 0), 0);
 
   // ---- Birthdays in the next 14 days (Oct 28; Eastern date; Feb 29 → Feb 28 off leap years) ----
   const { data: bdayRows } = await service
@@ -208,10 +205,10 @@ export default async function AdminPage() {
           <p className={`text-3xl font-light tabular-nums mt-1 ${expiringSoon > 0 ? "text-warn-700" : "text-ink-900"}`}>{expiringSoon}</p>
           <p className="text-ink-400 text-xs mt-1">{expired} expired, not subscribed</p>
         </Link>
-        <Link href="/admin/shoots" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
+        <Link href="/admin/billing?tab=invoices" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
           <p className="label-caps">Unpaid Invoices</p>
-          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{money(Math.round(pendingCents / 100))}</p>
-          <p className="text-ink-400 text-xs mt-1">{pendingCount} pending</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{openRows ? money(Math.round(openDue)) : "—"}</p>
+          <p className="text-ink-400 text-xs mt-1">{openRows ? `${openRows.length} open in your book` : "in Billing"}</p>
         </Link>
       </div>
 
@@ -246,10 +243,10 @@ export default async function AdminPage() {
           <h3 className="font-semibold mb-1">New Listing</h3>
           <p className="text-ink-400 text-sm">Create a listing and upload photos for a broker.</p>
         </Link>
-        <Link href="/admin/shoots/new" className="bg-ink-950 hover:bg-ink-800 text-white rounded-card p-5 transition-colors duration-fast ease-quiet">
+        <Link href="/admin/billing?tab=invoices" className="bg-ink-950 hover:bg-ink-800 text-white rounded-card p-5 transition-colors duration-fast ease-quiet">
           <div className="text-2xl mb-2">📄</div>
-          <h3 className="font-semibold mb-1">New Invoice</h3>
-          <p className="text-ink-400 text-sm">Log a shoot and create an invoice for a broker.</p>
+          <h3 className="font-semibold mb-1">Invoices</h3>
+          <p className="text-ink-400 text-sm">Raise, send and track invoices in Billing.</p>
         </Link>
       </div>
 
@@ -260,48 +257,6 @@ export default async function AdminPage() {
         <RetiredPages pages={(retiredPages ?? []) as { label: string; filename: string }[]} />
       </div>
 
-      {/* Recent shoots */}
-      <div className="bg-white border border-hairline rounded-card shadow-elev-1">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-hairline">
-          <h2 className="text-h2 text-ink-900">Recent Shoots</h2>
-          <Link href="/admin/shoots" className="text-accent-700 hover:text-accent-800 text-sm font-medium">View all →</Link>
-        </div>
-        {recentShoots && recentShoots.length > 0 ? (
-          <ul className="divide-y divide-hairline">
-            {recentShoots.map((shoot) => {
-              const brokerArr = shoot.profiles as { first_name: string | null; last_name: string | null }[] | null;
-              const broker = Array.isArray(brokerArr) ? brokerArr[0] : brokerArr;
-              const listingArr = shoot.listings as { vessel_name: string | null }[] | null;
-              const listing = Array.isArray(listingArr) ? listingArr[0] : listingArr;
-              const amount = shoot.amount_cents
-                ? `$${(shoot.amount_cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })}`
-                : "—";
-              return (
-                <li key={shoot.id} className="px-6 py-4 flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-ink-900">
-                      {broker ? `${broker.first_name ?? ""} ${broker.last_name ?? ""}`.trim() : "Unknown broker"}
-                    </p>
-                    <p className="text-xs text-ink-500 mt-0.5">{listing?.vessel_name ?? "No vessel"}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <p className="text-sm font-medium text-ink-900 tabular-nums">{amount}</p>
-                    <span className={`text-xs font-medium px-2.5 py-1 rounded-full border ${
-                      shoot.payment_status === "paid" ? "bg-success-50 text-success-700 border-success-200"
-                      : shoot.payment_status === "cancelled" ? "bg-ink-100 text-ink-600 border-hairline"
-                      : "bg-warn-50 text-warn-700 border-warn-200"
-                    }`}>
-                      {shoot.payment_status}
-                    </span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <div className="text-center py-10 text-ink-400 text-sm">No shoots yet.</div>
-        )}
-      </div>
     </div>
   );
 }

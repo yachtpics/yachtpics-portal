@@ -58,8 +58,8 @@ const navItems: NavItem[] = [
   { label: "Shows", href: "/admin/shows", icon: Anchor },
   { label: "Recently Photographed", href: "/admin/showcase", icon: Camera },
   { label: "Galleries", href: "/admin/galleries", icon: ImageIcon },
-  // Billing replaced "Shoots & Invoices" (/admin/shoots, never used — the
-  // shoots and invoices tables are empty). Old route files stay for now.
+  // Billing replaced "Shoots & Invoices" (/admin/shoots, removed Nov 7 — the
+  // old shoots and invoices tables were never used).
   { label: "Billing", href: "/admin/billing", icon: Receipt, billingOnly: true },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
   { label: "Jobs", href: "/admin/jobs", icon: ListChecks },

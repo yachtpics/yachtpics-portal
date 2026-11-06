@@ -1,5 +1,5 @@
 /** Small fetch wrapper for /api/admin/books/* — returns an error message or null. */
-export async function booksCall(url: string, method: "POST" | "PATCH", body: unknown): Promise<{ error: string | null; data: Record<string, unknown> | null }> {
+export async function booksCall(url: string, method: "POST" | "PATCH" | "PUT", body: unknown): Promise<{ error: string | null; data: Record<string, unknown> | null }> {
   try {
     const res = await fetch(url, {
       method,

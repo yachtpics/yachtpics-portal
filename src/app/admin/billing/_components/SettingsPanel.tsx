@@ -7,13 +7,43 @@ import { BRAND_LABEL, type BillingBrand, type BillingStaffRow, type StaffBrand }
 import { booksCall, fieldClass } from "./booksApi";
 
 /** Owner-only: brands, logins and the Zoho re-pull. The page never renders this for anyone else. */
-export default function SettingsPanel({ brands, people }: { brands: BillingBrand[]; people: BillingStaffRow[] }) {
+export default function SettingsPanel({ brands, people, invoicingReady }: { brands: BillingBrand[]; people: BillingStaffRow[]; invoicingReady: boolean }) {
+  const missing: string[] = [];
+  people.forEach((p) => p.brands.forEach((b) => {
+    if (invoicingReady && !b.payment_instructions) missing.push(`${p.display_name}: no payment instructions yet for ${BRAND_LABEL[b.brand]}`);
+  }));
   return (
     <div className="space-y-6">
+      {missing.length > 0 && (
+        <div className="rounded-card border border-warn-200 bg-warn-50 px-5 py-3 text-sm text-warn-700">
+          {missing.map((m) => <p key={m}>{m} — the invoice&apos;s &ldquo;How to pay&rdquo; box will be left off.</p>)}
+        </div>
+      )}
       {brands.map((b) => <BrandCard key={b.key} brand={b} />)}
-      {people.map((p) => <PersonCard key={p.profile_id} person={p} />)}
+      {people.map((p) => <PersonCard key={p.profile_id} person={p} invoicingReady={invoicingReady} />)}
+      <BackupCard ready={invoicingReady} />
       <ImportCard />
     </div>
+  );
+}
+
+function BackupCard({ ready }: { ready: boolean }) {
+  return (
+    <Card>
+      <CardHeader
+        title="Backups"
+        kicker="Owner"
+        description="Every Sunday the whole billing database (both books) is copied to private storage; the last 12 weeks are kept. Download a copy any time — a zip of spreadsheets with the shared lists and your own book."
+      />
+      <CardBody>
+        <a
+          href="/api/admin/books/backup"
+          className={`inline-flex items-center justify-center rounded-ctl bg-white text-ink-700 border border-hairline-strong hover:border-ink-400 text-xs font-semibold px-3 py-2 ${ready ? "" : "opacity-40 pointer-events-none"}`}
+        >
+          Download backup (zip of CSVs)
+        </a>
+      </CardBody>
+    </Card>
   );
 }
 
@@ -81,11 +111,11 @@ function BrandCard({ brand }: { brand: BillingBrand }) {
         </div>
         {f.logo_url ? (
           <div className="flex items-center gap-3">
-            <div className="h-12 px-3 rounded-ctl bg-ink-950 flex items-center">
+            <div className="h-12 px-3 rounded-ctl bg-white border border-hairline flex items-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={f.logo_url} alt="" className="max-h-8 max-w-[10rem] object-contain" />
             </div>
-            <p className="text-small text-ink-500">Invoices print on white — a dark version of the logo will be needed for the invoice design.</p>
+            <p className="text-small text-ink-500">As it prints on the invoice (white paper) — use the dark-on-transparent version.</p>
           </div>
         ) : (
           <p className="text-small text-warn-700">No logo yet for this brand.</p>
@@ -97,13 +127,15 @@ function BrandCard({ brand }: { brand: BillingBrand }) {
   );
 }
 
-function PersonCard({ person }: { person: BillingStaffRow }) {
+function PersonCard({ person, invoicingReady }: { person: BillingStaffRow; invoicingReady: boolean }) {
   const [name, setName] = useState(person.display_name);
   const [fee, setFee] = useState(String(Math.round(person.card_fee_rate * 10000) / 100));
+  const [terms, setTerms] = useState(String(person.default_terms_days ?? 15));
+  const [note, setNote] = useState(person.default_note ?? "");
   const [rows, setRows] = useState<StaffBrand[]>(person.brands);
   const { busy, msg, run } = useSaver();
 
-  const setRow = (i: number, k: "from_name" | "reply_to_email" | "phone", v: string) => {
+  const setRow = (i: number, k: "from_name" | "reply_to_email" | "phone" | "invoice_prefix" | "address" | "payment_instructions", v: string) => {
     const next = rows.slice();
     next[i] = { ...next[i], [k]: v };
     setRows(next);
@@ -123,6 +155,18 @@ function PersonCard({ person }: { person: BillingStaffRow }) {
             <span className="label-caps">Card fee on invoices (%)</span>
             <input className={fieldClass + " mt-1 tabular-nums"} inputMode="decimal" value={fee} onChange={(e) => setFee(e.target.value)} />
           </label>
+          {invoicingReady && (
+            <>
+              <label className="block">
+                <span className="label-caps">Default terms (days)</span>
+                <input className={fieldClass + " mt-1 tabular-nums"} inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)} />
+              </label>
+              <label className="block sm:col-span-2">
+                <span className="label-caps">Default note (printed under the totals)</span>
+                <textarea className={fieldClass + " mt-1 min-h-[60px]"} value={note} onChange={(e) => setNote(e.target.value)} />
+              </label>
+            </>
+          )}
         </div>
         {rows.map((r, i) => (
           <div key={r.brand} className="border border-hairline rounded-card p-4 space-y-3">
@@ -132,6 +176,21 @@ function PersonCard({ person }: { person: BillingStaffRow }) {
               <Field label="Reply-to" value={r.reply_to_email ?? ""} onChange={(v) => setRow(i, "reply_to_email", v)} />
               <Field label="Phone on invoices" value={r.phone ?? ""} onChange={(v) => setRow(i, "phone", v)} />
             </div>
+            {invoicingReady && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <Field label="Invoice prefix (blank = brand's)" value={r.invoice_prefix ?? ""} onChange={(v) => setRow(i, "invoice_prefix", v)} placeholder="YP" />
+                <label className="block">
+                  <span className="label-caps">Next number</span>
+                  <input className={fieldClass + " mt-1 tabular-nums"} inputMode="numeric" value={String(r.next_number ?? 1001)}
+                    onChange={(e) => { const next = rows.slice(); next[i] = { ...next[i], next_number: Number(e.target.value.replace(/\D/g, "")) || null }; setRows(next); }} />
+                </label>
+                <Field label="Address on invoices (blank = brand's)" value={r.address ?? ""} onChange={(v) => setRow(i, "address", v)} />
+                <label className="block sm:col-span-3">
+                  <span className="label-caps">How to pay (printed in a box on the invoice; separate lines with ·)</span>
+                  <textarea className={fieldClass + " mt-1 min-h-[60px]"} value={r.payment_instructions ?? ""} onChange={(e) => setRow(i, "payment_instructions", e.target.value)} />
+                </label>
+              </div>
+            )}
           </div>
         ))}
         <Msg msg={msg} />
@@ -142,7 +201,11 @@ function PersonCard({ person }: { person: BillingStaffRow }) {
             run(`/api/admin/books/staff/${person.profile_id}`, "PATCH", {
               display_name: name,
               card_fee_rate: fee,
-              brands: rows.map((r) => ({ brand: r.brand, from_name: r.from_name, reply_to_email: r.reply_to_email, phone: r.phone })),
+              ...(invoicingReady ? { default_terms_days: terms, default_note: note } : {}),
+              brands: rows.map((r) => ({
+                brand: r.brand, from_name: r.from_name, reply_to_email: r.reply_to_email, phone: r.phone,
+                ...(invoicingReady ? { invoice_prefix: r.invoice_prefix ?? "", address: r.address ?? "", payment_instructions: r.payment_instructions ?? "", next_number: r.next_number } : {}),
+              })),
             })
           }
         >
