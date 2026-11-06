@@ -334,7 +334,7 @@ values
   ('yachtpics', 'YachtPics', 'YachtPics Enterprises LLC', '/brand/yachtpics-logo-white.png', '#c39e4e',
    'North Palm Beach, FL', '561-602-9710', 'charlie@yachtpics.com', 'yachtpics.com', 'YP', 'Thank you for your business.'),
   ('ypdesigns', 'YPDesigns', 'YachtPics Enterprises LLC', null, null,
-   'North Palm Beach, FL', '561-602-9710', 'charlie@yachtpics.com', 'ypdesigns.co', 'YPD', 'Thank you for your business.')
+   'North Palm Beach, FL', '561-602-9710', 'charlie@ypdesigns.co', 'ypdesigns.co', 'YPD', 'Thank you for your business.')
 on conflict (key) do nothing;
 
 insert into public.billing_staff (profile_id, display_name, is_owner, card_fee_rate)
@@ -346,7 +346,7 @@ on conflict (profile_id) do nothing;
 insert into public.billing_staff_brands (profile_id, brand, from_name, reply_to_email, phone)
 values
   ('e9afc949-ee75-4c30-9465-95a8abe9fac7', 'yachtpics', 'Charlie Clark · YachtPics', 'charlie@yachtpics.com', '561-602-9710'),
-  ('e9afc949-ee75-4c30-9465-95a8abe9fac7', 'ypdesigns', 'Charlie Clark · YPDesigns', 'charlie@yachtpics.com', '561-602-9710'),
+  ('e9afc949-ee75-4c30-9465-95a8abe9fac7', 'ypdesigns', 'Charlie Clark · YPDesigns', 'charlie@ypdesigns.co', '561-602-9710'),
   ('6884eada-ba61-4076-8d00-6cc2cfd1879a', 'yachtpics', 'Samantha · YachtPics', 'samantha@yachtpics.com', '561-252-1488')
 on conflict (profile_id, brand) do nothing;
 
