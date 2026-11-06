@@ -332,9 +332,9 @@ grant execute on function public.billing_import_clients(jsonb, uuid) to service_
 insert into public.billing_brands (key, display_name, legal_name, logo_url, accent_color, address, phone, email, website, invoice_prefix, footer_note)
 values
   ('yachtpics', 'YachtPics', 'YachtPics Enterprises LLC', '/brand/yachtpics-logo-white.png', '#c39e4e',
-   'North Palm Beach, FL', '561-602-9710', 'charlie@yachtpics.com', 'yachtpics.com', 'YP', 'Thank you for your business.'),
+   '309 Lake Circle, Apt 102, North Palm Beach, FL 33408', '561-602-9710', 'charlie@yachtpics.com', 'yachtpics.com', 'YP', 'Thank you for your business.'),
   ('ypdesigns', 'YPDesigns', 'YachtPics Enterprises LLC', null, null,
-   'North Palm Beach, FL', '561-602-9710', 'charlie@ypdesigns.co', 'ypdesigns.co', 'YPD', 'Thank you for your business.')
+   '309 Lake Circle, Apt 102, North Palm Beach, FL 33408', '561-602-9710', 'charlie@ypdesigns.co', 'ypdesigns.co', 'YPD', 'Thank you for your business.')
 on conflict (key) do nothing;
 
 insert into public.billing_staff (profile_id, display_name, is_owner, card_fee_rate)
