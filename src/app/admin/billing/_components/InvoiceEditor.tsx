@@ -160,29 +160,43 @@ export default function InvoiceEditor({
     setDirty(true);
   };
 
-  const addItem = (it: BillingItem) => {
-    if (it.kind === "card_fee") { if (!hasFee) toggleFee(); return; }
+  /** A catalog item as a new line on `base` (card fee kept last). Shared by a manual pick and the boat auto-add. */
+  const withItemLine = (base: EditLine[], it: BillingItem, ft: number): EditLine[] => {
     const perFt = it.unit === "ft";
     const line: EditLine = {
       key: k(),
-      position: lines.length,
+      position: base.length,
       item_id: it.id,
       kind: it.kind,
       name: it.name,
       description: it.description,
-      quantity: perFt && boatFt ? boatFt : 1,
+      quantity: perFt && ft ? ft : 1,
       unit: it.unit,
       unit_price: Number(it.rate),
       discount_type: null,
       discount_value: null,
       taxable: it.taxable,
-      fromLength: perFt && !!boatFt,
+      fromLength: perFt && !!ft,
     };
     // Keep the card fee last.
-    const fee = lines.filter((l) => l.kind === "card_fee");
-    setLines(lines.filter((l) => l.kind !== "card_fee").concat([line], fee));
+    const fee = base.filter((l) => l.kind === "card_fee");
+    return base.filter((l) => l.kind !== "card_fee").concat([line], fee);
+  };
+  const addItem = (it: BillingItem) => {
+    if (it.kind === "card_fee") { if (!hasFee) toggleFee(); return; }
+    setLines(withItemLine(lines, it, boatFt));
     setDirty(true);
   };
+  // Boat picked on an empty YachtPics draft → the photography line for its length.
+  const [autoPhotoHint, setAutoPhotoHint] = useState(false);
+  const photographyItemFor = (ft: number): BillingItem | null => {
+    if (!ft || ft <= 0) return null;
+    const re = ft < 100 ? /^photography under 100['’]/i : /^photography - over 100['’]/i;
+    const hit = items.filter((i) => i.active && (i.brand === "both" || i.brand === "yachtpics") && i.kind !== "card_fee" && re.test(i.name.trim()))[0];
+    return hit ?? null;
+  };
+  const linesAreEmpty = (ls: EditLine[]) =>
+    ls.length === 0 || (ls.length === 1 && ls[0].kind === "custom" && !ls[0].item_id && !ls[0].name.trim() && !Number(ls[0].unit_price));
   const addCustom = () => {
     const fee = lines.filter((l) => l.kind === "card_fee");
     setLines(lines.filter((l) => l.kind !== "card_fee").concat([{ key: k(), position: 0, item_id: null, kind: "custom", name: "", description: null, quantity: 1, unit: "each", unit_price: 0, discount_type: null, discount_value: null, taxable: false, saveToCatalog: false }], fee));
@@ -423,7 +437,15 @@ export default function InvoiceEditor({
                   }
                 }
                 // Per-foot lines that came from the old length follow the new one.
-                if (hit.lengthFt) setLines(lines.map((l) => (l.unit === "ft" && (l.fromLength || !l.quantity || l.quantity === 1) ? { ...l, quantity: hit.lengthFt as number, fromLength: true } : l)));
+                let nextLines = hit.lengthFt ? lines.map((l) => (l.unit === "ft" && (l.fromLength || !l.quantity || l.quantity === 1) ? { ...l, quantity: hit.lengthFt as number, fromLength: true } : l)) : lines;
+                // Empty, unlocked YachtPics draft: add the photography line (under / over 100') from the length.
+                const ft = Number(patch.boat_length_ft) || 0;
+                const photo = h.brand === "yachtpics" && !locked && inv.status === "draft" && linesAreEmpty(lines) ? photographyItemFor(ft) : null;
+                if (photo) {
+                  nextLines = withItemLine([], photo, ft);
+                  setAutoPhotoHint(true);
+                }
+                if (nextLines !== lines) setLines(nextLines);
                 setHeader(patch);
               }}
               onClear={() => setHeader({ listing_id: null })}
@@ -487,6 +509,12 @@ export default function InvoiceEditor({
             <LineRow key={l.key} line={l} index={i} count={lines.length} isOwner={isOwner} locked={locked} feeRate={inv.card_fee_rate} feeAmount={totals.cardFeeTotal}
               onChange={(p) => setLine(i, p)} onMove={(d) => move(i, d)} onRemove={() => remove(i)} />
           ))}
+          {autoPhotoHint && !locked && (
+            <p className="text-small text-ink-500 flex items-start justify-between gap-3">
+              <span>Added the photography line from the boat&apos;s length — delete it if this shoot was different.</span>
+              <button type="button" className="text-ink-400 hover:text-ink-900 shrink-0" onClick={() => setAutoPhotoHint(false)} aria-label="Dismiss">×</button>
+            </p>
+          )}
           {!locked && (
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <CatalogSearch items={catalog} onPick={addItem} />
