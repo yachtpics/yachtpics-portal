@@ -4,7 +4,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingBillingTable, type BillingStaff } from "./staff";
-import type { BillingBrand, BillingClient, BillingInvoice, BillingPayment, BrandKey, InvoiceLine } from "./types";
+import { type BillingBrand, type BillingClient, type BillingInvoice, type BillingPayment, type BrandKey, type InvoiceLine } from "./types";
 
 export const INVOICE_COLS = "*";
 
@@ -44,7 +44,43 @@ export function normInvoice(r: Record<string, unknown>): BillingInvoice {
     amount_paid: num(r.amount_paid),
     balance_due: num(r.balance_due),
     view_count: num(r.view_count),
+    due_date_manual: r.due_date_manual === true,
+    is_test: r.is_test === true,
   };
+}
+
+/** Columns added by 20261107b — written only once that migration is applied. */
+export const TERMS_MIGRATION_COLS = ["due_date_manual", "is_test"];
+
+/** Unknown column (PostgREST schema cache or Postgres): the migration isn't applied yet. */
+export function isMissingColumn(err: { code?: string; message?: string } | null | undefined): boolean {
+  if (!err) return false;
+  if (err.code === "42703" || err.code === "PGRST204") return true;
+  return /column .* (does not exist|could not find)|could not find the .* column/i.test(err.message ?? "");
+}
+
+/**
+ * Update one invoice row. If 20261107b isn't applied yet, the new columns
+ * (due_date_manual / is_test) are dropped and the rest is saved, so the
+ * editor keeps working. Returns the error, if any, and whether columns were dropped.
+ */
+export async function updateInvoiceRow(
+  admin: SupabaseClient,
+  id: string,
+  ownerId: string,
+  fields: Record<string, unknown>
+): Promise<{ error: { code?: string; message?: string } | null; dropped: string[] }> {
+  const first = await admin.from("billing_invoices").update(fields).eq("id", id).eq("owner_id", ownerId);
+  if (!first.error || !isMissingColumn(first.error)) return { error: first.error, dropped: [] };
+  const rest: Record<string, unknown> = {};
+  const dropped: string[] = [];
+  Object.keys(fields).forEach((k) => {
+    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
+    else rest[k] = fields[k];
+  });
+  if (!dropped.length) return { error: first.error, dropped };
+  const again = await admin.from("billing_invoices").update(rest).eq("id", id).eq("owner_id", ownerId);
+  return { error: again.error, dropped };
 }
 
 function normLine(r: Record<string, unknown>): InvoiceLine {
@@ -134,9 +170,10 @@ export function publicInvoiceUrl(token: string): string {
   return `${PORTAL_ORIGIN}/inv/${token}`;
 }
 
-/** PDF file name: "YP-1001 YachtPics.pdf" (drafts: "Draft …"). */
+/** PDF file name: "YP-1001 YachtPics.pdf" (drafts: "Draft …", tests: "TEST …"). */
 export function pdfFileName(inv: BillingInvoice, brand: BillingBrand): string {
-  const base = `${inv.number ?? "Draft invoice"} ${brand.display_name}`.replace(/[^A-Za-z0-9 ._-]+/g, "").trim();
+  const label = inv.is_test ? "TEST invoice" : inv.number ?? "Draft invoice";
+  const base = `${label} ${brand.display_name}`.replace(/[^A-Za-z0-9 ._-]+/g, "").trim();
   return `${base || "Invoice"}.pdf`;
 }
 

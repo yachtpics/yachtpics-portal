@@ -43,7 +43,7 @@ export default async function AdminPage() {
     service.from("listings").select("*", { count: "exact", head: true }),
     // This login's own open invoices in Billing (errors — e.g. not billing
     // staff, or the phase 2 migration not applied — just show a dash).
-    service.from("billing_invoices").select("balance_due").eq("owner_id", userId).in("status", ["sent", "partial"]),
+    service.from("billing_invoices").select("*").eq("owner_id", userId).in("status", ["sent", "partial"]),
     service.rpc("storage_usage"),
     service.from("slideshow_views").select("*", { count: "exact", head: true }).gte("viewed_at", since30),
     service.from("client_sends").select("*", { count: "exact", head: true }).gte("sent_at", since30),
@@ -110,7 +110,7 @@ export default async function AdminPage() {
   const storagePct = Math.min(100, (usedGB / INCLUDED_GB) * 100);
 
   // ---- Your open invoices (Billing) ----
-  const openRows = openInvoices.error ? null : ((openInvoices.data ?? []) as { balance_due: number | string }[]);
+  const openRows = openInvoices.error ? null : ((openInvoices.data ?? []) as { balance_due: number | string; is_test?: boolean }[]).filter((r) => !r.is_test);
   const openDue = (openRows ?? []).reduce((sum, r) => sum + Number(r.balance_due ?? 0), 0);
 
   // ---- Birthdays in the next 14 days (Oct 28; Eastern date; Feb 29 → Feb 28 off leap years) ----

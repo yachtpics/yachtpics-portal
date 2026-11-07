@@ -1,11 +1,20 @@
 import { cleanText } from "./staff";
 import { isDate, isUuid } from "./api";
-import { addDays, type InvoiceLine, type LineKind } from "./types";
+import { dateET, type InvoiceLine, type LineKind } from "./types";
 
 const LINE_KINDS: LineKind[] = ["standard", "card_fee", "reimbursement", "discount", "deposit", "custom"];
 
-/** Header fields from a PATCH body (only keys present). */
-export function headerFields(body: Record<string, unknown>, current: { issue_date: string; terms_days: number | null }): { fields: Record<string, unknown>; error?: string } {
+/** Keys a PATCH may still change once the invoice is sent (void-only rule). */
+export const AFTER_SEND_KEYS = ["internal_note", "due_date"];
+
+/**
+ * Header fields from a PATCH body (only keys present). Terms are always 0
+ * ("Due on receipt") — a terms_days in the body is ignored. Due date: a date
+ * sets it by hand (due_date_manual = true); null resets it to the default —
+ * blank on a draft (it becomes the sent date at first send), the sent date
+ * (ET) on a sent invoice.
+ */
+export function headerFields(body: Record<string, unknown>, current: { status: string; sent_at: string | null }): { fields: Record<string, unknown>; error?: string } {
   const f: Record<string, unknown> = {};
   if ("client_id" in body) {
     if (body.client_id !== null && !isUuid(body.client_id)) return { fields: f, error: "Pick a client." };
@@ -28,22 +37,20 @@ export function headerFields(body: Record<string, unknown>, current: { issue_dat
   if ("note" in body) f.note = cleanText(body.note, 4000);
   if ("internal_note" in body) f.internal_note = cleanText(body.internal_note, 4000);
   if ("issue_date" in body) {
-    if (!isDate(body.issue_date)) return { fields: f, error: "Issue date isn't a date." };
+    if (!isDate(body.issue_date)) return { fields: f, error: "Invoice date isn't a date." };
     f.issue_date = body.issue_date;
   }
-  if ("terms_days" in body) {
-    const n = Number(body.terms_days);
-    if (!isFinite(n) || n < 0 || n > 365) return { fields: f, error: "Terms must be 0–365 days." };
-    f.terms_days = Math.round(n);
-  }
   if ("due_date" in body) {
-    if (body.due_date !== null && !isDate(body.due_date)) return { fields: f, error: "Due date isn't a date." };
-    f.due_date = body.due_date;
-  } else if ("issue_date" in f || "terms_days" in f) {
-    const issue = (f.issue_date as string) ?? current.issue_date;
-    const terms = (f.terms_days as number | undefined) ?? current.terms_days ?? 0;
-    f.due_date = addDays(issue, terms);
+    if (body.due_date === null || body.due_date === "") {
+      f.due_date_manual = false;
+      f.due_date = current.status === "draft" ? null : dateET(current.sent_at);
+    } else {
+      if (!isDate(body.due_date)) return { fields: f, error: "Due date isn't a date." };
+      f.due_date = body.due_date;
+      f.due_date_manual = true;
+    }
   }
+  if ("is_test" in body) f.is_test = body.is_test === true;
   return { fields: f };
 }
 

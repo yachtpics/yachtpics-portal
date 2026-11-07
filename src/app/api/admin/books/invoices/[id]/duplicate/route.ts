@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError } from "@/lib/books/api";
 import { loadInvoice, recalcInvoice } from "@/lib/books/invoices";
-import { addDays, todayET } from "@/lib/books/types";
+import { todayET } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
-// POST — a new draft with the same client, boat, brand, terms, note and lines; dated today.
+// POST — a new draft with the same client, boat, brand, note and lines;
+// dated today, due on receipt (the due date is set when it's sent). A copy of
+// a test invoice is a test invoice too.
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireBillingStaff();
   if (auth.error) return auth.error;
@@ -17,7 +19,6 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   if ("error" in r) return bad(r.error, 500);
   const src = r.bundle.invoice;
   const issue = todayET();
-  const terms = src.terms_days ?? 15;
   const now = new Date().toISOString();
   const { data, error } = await admin
     .from("billing_invoices")
@@ -30,8 +31,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       boat_name: src.boat_name,
       boat_length_ft: src.boat_length_ft,
       issue_date: issue,
-      terms_days: terms,
-      due_date: addDays(issue, terms),
+      terms_days: 0,
+      due_date: null,
+      ...(src.is_test ? { is_test: true } : {}),
       tax_rate: src.tax_rate,
       card_fee_rate: staff.cardFeeRate,
       note: src.note,

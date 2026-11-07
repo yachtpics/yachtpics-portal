@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import {
   BRAND_LABEL,
+  LOCKED_MESSAGE,
   METHOD_LABEL,
   PAYMENT_METHODS,
-  addDays,
+  dateET,
   fmtDate,
   fmtMoney,
   fmtPct,
+  isLockedInvoice,
   isOverdue,
   todayET,
   type BillingInvoice,
@@ -30,6 +32,15 @@ import StatusBadge from "./StatusBadge";
  * name, description, rate, unit and tax onto the line; editing the catalog
  * later never changes this invoice. Totals here are a live preview — the
  * server recalculates (billing_recalc_invoice) on every save.
+ *
+ * Void-only rule: once sent (sent / partial / paid / void) the invoice is
+ * read-only — only the internal note and a by-hand due date can change. To
+ * change anything else: Void, then Duplicate.
+ *
+ * Dates: Invoice date (issue_date) — editable on a draft, pre-filled from the
+ * boat's shoot date when a listing is picked. Sent — stamped at first send.
+ * Due — due on receipt: blank on a draft and set to the sent date at first
+ * send, unless typed by hand (due_date_manual; "Reset to default" clears it).
  */
 
 export type PickerClient = { id: string; display_name: string; company_name: string | null; email: string | null; status: string };
@@ -42,16 +53,16 @@ type Header = {
   boat_name: string;
   boat_length_ft: string;
   issue_date: string;
-  terms_days: string;
   due_date: string;
+  due_manual: boolean;
   note: string;
   internal_note: string;
+  is_test: boolean;
 };
-type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; broker: string | null; suggestedClient: { id: string; display_name: string } | null };
+type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; broker: string | null; suggestedClient: { id: string; display_name: string } | null; shootDate: string | null };
 
 let seq = 0;
 const k = () => `l${Date.now()}${seq++}`;
-const TERMS = [0, 7, 15, 30, 45, 60];
 
 export default function InvoiceEditor({
   invoice,
@@ -74,8 +85,11 @@ export default function InvoiceEditor({
 }) {
   const router = useRouter();
   const inv = invoice;
-  const locked = inv.status === "void";
-  const sentOnce = !!inv.number;
+  // Sent (or paid / void): read-only, void-only rule.
+  const locked = isLockedInvoice(inv);
+  const isVoid = inv.status === "void";
+  const sentOnce = inv.status !== "draft";
+  const numbered = !!inv.number;
   const [clients, setClients] = useState<PickerClient[]>(initialClients);
   const [h, setH] = useState<Header>({
     brand: inv.brand,
@@ -84,11 +98,15 @@ export default function InvoiceEditor({
     boat_name: inv.boat_name ?? "",
     boat_length_ft: inv.boat_length_ft == null ? "" : String(inv.boat_length_ft),
     issue_date: inv.issue_date,
-    terms_days: inv.terms_days == null ? "15" : String(inv.terms_days),
     due_date: inv.due_date ?? "",
+    due_manual: !!inv.due_date_manual,
     note: inv.note ?? "",
     internal_note: inv.internal_note ?? "",
+    is_test: !!inv.is_test,
   });
+  // The due date is only sent to the server when it was changed or reset here.
+  const [dueTouched, setDueTouched] = useState(false);
+  const [issueFromShoot, setIssueFromShoot] = useState(false);
   const [lines, setLines] = useState<EditLine[]>(initialLines.map((l) => ({ ...l, key: l.id ?? k() })));
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -169,23 +187,33 @@ export default function InvoiceEditor({
         next[i] = { ...l, item_id: (data?.id as string) ?? null, kind: "standard", saveToCatalog: false };
       }
     }
+    const due = dueTouched ? { due_date: h.due_manual && h.due_date ? h.due_date : null } : {};
+    if (locked) {
+      // After send only the internal note and a by-hand due date can change.
+      const a = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", { internal_note: h.internal_note, ...(isVoid ? {} : due) });
+      if (a.error) { setError(a.error); return false; }
+      setDirty(false);
+      setDueTouched(false);
+      return true;
+    }
     const head: Record<string, unknown> = {
       client_id: h.client_id,
       listing_id: h.listing_id,
       boat_name: h.boat_name,
       boat_length_ft: h.boat_length_ft === "" ? null : h.boat_length_ft,
       issue_date: h.issue_date,
-      terms_days: h.terms_days,
-      due_date: h.due_date || null,
       note: h.note,
       internal_note: h.internal_note,
+      ...due,
     };
-    if (!sentOnce && h.brand !== inv.brand) head.brand = h.brand;
+    if (!numbered && h.brand !== inv.brand) head.brand = h.brand;
+    if (!numbered && h.is_test !== !!inv.is_test) head.is_test = h.is_test;
     const a = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", head);
     if (a.error) { setError(a.error); return false; }
     const b = await booksCall(`/api/admin/books/invoices/${inv.id}/lines`, "PUT", { lines: next });
     if (b.error) { setError(b.error); return false; }
     setDirty(false);
+    setDueTouched(false);
     return true;
   };
 
@@ -216,14 +244,14 @@ export default function InvoiceEditor({
     return false;
   });
   const voidIt = () => {
-    if (!window.confirm(`Void ${inv.number ?? "this invoice"}? It keeps its number but no longer counts as owed.`)) return;
+    if (!window.confirm(`Void ${inv.is_test ? "this test invoice" : inv.number ?? "this invoice"}? It keeps its number but no longer counts as owed.`)) return;
     run("void", async () => {
       const r = await booksCall(`/api/admin/books/invoices/${inv.id}/void`, "POST", {});
       if (r.error) { setError(r.error); return false; }
     });
   };
   const del = async () => {
-    if (!window.confirm("Delete this draft?")) return;
+    if (!window.confirm(inv.is_test ? "Delete this test invoice? Its lines and any payments go with it." : "Delete this draft?")) return;
     setBusy("delete");
     try {
       const res = await fetch(`/api/admin/books/invoices/${inv.id}`, { method: "DELETE" });
@@ -260,8 +288,9 @@ export default function InvoiceEditor({
         <div>
           <Link href="/admin/billing?tab=invoices" className="text-small text-ink-500 hover:text-ink-900">← Invoices</Link>
           <div className="flex flex-wrap items-center gap-2 mt-1">
-            <h1 className="text-display text-ink-900 tabular-nums">{inv.number ?? "Draft invoice"}</h1>
+            <h1 className="text-display text-ink-900 tabular-nums">{inv.is_test ? "TEST invoice" : inv.number ?? "Draft invoice"}</h1>
             <StatusBadge status={inv.status} overdue={overdue} />
+            {inv.is_test && <Badge>Test</Badge>}
             {brands.length > 1 && <Badge>{BRAND_LABEL[inv.brand]}</Badge>}
           </div>
           <p className="text-small text-ink-500 mt-1">
@@ -270,11 +299,21 @@ export default function InvoiceEditor({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {!locked && <Button size="sm" variant="secondary" onClick={() => run("save", save)} disabled={!!busy || !dirty}>{busy === "save" ? "Saving…" : dirty ? "Save" : "Saved"}</Button>}
+          <Button size="sm" variant="secondary" onClick={() => run("save", save)} disabled={!!busy || !dirty}>{busy === "save" ? "Saving…" : dirty ? "Save" : "Saved"}</Button>
           <Button size="sm" variant="secondary" onClick={preview} disabled={!!busy}>{busy === "preview" ? "Opening…" : "Preview PDF"}</Button>
-          {!locked && <Button size="sm" onClick={() => { setError(null); setSendOpen(true); }} disabled={!!busy}>{sentOnce ? "Resend" : "Send"}</Button>}
+          {!isVoid && <Button size="sm" onClick={() => { setError(null); setSendOpen(true); }} disabled={!!busy}>{sentOnce ? "Resend" : "Send"}</Button>}
         </div>
       </div>
+
+      {locked && (
+        <div className="rounded-card border border-hairline bg-ink-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-ink-700">{LOCKED_MESSAGE}{isVoid ? "" : " The internal note and the due date can still change."}</p>
+          <div className="flex gap-2 shrink-0">
+            {!isVoid && <Button size="sm" variant="secondary" onClick={voidIt} disabled={!!busy}>Void</Button>}
+            <Button size="sm" variant="secondary" onClick={duplicate} disabled={!!busy}>{busy === "dup" ? "Copying…" : "Duplicate"}</Button>
+          </div>
+        </div>
+      )}
 
       {error && <p className="text-sm text-danger-700 bg-danger-50 border border-danger-200 rounded-ctl px-3 py-2">{error}</p>}
       {notice && <p className="text-sm text-success-700">{notice}</p>}
@@ -286,7 +325,7 @@ export default function InvoiceEditor({
             title={inv.status === "paid" ? "Paid" : `Balance due ${fmtMoney(inv.balance_due)}`}
             kicker="Payments"
             description={inv.due_date && inv.status !== "paid" && inv.status !== "void" ? `Due ${fmtDate(inv.due_date)}` : inv.card_fee_waived ? `Card fee of ${fmtMoney(inv.card_fee_waived)} not charged (paid another way)` : undefined}
-            action={!locked && <Button size="sm" onClick={() => setPayOpen(true)}>Record payment</Button>}
+            action={!isVoid && <Button size="sm" onClick={() => setPayOpen(true)}>Record payment</Button>}
           />
           <CardBody className="space-y-3">
             {payments.length === 0 ? (
@@ -318,9 +357,9 @@ export default function InvoiceEditor({
 
       {/* Header */}
       <Card>
-        <CardHeader title="Bill to" kicker={sentOnce ? BRAND_LABEL[inv.brand] : undefined} />
+        <CardHeader title="Bill to" kicker={numbered || locked ? BRAND_LABEL[inv.brand] : undefined} />
         <CardBody className="space-y-4">
-          {!sentOnce && brands.length > 1 && (
+          {!numbered && !locked && brands.length > 1 && (
             <div className="inline-flex rounded-ctl border border-hairline-strong p-0.5">
               {brands.map((b) => (
                 <button key={b} type="button" disabled={locked} onClick={() => setHeader({ brand: b })}
@@ -345,6 +384,8 @@ export default function InvoiceEditor({
               onManual={(patch) => setHeader(patch)}
               onPick={(hit) => {
                 const patch: Partial<Header> = { listing_id: hit.id, boat_name: hit.name, boat_length_ft: hit.lengthFt == null ? h.boat_length_ft : String(hit.lengthFt) };
+                // A draft's invoice date follows the boat's shoot date (ET), when there is one.
+                if (hit.shootDate && inv.status === "draft") { patch.issue_date = hit.shootDate; setIssueFromShoot(true); }
                 if (!h.client_id && hit.suggestedClient) {
                   patch.client_id = hit.suggestedClient.id;
                   if (!clients.some((c) => c.id === hit.suggestedClient!.id)) {
@@ -361,23 +402,49 @@ export default function InvoiceEditor({
           )}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <label className="block">
-              <span className="label-caps">Issue date</span>
+              <span className="label-caps">Invoice date{issueFromShoot && !locked ? <span className="normal-case tracking-normal font-normal text-ink-400"> · from shoot date</span> : null}</span>
               <input type="date" className={fieldClass + " mt-1"} disabled={locked} value={h.issue_date}
-                onChange={(e) => setHeader({ issue_date: e.target.value, due_date: e.target.value ? addDays(e.target.value, Number(h.terms_days) || 0) : h.due_date })} />
+                onChange={(e) => { if (e.target.value) { setHeader({ issue_date: e.target.value }); setIssueFromShoot(false); } }} />
             </label>
-            <label className="block">
-              <span className="label-caps">Terms</span>
-              <select className={fieldClass + " mt-1"} disabled={locked} value={TERMS.indexOf(Number(h.terms_days)) !== -1 ? h.terms_days : "custom"}
-                onChange={(e) => { if (e.target.value !== "custom") setHeader({ terms_days: e.target.value, due_date: addDays(h.issue_date, Number(e.target.value)) }); }}>
-                {TERMS.map((t) => <option key={t} value={String(t)}>{t === 0 ? "Due on receipt" : `Net ${t}`}</option>)}
-                {TERMS.indexOf(Number(h.terms_days)) === -1 && <option value="custom">Net {h.terms_days}</option>}
-              </select>
-            </label>
-            <label className="block">
+            <div className="block">
+              <span className="label-caps">Sent</span>
+              <p className="text-sm text-ink-700 mt-1 leading-[2.5rem]">{inv.sent_at ? fmtDate(dateET(inv.sent_at)) : "Not sent yet"}</p>
+            </div>
+            <div className="block">
               <span className="label-caps">Due date</span>
-              <input type="date" className={fieldClass + " mt-1"} disabled={locked} value={h.due_date} onChange={(e) => setHeader({ due_date: e.target.value })} />
-            </label>
+              {h.due_manual ? (
+                <>
+                  <input type="date" className={fieldClass + " mt-1"} disabled={isVoid} value={h.due_date}
+                    onChange={(e) => { setHeader({ due_date: e.target.value, due_manual: true }); setDueTouched(true); }} />
+                  {!isVoid && (
+                    <button type="button" className="text-small text-ink-500 hover:text-ink-900 mt-1"
+                      onClick={() => { setHeader({ due_manual: false, due_date: inv.status === "draft" ? "" : dateET(inv.sent_at) ?? h.due_date }); setDueTouched(true); }}>
+                      Reset to default (due on receipt)
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-ink-700 mt-1 leading-[2.5rem]">
+                    {inv.status === "draft" ? "Due on receipt (set when sent)" : `${fmtDate(h.due_date) || "—"} · due on receipt`}
+                  </p>
+                  {!isVoid && (
+                    <button type="button" className="text-small text-ink-500 hover:text-ink-900"
+                      onClick={() => { setHeader({ due_manual: true, due_date: h.due_date || todayET() }); setDueTouched(true); }}>
+                      Set a due date by hand
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
           </div>
+          {inv.status === "draft" && !numbered && (
+            <label className="inline-flex items-center gap-2 text-sm text-ink-700">
+              <input type="checkbox" className="h-4 w-4 accent-[#c39e4e]" checked={h.is_test} onChange={(e) => setHeader({ is_test: e.target.checked })} />
+              Test invoice
+              <span className="text-small text-ink-500">— never numbered, left out of totals; emails only to staff or @yachtpics.com addresses.</span>
+            </label>
+          )}
         </CardBody>
       </Card>
 
@@ -421,23 +488,27 @@ export default function InvoiceEditor({
           </label>
           <label className="block">
             <span className="label-caps">Internal note (never printed)</span>
-            <textarea className={fieldClass + " mt-1 min-h-[80px]"} disabled={locked} value={h.internal_note} onChange={(e) => setHeader({ internal_note: e.target.value })} />
+            <textarea className={fieldClass + " mt-1 min-h-[80px]"} value={h.internal_note} onChange={(e) => setHeader({ internal_note: e.target.value })} />
           </label>
         </CardBody>
       </Card>
 
       {/* Secondary actions */}
       <div className="flex flex-wrap gap-2 pb-6">
-        <Button size="sm" variant="ghost" onClick={duplicate} disabled={!!busy}>Duplicate</Button>
-        {sentOnce && !locked && <Button size="sm" variant="ghost" onClick={voidIt} disabled={!!busy}>Void</Button>}
-        {!sentOnce && inv.status === "draft" && <Button size="sm" variant="ghost" className="text-danger-700" onClick={del} disabled={!!busy}>Delete draft</Button>}
+        {!locked && <Button size="sm" variant="ghost" onClick={duplicate} disabled={!!busy}>Duplicate</Button>}
+        {inv.is_test ? (
+          <Button size="sm" variant="ghost" className="text-danger-700" onClick={del} disabled={!!busy}>Delete test invoice</Button>
+        ) : !numbered && inv.status === "draft" ? (
+          <Button size="sm" variant="ghost" className="text-danger-700" onClick={del} disabled={!!busy}>Delete draft</Button>
+        ) : null}
         {sentOnce && <Button size="sm" variant="ghost" onClick={copyLink}>Copy client link</Button>}
       </div>
 
       {sendOpen && (
         <SendDialog
-          defaultTo={inv.sent_to || client?.email || ""}
+          defaultTo={inv.sent_to || (h.is_test ? "" : client?.email) || ""}
           resend={sentOnce}
+          test={h.is_test}
           canMarkSent={inv.status === "draft"}
           busy={busy === "send"}
           onClose={() => setSendOpen(false)}
@@ -449,7 +520,8 @@ export default function InvoiceEditor({
             setBusy(null);
             if (r.error) { setError(r.error); setSendOpen(false); router.refresh(); return; }
             setSendOpen(false);
-            setNotice(email ? `Sent ${r.data?.number as string} to ${to}.` : `${r.data?.number as string} marked as sent.`);
+            const label = h.is_test ? "Test invoice" : (r.data?.number as string);
+            setNotice(email ? `Sent ${label} to ${to}.` : `${label} marked as sent.`);
             router.refresh();
           }}
         />
@@ -708,15 +780,19 @@ function BoatPicker({ disabled, boatName, boatLength, linked, onPick, onManual, 
   );
 }
 
-function SendDialog({ defaultTo, resend, canMarkSent, busy, onClose, onSend }: {
-  defaultTo: string; resend: boolean; canMarkSent: boolean; busy: boolean;
+function SendDialog({ defaultTo, resend, test, canMarkSent, busy, onClose, onSend }: {
+  defaultTo: string; resend: boolean; test: boolean; canMarkSent: boolean; busy: boolean;
   onClose: () => void; onSend: (to: string, email: boolean) => void;
 }) {
   const [to, setTo] = useState(defaultTo);
   return (
     <Overlay onClose={onClose}>
-      <h2 className="text-h2 text-ink-900">{resend ? "Resend invoice" : "Send invoice"}</h2>
-      <p className="text-small text-ink-500 mt-1">{resend ? "Same number, a fresh email with the PDF attached." : "It gets its number now, and the client gets an email with a link and the PDF."}</p>
+      <h2 className="text-h2 text-ink-900">{test ? (resend ? "Resend test invoice" : "Send test invoice") : resend ? "Resend invoice" : "Send invoice"}</h2>
+      <p className="text-small text-ink-500 mt-1">
+        {test
+          ? "A test invoice gets no number. It can only go to a billing staff address or an @yachtpics.com address."
+          : resend ? "Same number, a fresh email with the PDF attached." : "It gets its number now, and the client gets an email with a link and the PDF. It can't be edited after this — only voided."}
+      </p>
       <label className="block mt-4">
         <span className="label-caps">To</span>
         <input className={fieldClass + " mt-1"} type="email" value={to} onChange={(e) => setTo(e.target.value)} autoFocus />

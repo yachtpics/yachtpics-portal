@@ -16,7 +16,7 @@ export default function SettingsPanel({ brands, people, invoicingReady }: { bran
     <div className="space-y-6">
       {missing.length > 0 && (
         <div className="rounded-card border border-warn-200 bg-warn-50 px-5 py-3 text-sm text-warn-700">
-          {missing.map((m) => <p key={m}>{m} — the invoice&apos;s &ldquo;How to pay&rdquo; box will be left off.</p>)}
+          {missing.map((m) => <p key={m}>{m} — the invoice&apos;s &ldquo;How to pay&rdquo; box and payment lines will be left off.</p>)}
         </div>
       )}
       {brands.map((b) => <BrandCard key={b.key} brand={b} />)}
@@ -89,6 +89,7 @@ function BrandCard({ brand }: { brand: BillingBrand }) {
     email: brand.email ?? "",
     website: brand.website ?? "",
     footer_note: brand.footer_note ?? "",
+    terms_text: brand.terms_text ?? "",
   });
   const { busy, msg, run } = useSaver();
   const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v });
@@ -107,8 +108,21 @@ function BrandCard({ brand }: { brand: BillingBrand }) {
           <Field label="Phone" value={f.phone} onChange={set("phone")} />
           <Field label="Email" value={f.email} onChange={set("email")} />
           <Field label="Website" value={f.website} onChange={set("website")} />
-          <Field label="Footer note" value={f.footer_note} onChange={set("footer_note")} wide />
         </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block">
+            <span className="label-caps">Notes (foot of every invoice)</span>
+            <textarea className={fieldClass + " mt-1 min-h-[96px]"} value={f.footer_note} onChange={(e) => set("footer_note")(e.target.value)} />
+          </label>
+          <label className="block">
+            <span className="label-caps">Terms &amp; Conditions (one per line)</span>
+            <textarea className={fieldClass + " mt-1 min-h-[96px]"} value={f.terms_text} onChange={(e) => set("terms_text")(e.target.value)} />
+          </label>
+        </div>
+        <p className="text-small text-ink-500">
+          Printed at the bottom of the PDF, the client&apos;s invoice page and the email: Notes, then Terms &amp; Conditions —
+          &ldquo;Payment due upon receipt.&rdquo;, the login&apos;s How to pay lines, then these terms.
+        </p>
         {f.logo_url ? (
           <div className="flex items-center gap-3">
             <div className="h-12 px-3 rounded-ctl bg-white border border-hairline flex items-center">
@@ -130,7 +144,6 @@ function BrandCard({ brand }: { brand: BillingBrand }) {
 function PersonCard({ person, invoicingReady }: { person: BillingStaffRow; invoicingReady: boolean }) {
   const [name, setName] = useState(person.display_name);
   const [fee, setFee] = useState(String(Math.round(person.card_fee_rate * 10000) / 100));
-  const [terms, setTerms] = useState(String(person.default_terms_days ?? 15));
   const [note, setNote] = useState(person.default_note ?? "");
   const [rows, setRows] = useState<StaffBrand[]>(person.brands);
   const { busy, msg, run } = useSaver();
@@ -157,10 +170,6 @@ function PersonCard({ person, invoicingReady }: { person: BillingStaffRow; invoi
           </label>
           {invoicingReady && (
             <>
-              <label className="block">
-                <span className="label-caps">Default terms (days)</span>
-                <input className={fieldClass + " mt-1 tabular-nums"} inputMode="numeric" value={terms} onChange={(e) => setTerms(e.target.value)} />
-              </label>
               <label className="block sm:col-span-2">
                 <span className="label-caps">Default note (printed under the totals)</span>
                 <textarea className={fieldClass + " mt-1 min-h-[60px]"} value={note} onChange={(e) => setNote(e.target.value)} />
@@ -186,7 +195,7 @@ function PersonCard({ person, invoicingReady }: { person: BillingStaffRow; invoi
                 </label>
                 <Field label="Address on invoices (blank = brand's)" value={r.address ?? ""} onChange={(v) => setRow(i, "address", v)} />
                 <label className="block sm:col-span-3">
-                  <span className="label-caps">How to pay (printed in a box on the invoice; separate lines with ·)</span>
+                  <span className="label-caps">How to pay (one per line — printed in the How to pay box and under Terms &amp; Conditions)</span>
                   <textarea className={fieldClass + " mt-1 min-h-[60px]"} value={r.payment_instructions ?? ""} onChange={(e) => setRow(i, "payment_instructions", e.target.value)} />
                 </label>
               </div>
@@ -201,7 +210,7 @@ function PersonCard({ person, invoicingReady }: { person: BillingStaffRow; invoi
             run(`/api/admin/books/staff/${person.profile_id}`, "PATCH", {
               display_name: name,
               card_fee_rate: fee,
-              ...(invoicingReady ? { default_terms_days: terms, default_note: note } : {}),
+              ...(invoicingReady ? { default_note: note } : {}),
               brands: rows.map((r) => ({
                 brand: r.brand, from_name: r.from_name, reply_to_email: r.reply_to_email, phone: r.phone,
                 ...(invoicingReady ? { invoice_prefix: r.invoice_prefix ?? "", address: r.address ?? "", payment_instructions: r.payment_instructions ?? "", next_number: r.next_number } : {}),

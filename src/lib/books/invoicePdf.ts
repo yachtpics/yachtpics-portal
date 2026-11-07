@@ -2,13 +2,15 @@
 // card, src/lib/dockCardPdf.ts). Server only. Standard Helvetica, black text,
 // grey hairlines, one thin rule in the brand accent. Nothing shouty.
 //
-// Layout: logo top-left · INVOICE + number / dates on the right · accent rule ·
-// From / Bill to / Boat · lines table (paginates) · totals · note · "How to
-// pay" box · footer.
+// Layout: logo top-left · INVOICE + number / dates (Invoice date, Sent, Due,
+// Terms) on the right · accent rule · From / Bill to / Boat · lines table
+// (paginates) · totals with the "How to pay" box beside them · note · Notes +
+// Terms & Conditions block (invoiceFooter) · page footer. A test invoice says
+// TEST INVOICE / TEST where the number goes.
 
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 import { PORTAL_ORIGIN, type InvoiceBundle } from "./invoices";
-import { fmtDate, fmtMoney, fmtPct, isOverdue } from "./types";
+import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "./types";
 
 const W = 612;
 const H = 792;
@@ -96,7 +98,7 @@ function rate(n: number): string {
 export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
   const { invoice: inv, lines, client, brand, settings } = b;
   const doc = await PDFDocument.create();
-  doc.setTitle(`Invoice ${inv.number ?? "(draft)"} — ${brand.display_name}`);
+  doc.setTitle(`${inv.is_test ? "TEST invoice" : `Invoice ${inv.number ?? "(draft)"}`} — ${brand.display_name}`);
   doc.setAuthor(brand.legal_name);
   doc.setCreator("YachtPics Portal");
   const reg = await doc.embedFont(StandardFonts.Helvetica);
@@ -133,14 +135,16 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
   }
 
   const xr = W - M;
-  right(page, spaced("INVOICE"), xr, y - 9, 9, bold, GREY);
-  right(page, inv.number ?? "Draft", xr, y - 28, 17, bold);
+  right(page, spaced(inv.is_test ? "TEST INVOICE" : "INVOICE"), xr, y - 9, 9, bold, GREY);
+  right(page, invoiceLabel(inv), xr, y - 28, 17, bold);
   let hy = y - 46;
   const meta: [string, string][] = [
-    ["Issued", fmtDate(inv.issue_date)],
-    ["Due", fmtDate(inv.due_date)],
+    ["Invoice date", fmtDate(inv.issue_date)],
+    ["Sent", fmtDate(dateET(inv.sent_at))],
+    // A draft's due date is set when it's sent (unless typed by hand).
+    ["Due", inv.status === "draft" && !inv.due_date_manual ? "" : fmtDate(inv.due_date)],
   ];
-  if (inv.terms_days != null) meta.push(["Terms", inv.terms_days === 0 ? "Due on receipt" : `Net ${inv.terms_days}`]);
+  meta.push(["Terms", !inv.terms_days ? "Due on receipt" : `Net ${inv.terms_days}`]);
   meta.forEach(([k, v]) => {
     if (!v) return;
     right(page, v, xr, hy, 9);
@@ -201,7 +205,7 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
     page = doc.addPage([W, H]);
     pages.push(page);
     let ny = H - M;
-    text(page, `${brand.display_name} · Invoice ${inv.number ?? "(draft)"}`, M, ny - 9, 9, reg, GREY);
+    text(page, `${brand.display_name} · ${inv.is_test ? "TEST invoice" : `Invoice ${inv.number ?? "(draft)"}`}`, M, ny - 9, 9, reg, GREY);
     ny -= 30;
     return tableHeader ? header(page, ny) : ny;
   };
@@ -243,7 +247,7 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
   const tl = xr - 200;
   const payW = tl - M - 28;
   const showPay = !!settings.paymentInstructions && inv.status !== "void" && inv.status !== "paid";
-  const pl = showPay ? wrap((settings.paymentInstructions as string).replace(/\s+·\s+/g, "\n"), reg, 9, payW - 28) : [];
+  const pl = showPay ? wrap(splitPaymentLines(settings.paymentInstructions).join("\n"), reg, 9, payW - 28) : [];
   const payH = showPay ? 30 + pl.length * 12 : 0;
   const totH = rows.length * 16 + 10;
   if (y - Math.max(totH, payH) - 8 < bottom) y = newPage(false);
@@ -275,12 +279,39 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
     y -= 10;
   }
 
+  // ── Notes + Terms & Conditions (one block, after everything else) ─────
+  const ft = invoiceFooter(brand, settings.paymentInstructions);
+  const fw = W - 2 * M;
+  const notesLines: string[] = [];
+  ft.notes.forEach((n) => wrap(n, reg, 8.5, fw).forEach((ln) => notesLines.push(ln)));
+  const termLines: string[] = [];
+  ft.terms.forEach((t) => wrap(t, reg, 8.5, fw).forEach((ln) => termLines.push(ln)));
+  const sectionH = (n: number) => 14 + n * 11 + 10;
+  const drawSection = (label: string, rowsIn: string[]) => {
+    if (!rowsIn.length) return;
+    if (y - sectionH(rowsIn.length) < bottom) y = newPage(false);
+    text(page, spaced(label.toUpperCase()), M, y, 7, bold, GREY);
+    y -= 13;
+    rowsIn.forEach((ln) => {
+      if (y < bottom) { y = newPage(false); }
+      text(page, ln, M, y, 8.5, reg, rgb(0.25, 0.27, 0.3));
+      y -= 11;
+    });
+    y -= 10;
+  };
+  if (notesLines.length || termLines.length) {
+    if (y - 30 < bottom) y = newPage(false);
+    hline(page, y + 4, M, W - M, LIGHT, 0.5);
+    y -= 12;
+  }
+  drawSection("Notes", notesLines);
+  drawSection("Terms & Conditions", termLines);
+
   // ── Footer on every page ──────────────────────────────────────────────
-  const foot = safe(brand.footer_note || "Thank you for your business.");
   const small = [brand.legal_name, brand.website].filter(Boolean).join(" · ");
   pages.forEach((p, i) => {
     hline(p, M + 20, M, W - M, LIGHT, 0.5);
-    p.drawText(foot, { x: M, y: M + 6, size: 8.5, font: reg, color: GREY });
+    if (inv.is_test) p.drawText("TEST INVOICE — not a real invoice", { x: M, y: M + 6, size: 8.5, font: bold, color: GREY });
     right(p, pages.length > 1 ? `${small}   ·   ${i + 1} / ${pages.length}` : small, xr, M + 6, 8, reg, GREY);
   });
 

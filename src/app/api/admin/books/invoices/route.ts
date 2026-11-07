@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { isBrandKey, requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError, isDate, isUuid } from "@/lib/books/api";
 import { listInvoices, type ListFilters } from "@/lib/books/reports";
-import { addDays, todayET, type BrandKey } from "@/lib/books/types";
+import { todayET, type BrandKey } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
-// GET — this login's invoices. ?brand=&status=(draft|sent|partial|paid|void|overdue|open)&client=&from=&to=&q=
+// GET — this login's invoices. ?brand=&status=(draft|sent|partial|paid|void|overdue|open)&client=&from=&to=&q=&tests=1 (include test invoices)
 export async function GET(req: NextRequest) {
   const auth = await requireBillingStaff();
   if (auth.error) return auth.error;
@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
     from: isDate(sp.get("from")) ? (sp.get("from") as string) : undefined,
     to: isDate(sp.get("to")) ? (sp.get("to") as string) : undefined,
     q: sp.get("q") ?? undefined,
+    tests: sp.get("tests") === "1",
   };
   const { rows, error } = await listInvoices(auth.admin, auth.staff, f);
   if (error) return dbError(error);
@@ -40,7 +41,8 @@ export async function POST(req: NextRequest) {
   ]);
   if (sErr) return dbError(sErr);
   const sx = (s ?? {}) as Record<string, unknown>;
-  const terms = typeof sx.default_terms_days === "number" ? (sx.default_terms_days as number) : 15;
+  // Due on receipt, always: terms 0 and no due date until it's sent (then the
+  // sent date). billing_staff.default_terms_days is kept at 0 and not read.
   const issue = todayET();
   const now = new Date().toISOString();
 
@@ -55,8 +57,8 @@ export async function POST(req: NextRequest) {
       boat_name: typeof body.boat_name === "string" ? body.boat_name.slice(0, 120) : null,
       boat_length_ft: typeof body.boat_length_ft === "number" ? body.boat_length_ft : null,
       issue_date: issue,
-      terms_days: terms,
-      due_date: addDays(issue, terms),
+      terms_days: 0,
+      due_date: null,
       tax_rate: tax ? Number((tax as { rate: number }).rate) : 0.065,
       card_fee_rate: staff.cardFeeRate,
       note: (sx.default_note as string | null) ?? null,

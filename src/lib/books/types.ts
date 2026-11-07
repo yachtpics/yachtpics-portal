@@ -2,9 +2,11 @@
  * Billing (Portal) — shared types and constants. Safe to import from client
  * components (no server-only imports here).
  *
- * Phase 1 = brands, staff books, shared clients, item catalog. Invoices,
- * payments, PDFs, email, Stripe, reminders, quotes and the totals graph are
- * later phases; they hang off billing_staff.profile_id as `owner_id`.
+ * Phase 1 = brands, staff books, shared clients, item catalog. Phase 2 =
+ * invoices, lines, manual payments, PDF + email, the public /inv page, the
+ * dashboard, CSV export and backups (each login's book is keyed by
+ * billing_staff.profile_id as `owner_id`). Still to come: Stripe / PayPal
+ * payments, reminders and quotes.
  */
 
 export type BrandKey = "yachtpics" | "ypdesigns";
@@ -39,7 +41,10 @@ export type BillingBrand = {
   email: string | null;
   website: string | null;
   invoice_prefix: string;
+  /** "Notes" at the foot of every invoice. */
   footer_note: string | null;
+  /** "Terms & Conditions" (multi-line). Undefined until 20261107b is applied. */
+  terms_text?: string | null;
 };
 
 export type StaffBrand = {
@@ -158,6 +163,10 @@ export type BillingInvoice = {
   issue_date: string;
   due_date: string | null;
   terms_days: number | null;
+  /** Due date typed by hand (else it's the sent date). Undefined until 20261107b. */
+  due_date_manual?: boolean;
+  /** Test invoice: never numbered, kept out of every total. Undefined until 20261107b. */
+  is_test?: boolean;
   subtotal: number;
   discount_total: number;
   tax_rate: number;
@@ -214,6 +223,48 @@ export type BillingPayment = {
 
 export const INVOICING_NOT_READY =
   "Invoicing isn't switched on yet — the phase 2 billing migration hasn't been added to the database.";
+
+export const TESTS_NOT_READY =
+  "Test invoices aren't switched on yet — the 20261107b billing migration hasn't been added to the database.";
+
+export const LOCKED_MESSAGE = "Sent invoices can't be edited. Void it and duplicate to make changes.";
+
+/** Sent / part paid / paid / void: lines and money are fixed (void-only rule). */
+export function isLockedInvoice(inv: { status: InvoiceStatus }): boolean {
+  return inv.status !== "draft";
+}
+
+/** What prints where the number goes: the number, "TEST" for a test invoice, else "Draft". */
+export function invoiceLabel(inv: { number: string | null; is_test?: boolean }): string {
+  if (inv.is_test) return "TEST";
+  return inv.number ?? "Draft";
+}
+
+/** Payment lines: one per " · " or newline-separated piece, blanks dropped. */
+export function splitPaymentLines(text: string | null | undefined): string[] {
+  return (text ?? "").split(/\s+·\s+|\r?\n/).map((x) => x.trim()).filter(Boolean);
+}
+
+/**
+ * The block at the foot of every invoice (PDF, public page, email), in this
+ * order: Notes (brand footer_note), then Terms & Conditions — "Payment due
+ * upon receipt.", the login's payment lines, the brand's terms_text.
+ */
+export function invoiceFooter(brand: { footer_note: string | null; terms_text?: string | null }, paymentInstructions: string | null | undefined): { notes: string[]; terms: string[] } {
+  const notes = (brand.footer_note ?? "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const terms = ["Payment due upon receipt."]
+    .concat(splitPaymentLines(paymentInstructions))
+    .concat((brand.terms_text ?? "").split(/\r?\n/).map((x) => x.trim()).filter(Boolean));
+  return { notes, terms };
+}
+
+/** An ISO timestamp as an Eastern-time YYYY-MM-DD. */
+export function dateET(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
 
 /** Today's date in Eastern time as YYYY-MM-DD. */
 export function todayET(): string {

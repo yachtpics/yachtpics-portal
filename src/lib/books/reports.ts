@@ -14,6 +14,8 @@ export type ListFilters = {
   from?: string;
   to?: string;
   q?: string;
+  /** Include test invoices (left out of every list and total unless asked for). */
+  tests?: boolean;
 };
 
 export type InvoiceRow = BillingInvoice & { client_name: string | null; overdue: boolean };
@@ -50,7 +52,7 @@ export async function listInvoices(
   const ids: string[] = [];
   invs.forEach((i) => { if (i.client_id && ids.indexOf(i.client_id) === -1) ids.push(i.client_id); });
   const names = await clientNames(admin, ids);
-  let rows: InvoiceRow[] = invs.map((i) => ({ ...i, client_name: i.client_id ? names[i.client_id] ?? null : null, overdue: isOverdue(i, today) }));
+  let rows: InvoiceRow[] = (f.tests ? invs : invs.filter((i) => !i.is_test)).map((i) => ({ ...i, client_name: i.client_id ? names[i.client_id] ?? null : null, overdue: isOverdue(i, today) }));
   if (f.status === "overdue") rows = rows.filter((r) => r.overdue);
   const needle = (f.q ?? "").trim().toLowerCase();
   if (needle) {
@@ -150,7 +152,8 @@ export async function buildDashboard(
   ]);
   if (invRes.error) return { error: invRes.error };
   if (payRes.error) return { error: payRes.error };
-  const invs = (invRes.data ?? []).map((r) => normInvoice(r as Record<string, unknown>));
+  // Test invoices never count (their payments drop out below with them).
+  const invs = (invRes.data ?? []).map((r) => normInvoice(r as Record<string, unknown>)).filter((i) => !i.is_test);
   const byId: Record<string, BillingInvoice> = {};
   invs.forEach((i) => { byId[i.id] = i; });
   const ids: string[] = [];
@@ -194,7 +197,7 @@ export async function buildDashboard(
   });
   ((payRes.data ?? []) as { invoice_id: string; amount: number; paid_on: string; method: PaymentMethod }[]).forEach((p) => {
     const inv = byId[p.invoice_id];
-    if (!inv) return; // void / other brand
+    if (!inv) return; // void / test / other brand
     const amt = Number(p.amount);
     const b = bIndex[bucketKey(p.paid_on, range.group)];
     if (b) b.paid = r2(b.paid + amt);

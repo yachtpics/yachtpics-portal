@@ -18,7 +18,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const body = (await req.json().catch(() => null)) as {
     display_name?: string;
     card_fee_rate?: number | string;
-    default_terms_days?: number | string;
     default_note?: string;
     brands?: {
       brand?: string; from_name?: string; reply_to_email?: string; phone?: string;
@@ -41,11 +40,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     if (!isFinite(rate) || rate < 0 || rate >= 0.2) return NextResponse.json({ error: "Card fee must be between 0% and 20%." }, { status: 400 });
     patch.card_fee_rate = Math.round(rate * 10000) / 10000;
   }
-  if ("default_terms_days" in body) {
-    const n = Number(body.default_terms_days);
-    if (!isFinite(n) || n < 0 || n > 365) return NextResponse.json({ error: "Default terms must be 0–365 days." }, { status: 400 });
-    patch.default_terms_days = Math.round(n);
-  }
+  // Invoices are always due on receipt: default_terms_days stays 0 and isn't editable.
   if ("default_note" in body) patch.default_note = cleanText(body.default_note, 2000);
   if (Object.keys(patch).length) {
     patch.updated_at = now;

@@ -189,7 +189,8 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
   }
 
   if (tab === "invoices") {
-    const { rows, error } = await listInvoices(admin, staff, {});
+    // Tests come along; the panel hides them unless "Show tests" is on.
+    const { rows, error } = await listInvoices(admin, staff, { tests: true });
     content = error ? (
       <Card><CardBody><p className="text-sm text-ink-600">{isMissingBillingTable(error) ? INVOICING_NOT_READY : error.message}</p></CardBody></Card>
     ) : (

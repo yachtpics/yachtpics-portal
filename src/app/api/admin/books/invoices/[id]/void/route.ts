@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError } from "@/lib/books/api";
-import { loadInvoice } from "@/lib/books/invoices";
+import { loadInvoice, recalcInvoice } from "@/lib/books/invoices";
 
 export const runtime = "nodejs";
 
 // POST — void a sent invoice (keeps its number; totals leave the dashboard).
+// Sent invoices are never edited: void + Duplicate is how a change is made.
 export async function POST(_req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireBillingStaff();
   if (auth.error) return auth.error;
@@ -24,5 +25,8 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     .eq("id", inv.id)
     .eq("owner_id", staff.profileId);
   if (error) return dbError(error);
+  // Keep the stored totals consistent (recalc leaves a void at balance 0).
+  const rc = await recalcInvoice(admin, inv.id);
+  if (rc) return bad(rc, 500);
   return NextResponse.json({ ok: true });
 }

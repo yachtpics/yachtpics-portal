@@ -6,7 +6,7 @@ import { booksServiceClient } from "@/lib/books/staff";
 import { loadInvoiceByToken } from "@/lib/books/invoices";
 import { isBotUa } from "@/lib/emailTracking";
 import { CARD_FEE_NOTE } from "@/lib/books/invoicePdf";
-import { fmtDate, fmtMoney, fmtPct, isOverdue } from "@/lib/books/types";
+import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "@/lib/books/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -48,12 +48,19 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
     inv.status === "paid" ? { text: "Paid", cls: "bg-success-50 text-success-700 border-success-200" }
     : inv.status === "void" ? { text: "Void", cls: "bg-ink-100 text-ink-600 border-hairline" }
     : overdue ? { text: `Overdue · was due ${fmtDate(inv.due_date)}`, cls: "bg-danger-50 text-danger-700 border-danger-200" }
-    : { text: `Due ${fmtDate(inv.due_date)}`, cls: "bg-ink-100 text-ink-700 border-hairline" };
+    : { text: inv.due_date_manual && inv.due_date ? `Due ${fmtDate(inv.due_date)}` : "Due on receipt", cls: "bg-ink-100 text-ink-700 border-hairline" };
+  const sentOn = dateET(inv.sent_at);
+  const footer = invoiceFooter(brand, settings.paymentInstructions);
   const pdfHref = `/inv/${params.token}/pdf`;
 
   return (
     <div className="min-h-screen bg-ink-50 py-8 sm:py-14 px-4">
       <div className="max-w-3xl mx-auto">
+        {inv.is_test && (
+          <p className="mb-4 rounded-card border border-warn-200 bg-warn-50 px-4 py-2.5 text-sm font-semibold text-warn-700 text-center">
+            Test invoice — not a real invoice. Nothing is owed.
+          </p>
+        )}
         <div className="bg-white rounded-card border border-hairline shadow-elev-1 px-5 py-7 sm:px-10 sm:py-10">
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-5">
             <div>
@@ -65,9 +72,10 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
               )}
             </div>
             <div className="sm:text-right">
-              <p className="label-caps">Invoice</p>
-              <p className="text-h1 text-ink-900 tabular-nums">{inv.number}</p>
-              <p className="text-small text-ink-500 mt-1">Issued {fmtDate(inv.issue_date)}</p>
+              <p className="label-caps">{inv.is_test ? "Test invoice" : "Invoice"}</p>
+              <p className="text-h1 text-ink-900 tabular-nums">{invoiceLabel(inv)}</p>
+              <p className="text-small text-ink-500 mt-1">Invoice date {fmtDate(inv.issue_date)}</p>
+              {sentOn && <p className="text-small text-ink-500">Sent {fmtDate(sentOn)}</p>}
               <span className={`inline-flex mt-2 rounded-full border px-2.5 py-0.5 text-xs font-medium ${badge.cls}`}>{badge.text}</span>
             </div>
           </div>
@@ -135,7 +143,7 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
           {settings.paymentInstructions && inv.status !== "paid" && inv.status !== "void" && (
             <div className="mt-8 rounded-card border border-hairline bg-ink-50 px-5 py-4">
               <p className="label-caps mb-1.5">How to pay</p>
-              {settings.paymentInstructions.split(/\s+·\s+|\n/).map((ln) => (
+              {splitPaymentLines(settings.paymentInstructions).map((ln) => (
                 <p key={ln} className="text-sm text-ink-800">{ln}</p>
               ))}
             </div>
@@ -150,8 +158,23 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
             </a>
             <p className="text-small text-ink-500">Questions? {settings.replyTo ? <a className="underline" href={`mailto:${settings.replyTo}`}>{settings.replyTo}</a> : null}{settings.phone ? ` · ${settings.phone}` : ""}</p>
           </div>
+
+          {(footer.notes.length > 0 || footer.terms.length > 0) && (
+            <div className="mt-8 pt-6 border-t border-hairline space-y-4 text-small text-ink-500">
+              {footer.notes.length > 0 && (
+                <div>
+                  <p className="label-caps mb-1">Notes</p>
+                  {footer.notes.map((ln, i) => <p key={i}>{ln}</p>)}
+                </div>
+              )}
+              <div>
+                <p className="label-caps mb-1">Terms &amp; Conditions</p>
+                {footer.terms.map((ln, i) => <p key={i}>{ln}</p>)}
+              </div>
+            </div>
+          )}
         </div>
-        <p className="text-center text-small text-ink-400 mt-5">{brand.footer_note || "Thank you for your business."} · {brand.legal_name}</p>
+        <p className="text-center text-small text-ink-400 mt-5">{brand.legal_name}{brand.website ? ` · ${brand.website}` : ""}</p>
       </div>
     </div>
   );

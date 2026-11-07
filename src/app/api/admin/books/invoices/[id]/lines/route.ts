@@ -3,7 +3,7 @@ import { requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError } from "@/lib/books/api";
 import { loadInvoice, recalcInvoice } from "@/lib/books/invoices";
 import { lineRows } from "@/lib/books/invoiceInput";
-import { fmtPct } from "@/lib/books/types";
+import { LOCKED_MESSAGE, fmtPct, isLockedInvoice } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if ("notFound" in r) return bad("Invoice not found.", 404);
   if ("error" in r) return bad(r.error, 500);
   const inv = r.bundle.invoice;
-  if (inv.status === "void") return bad("This invoice is void.");
+  if (isLockedInvoice(inv)) return bad(LOCKED_MESSAGE, 409);
 
   const body = (await req.json().catch(() => null)) as { lines?: unknown } | null;
   const { lines, error } = lineRows(body?.lines);

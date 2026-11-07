@@ -9,7 +9,8 @@ export const runtime = "nodejs";
 /**
  * GET ?from=&to=&brand= — one CSV for this login's book: a row per invoice
  * issued in the range (void ones included, marked), then a row per payment
- * received in the range with its method.
+ * received in the range with its method. Test invoices (and their
+ * payments) are left out unless &tests=1.
  */
 export async function GET(req: NextRequest) {
   const auth = await requireBillingStaff();
@@ -20,7 +21,7 @@ export async function GET(req: NextRequest) {
   const to = isDate(sp.get("to")) ? (sp.get("to") as string) : todayET();
   const brand = isBrandKey(sp.get("brand")) && staff.brands.indexOf(sp.get("brand") as BrandKey) !== -1 ? (sp.get("brand") as BrandKey) : "";
 
-  const all = await listInvoices(admin, staff, { brand });
+  const all = await listInvoices(admin, staff, { brand, tests: sp.get("tests") === "1" });
   if (all.error) return dbError(all.error);
   const byId: Record<string, (typeof all.rows)[number]> = {};
   all.rows.forEach((r) => { byId[r.id] = r; });
@@ -40,7 +41,7 @@ export async function GET(req: NextRequest) {
   all.rows
     .filter((r) => r.status !== "draft" && r.issue_date >= from && r.issue_date <= to)
     .sort((a, b) => (a.issue_date < b.issue_date ? -1 : 1))
-    .forEach((r) => rows.push(["Invoice", r.number, BRAND_LABEL[r.brand], r.overdue ? "Overdue" : STATUS_LABEL[r.status], r.client_name, r.boat_name, r.issue_date, r.due_date, r.subtotal, r.discount_total, r.tax_total, r.card_fee_total, r.total, r.amount_paid, r.status === "void" ? 0 : r.balance_due, "", "", "", "", ""]));
+    .forEach((r) => rows.push([r.is_test ? "Test invoice" : "Invoice", r.is_test ? "TEST" : r.number, BRAND_LABEL[r.brand], r.overdue ? "Overdue" : STATUS_LABEL[r.status], r.client_name, r.boat_name, r.issue_date, r.due_date, r.subtotal, r.discount_total, r.tax_total, r.card_fee_total, r.total, r.amount_paid, r.status === "void" ? 0 : r.balance_due, "", "", "", "", ""]));
   ((pays ?? []) as { invoice_id: string; method: PaymentMethod; amount: number; paid_on: string; reference: string | null; note: string | null; source: string }[]).forEach((p) => {
     const inv = byId[p.invoice_id];
     if (!inv) return;

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui";
-import { BRAND_LABEL, fmtDate, fmtMoney, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
+import { BRAND_LABEL, fmtDate, fmtMoney, invoiceLabel, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
 import type { InvoiceRow } from "@/lib/books/reports";
 import { fieldClass } from "./booksApi";
 import NewInvoiceButton from "./NewInvoiceButton";
@@ -29,6 +29,9 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
   const [to, setTo] = useState("");
   const [q, setQ] = useState("");
   const [shown, setShown] = useState(PAGE);
+  const [showTests, setShowTests] = useState(false);
+  const testCount = useMemo(() => rows.filter((r) => r.is_test).length, [rows]);
+  const base = useMemo(() => (showTests ? rows : rows.filter((r) => !r.is_test)), [rows, showTests]);
 
   const clients = useMemo(() => {
     const m: Record<string, string> = {};
@@ -38,7 +41,7 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return rows.filter((r) => {
+    return base.filter((r) => {
       if (brand && r.brand !== brand) return false;
       if (status === "overdue" && !r.overdue) return false;
       if (status === "open" && r.status !== "sent" && r.status !== "partial") return false;
@@ -49,12 +52,13 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
       if (needle && ![r.number, r.boat_name, r.client_name].some((v) => (v ?? "").toLowerCase().indexOf(needle) !== -1)) return false;
       return true;
     });
-  }, [rows, brand, status, client, from, to, q]);
+  }, [base, brand, status, client, from, to, q]);
 
   const sums = useMemo(() => {
     let invoiced = 0, paid = 0, due = 0;
     filtered.forEach((r) => {
-      if (r.status === "void" || r.status === "draft") return;
+      // Test invoices never count toward money totals, even when shown.
+      if (r.status === "void" || r.status === "draft" || r.is_test) return;
       invoiced += r.total;
       paid += r.amount_paid;
       due += r.balance_due;
@@ -70,7 +74,7 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
       <CardHeader
         title="Invoices"
         kicker={`${staff.displayName}'s book`}
-        description={`${filtered.length} of ${rows.length}`}
+        description={`${filtered.length} of ${base.length}`}
         action={<NewInvoiceButton brand={brand || defaultBrand} size="sm" />}
       />
       <CardBody className="space-y-4">
@@ -80,6 +84,12 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
               <button key={c.key || "all"} type="button" className={chip(status === c.key)} onClick={() => { setStatus(c.key); setShown(PAGE); }}>{c.label}</button>
             ))}
           </div>
+          {testCount > 0 && (
+            <label className="inline-flex items-center gap-2 text-small text-ink-500 px-1">
+              <input type="checkbox" className="h-3.5 w-3.5 accent-[#c39e4e]" checked={showTests} onChange={(e) => { setShowTests(e.target.checked); setShown(PAGE); }} />
+              Show tests ({testCount})
+            </label>
+          )}
           {staff.brands.length > 1 && (
             <div className="inline-flex rounded-ctl border border-hairline-strong p-0.5">
               {([""] as (BrandKey | "")[]).concat(staff.brands).map((b) => (
@@ -107,7 +117,7 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
           ))}
         </div>
 
-        {rows.length === 0 ? (
+        {base.length === 0 ? (
           <p className="text-sm text-ink-500 py-6">No invoices yet. Start one with New invoice.</p>
         ) : filtered.length === 0 ? (
           <p className="text-sm text-ink-500 py-6">Nothing matches.</p>
@@ -118,7 +128,7 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
                 <Link href={`/admin/billing/invoices/${r.id}`} className="flex items-start justify-between gap-3 py-3 px-1 hover:bg-ink-50 transition-colors duration-base ease-quiet rounded-ctl">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-ink-900 tabular-nums">{r.number ?? "Draft"}</span>
+                      <span className="text-sm font-medium text-ink-900 tabular-nums">{invoiceLabel(r)}</span>
                       <StatusBadge status={r.status} overdue={r.overdue} />
                       {staff.brands.length > 1 && <span className="text-small text-ink-400">{BRAND_LABEL[r.brand]}</span>}
                     </div>
