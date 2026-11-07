@@ -8,21 +8,20 @@
  *   1. Vessel type contains "center console":
  *        under 40 ft      -> the item named "Boats under 40 feet center console..."
  *        40 ft and over   -> the item named "Large center console..."
- *   2. Vessel type contains "express", "sportfish" or "sport fish",
- *      and the boat is under 40 ft:
- *        -> the item named "Boats under 40 feet - express sportfish..."
- *   3. Everything else (and the fallback when rule 1 or 2's item is missing):
+ *   2. Everything else (and the fallback when rule 1's item is missing):
  *        under 100 ft     -> "Photography under 100'..."
  *        100 ft and over  -> "Photography - over 100'..."
  *
  * Notes:
  *   - Vessel type matching ignores upper/lower case and looks for the words
- *     anywhere ("Express Cruiser" counts as express).
+ *     anywhere in the type.
+ *   - "Boats under 40 Feet - express sportfish" is deliberately NOT a default
+ *     (Nov 2026, Charlie: rarely used); pick it from the catalog by hand.
  *   - Item names are matched on how they START, ignoring case, so a catalog
  *     item can have extra words after the part shown above.
  *   - Only active items for YachtPics (brand "yachtpics" or "both") count.
- *     If rule 1 or 2 picks an item that is missing or inactive, rule 3 is
- *     used instead. If rule 3's item is missing too, nothing is added.
+ *     If rule 1 picks an item that is missing or inactive, rule 2 is
+ *     used instead. If rule 2's item is missing too, nothing is added.
  *   - No length (blank or 0) -> nothing is added.
  *   - Flat-rate items get quantity 1; per-foot items get the boat's length
  *     (that part is handled by the invoice editor).
@@ -43,13 +42,9 @@ const RULES: Rule[] = [
     typeContains: ["center console"],
     itemFor: (ft) => (ft < 40 ? /^boats under 40 feet center console/i : /^large center console/i),
   },
-  {
-    typeContains: ["express", "sportfish", "sport fish"],
-    itemFor: (ft) => (ft < 40 ? /^boats under 40 feet - express sportfish/i : null),
-  },
 ];
 
-/** Rule 3 — the general photography line by length. */
+/** Rule 2 — the general photography line by length. */
 const fallbackFor = (ft: number): RegExp =>
   ft < 100 ? /^photography under 100['’]/i : /^photography - over 100['’]/i;
 
