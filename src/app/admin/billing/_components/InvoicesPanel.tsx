@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Card, CardBody, CardHeader } from "@/components/ui";
+import { Badge, Card, CardBody, CardHeader } from "@/components/ui";
 import { BRAND_LABEL, dateET, fmtDate, fmtMoney, invoiceLabel, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
 import type { InvoiceRow } from "@/lib/books/reports";
 import { fieldClass } from "./booksApi";
@@ -20,6 +20,22 @@ const STATUS_CHIPS: { key: StatusFilter; label: string }[] = [
   { key: "void", label: "Void" },
 ];
 const PAGE = 50;
+
+/** "Nov 7" from a YYYY-MM-DD date (no timezone shift). */
+function fmtShort(date: string | null): string {
+  if (!date) return "";
+  return new Date(date.slice(0, 10) + "T12:00:00Z").toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+/** Has the client opened the invoice link? Drafts / never sent → "—". */
+function ViewedCell({ r }: { r: InvoiceRow }) {
+  if (r.status === "draft" || !r.sent_at) return <span className="text-ink-300">—</span>;
+  if (!r.view_count) return <Badge tone="neutral">Not viewed</Badge>;
+  const last = fmtShort(dateET(r.last_viewed_at));
+  const first = fmtShort(dateET(r.first_viewed_at));
+  const title = `Opened ${r.view_count} time${r.view_count === 1 ? "" : "s"}${first ? `, first ${first}` : ""}`;
+  return <span className="text-ink-600" title={title}>Viewed{last ? ` · ${last}` : ""}</span>;
+}
 
 export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: InvoiceRow[]; staff: StaffView; defaultBrand: BrandKey }) {
   const [brand, setBrand] = useState<BrandKey | "">("");
@@ -133,11 +149,14 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
                       {staff.brands.length > 1 && <span className="text-small text-ink-400">{BRAND_LABEL[r.brand]}</span>}
                     </div>
                     <p className="text-small text-ink-600 mt-0.5 truncate">{[r.client_name ?? "No client yet", r.boat_name].filter(Boolean).join(" · ")}</p>
-                    <p className="text-small text-ink-400">
-                      {fmtDate(r.issue_date)}{r.due_date && r.status !== "paid" && r.status !== "void" && r.status !== "draft" ? ` · due ${fmtDate(r.due_date)}` : ""}
-                      {r.last_reminder_at ? ` · Reminder sent ${fmtDate(dateET(r.last_reminder_at))}` : ""}
-                      {r.reminders_paused && (r.status === "sent" || r.status === "partial") ? " · reminders paused" : ""}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-small text-ink-400">
+                      <span>
+                        {fmtDate(r.issue_date)}{r.due_date && r.status !== "paid" && r.status !== "void" && r.status !== "draft" ? ` · due ${fmtDate(r.due_date)}` : ""}
+                        {r.last_reminder_at ? ` · Reminder sent ${fmtDate(dateET(r.last_reminder_at))}` : ""}
+                        {r.reminders_paused && (r.status === "sent" || r.status === "partial") ? " · reminders paused" : ""}
+                      </span>
+                      <span className="whitespace-nowrap"><ViewedCell r={r} /></span>
+                    </div>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm tabular-nums text-ink-900">{fmtMoney(r.total)}</p>
