@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { orderPhotos } from "@/lib/photoOrder";
-import { isExterior, REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
+import { isExterior, isPhotoOnly, REEL_STYLES, type StyleKey } from "@/lib/reelStyles";
 import { parseShotInfo } from "@/lib/reelClips";
 import { isMusicChoice, nextMusicSeed, seedFromString, type MusicChoice } from "@/lib/reelMusic";
 
@@ -48,9 +48,9 @@ export const REEL_SERVICE_LOOKS: StyleKey[] = ["underway", "marquee", "cinematic
  */
 export const VIDEO_LED_LOOKS: StyleKey[] = ["editorial", "walkthrough", "underway", "classic"];
 
-/** Stack and Stack Underway play no clips (ReelMaker leaves them out). */
+/** Stack, Stack Underway, Logo stack and Blur scroll play no clips (ReelMaker leaves them out). */
 export function lookPlaysClips(look: StyleKey): boolean {
-  return REEL_STYLES[look]?.layout !== "stack";
+  return !REEL_STYLES[look] || !isPhotoOnly(look);
 }
 
 /** Whether a look can carry a video-led reel (clips full frame). */

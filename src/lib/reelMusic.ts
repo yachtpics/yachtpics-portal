@@ -102,6 +102,8 @@ const LOOK_MOOD: Record<StyleKey, MusicMood> = {
   stack: "upbeat",
   stack_underway: "upbeat",
   underway: "upbeat",
+  logo_stack: "upbeat",
+  blur_scroll: "elegant",
 };
 
 export function moodForLook(look: StyleKey): MusicMood {

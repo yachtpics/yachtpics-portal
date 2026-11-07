@@ -71,6 +71,8 @@ const LOOK_LABEL: Record<string, string> = {
   stack_underway: "Stack Underway",
   marquee: "Marquee",
   marquee_still: "Marquee Still",
+  logo_stack: "Logo stack",
+  blur_scroll: "Blur scroll",
 };
 
 export default async function ReelsPage() {

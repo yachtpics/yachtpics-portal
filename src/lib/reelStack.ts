@@ -28,6 +28,7 @@ import {
   dealTransitions, seededRandom, ENERGY_VOCAB, STACK_VOCAB,
   type Transition,
 } from "./reelTransitions";
+import { BLUR_SCROLL_END_DISSOLVE, BLUR_SCROLL_MIN_SEC } from "./reelBlurScroll";
 
 
 /** One beat at 120 BPM. */
@@ -73,7 +74,7 @@ const BAND_MOVES: { move: BandMove; weight: number }[] = [
   { move: "wipe", weight: 12 },
 ];
 
-function dealMove(rand: () => number, last: BandMove | null): BandMove {
+export function dealMove(rand: () => number, last: BandMove | null): BandMove {
   const total = BAND_MOVES.reduce((a, m) => a + m.weight, 0);
   for (let tries = 0; tries < 6; tries++) {
     let r = rand() * total;
@@ -132,6 +133,23 @@ export type Unit =
        * is left.
        */
       bottomStarts: number[]; bottomLens: number[];
+    }
+  | {
+      /**
+       * Logo stack: one continuous unit. Two photo bands — row 0 the top,
+       * row 1 the bottom — filled and swapped by `events` exactly like a
+       * Stack run (rowState reads them); the logo band between them is
+       * drawn by the renderer and never changes.
+       */
+      kind: "logostack"; hold: number; events: StackEvent[];
+    }
+  | {
+      /**
+       * Blur scroll: one continuous unit. The renderer lays the cards out
+       * (it needs each photograph's shape) and scrolls them; `bgEvery` is how
+       * often the blurred background moves on to the next photograph.
+       */
+      kind: "blurscroll"; hold: number; bgEvery: number;
     }
   | { kind: "end"; hold: number };
 
@@ -498,6 +516,60 @@ export function planStack(n: number, opts: { heroHold: number; beat: number; end
 
   const transitions = dealTransitions(units.length - 1, STACK_VOCAB, seed);
   return finish(units, transitions);
+}
+
+// ── Logo stack ───────────────────────────────────────────────────────────────
+
+/**
+ * The Logo stack film: one unit of two photo bands, then the end card.
+ *
+ * Stack's swap and Stack's beat, with two bands instead of three. Both bands
+ * fill at the start (whipping in from opposite sides, a stagger apart, like a
+ * Stack run). From then on photograph i arrives at i beats — even ones in
+ * the top band, odd ones in the bottom — so the bands take turns: the top
+ * swaps, a beat later the bottom, a beat after that the top again. Each band
+ * therefore changes every two beats, half a cycle out of step with the
+ * other, and there is exactly one swap per beat, as in Stack. Every
+ * photograph shows once; the last pair holds two beats before the card.
+ * With one photograph, both bands show it.
+ */
+export function planLogoStack(n: number, opts: { beat: number; endHold: number; seed: number }): Timeline {
+  const { beat, endHold, seed } = opts;
+  if (n === 0) return finish([{ kind: "end", hold: endHold }], []);
+  const rand = seededRandom(seed * 5 + 9);
+  const events: StackEvent[] = [
+    { row: 0, index: 0, at: 0, move: "left" },
+    { row: 1, index: n > 1 ? 1 : 0, at: ROW_STAGGER, move: "right" },
+  ];
+  let last: BandMove | null = "right";
+  for (let i = 2; i < n; i++) {
+    const move = dealMove(rand, last);
+    events.push({ row: i % 2, index: i, at: beat * i, move });
+    last = move;
+  }
+  const hold = beat * Math.max(3, n + 1);
+  const units: Unit[] = [{ kind: "logostack", hold, events }, { kind: "end", hold: endHold }];
+  return finish(units, dealTransitions(1, STACK_VOCAB, seed));
+}
+
+// ── Blur scroll ──────────────────────────────────────────────────────────────
+
+/**
+ * The Blur scroll film: one scrolling unit, then the end card.
+ *
+ * It runs as long as the quiet single-photo reel of the same photographs at
+ * the same Length (title hold plus one even hold per photograph — the same
+ * budget the Marquee uses), so the Length chips and the "about N seconds"
+ * readout mean the same thing on every look. The scroll eases to a stop over
+ * its last two seconds and dissolves into the card.
+ */
+export function planBlurScroll(n: number, opts: { titleHold: number; hold: number; endHold: number; seed: number; bgEvery: number }): Timeline {
+  const { titleHold, hold, endHold, seed, bgEvery } = opts;
+  if (n === 0) return finish([{ kind: "end", hold: endHold }], []);
+  const singles = planSingles(n, { titleHold, hold, endHold, dissolve: 0.5, burst: false, vocab: null, thirds: null, seed });
+  const photoPortion = Math.max(BLUR_SCROLL_MIN_SEC, singles.starts[singles.units.length - 1]);
+  const units: Unit[] = [{ kind: "blurscroll", hold: photoPortion, bgEvery }, { kind: "end", hold: endHold }];
+  return finish(units, [{ type: "dissolve", dur: BLUR_SCROLL_END_DISSOLVE, dir: "left" }]);
 }
 
 // ── Marquee ──────────────────────────────────────────────────────────────────

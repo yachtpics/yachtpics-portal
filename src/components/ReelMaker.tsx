@@ -16,16 +16,24 @@ import {
   wrapSegments,
 } from "@/lib/canvasText";
 import {
-  REEL_STYLES, STYLE_ORDER, isMarquee, isExterior, roomLabel, applyBrand, dominantColor, rgba,
+  REEL_STYLES, STYLE_ORDER, isMarquee, isReelOnly, isPhotoOnly, isExterior, roomLabel, applyBrand, dominantColor, rgba,
   type StyleKey, type BrandColors,
 } from "@/lib/reelStyles";
+import {
+  LOGO_STACK_DEFAULTS, YP_LOGO_DARK, YP_LOGO_WHITE, drawLogoStackMiddle, logoStackBands, logoStackLine, logoStackPlate, plateIsLight, prepareLogo,
+  type LogoStackOptions,
+} from "@/lib/reelLogoStack";
+import {
+  BLUR_SCROLL_BG_CHOICES, BLUR_SCROLL_BLUR_PX, BLUR_SCROLL_DEFAULTS, backgroundCuts, blurScrollBackgrounds, buildBlurBackground, drawBlurScroll, layoutBlurScroll,
+  type BlurScrollOptions, type ScrollLayout,
+} from "@/lib/reelBlurScroll";
 import {
   YACHTPICS_CARD, YACHTPICS_COLORS, YACHTPICS_PHONES,
   type BrokerCard, type YpPhone,
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
 import { depthLooksOpenFor, msUntilDepthLooksOpenFor } from "@/lib/depthLooksRelease";
-import { planStack, planSingles, planMarquee, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, SWAP_DUR, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
+import { planStack, planSingles, planMarquee, planLogoStack, planBlurScroll, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, SWAP_DUR, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import { drawReelEndCard } from "@/lib/reelEndCard";
 import RetryImg from "@/components/RetryImg";
@@ -451,6 +459,10 @@ export default function ReelMaker({
   const [length, setLength] = useState<Length>(auto?.length ?? DEFAULT_LENGTH);
   const [fit, setFit] = useState<Fit>(auto?.fit ?? SPEC.reel.defaultFit);
   const [styleKey, setStyleKey] = useState<StyleKey>(auto?.styleKey ?? "editorial");
+  // Logo stack and Blur scroll options (Nov 7). Admins set them in the
+  // builder; everyone else (and the Reel Service batch) gets the defaults.
+  const [logoStackOpts, setLogoStackOpts] = useState<LogoStackOptions>(LOGO_STACK_DEFAULTS);
+  const [blurScrollOpts, setBlurScrollOpts] = useState<BlurScrollOptions>(BLUR_SCROLL_DEFAULTS);
   // The broker's own colours, remembered on their profile. Null = the look's.
   const [brand, setBrand] = useState<BrandColors>(source.brand ?? {});
   const [matching, setMatching] = useState(false);
@@ -720,7 +732,8 @@ export default function ReelMaker({
    * motion. So on Stack the clips are left out of the reel (kept in the
    * selection, and back the moment another look is picked).
    */
-  const clipsBlocked = REEL_STYLES[styleKey].layout === "stack" && format === "reel";
+  // Logo stack and Blur scroll (Nov 7) are built from photographs too.
+  const clipsBlocked = isPhotoOnly(styleKey) && format === "reel";
 
   /**
    * What actually plays, in order: the chosen photographs and clips. The title
@@ -809,7 +822,7 @@ export default function ReelMaker({
     return true;
   };
   const looks = useMemo(
-    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => REEL_STYLES[k].layout !== "stack" && !isMarquee(k)))
+    () => (format === "reel" ? STYLE_ORDER : STYLE_ORDER.filter((k) => !isReelOnly(k)))
       .filter(lookAllowed),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [format, depthLooksAllowed, isAdmin],
@@ -831,6 +844,8 @@ export default function ReelMaker({
     // Marquee (and Marquee Still) is reel-only too; its nearest on a film is
     // the house look — serif, dissolves, the same unhurried pace.
     if (f === "film" && isMarquee(styleKey)) setStyleKey("editorial");
+    // Logo stack and Blur scroll are reels only as well (Nov 7).
+    if (f === "film" && (REEL_STYLES[styleKey].layout === "logo_stack" || REEL_STYLES[styleKey].layout === "blur_scroll")) setStyleKey("editorial");
     setFit(SPEC[f].defaultFit);
     setResult(null);
     setPhase("idle");
@@ -1067,6 +1082,14 @@ export default function ReelMaker({
     if (look.layout === "stack" && format === "reel") {
       return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold, seed });
     }
+    // Logo stack: Stack's beat, two photo bands taking turns around the logo.
+    if (look.layout === "logo_stack" && format === "reel") {
+      return planLogoStack(n, { beat: s.hold * scale, endHold, seed });
+    }
+    // Blur scroll: one scrolling unit as long as the quiet single-photo reel.
+    if (look.layout === "blur_scroll" && format === "reel") {
+      return planBlurScroll(n, { titleHold: s.titleHold * scale, hold: s.hold * scale, endHold, seed, bgEvery: blurScrollOpts.bgEvery });
+    }
     // The Marquee never cuts until the end card, but it runs exactly as long
     // as the quiet single-photo reel of the same photographs would — the
     // planner takes that length from planSingles and animates across it.
@@ -1124,7 +1147,7 @@ export default function ReelMaker({
     return { units, starts, transitions, total: tt, flashes: [] as number[] };
     // `s` carries the reel's hold — derived from the length's time budget and
     // the photo count — so the total redraws when Length or the selection changes.
-  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin]);
+  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin, blurScrollOpts.bgEvery]);
 
   // ── Music ──────────────────────────────────────────────────────────────
   /**
@@ -1144,6 +1167,8 @@ export default function ReelMaker({
       if (u.kind === "end") endAt = starts[k];
       else if (u.kind === "stack") u.events.forEach((ev) => cuts.push(starts[k] + ev.at));
       else if (u.kind === "marquee") u.bottomStarts.forEach((b, i) => { if (i > 0) cuts.push(starts[k] + b); });
+      else if (u.kind === "logostack") u.events.forEach((ev) => { if (ev.at > 0.2) cuts.push(starts[k] + ev.at); });
+      else if (u.kind === "blurscroll") backgroundCuts(u.hold, blurScrollBackgrounds(selectedPhotos.map((p) => p.category ?? null)).length, u.bgEvery).forEach((c) => cuts.push(starts[k] + c));
     }
     const stackGrid = REEL_STYLES[styleKey].layout === "stack" && format === "reel";
     const engine = isAdmin && classicSound ? "classic" : "studio";
@@ -1407,6 +1432,12 @@ export default function ReelMaker({
     // walkthrough. Released segment by segment, and wholesale in the finally.
     const clipPool = createClipInputPool();
     let logo: ImageBitmap | null = null;
+    // Logo stack (Nov 7): YachtPics' mark when the band uses ours, and the
+    // recoloured copy of a mark that would vanish on its plate.
+    let lsYpLogo: ImageBitmap | null = null;
+    let lsMarkCanvas: HTMLCanvasElement | null = null;
+    // Blur scroll (Nov 7): the blurred backgrounds, a quarter of the frame each.
+    const blurBgs: HTMLCanvasElement[] = [];
     // Walkthrough's depth engine, when the look asks for it and the browser
     // can run it. Null means every photograph uses the ordinary flat zoom.
     let depth: DepthMotion | null = null;
@@ -1619,6 +1650,54 @@ export default function ReelMaker({
       // transitions that join them.
       const { units, starts, transitions, total, flashes } = timeline;
       const stacked = units.some((u) => u.kind === "stack");
+
+      const makeCanvas = (w: number, h: number) => {
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        return c;
+      };
+
+      // Logo stack (Nov 7): the bands, the plate, and the mark on it — the
+      // end card's logo, or YachtPics' when the brokerage has none or the
+      // admin chose ours (the white mark on a dark plate, the dark on a light).
+      const lsBands = logoStackBands(W, H, logoStackOpts.middle);
+      const lsPlate = logoStackPlate(logoStackOpts.background, st.accent);
+      let lsMark: (CanvasImageSource & { width: number; height: number }) | null = null;
+      const lsLine = logoStackOpts.showName
+        ? logoStackLine(listing.vessel_name, listing.subject === "free" ? null : listing.length_ft)
+        : null;
+      if (units.some((u) => u.kind === "logostack")) {
+        let mark: ImageBitmap | null = logoStackOpts.logo === "yachtpics" ? null : logo;
+        if (!mark) {
+          try { lsYpLogo = await loadBitmap(plateIsLight(lsPlate) ? YP_LOGO_DARK : YP_LOGO_WHITE); } catch { lsYpLogo = null; }
+          mark = lsYpLogo;
+        }
+        if (mark) {
+          try {
+            const ready = prepareLogo(mark, lsPlate, makeCanvas);
+            if (ready !== mark) lsMarkCanvas = ready as HTMLCanvasElement;
+            lsMark = ready;
+          } catch { lsMark = mark; }
+        }
+      }
+
+      // Blur scroll (Nov 7): the card layout (seeded from the listing and the
+      // photographs chosen, so a re-render is identical) and the backgrounds.
+      let bsLayout: ScrollLayout | null = null;
+      const bsUnit = units.find((u) => u.kind === "blurscroll");
+      if (bsUnit) {
+        const seedStr = `${listingId ?? listing.vessel_name ?? ""}|${selectedPhotos.map((p) => p.id).join(",")}`;
+        bsLayout = layoutBlurScroll({
+          shapes: selectedPhotos.map((_, i) => (bitmaps[i] ? bitmaps[i].width / Math.max(1, bitmaps[i].height) : 1.5)),
+          W, H, sc: Math.min(W, H) / 1080,
+          columns: blurScrollOpts.columns, speed: blurScrollOpts.speed,
+          hold: bsUnit.hold, seed: seedFromString(seedStr),
+        });
+        blurScrollBackgrounds(selectedPhotos.map((p) => p.category ?? null)).forEach((i) => {
+          const b = bitmaps[i];
+          if (b) blurBgs.push(buildBlurBackground(b, W, H, BLUR_SCROLL_BLUR_PX[blurScrollOpts.blur], makeCanvas));
+        });
+      }
 
       // Soft backdrops for "whole photo" mode — blurred once per photo, not per
       // frame, and only when that photo comes on screen. Only the full-bleed
@@ -2453,6 +2532,99 @@ export default function ReelMaker({
         ctx.restore();
       };
 
+      /**
+       * One band of a Stack run (or a Logo stack, Nov 7) at `t` seconds into
+       * the run: the photograph settled in `rect`, or the swap bringing the
+       * next one in, in the move it was dealt. `main` is Stack Underway's main
+       * band (depth and Underway's joins) — false everywhere else.
+       */
+      const drawStackRow = (events: StackEvent[], r: number, rect: Rect, runEnd: number, t: number, main: boolean) => {
+        const state = rowState(events, r, t);
+        if (!state) return;
+        const p = state.progress;
+        // Each band drifts in over its whole life — the same push every
+        // time, finishing just as it leaves — so it reads as intent rather
+        // than a shuffle.
+        const life = Math.max(0.3, (state.until ?? runEnd) - state.since);
+        const settle = Math.min(1, (t - state.since) / life);
+        const zoom = 1 + 0.06 * settle;
+        // Stack Underway: the main band's photographs take the depth move
+        // on the same clock as the push (over the band's whole life); the
+        // outgoing one holds where its move ended. Undefined elsewhere —
+        // plain Stack, and the top and bottom bands, keep the push.
+        const mainDepth = !!depth && st.stackDepth === "main" && main;
+        const du = mainDepth ? ease(settle) : undefined;
+        const duPrev = mainDepth ? 1 : undefined;
+        if (p >= 1) {
+          drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", undefined, du);
+          return;
+        }
+        const prev = state.prevIndex;
+        // Stack Underway's swaps take Underway's joins, clipped to the
+        // band and on the swap's own clock (same length as Stack's swap):
+        // the main band gets the full choice — a dip between outside and
+        // inside, a soft wipe after a glide, else a dissolve; the top and
+        // bottom bands (no depth, so no glide) dip between outside and
+        // inside and otherwise keep the move Stack dealt them. The bands
+        // filling in at the start of a run (nothing to swap from) keep
+        // Stack's whip-in. Plain Stack never comes here.
+        if (st.stackDepth === "main" && st.joins === "varied" && prev !== null) {
+          const choice = variedJoin(prev, state.index, { type: "dissolve", dur: SWAP_DUR, dir: "left" });
+          if (main || choice.type === "dip") {
+            const bandIdx = state.index;
+            if (choice.type === "softwipe" && !bandScratch) bandScratch = document.createElement("canvas");
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(rect.x, rect.y, rect.w, rect.h);
+            ctx.clip();
+            ctx.globalAlpha = stackAlpha;
+            drawTransition(
+              ctx, W, H, choice, p, st.ground,
+              (a) => drawBand(prev, rect, 0, 0, 1.06, a, 0, "x", undefined, duPrev),
+              (a) => drawBand(bandIdx, rect, 0, 0, zoom, a, 0, "x", undefined, du),
+              false, bandScratch,
+            );
+            ctx.restore();
+            return;
+          }
+        }
+        // The swap, in the move this event was dealt.
+        const e = whipEase(p);
+        switch (state.move) {
+          case "fade": {
+            if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x", undefined, duPrev);
+            drawBand(state.index, rect, 0, 0, zoom, ease(p), 0, "x", undefined, du);
+            break;
+          }
+          case "wipe": {
+            // A hard edge sweeping across the band, with a light seam.
+            if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x", undefined, duPrev);
+            const wx = rect.w * ease(p);
+            drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", { x: rect.x, y: rect.y, w: wx, h: rect.h }, du);
+            if (p > 0.02 && p < 0.98) {
+              ctx.save(); ctx.globalAlpha = stackAlpha * 0.6; ctx.fillStyle = "#ffffff";
+              ctx.fillRect(rect.x + wx - 1.2 * sc, rect.y, 2.4 * sc, rect.h); ctx.restore();
+            }
+            break;
+          }
+          case "up":
+          case "down": {
+            // A vertical push inside the band — no smear, the band is short.
+            const sign = state.move === "up" ? -1 : 1;
+            if (prev !== null) drawBand(prev, rect, 0, sign * rect.h * e, 1.06, 1, 0, "y", undefined, duPrev);
+            drawBand(state.index, rect, 0, sign * rect.h * (e - 1), zoom, 1, 0, "y", undefined, du);
+            break;
+          }
+          default: {
+            // The whip, left or right, under a motion smear.
+            const sign = state.move === "left" ? -1 : 1;
+            const smear = 90 * sc * Math.sin(Math.PI * p);
+            if (prev !== null) drawBand(prev, rect, sign * W * e, 0, 1.06, 1, smear, "x", undefined, duPrev);
+            drawBand(state.index, rect, sign * W * (e - 1), 0, zoom, 1, smear, "x", undefined, du);
+          }
+        }
+      };
+
       /** A stack run at `t` seconds into the run; `runEnd` is its hold. */
       const drawStack = (events: StackEvent[], runEnd: number, t: number, alpha: number) => {
         stackAlpha = alpha;
@@ -2461,93 +2633,7 @@ export default function ReelMaker({
         ctx.fillStyle = st.ground;
         ctx.fillRect(0, 0, W, H);
         ctx.restore();
-        for (let r = 0; r < 3; r++) {
-          const state = rowState(events, r, t);
-          if (!state) continue;
-          const rect = rowRect(r);
-          const p = state.progress;
-          // Each band drifts in over its whole life — the same push every
-          // time, finishing just as it leaves — so it reads as intent rather
-          // than a shuffle.
-          const life = Math.max(0.3, (state.until ?? runEnd) - state.since);
-          const settle = Math.min(1, (t - state.since) / life);
-          const zoom = 1 + 0.06 * settle;
-          // Stack Underway: the main band's photographs take the depth move
-          // on the same clock as the push (over the band's whole life); the
-          // outgoing one holds where its move ended. Undefined elsewhere —
-          // plain Stack, and the top and bottom bands, keep the push.
-          const mainDepth = !!depth && st.stackDepth === "main" && r === STACK_MAIN_ROW;
-          const du = mainDepth ? ease(settle) : undefined;
-          const duPrev = mainDepth ? 1 : undefined;
-          if (p >= 1) {
-            drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", undefined, du);
-            continue;
-          }
-          const prev = state.prevIndex;
-          // Stack Underway's swaps take Underway's joins, clipped to the
-          // band and on the swap's own clock (same length as Stack's swap):
-          // the main band gets the full choice — a dip between outside and
-          // inside, a soft wipe after a glide, else a dissolve; the top and
-          // bottom bands (no depth, so no glide) dip between outside and
-          // inside and otherwise keep the move Stack dealt them. The bands
-          // filling in at the start of a run (nothing to swap from) keep
-          // Stack's whip-in. Plain Stack never comes here.
-          if (st.stackDepth === "main" && st.joins === "varied" && prev !== null) {
-            const choice = variedJoin(prev, state.index, { type: "dissolve", dur: SWAP_DUR, dir: "left" });
-            if (r === STACK_MAIN_ROW || choice.type === "dip") {
-              const bandIdx = state.index;
-              if (choice.type === "softwipe" && !bandScratch) bandScratch = document.createElement("canvas");
-              ctx.save();
-              ctx.beginPath();
-              ctx.rect(rect.x, rect.y, rect.w, rect.h);
-              ctx.clip();
-              ctx.globalAlpha = stackAlpha;
-              drawTransition(
-                ctx, W, H, choice, p, st.ground,
-                (a) => drawBand(prev, rect, 0, 0, 1.06, a, 0, "x", undefined, duPrev),
-                (a) => drawBand(bandIdx, rect, 0, 0, zoom, a, 0, "x", undefined, du),
-                false, bandScratch,
-              );
-              ctx.restore();
-              continue;
-            }
-          }
-          // The swap, in the move this event was dealt.
-          const e = whipEase(p);
-          switch (state.move) {
-            case "fade": {
-              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x", undefined, duPrev);
-              drawBand(state.index, rect, 0, 0, zoom, ease(p), 0, "x", undefined, du);
-              break;
-            }
-            case "wipe": {
-              // A hard edge sweeping across the band, with a light seam.
-              if (prev !== null) drawBand(prev, rect, 0, 0, 1.06, 1, 0, "x", undefined, duPrev);
-              const wx = rect.w * ease(p);
-              drawBand(state.index, rect, 0, 0, zoom, 1, 0, "x", { x: rect.x, y: rect.y, w: wx, h: rect.h }, du);
-              if (p > 0.02 && p < 0.98) {
-                ctx.save(); ctx.globalAlpha = stackAlpha * 0.6; ctx.fillStyle = "#ffffff";
-                ctx.fillRect(rect.x + wx - 1.2 * sc, rect.y, 2.4 * sc, rect.h); ctx.restore();
-              }
-              break;
-            }
-            case "up":
-            case "down": {
-              // A vertical push inside the band — no smear, the band is short.
-              const sign = state.move === "up" ? -1 : 1;
-              if (prev !== null) drawBand(prev, rect, 0, sign * rect.h * e, 1.06, 1, 0, "y", undefined, duPrev);
-              drawBand(state.index, rect, 0, sign * rect.h * (e - 1), zoom, 1, 0, "y", undefined, du);
-              break;
-            }
-            default: {
-              // The whip, left or right, under a motion smear.
-              const sign = state.move === "left" ? -1 : 1;
-              const smear = 90 * sc * Math.sin(Math.PI * p);
-              if (prev !== null) drawBand(prev, rect, sign * W * e, 0, 1.06, 1, smear, "x", undefined, duPrev);
-              drawBand(state.index, rect, sign * W * (e - 1), 0, zoom, 1, smear, "x", undefined, du);
-            }
-          }
-        }
+        for (let r = 0; r < 3; r++) drawStackRow(events, r, rowRect(r), runEnd, t, r === STACK_MAIN_ROW);
         // Hairline seams between the bands — the ground shows through the gap,
         // and a thin light rule keeps the three from reading as one collage.
         ctx.save();
@@ -2555,6 +2641,24 @@ export default function ReelMaker({
         ctx.fillStyle = "rgba(255,255,255,0.10)";
         for (let r = 1; r < 3; r++) ctx.fillRect(0, rowRect(r).y - stackGap, W, stackGap);
         ctx.restore();
+        stackAlpha = 1;
+      };
+
+      /**
+       * Logo stack (Nov 7): Stack's band swaps in the top and bottom bands
+       * (rows 0 and 1 of the unit's events), the logo band between them,
+       * unchanging. No seams: the plate's own edge divides the frame.
+       */
+      const drawLogoStack = (events: StackEvent[], runEnd: number, t: number, alpha: number) => {
+        stackAlpha = alpha;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = st.ground;
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+        drawStackRow(events, 0, lsBands.top, runEnd, t, false);
+        drawStackRow(events, 1, lsBands.bottom, runEnd, t, false);
+        drawLogoStackMiddle(ctx, lsBands.mid, { W, sc, alpha, plate: lsPlate, logo: lsMark, text: lsLine, sans });
         stackAlpha = 1;
       };
 
@@ -2809,6 +2913,15 @@ export default function ReelMaker({
           drawStack(u.events, u.hold, local, alpha);
         } else if (u.kind === "marquee") {
           drawMarquee(u.hero, u.bottom, u.moves, u.hold, local, alpha, !!u.still, u.bottomStarts, u.bottomLens);
+        } else if (u.kind === "logostack") {
+          drawLogoStack(u.events, u.hold, local, alpha);
+        } else if (u.kind === "blurscroll") {
+          if (bsLayout) {
+            drawBlurScroll(ctx, {
+              W, H, sc, local, hold: u.hold, alpha, ground: st.ground,
+              layout: bsLayout, images: bitmaps, backgrounds: blurBgs, bgEvery: u.bgEvery,
+            });
+          }
         } else {
           drawEndCard(alpha);
         }
@@ -2976,6 +3089,12 @@ export default function ReelMaker({
       }
       bitmaps.length = 0;
       if (logo) { try { logo.close(); } catch { /* already released */ } logo = null; }
+      const ypl = lsYpLogo as ImageBitmap | null;
+      if (ypl) { try { ypl.close(); } catch { /* already released */ } lsYpLogo = null; }
+      const lmc = lsMarkCanvas as HTMLCanvasElement | null;
+      if (lmc) { lmc.width = 0; lmc.height = 0; lsMarkCanvas = null; }
+      for (let i = 0; i < blurBgs.length; i++) { blurBgs[i].width = 0; blurBgs[i].height = 0; }
+      blurBgs.length = 0;
       for (let i = 0; i < backdropOrder.length; i++) {
         const c = backdropCache.get(backdropOrder[i]);
         if (c) { c.width = 0; c.height = 0; }
@@ -3299,7 +3418,7 @@ export default function ReelMaker({
       ? null
       : REEL_STYLES[styleKey].layout === "stack"
         ? `${REEL_STYLES[styleKey].name} moves too fast for room labels.`
-        : isMarquee(styleKey)
+        : isMarquee(styleKey) || REEL_STYLES[styleKey].layout === "logo_stack" || REEL_STYLES[styleKey].layout === "blur_scroll"
           ? `${REEL_STYLES[styleKey].name} keeps several photographs moving at once, so there are no room labels.`
         : styleKey === "cinematic" || styleKey === "gallery"
           ? `${REEL_STYLES[styleKey].name} keeps all type off the photograph, and on a reel that band is holding the title — so no room labels here.`
@@ -3405,8 +3524,9 @@ export default function ReelMaker({
         <p className="text-xs text-ink-400 -mt-4 mb-5">Reels reach furthest between 30 and 60 seconds — add a few more photos, or switch to Short.</p>
       )}
 
-      {/* Look — complete points of view, not colour swaps. Eight on a reel,
-          five on a film (Stack, Marquee and Marquee Still are reel-only), plus
+      {/* Look — complete points of view, not colour swaps. Ten on a reel,
+          five on a film (Stack, Marquee, Marquee Still, Logo stack and Blur
+          scroll are reel-only), plus
           Walkthrough and Underway on both — admins always, subscribers from
           DEPTH_LOOKS_SUBSCRIBER_OPEN_AT (Mon Oct 5 2026, 9:00 AM ET), every
           broker from DEPTH_LOOKS_OPEN_AT (Fri Oct 9) — and Stack Underway on
@@ -3437,6 +3557,78 @@ export default function ReelMaker({
           })}
         </div>
       </div>
+
+      {/* Logo stack / Blur scroll options (Nov 7) — admins only, so Samantha
+          can settle the final look; brokers and the Reel Service batch get
+          the defaults (LOGO_STACK_DEFAULTS, BLUR_SCROLL_DEFAULTS). */}
+      {isAdmin && !auto && format === "reel" && REEL_STYLES[styleKey].layout === "logo_stack" && (
+        <div className="mb-5 rounded-card border border-hairline-strong p-3">
+          <p className="label-caps text-ink-500 mb-2">Logo stack options <span className="normal-case font-normal text-ink-400">(admin)</span></p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Logo band</span>
+              {([["third", "1/3"], ["quarter", "1/4"], ["fifth", "1/5"]] as [LogoStackOptions["middle"], string][]).map(([v, label]) => (
+                <button key={v} onClick={() => { setLogoStackOpts({ ...logoStackOpts, middle: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(logoStackOpts.middle === v)}>{label}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Band colour</span>
+              {([["navy", "Dark navy"], ["white", "White"], ["accent", "Accent"]] as [LogoStackOptions["background"], string][]).map(([v, label]) => (
+                <button key={v} onClick={() => { setLogoStackOpts({ ...logoStackOpts, background: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(logoStackOpts.background === v)}>{label}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Logo</span>
+              {([["brokerage", "Brokerage"], ["yachtpics", "YachtPics"]] as [LogoStackOptions["logo"], string][]).map(([v, label]) => (
+                <button key={v} onClick={() => { setLogoStackOpts({ ...logoStackOpts, logo: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(logoStackOpts.logo === v)}>{label}</button>
+              ))}
+            </div>
+            <label className="flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={logoStackOpts.showName}
+                disabled={busy}
+                onChange={(e) => { setLogoStackOpts({ ...logoStackOpts, showName: e.target.checked }); setResult(null); setPhase("idle"); }}
+                className="h-4 w-4 rounded border-hairline-strong text-accent-600 focus:ring-accent-500"
+              />
+              Boat name and length under the logo
+            </label>
+          </div>
+          <p className="text-xs text-ink-400 mt-2">The logo is the end card&rsquo;s; with no brokerage logo, YachtPics&rsquo; is used. Accent is the look&rsquo;s accent, or the broker&rsquo;s colour when set.</p>
+        </div>
+      )}
+      {isAdmin && !auto && format === "reel" && REEL_STYLES[styleKey].layout === "blur_scroll" && (
+        <div className="mb-5 rounded-card border border-hairline-strong p-3">
+          <p className="label-caps text-ink-500 mb-2">Blur scroll options <span className="normal-case font-normal text-ink-400">(admin)</span></p>
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Columns</span>
+              {([1, 2] as BlurScrollOptions["columns"][]).map((v) => (
+                <button key={v} onClick={() => { setBlurScrollOpts({ ...blurScrollOpts, columns: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(blurScrollOpts.columns === v)}>{v}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Blur</span>
+              {([["low", "Low"], ["medium", "Medium"], ["high", "High"]] as [BlurScrollOptions["blur"], string][]).map(([v, label]) => (
+                <button key={v} onClick={() => { setBlurScrollOpts({ ...blurScrollOpts, blur: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(blurScrollOpts.blur === v)}>{label}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Scroll speed</span>
+              {([["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]] as [BlurScrollOptions["speed"], string][]).map(([v, label]) => (
+                <button key={v} onClick={() => { setBlurScrollOpts({ ...blurScrollOpts, speed: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(blurScrollOpts.speed === v)}>{label}</button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-ink-500 w-28">Background every</span>
+              {BLUR_SCROLL_BG_CHOICES.map((v) => (
+                <button key={v} onClick={() => { setBlurScrollOpts({ ...blurScrollOpts, bgEvery: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(blurScrollOpts.bgEvery === v)}>{v}s</button>
+              ))}
+            </div>
+          </div>
+          <p className="text-xs text-ink-400 mt-2">Normal keeps each photo on screen about 3 seconds (slow 4.5, fast 2.2). Every photo shows before any repeats; the layout is the same every time for the same photos.</p>
+        </div>
+      )}
 
       {/* Brand colours — the look's palette, or the broker's own. */}
       <div className="mb-5">
@@ -3607,6 +3799,10 @@ export default function ReelMaker({
             <p className="text-xs text-ink-400">Cinematic fills its letterbox band; there&rsquo;s nothing to choose here.</p>
           ) : REEL_STYLES[styleKey].layout === "stack" && format === "reel" ? (
             <p className="text-xs text-ink-400">{REEL_STYLES[styleKey].name} fills three bands, each with a whole photograph — nothing to choose here.</p>
+          ) : REEL_STYLES[styleKey].layout === "logo_stack" && format === "reel" ? (
+            <p className="text-xs text-ink-400">Logo stack fills its two photo bands edge to edge, the way Stack does — nothing to choose here.</p>
+          ) : REEL_STYLES[styleKey].layout === "blur_scroll" && format === "reel" ? (
+            <p className="text-xs text-ink-400">Blur scroll crops each card to 3:2 or 4:5 over a blurred background — nothing to choose here.</p>
           ) : styleKey === "gallery" ? (
             // The inset always shows the complete photograph.
             <p className="text-xs text-ink-400">Gallery shows every photograph complete, with a margin — nothing is cropped.</p>

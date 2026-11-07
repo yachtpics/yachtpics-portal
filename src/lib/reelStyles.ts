@@ -1,6 +1,7 @@
 /**
- * Reel looks — the eleven ways a listing film can present itself (seven on a
- * 16:9 film: Stack, Stack Underway, Marquee and Marquee Still are reel-only).
+ * Reel looks — the thirteen ways a listing film can present itself (seven on a
+ * 16:9 film: Stack, Stack Underway, Marquee, Marquee Still, Logo stack and
+ * Blur scroll are reel-only).
  * Walkthrough and Underway (the depth looks) are admins-only until
  * DEPTH_LOOKS_SUBSCRIBER_OPEN_AT for subscribers (Mon Oct 5 2026, 9:00 AM ET)
  * and DEPTH_LOOKS_OPEN_AT for everyone (Fri Oct 9) — @/lib/depthLooksRelease.
@@ -23,7 +24,7 @@
  * the boat: a 120' tri-deck and a classic sloop should not present alike.
  */
 
-export type StyleKey = "editorial" | "cinematic" | "walkthrough" | "underway" | "gallery" | "classic" | "energy" | "stack" | "stack_underway" | "marquee" | "marquee_still";
+export type StyleKey = "editorial" | "cinematic" | "walkthrough" | "underway" | "gallery" | "classic" | "energy" | "stack" | "stack_underway" | "marquee" | "marquee_still" | "logo_stack" | "blur_scroll";
 
 export type Backdrop =
   | "scrim"      // full-bleed photo, type grounded on a bottom-up gradient
@@ -78,8 +79,18 @@ export type ReelStyle = {
    * "marquee": a split screen that never cuts — hero photographs crossfading
    * in a top band, the title on a plate in the middle, the rest of the boat
    * one photograph at a time in a band below. Reels only; not on a film.
+   *
+   * "logo_stack" (Nov 7): Stack's bands, two of them — photographs above and
+   * below, swapping on Stack's beat, the top and bottom a beat apart — with
+   * the brokerage logo held in a middle band that never changes
+   * (@/lib/reelLogoStack). Reels only, photographs only.
+   *
+   * "blur_scroll" (Nov 7): the cover blurred behind everything, crossfading
+   * to another photograph every few seconds, and the listing's photographs
+   * scrolling up over it on rounded cards in a loose masonry
+   * (@/lib/reelBlurScroll). Reels only, photographs only.
    */
-  layout?: "single" | "stack" | "marquee";
+  layout?: "single" | "stack" | "marquee" | "logo_stack" | "blur_scroll";
   /**
    * Marquee layout only: the top band holds the cover photograph alone, dead
    * still — no drift, no zoom, no crossfade — and every other photograph
@@ -513,9 +524,82 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
     blurb: "The cover holds at the top, details in the middle, the rest of the boat below, one photo at a time.",
     heroStill: true,
   },
+
+  /**
+   * Logo stack — Stack's photographs, the brokerage's mark held between them.
+   *
+   * Two photo bands, top and bottom, cycling with Stack's swaps and on
+   * Stack's beat — the top swaps, a beat later the bottom does, so something
+   * is always moving but never both at once. The middle band is a solid
+   * plate with the end card's logo on it (YachtPics' when the brokerage has
+   * none) and it never changes. Photographs alternate top/bottom in play
+   * order. Band height, plate colour, logo source and an optional name line
+   * are admin options (LogoStackOptions); the end card is the usual one.
+   */
+  logo_stack: {
+    ...STACK_LOOK,
+    key: "logo_stack",
+    name: "Logo stack",
+    blurb: "Photos trading top and bottom, your logo held in the middle.",
+    layout: "logo_stack",
+    hook: "none",
+  },
+
+  /**
+   * Blur scroll — the whole boat going by, over a soft version of her cover.
+   *
+   * The cover photograph fills the frame behind everything, blurred and
+   * darkened, crossfading to another photograph every eight seconds or so.
+   * Over it the listing's photographs scroll steadily upward on small
+   * rounded cards in two loose columns — mixed 3:2 and 4:5 crops, offset
+   * from each other — laid out from a seed so every render of the same
+   * photographs is identical. Every photograph shows before any repeats.
+   * The scroll eases to a stop over the last two seconds, into the end card.
+   */
+  blur_scroll: {
+    key: "blur_scroll",
+    name: "Blur scroll",
+    blurb: "Photos drifting up in two columns over a soft, blurred cover.",
+    ground: "#050b14",
+    text: "#ffffff",
+    soft: "rgba(255,255,255,0.86)",
+    quiet: "rgba(255,255,255,0.62)",
+    accent: "#dfc98a",
+    light: false,
+    backdrop: "scrim",
+    serifHeadline: true,
+    headline: "editorial",
+    align: "center",
+    rule: "single",
+    headTrack: 3,
+    zoom: 0,
+    holdScale: 1,
+    cut: "dissolve",
+    layout: "blur_scroll",
+    hook: "none",
+  },
 };
 
-export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "walkthrough", "underway", "gallery", "classic", "energy", "stack", "stack_underway", "marquee", "marquee_still"];
+export const STYLE_ORDER: StyleKey[] = ["editorial", "cinematic", "walkthrough", "underway", "gallery", "classic", "energy", "stack", "stack_underway", "marquee", "marquee_still", "logo_stack", "blur_scroll"];
+
+/**
+ * Looks that only exist on a 9:16 reel — the divided frames (Stack, Stack
+ * Underway, Marquee, Marquee Still, Logo stack) and Blur scroll's columns.
+ * A 16:9 film doesn't offer them.
+ */
+export function isReelOnly(key: StyleKey): boolean {
+  const l = REEL_STYLES[key].layout;
+  return l === "stack" || l === "marquee" || l === "logo_stack" || l === "blur_scroll";
+}
+
+/**
+ * Looks built from still photographs only — a video clip in the selection is
+ * left out of the reel (kept in the selection for the next look).
+ */
+export function isPhotoOnly(key: StyleKey): boolean {
+  const l = REEL_STYLES[key].layout;
+  return l === "stack" || l === "logo_stack" || l === "blur_scroll";
+}
 
 /** Marquee or Marquee Still — any look laid out as the three-band split screen. */
 export function isMarquee(key: StyleKey): boolean {
