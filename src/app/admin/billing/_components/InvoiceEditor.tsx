@@ -15,6 +15,7 @@ import {
   fmtPct,
   isLockedInvoice,
   isOverdue,
+  nextReminderDate,
   todayET,
   type BillingInvoice,
   type BillingItem,
@@ -41,7 +42,20 @@ import StatusBadge from "./StatusBadge";
  * boat's shoot date when a listing is picked. Sent — stamped at first send.
  * Due — due on receipt: blank on a draft and set to the sent date at first
  * send, unless typed by hand (due_date_manual; "Reset to default" clears it).
+ *
+ * Payment reminders (20261108): "Pause reminders" saves at once (allowed
+ * after send); the card shows the last reminder and when the next would go,
+ * from the login's own schedule (Settings → Payment reminders).
  */
+
+/** Payment reminder state for this invoice (from the page). ready=false: 20261108 not applied. */
+export type ReminderInfo = {
+  ready: boolean;
+  days: number[];
+  enabled: boolean;
+  sentDays: number[];
+  last: { sentAt: string; day: number; to: string | null } | null;
+};
 
 export type PickerClient = { id: string; display_name: string; company_name: string | null; email: string | null; status: string };
 
@@ -73,6 +87,7 @@ export default function InvoiceEditor({
   isOwner,
   brands,
   publicUrl,
+  reminders,
 }: {
   invoice: BillingInvoice;
   lines: InvoiceLine[];
@@ -82,6 +97,7 @@ export default function InvoiceEditor({
   isOwner: boolean;
   brands: BrandKey[];
   publicUrl: string;
+  reminders?: ReminderInfo;
 }) {
   const router = useRouter();
   const inv = invoice;
@@ -114,6 +130,7 @@ export default function InvoiceEditor({
   const [notice, setNotice] = useState<string | null>(null);
   const [sendOpen, setSendOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
+  const [paused, setPaused] = useState(!!inv.reminders_paused);
 
   const setHeader = (patch: Partial<Header>) => { setH({ ...h, ...patch }); setDirty(true); };
   const setLine = (i: number, patch: Partial<EditLine>) => {
@@ -263,6 +280,13 @@ export default function InvoiceEditor({
       setBusy(null);
     }
   };
+  const togglePause = (next: boolean) => run("pause", async () => {
+    setError(null);
+    setPaused(next);
+    const r = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", { reminders_paused: next });
+    if (r.error) { setPaused(!next); setError(r.error); return false; }
+    setNotice(next ? "Reminders paused for this invoice." : "Reminders back on for this invoice.");
+  });
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(publicUrl); setNotice("Link copied."); } catch { window.prompt("Copy this link", publicUrl); }
   };
@@ -296,6 +320,7 @@ export default function InvoiceEditor({
           <p className="text-small text-ink-500 mt-1">
             {inv.sent_at ? `Sent ${fmtDate(inv.sent_at.slice(0, 10))}${inv.sent_to ? ` to ${inv.sent_to}` : ""}` : "Not sent yet"}
             {inv.view_count ? ` · Viewed ${inv.view_count}× · last ${fmtDate((inv.last_viewed_at ?? "").slice(0, 10))}` : inv.sent_at ? " · Not viewed yet" : ""}
+            {reminders?.last ? ` · Reminder sent ${fmtDate(dateET(reminders.last.sentAt))}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -353,6 +378,10 @@ export default function InvoiceEditor({
             </div>
           </CardBody>
         </Card>
+      )}
+
+      {reminders?.ready && !inv.is_test && (inv.status === "draft" || inv.status === "sent" || inv.status === "partial") && (
+        <RemindersCard inv={inv} info={reminders} paused={paused} busy={busy === "pause"} onToggle={togglePause} />
       )}
 
       {/* Header */}
@@ -541,6 +570,40 @@ export default function InvoiceEditor({
         />
       )}
     </div>
+  );
+}
+
+function RemindersCard({ inv, info, paused, busy, onToggle }: {
+  inv: BillingInvoice; info: ReminderInfo; paused: boolean; busy: boolean; onToggle: (next: boolean) => void;
+}) {
+  const today = todayET();
+  let next: string;
+  if (paused) next = "Paused — no reminders go out for this invoice until you switch this off.";
+  else if (!info.enabled || !info.days.length) next = "Your reminders are off. Set your days in Billing → Settings → Payment reminders.";
+  else if (inv.status === "draft") next = `Once it's sent, reminders go ${info.days.join(", ")} day${info.days.length === 1 && info.days[0] === 1 ? "" : "s"} after the due date.`;
+  else if (!inv.sent_to) next = "It was marked as sent without an email, so no reminders go out.";
+  else {
+    const d = nextReminderDate(inv.due_date, info.days, info.sentDays, today);
+    next = !d ? "No more reminders are scheduled." : d === today ? "Next reminder: on the next morning run (about 9 am ET)." : `Next reminder: ${fmtDate(d)}.`;
+  }
+  return (
+    <Card>
+      <CardBody className="space-y-2">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#c39e4e]" checked={paused} disabled={busy} onChange={(e) => onToggle(e.target.checked)} />
+          <span>
+            <span className="block text-sm font-medium text-ink-900">Pause reminders{busy ? " …" : ""}</span>
+            <span className="block text-small text-ink-500">Use this when a broker says a check is on the way.</span>
+          </span>
+        </label>
+        <p className="text-small text-ink-600 pl-7">
+          {info.last
+            ? `Reminder sent ${fmtDate(dateET(info.last.sentAt))}${info.last.to ? ` to ${info.last.to}` : ""} (${info.last.day} day${info.last.day === 1 ? "" : "s"} past due).`
+            : "No reminder sent yet."}{" "}
+          {next}
+        </p>
+      </CardBody>
+    </Card>
   );
 }
 

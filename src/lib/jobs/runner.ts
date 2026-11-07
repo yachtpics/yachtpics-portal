@@ -21,6 +21,7 @@ import { isAiConfigured } from "@/lib/ai";
 import { labelCategories, labelListingPhotos } from "@/lib/labelPhotos";
 import { isMissingTable, jobsServiceClient } from "./queue";
 import { writeWeeklyBackup } from "@/lib/books/backup";
+import { RemindersNotReadyError, runBillingReminders } from "@/lib/books/reminders";
 import { photoOriginalsCleanup, photoOriginalsCopy, r2PhotoFinish, sitePhotosCleanup } from "./photoMigration";
 import {
   JobFatalError,
@@ -220,6 +221,25 @@ const billingBackup: JobHandler = async () => {
   }
 };
 
+// ─── billing_reminders ──────────────────────────────────────────────────────
+// Daily payment reminders (src/lib/books/reminders.ts). Queued once a day by
+// /api/cron/billing-reminders from the daily dispatcher. Each batch re-reads
+// what's due and skips steps already in billing_reminders_sent, so a batch
+// that runs out of time (or a re-run the same day) never sends twice.
+const billingReminders: JobHandler = async (_job, ctx) => {
+  try {
+    const r = await runBillingReminders(ctx.svc, { deadlineMs: ctx.deadlineMs });
+    const lines = r.log.slice();
+    if (!r.outOfTime) {
+      lines.push(`${r.sent} reminder${r.sent === 1 ? "" : "s"} sent, ${r.failed} failed, ${r.notDue} not due · ${r.checked} open invoice${r.checked === 1 ? "" : "s"} checked across ${r.schedules} login${r.schedules === 1 ? "" : "s"} with reminders on.`);
+    }
+    return { cursor: null, done: r.sent, failed: r.failed, log: lines, finished: !r.outOfTime };
+  } catch (e) {
+    if (e instanceof RemindersNotReadyError || (e instanceof Error && e.name === "RemindersNotReadyError")) throw new JobFatalError((e as Error).message);
+    throw e;
+  }
+};
+
 export const HANDLERS: Record<JobKind, JobHandler> = {
   republish_site: republishSite,
   derivatives_backfill: derivativesBackfill,
@@ -229,6 +249,7 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   site_photos_cleanup: sitePhotosCleanup,
   r2_photo_finish: r2PhotoFinish,
   billing_backup: billingBackup,
+  billing_reminders: billingReminders,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

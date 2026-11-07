@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Card, CardBody, CardHeader } from "@/components/ui";
-import { BRAND_LABEL, fmtDate, fmtMoney, invoiceLabel, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
+import { BRAND_LABEL, dateET, fmtDate, fmtMoney, invoiceLabel, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
 import type { InvoiceRow } from "@/lib/books/reports";
 import { fieldClass } from "./booksApi";
 import NewInvoiceButton from "./NewInvoiceButton";
@@ -133,7 +133,11 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
                       {staff.brands.length > 1 && <span className="text-small text-ink-400">{BRAND_LABEL[r.brand]}</span>}
                     </div>
                     <p className="text-small text-ink-600 mt-0.5 truncate">{[r.client_name ?? "No client yet", r.boat_name].filter(Boolean).join(" · ")}</p>
-                    <p className="text-small text-ink-400">{fmtDate(r.issue_date)}{r.due_date && r.status !== "paid" && r.status !== "void" && r.status !== "draft" ? ` · due ${fmtDate(r.due_date)}` : ""}</p>
+                    <p className="text-small text-ink-400">
+                      {fmtDate(r.issue_date)}{r.due_date && r.status !== "paid" && r.status !== "void" && r.status !== "draft" ? ` · due ${fmtDate(r.due_date)}` : ""}
+                      {r.last_reminder_at ? ` · Reminder sent ${fmtDate(dateET(r.last_reminder_at))}` : ""}
+                      {r.reminders_paused && (r.status === "sent" || r.status === "partial") ? " · reminders paused" : ""}
+                    </p>
                   </div>
                   <div className="text-right shrink-0">
                     <p className="text-sm tabular-nums text-ink-900">{fmtMoney(r.total)}</p>

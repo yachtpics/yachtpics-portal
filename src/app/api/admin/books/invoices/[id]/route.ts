@@ -3,7 +3,7 @@ import { isBrandKey, requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError } from "@/lib/books/api";
 import { loadInvoice, recalcInvoice, updateInvoiceRow } from "@/lib/books/invoices";
 import { AFTER_SEND_KEYS, headerFields } from "@/lib/books/invoiceInput";
-import { LOCKED_MESSAGE, TESTS_NOT_READY, isLockedInvoice, type BrandKey } from "@/lib/books/types";
+import { LOCKED_MESSAGE, REMINDERS_NOT_READY, TESTS_NOT_READY, isLockedInvoice, type BrandKey } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
@@ -20,8 +20,9 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 }
 
 // PATCH — header fields. Drafts: everything (brand only while unnumbered).
-// Once sent (sent / partial / paid / void) only the internal note and a
-// by-hand due date may change; anything else is a 409 (void-only rule).
+// Once sent (sent / partial / paid / void) only the internal note, a by-hand
+// due date and "Pause reminders" may change; anything else is a 409
+// (void-only rule).
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const auth = await requireBillingStaff();
   if (auth.error) return auth.error;
@@ -67,6 +68,7 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   });
   if (upErr) return dbError(upErr);
   if (dropped.indexOf("is_test") !== -1) return bad(TESTS_NOT_READY, 503);
+  if (dropped.indexOf("reminders_paused") !== -1) return bad(REMINDERS_NOT_READY, 503);
   const rc = await recalcInvoice(admin, inv.id);
   if (rc) return bad(rc, 500);
   return NextResponse.json({ ok: true });

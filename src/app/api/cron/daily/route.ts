@@ -28,6 +28,9 @@ export const maxDuration = 300;
 //   • social           — EVERY DAY (due Instagram posts + unfinished IG reels)
 //   • derivatives      — EVERY DAY (~50 s of photo thumbnail backfill)
 //   • jobs/work        — EVERY DAY (POST; wakes the background job worker)
+//   • billing-reminders — EVERY DAY (queues the `billing_reminders` job: payment
+//                        reminders per each login's schedule; idempotent per
+//                        invoice + day step — src/lib/books/reminders.ts)
 //   • monthly-report   — EVERY DAY (self-gated: "Schedule automatically" switch
 //                        on + ET date is the 1st + last month not yet sent;
 //                        src/lib/monthlyReport.ts)
@@ -72,6 +75,11 @@ export async function GET(req: NextRequest) {
   // Billing backup: queues the weekly `billing_backup` job (all billing_*
   // tables → private R2, newest 12 kept). Sunday.
   if (dow === 0) jobs.push("/api/cron/billing-backup");
+  // Payment reminders: queues the daily `billing_reminders` job. "Days past
+  // due" is counted in Eastern time inside the job (todayET), so the 13:00 UTC
+  // run is always the same ET calendar day (8 am EST / 9 am EDT). Safe to call
+  // twice: a queued run is reused and each invoice + day step sends once.
+  jobs.push("/api/cron/billing-reminders");
   if (dow === 4) jobs.push("/api/cron/storage-report");
   // Deletes the Supabase copies of migrated videos. Self-gated: sleeps until
   // Sept 7 2026 (a week after the migration), no-ops after Sept 30.

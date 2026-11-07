@@ -18,9 +18,27 @@ export type ListFilters = {
   tests?: boolean;
 };
 
-export type InvoiceRow = BillingInvoice & { client_name: string | null; overdue: boolean };
+export type InvoiceRow = BillingInvoice & {
+  client_name: string | null;
+  overdue: boolean;
+  /** Latest payment reminder sent (ISO), or null. Null until 20261108 is applied. */
+  last_reminder_at: string | null;
+};
 
 type DbErr = { code?: string; message?: string };
+
+/** Latest reminder per invoice (ISO). Missing table (20261108 not applied) → empty. */
+export async function lastReminders(admin: SupabaseClient, ids: string[]): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < ids.length; i += 150) {
+    const { data, error } = await admin.from("billing_reminders_sent").select("invoice_id, sent_at").in("invoice_id", ids.slice(i, i + 150));
+    if (error) return out;
+    (data ?? []).forEach((r: { invoice_id: string; sent_at: string }) => {
+      if (!out[r.invoice_id] || out[r.invoice_id] < r.sent_at) out[r.invoice_id] = r.sent_at;
+    });
+  }
+  return out;
+}
 
 async function clientNames(admin: SupabaseClient, ids: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
@@ -52,7 +70,14 @@ export async function listInvoices(
   const ids: string[] = [];
   invs.forEach((i) => { if (i.client_id && ids.indexOf(i.client_id) === -1) ids.push(i.client_id); });
   const names = await clientNames(admin, ids);
-  let rows: InvoiceRow[] = (f.tests ? invs : invs.filter((i) => !i.is_test)).map((i) => ({ ...i, client_name: i.client_id ? names[i.client_id] ?? null : null, overdue: isOverdue(i, today) }));
+  // Only invoices that have been sent can have had a reminder.
+  const reminded = await lastReminders(admin, invs.filter((i) => i.status !== "draft" && !i.is_test).map((i) => i.id));
+  let rows: InvoiceRow[] = (f.tests ? invs : invs.filter((i) => !i.is_test)).map((i) => ({
+    ...i,
+    client_name: i.client_id ? names[i.client_id] ?? null : null,
+    overdue: isOverdue(i, today),
+    last_reminder_at: reminded[i.id] ?? null,
+  }));
   if (f.status === "overdue") rows = rows.filter((r) => r.overdue);
   const needle = (f.q ?? "").trim().toLowerCase();
   if (needle) {

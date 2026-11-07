@@ -45,6 +45,14 @@ const STARTERS: { kind: JobKind; params: Record<string, unknown>; label: string;
     confirm:
       "Let the AI label photos still marked Other (or blank) on every active listing? This uses AI credits (8 photos per call). Photos you or a broker set by hand are never changed.",
   },
+  {
+    kind: "billing_reminders",
+    params: {},
+    label: "Send payment reminders now",
+    hint: "Runs every morning by itself. Only reminders already due go; none is ever sent twice.",
+    confirm:
+      "Send any payment reminders that are due right now? This emails clients for real — only invoices whose reminder day has come and that haven't had that reminder yet.",
+  },
 ];
 
 export default function JobsBoard() {

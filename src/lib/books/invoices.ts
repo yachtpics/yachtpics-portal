@@ -46,11 +46,14 @@ export function normInvoice(r: Record<string, unknown>): BillingInvoice {
     view_count: num(r.view_count),
     due_date_manual: r.due_date_manual === true,
     is_test: r.is_test === true,
+    reminders_paused: r.reminders_paused === true,
   };
 }
 
 /** Columns added by 20261107b — written only once that migration is applied. */
 export const TERMS_MIGRATION_COLS = ["due_date_manual", "is_test"];
+/** Columns added by 20261108 (payment reminders). */
+export const REMINDERS_MIGRATION_COLS = ["reminders_paused"];
 
 /** Unknown column (PostgREST schema cache or Postgres): the migration isn't applied yet. */
 export function isMissingColumn(err: { code?: string; message?: string } | null | undefined): boolean {
@@ -60,9 +63,9 @@ export function isMissingColumn(err: { code?: string; message?: string } | null 
 }
 
 /**
- * Update one invoice row. If 20261107b isn't applied yet, the new columns
- * (due_date_manual / is_test) are dropped and the rest is saved, so the
- * editor keeps working. Returns the error, if any, and whether columns were dropped.
+ * Update one invoice row. If 20261107b / 20261108 aren't applied yet, their
+ * columns (due_date_manual / is_test / reminders_paused) are dropped and the
+ * rest is saved, so the editor keeps working. Returns the error, if any, and whether columns were dropped.
  */
 export async function updateInvoiceRow(
   admin: SupabaseClient,
@@ -75,7 +78,7 @@ export async function updateInvoiceRow(
   const rest: Record<string, unknown> = {};
   const dropped: string[] = [];
   Object.keys(fields).forEach((k) => {
-    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
+    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1 || REMINDERS_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
     else rest[k] = fields[k];
   });
   if (!dropped.length) return { error: first.error, dropped };

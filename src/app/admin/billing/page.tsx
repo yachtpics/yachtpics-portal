@@ -9,6 +9,7 @@ import {
   type BillingItem,
   type BillingStaffRow,
   type BrandKey,
+  type ReminderSchedule,
   type StaffBrand,
   type StaffView,
 } from "@/lib/books/types";
@@ -16,12 +17,13 @@ import { Card, CardBody } from "@/components/ui";
 import ClientsPanel from "./_components/ClientsPanel";
 import CatalogPanel from "./_components/CatalogPanel";
 import SettingsPanel from "./_components/SettingsPanel";
+import ReminderSettings from "./_components/ReminderSettings";
 import InvoicesPanel from "./_components/InvoicesPanel";
 import DashboardPanel from "./_components/DashboardPanel";
 import NewInvoiceButton from "./_components/NewInvoiceButton";
 import { buildDashboard, listInvoices, type RangePreset } from "@/lib/books/reports";
 import { isDate } from "@/lib/books/api";
-import { INVOICING_NOT_READY, fmtMoney } from "@/lib/books/types";
+import { INVOICING_NOT_READY, cleanReminderDays, fmtMoney } from "@/lib/books/types";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +36,16 @@ export const dynamic = "force-dynamic";
  */
 
 type Tab = "overview" | "invoices" | "dashboard" | "clients" | "catalog" | "settings";
+// Settings is open to every login since payment reminders (20261108): each
+// login sets its own reminder schedule there. Everything else on that tab
+// (brands, logins, backups, Zoho re-pull) is still rendered for the owner only.
 const TABS: { key: Tab; label: string; ownerOnly?: boolean }[] = [
   { key: "overview", label: "Overview" },
   { key: "invoices", label: "Invoices" },
   { key: "dashboard", label: "Dashboard" },
   { key: "clients", label: "Clients" },
   { key: "catalog", label: "Catalog" },
-  { key: "settings", label: "Settings", ownerOnly: true },
+  { key: "settings", label: "Settings" },
 ];
 
 function Shell({ children, subtitle }: { children: React.ReactNode; subtitle?: string }) {
@@ -265,6 +270,26 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
     );
   }
 
+  let reminderCard: React.ReactNode = null;
+  if (tab === "settings") {
+    // Payment reminders: own schedule (editable) for every login; the owner also sees the others' (view only).
+    let rq = admin.from("billing_reminder_schedules").select("profile_id, days, enabled, updated_at");
+    if (!staff.isOwner) rq = rq.eq("profile_id", staff.profileId);
+    const [{ data: schedRows, error: schedErr }, { data: nameRows }] = await Promise.all([
+      rq,
+      admin.from("billing_staff").select("profile_id, display_name, active"),
+    ]);
+    const names: Record<string, string> = {};
+    ((nameRows ?? []) as { profile_id: string; display_name: string; active: boolean }[]).forEach((n) => { if (n.active) names[n.profile_id] = n.display_name; });
+    const scheds = ((schedRows ?? []) as ReminderSchedule[]).map((r) => ({ ...r, days: cleanReminderDays(r.days) }));
+    const mine = scheds.filter((r) => r.profile_id === staff.profileId)[0] ?? { profile_id: staff.profileId, days: [], enabled: true };
+    const others = staff.isOwner
+      ? scheds.filter((r) => r.profile_id !== staff.profileId && names[r.profile_id]).map((r) => ({ ...r, display_name: names[r.profile_id] }))
+      : [];
+    reminderCard = <ReminderSettings ready={!schedErr} mine={mine} others={others} />;
+    if (!staff.isOwner) content = reminderCard;
+  }
+
   if (tab === "settings" && staff.isOwner) {
     const [{ data: brandRows }, { data: staffRows }, { data: staffBrandRows }, counters] = await Promise.all([
       admin.from("billing_brands").select("*").order("key"),
@@ -281,7 +306,12 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
       card_fee_rate: Number(s.card_fee_rate),
       brands: sb.filter((x) => x.profile_id === s.profile_id),
     }));
-    content = <SettingsPanel brands={(brandRows ?? []) as BillingBrand[]} people={people} invoicingReady={invoicingReady} />;
+    content = (
+      <div className="space-y-6">
+        {reminderCard}
+        <SettingsPanel brands={(brandRows ?? []) as BillingBrand[]} people={people} invoicingReady={invoicingReady} />
+      </div>
+    );
   }
 
   return (

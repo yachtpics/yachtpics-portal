@@ -5,8 +5,9 @@
  * Phase 1 = brands, staff books, shared clients, item catalog. Phase 2 =
  * invoices, lines, manual payments, PDF + email, the public /inv page, the
  * dashboard, CSV export and backups (each login's book is keyed by
- * billing_staff.profile_id as `owner_id`). Still to come: Stripe / PayPal
- * payments, reminders and quotes.
+ * billing_staff.profile_id as `owner_id`). Payment reminders (20261108):
+ * per-login schedules, per-invoice pause, the daily billing_reminders job.
+ * Still to come: Stripe / PayPal payments and quotes.
  */
 
 export type BrandKey = "yachtpics" | "ypdesigns";
@@ -167,6 +168,8 @@ export type BillingInvoice = {
   due_date_manual?: boolean;
   /** Test invoice: never numbered, kept out of every total. Undefined until 20261107b. */
   is_test?: boolean;
+  /** No payment reminders while true ("a check is on the way"). Undefined until 20261108. */
+  reminders_paused?: boolean;
   subtotal: number;
   discount_total: number;
   tax_rate: number;
@@ -297,4 +300,68 @@ export function fmtMoney(n: number | null | undefined): string {
 
 export function fmtPct(rate: number): string {
   return `${Math.round(Number(rate) * 10000) / 100}%`;
+}
+
+// ─── Payment reminders (20261108) ──────────────────────────────────────────
+
+export const REMINDERS_NOT_READY =
+  "Payment reminders aren't switched on yet — the 20261108 billing migration hasn't been added to the database.";
+
+export const REMINDER_MAX_DAY = 120;
+export const REMINDER_MAX_STEPS = 10;
+
+export type ReminderSchedule = {
+  profile_id: string;
+  days: number[];
+  enabled: boolean;
+  updated_at?: string;
+};
+
+/** Whole days from date a to date b (YYYY-MM-DD, b − a). */
+export function daysBetween(a: string, b: string): number {
+  const ta = Date.parse(a.slice(0, 10) + "T12:00:00Z");
+  const tb = Date.parse(b.slice(0, 10) + "T12:00:00Z");
+  return Math.round((tb - ta) / 86400000);
+}
+
+/** Whole numbers 1..120, no repeats, ascending, at most 10. Anything else is dropped. */
+export function cleanReminderDays(raw: unknown): number[] {
+  const out: number[] = [];
+  (Array.isArray(raw) ? raw : []).forEach((v) => {
+    const n = Number(v);
+    if (!isFinite(n) || Math.floor(n) !== n || n < 1 || n > REMINDER_MAX_DAY) return;
+    if (out.indexOf(n) === -1) out.push(n);
+  });
+  out.sort((a, b) => a - b);
+  return out.slice(0, REMINDER_MAX_STEPS);
+}
+
+/**
+ * The reminder step due now, or null. Only the LARGEST step already reached
+ * counts (an invoice that was paused for a while gets one catch-up reminder,
+ * not three), and nothing goes if that step — or a later one — already went.
+ */
+export function reminderStepDue(daysPast: number, days: number[], sentDays: number[]): number | null {
+  let target: number | null = null;
+  days.forEach((d) => { if (d <= daysPast && (target === null || d > target)) target = d; });
+  if (target === null) return null;
+  const t: number = target;
+  if (sentDays.some((s) => s >= t)) return null;
+  return t;
+}
+
+/**
+ * When the next reminder would go for this invoice (YYYY-MM-DD, ET), or null
+ * for none. A step that's already due returns today (it goes on the next
+ * morning run). Ignores pause / status — the caller checks those.
+ */
+export function nextReminderDate(dueDate: string | null, days: number[], sentDays: number[], today: string = todayET()): string | null {
+  if (!dueDate || !days.length) return null;
+  const past = daysBetween(dueDate, today);
+  if (reminderStepDue(past, days, sentDays) !== null) return today;
+  const maxSent = sentDays.length ? Math.max.apply(null, sentDays) : 0;
+  for (let i = 0; i < days.length; i++) {
+    if (days[i] > past && days[i] > maxSent) return addDays(dueDate, days[i]);
+  }
+  return null;
 }

@@ -3,9 +3,9 @@ import { notFound } from "next/navigation";
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { booksServiceClient, canSeeItemBrand, lookupBillingStaff } from "@/lib/books/staff";
 import { loadInvoice, publicInvoiceUrl } from "@/lib/books/invoices";
-import { INVOICING_NOT_READY, type BillingItem } from "@/lib/books/types";
+import { INVOICING_NOT_READY, cleanReminderDays, type BillingItem } from "@/lib/books/types";
 import { Card, CardBody } from "@/components/ui";
-import InvoiceEditor, { type PickerClient } from "../../_components/InvoiceEditor";
+import InvoiceEditor, { type PickerClient, type ReminderInfo } from "../../_components/InvoiceEditor";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +31,22 @@ export default async function InvoicePage({ params }: { params: { id: string } }
   if ("notFound" in r) notFound();
   if ("error" in r) return <Notice title="This invoice couldn't load" body={r.error} />;
 
-  const [{ data: clientRows }, { data: itemRows }] = await Promise.all([
+  const [{ data: clientRows }, { data: itemRows }, sentRes, schedRes] = await Promise.all([
     admin.from("billing_clients").select("id, display_name, company_name, email, status").order("display_name").range(0, 4999),
     admin.from("billing_items").select("*").eq("active", true).order("sort_order").order("name").range(0, 4999),
+    admin.from("billing_reminders_sent").select("day, sent_at, sent_to").eq("invoice_id", params.id).order("sent_at", { ascending: false }),
+    admin.from("billing_reminder_schedules").select("days, enabled").eq("profile_id", staff.profileId).maybeSingle(),
   ]);
+  // Payment reminders (20261108). Missing table = not switched on yet: the editor hides the section.
+  const sentRows = (sentRes.data ?? []) as { day: number; sent_at: string; sent_to: string | null }[];
+  const sched = schedRes.data as { days: unknown; enabled: boolean } | null;
+  const reminders: ReminderInfo = {
+    ready: !sentRes.error && !schedRes.error,
+    days: sched ? cleanReminderDays(sched.days) : [],
+    enabled: sched ? !!sched.enabled : false,
+    sentDays: sentRows.map((x) => Number(x.day)),
+    last: sentRows[0] ? { sentAt: sentRows[0].sent_at, day: Number(sentRows[0].day), to: sentRows[0].sent_to } : null,
+  };
   const clients = (clientRows ?? []) as PickerClient[];
   // The invoice's client stays pickable even if it's been made inactive.
   const items = ((itemRows ?? []) as BillingItem[]).filter((i) => canSeeItemBrand(staff, i.brand)).map((i) => ({ ...i, rate: Number(i.rate) }));
@@ -52,6 +64,7 @@ export default async function InvoicePage({ params }: { params: { id: string } }
         isOwner={staff.isOwner}
         brands={staff.brands}
         publicUrl={publicInvoiceUrl(b.invoice.public_token)}
+        reminders={reminders}
       />
     </div>
   );
