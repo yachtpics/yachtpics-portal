@@ -706,7 +706,11 @@ function CatalogSearch({ items, onPick }: { items: BillingItem[]; onPick: (i: Bi
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const needle = q.trim().toLowerCase();
-  const hits = items.filter((i) => !needle || (i.name + " " + (i.description ?? "")).toLowerCase().indexOf(needle) !== -1).slice(0, 12);
+  // Every item for this brand, A–Z; the list scrolls. (A cap of 12 used to hide
+  // anything past "L" until you typed.)
+  const hits = items
+    .filter((i) => !needle || (i.name + " " + (i.description ?? "")).toLowerCase().indexOf(needle) !== -1)
+    .sort((a, b) => a.name.localeCompare(b.name));
   return (
     <div className="relative flex-1">
       <input className={fieldClass} placeholder="Add from catalog…" value={q} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)} onChange={(e) => { setQ(e.target.value); setOpen(true); }} />
