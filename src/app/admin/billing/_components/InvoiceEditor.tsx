@@ -26,6 +26,7 @@ import {
   type PaymentMethod,
 } from "@/lib/books/types";
 import { calcInvoice, calcLine } from "@/lib/books/totals";
+import { pickDefaultItem } from "@/lib/books/defaultLine";
 import { booksCall, fieldClass } from "./booksApi";
 import StatusBadge from "./StatusBadge";
 
@@ -74,7 +75,7 @@ type Header = {
   internal_note: string;
   is_test: boolean;
 };
-type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; broker: string | null; suggestedClient: { id: string; display_name: string } | null; shootDate: string | null };
+type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; broker: string | null; vesselType: string | null; suggestedClient: { id: string; display_name: string } | null; shootDate: string | null };
 
 let seq = 0;
 const k = () => `l${Date.now()}${seq++}`;
@@ -187,14 +188,9 @@ export default function InvoiceEditor({
     setLines(withItemLine(lines, it, boatFt));
     setDirty(true);
   };
-  // Boat picked on an empty YachtPics draft → the photography line for its length.
-  const [autoPhotoHint, setAutoPhotoHint] = useState(false);
-  const photographyItemFor = (ft: number): BillingItem | null => {
-    if (!ft || ft <= 0) return null;
-    const re = ft < 100 ? /^photography under 100['’]/i : /^photography - over 100['’]/i;
-    const hit = items.filter((i) => i.active && (i.brand === "both" || i.brand === "yachtpics") && i.kind !== "card_fee" && re.test(i.name.trim()))[0];
-    return hit ?? null;
-  };
+  // Boat picked on an empty YachtPics draft → the default line for its type and length
+  // (rules in src/lib/books/defaultLine.ts). Holds the added item's name for the hint.
+  const [autoPhotoHint, setAutoPhotoHint] = useState<string | null>(null);
   const linesAreEmpty = (ls: EditLine[]) =>
     ls.length === 0 || (ls.length === 1 && ls[0].kind === "custom" && !ls[0].item_id && !ls[0].name.trim() && !Number(ls[0].unit_price));
   const addCustom = () => {
@@ -438,12 +434,12 @@ export default function InvoiceEditor({
                 }
                 // Per-foot lines that came from the old length follow the new one.
                 let nextLines = hit.lengthFt ? lines.map((l) => (l.unit === "ft" && (l.fromLength || !l.quantity || l.quantity === 1) ? { ...l, quantity: hit.lengthFt as number, fromLength: true } : l)) : lines;
-                // Empty, unlocked YachtPics draft: add the photography line (under / over 100') from the length.
+                // Empty, unlocked YachtPics draft: add the default line from the boat's type and length.
                 const ft = Number(patch.boat_length_ft) || 0;
-                const photo = h.brand === "yachtpics" && !locked && inv.status === "draft" && linesAreEmpty(lines) ? photographyItemFor(ft) : null;
+                const photo = h.brand === "yachtpics" && !locked && inv.status === "draft" && linesAreEmpty(lines) ? pickDefaultItem(items, hit.vesselType, ft) : null;
                 if (photo) {
                   nextLines = withItemLine([], photo, ft);
-                  setAutoPhotoHint(true);
+                  setAutoPhotoHint(photo.name);
                 }
                 if (nextLines !== lines) setLines(nextLines);
                 setHeader(patch);
@@ -511,8 +507,8 @@ export default function InvoiceEditor({
           ))}
           {autoPhotoHint && !locked && (
             <p className="text-small text-ink-500 flex items-start justify-between gap-3">
-              <span>Added the photography line from the boat&apos;s length — delete it if this shoot was different.</span>
-              <button type="button" className="text-ink-400 hover:text-ink-900 shrink-0" onClick={() => setAutoPhotoHint(false)} aria-label="Dismiss">×</button>
+              <span>Added “{autoPhotoHint}” from the boat’s type and length — delete it if this shoot was different.</span>
+              <button type="button" className="text-ink-400 hover:text-ink-900 shrink-0" onClick={() => setAutoPhotoHint(null)} aria-label="Dismiss">×</button>
             </p>
           )}
           {!locked && (

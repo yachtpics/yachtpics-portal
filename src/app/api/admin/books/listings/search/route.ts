@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 /**
  * GET ?q= — boat picker for YachtPics invoices: listings by vessel name,
- * with length and broker, plus the billing client linked to that broker
+ * with length, vessel type and broker, plus the billing client linked to that broker
  * (billing_clients.broker_profile_id, matched by email) as a suggestion,
  * and the shoot date (listings.photographed_at, as an ET date) so a draft's
  * invoice date can default to it.
@@ -20,12 +20,12 @@ export async function GET(req: NextRequest) {
 
   const { data, error } = await admin
     .from("listings")
-    .select("id, vessel_name, length_ft, year, make, broker_id, photographed_at")
+    .select("id, vessel_name, length_ft, year, make, vessel_type, broker_id, photographed_at")
     .ilike("vessel_name", `%${q}%`)
     .order("updated_at", { ascending: false })
     .limit(15);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const rows = (data ?? []) as { id: string; vessel_name: string | null; length_ft: number | string | null; year: number | null; make: string | null; broker_id: string | null; photographed_at: string | null }[];
+  const rows = (data ?? []) as { id: string; vessel_name: string | null; length_ft: number | string | null; year: number | null; make: string | null; vessel_type: string | null; broker_id: string | null; photographed_at: string | null }[];
 
   const brokerIds: string[] = [];
   rows.forEach((r) => { if (r.broker_id && brokerIds.indexOf(r.broker_id) === -1) brokerIds.push(r.broker_id); });
@@ -51,6 +51,7 @@ export async function GET(req: NextRequest) {
       lengthFt: r.length_ft == null || r.length_ft === "" ? null : Number(r.length_ft),
       detail: [r.year, r.make].filter(Boolean).join(" "),
       broker: r.broker_id ? brokers[r.broker_id] || null : null,
+      vesselType: r.vessel_type && r.vessel_type.trim() ? r.vessel_type.trim() : null,
       suggestedClient: r.broker_id ? clients[r.broker_id] ?? null : null,
       shootDate: dateET(r.photographed_at),
     })),
