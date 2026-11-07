@@ -10,7 +10,9 @@ Both are reel-only (9:16), photographs only (clips are left out, like Stack), in
 - Options are admins only (a panel under the Look grid); brokers and Reel Service renders get the defaults. Music moods: Logo stack upbeat, Blur scroll elegant. Help: the look list and the clips line now name both (PDF rebuilt).
 - Checked: typecheck clean; a node-canvas frame check of the new modules (the real planners, layout and middle-band drawing, with a simplified band swap) — samples in `Claude outputs/Reel styles - Logo stack and Blur scroll (Nov 7)/`. **To check in the browser:** admin → any listing → Reel → Logo stack, then Blur scroll → Make it; try each option.
 
-## Billing (Portal) — phase 2: invoicing (Nov 7, 2026) — MIGRATION `20261107_billing_invoicing.sql` NOT APPLIED (after 20261106) · no new dependency
+## Billing (Portal) — phase 2: invoicing (Nov 7, 2026) — MIGRATION `20261107_billing_invoicing.sql` APPLIED (Nov 7) · no new dependency
+
+**HANDOFF (Nov 7, 2026): Billing work moves to a new chat from here.** State: phases 1 and 2 are built, pushed and applied live; Charlie has NOT yet done the dry run (create → send → open /inv link → record payment) — do that first and fix what it turns up. Still unset: Samantha's payment instructions, address and prefix review (seeded YPS); YPDesigns How-to-pay text (currently same Zelle/Venmo as YachtPics); "Next number" per login if continuity with Zoho numbering is wanted. Next = **Phase 3 online payment** (Stripe card + bank and optional PayPal on Charlie's invoices; Samantha's own Stripe account on hers — Connect or second keys + webhook; see "Phase 3 plugs in" below). Then Phase 4 reminders + per-broker pay-before-download, Phase 5 YPDesigns quotes, Phase 6 Zoho wind-down. Brief: https://claude.ai/artifact/VmDRdeGxfC4b9GzfxuwXfz. Zoho CSVs + seed.sql live in `Claude outputs/billing-import/` (never committed).
 
 Invoices, PDF + email, manual payments, dashboard, CSV export, backups. Until the migration is applied the Invoices / Dashboard tabs say "not switched on yet"; Clients / Catalog / Settings keep working.
 
