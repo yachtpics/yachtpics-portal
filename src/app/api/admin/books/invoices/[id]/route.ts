@@ -16,7 +16,8 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
   if ("notReady" in r) return dbError({ code: "42P01" });
   if ("notFound" in r) return bad("Invoice not found.", 404);
   if ("error" in r) return bad(r.error, 500);
-  return NextResponse.json(r.bundle);
+  // The processor row (loaded for the PDF) holds the encrypted PayPal secret — never send it to the browser.
+  return NextResponse.json({ ...r.bundle, settings: { ...r.bundle.settings, processor: null } });
 }
 
 // PATCH — header fields. Drafts: everything (brand only while unnumbered).

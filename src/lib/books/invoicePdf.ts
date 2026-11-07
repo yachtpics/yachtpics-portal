@@ -7,9 +7,15 @@
 // (paginates) · totals with the "How to pay" box beside them · note · Notes +
 // Terms & Conditions block (invoiceFooter) · page footer. A test invoice says
 // TEST INVOICE / TEST where the number goes.
+//
+// When the invoice can be paid online (same rule as the /inv Pay button,
+// onlinePayState === 'ok', using bundle.settings.processor) the How to pay box
+// gets a clickable "Pay online: <invoice link>" line in the brand accent. The
+// box only grows downward, so the totals never move.
 
-import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
-import { PORTAL_ORIGIN, type InvoiceBundle } from "./invoices";
+import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
+import { PORTAL_ORIGIN, publicInvoiceUrl, type InvoiceBundle } from "./invoices";
+import { onlinePayState, payViaLabel } from "./processor";
 import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "./types";
 
 const W = 612;
@@ -85,6 +91,23 @@ async function fetchLogo(url: string | null): Promise<{ bytes: Uint8Array; png: 
   } catch {
     return null;
   }
+}
+
+/** A clickable URI link over [x1,y1]–[x2,y2]; appended to any Annots the page already has. */
+function addLink(doc: PDFDocument, page: PDFPage, rect: [number, number, number, number], url: string) {
+  const ctx = doc.context;
+  const ref = ctx.register(
+    ctx.obj({
+      Type: "Annot",
+      Subtype: "Link",
+      Rect: rect,
+      Border: [0, 0, 0],
+      A: { Type: "Action", S: "URI", URI: PDFString.of(url) },
+    })
+  );
+  const existing = page.node.lookupMaybe(PDFName.of("Annots"), PDFArray);
+  if (existing) existing.push(ref);
+  else page.node.set(PDFName.of("Annots"), ctx.obj([ref]));
 }
 
 function qty(n: number): string {
@@ -246,9 +269,31 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
 
   const tl = xr - 200;
   const payW = tl - M - 28;
-  const showPay = !!settings.paymentInstructions && inv.status !== "void" && inv.status !== "paid";
-  const pl = showPay ? wrap(splitPaymentLines(settings.paymentInstructions).join("\n"), reg, 9, payW - 28) : [];
-  const payH = showPay ? 30 + pl.length * 12 : 0;
+  const hasInstr = !!settings.paymentInstructions && inv.status !== "void" && inv.status !== "paid";
+  const pl = hasInstr ? wrap(splitPaymentLines(settings.paymentInstructions).join("\n"), reg, 9, payW - 28) : [];
+
+  // "Pay online" link — only when /inv would show the Pay button (sent /
+  // partial, balance >= $0.50, not a test, processor on).
+  const onlineUrl = inv.public_token && onlinePayState(inv, settings.processor ?? null) === "ok" ? publicInvoiceUrl(inv.public_token) : null;
+  const innerW = payW - 28;
+  const payLabel = "Pay online: ";
+  const shownUrl = onlineUrl ? onlineUrl.replace(/^https?:\/\//, "") : "";
+  // One line if it fits (9 pt down to 7.5 pt), else label and link on two lines.
+  let linkSize = 9;
+  let linkTwoLines = false;
+  if (onlineUrl) {
+    const w1 = (sz: number) => bold.widthOfTextAtSize(payLabel, sz) + reg.widthOfTextAtSize(safe(shownUrl), sz);
+    while (linkSize > 7.5 && w1(linkSize) > innerW) linkSize -= 0.5;
+    if (w1(linkSize) > innerW) {
+      linkTwoLines = true;
+      linkSize = 9;
+      while (linkSize > 6 && reg.widthOfTextAtSize(safe(shownUrl), linkSize) > innerW) linkSize -= 0.5;
+    }
+  }
+  const linkH = onlineUrl ? (pl.length ? 8 : 0) + (linkTwoLines ? 24 : 12) + 12 : 0;
+
+  const showPay = hasInstr || !!onlineUrl;
+  const payH = showPay ? 30 + pl.length * 12 + linkH : 0;
   const totH = rows.length * 16 + 10;
   if (y - Math.max(totH, payH) - 8 < bottom) y = newPage(false);
   y -= 8;
@@ -265,6 +310,28 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
     text(page, spaced("HOW TO PAY"), bx + 14, by - 16, 7, bold, GREY);
     let py = by - 31;
     pl.forEach((ln) => { text(page, ln, bx + 14, py, 9); py -= 12; });
+    if (onlineUrl) {
+      if (pl.length) py -= 8;
+      const lx = bx + 14;
+      const topY = py + linkSize; // top of the first text line
+      let x2: number;
+      if (!linkTwoLines) {
+        text(page, payLabel, lx, py, linkSize, bold, accent);
+        const ux = lx + bold.widthOfTextAtSize(payLabel, linkSize);
+        text(page, shownUrl, ux, py, linkSize, reg, accent);
+        x2 = ux + reg.widthOfTextAtSize(safe(shownUrl), linkSize);
+        py -= 12;
+      } else {
+        text(page, "Pay online:", lx, py, 9, bold, accent);
+        py -= 12;
+        text(page, shownUrl, lx, py, linkSize, reg, accent);
+        x2 = lx + Math.max(bold.widthOfTextAtSize("Pay online:", 9), reg.widthOfTextAtSize(safe(shownUrl), linkSize));
+        py -= 12;
+      }
+      addLink(doc, page, [lx - 2, py + 12 - 3, x2 + 2, topY + 2], onlineUrl);
+      text(page, payViaLabel(settings.processor), lx, py, 8, reg, GREY);
+      py -= 12;
+    }
     y = Math.min(y, by - payH - 6);
   }
   y -= 14;

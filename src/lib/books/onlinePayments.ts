@@ -24,35 +24,19 @@
 import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe";
-import { isMissingBillingTable } from "./staff";
 import { loadInvoiceById, PORTAL_ORIGIN, type InvoiceBundle } from "./invoices";
 import { postBillingEmail, emailShellHtml, esc } from "./invoiceEmail";
 import { sendReceiptEmail } from "./receiptEmail";
 import { decryptSecret, secretsKeyConfigured } from "./secrets";
 import { approveLink, capturePaypalOrder, createPaypalOrder, firstCapture, getPaypalOrder, type PaypalCreds, type PaypalOrder } from "./paypal";
-import { fmtMoney, paymentSourceLabel, todayET, type BillingInvoice, type PaymentMethod, type PaypalEnv, type ProcessorKind, type ProcessorView } from "./types";
+import { fmtMoney, paymentSourceLabel, todayET, type BillingInvoice, type PaymentMethod, type ProcessorKind, type ProcessorView } from "./types";
 
 export const BILLING_INVOICE_KIND = "billing_invoice";
 
-export type ProcessorRow = {
-  profile_id: string;
-  processor: ProcessorKind;
-  paypal_client_id: string | null;
-  paypal_secret_enc: string | null;
-  paypal_env: PaypalEnv;
-  paypal_webhook_id: string | null;
-  enabled: boolean;
-  updated_at: string;
-};
-
-export type ProcessorLookup = { state: "ok"; row: ProcessorRow | null } | { state: "not_ready" } | { state: "error"; message: string };
-
-/** A login's processor row (service role). Missing table = not_ready; no row = null. */
-export async function loadProcessor(admin: SupabaseClient, profileId: string): Promise<ProcessorLookup> {
-  const { data, error } = await admin.from("billing_payment_processors").select("*").eq("profile_id", profileId).maybeSingle();
-  if (error) return isMissingBillingTable(error) ? { state: "not_ready" } : { state: "error", message: error.message };
-  return { state: "ok", row: (data as ProcessorRow | null) ?? null };
-}
+// The row type, loader and the Pay-online rule live in processor.ts (no
+// Stripe/PayPal imports, so invoices.ts and invoicePdf.ts can use them).
+export { loadProcessor, onlinePayState, payViaLabel, type ProcessorLookup, type ProcessorRow } from "./processor";
+import type { ProcessorRow } from "./processor";
 
 /** The browser's view: never the secret, only whether one is saved. */
 export function processorView(row: ProcessorRow | null, fallback: ProcessorKind): ProcessorView {
@@ -71,22 +55,6 @@ export function paypalCredsOf(row: ProcessorRow | null): PaypalCreds | null {
   const secret = decryptSecret(row.paypal_secret_enc);
   if (!secret) return null;
   return { clientId: row.paypal_client_id, secret, env: row.paypal_env === "sandbox" ? "sandbox" : "live" };
-}
-
-/** Stripe's minimum charge is $0.50; below that there's no Pay button. */
-const MIN_ONLINE = 0.5;
-
-/**
- * What the Pay slot on /inv shows: 'ok' (Pay online), 'test' (the "Test
- * invoice — online payment disabled" line) or 'hidden'.
- */
-export function onlinePayState(inv: BillingInvoice, row: ProcessorRow | null): "ok" | "test" | "hidden" {
-  if (!row || !row.enabled) return "hidden";
-  if (row.processor === "paypal" && (!row.paypal_client_id || !row.paypal_secret_enc)) return "hidden";
-  if (inv.status !== "sent" && inv.status !== "partial") return "hidden";
-  if (!(inv.balance_due >= MIN_ONLINE)) return "hidden";
-  if (inv.is_test) return "test";
-  return "ok";
 }
 
 export function payDescription(b: InvoiceBundle): string {

@@ -4,6 +4,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingBillingTable, type BillingStaff } from "./staff";
+import { loadProcessor, type ProcessorRow } from "./processor";
 import { type BillingBrand, type BillingClient, type BillingInvoice, type BillingPayment, type BrandKey, type InvoiceLine } from "./types";
 
 export const INVOICE_COLS = "*";
@@ -15,6 +16,12 @@ export type InvoiceSettings = {
   phone: string | null;
   address: string | null;
   paymentInstructions: string | null;
+  /**
+   * The invoice login's online-payment processor row (null: none, table not
+   * there yet, or unreadable). Loaded with the bundle so the PDF can draw its
+   * "Pay online" link with the same rule as /inv (onlinePayState).
+   */
+  processor: ProcessorRow | null;
 };
 
 export type InvoiceBundle = {
@@ -117,6 +124,7 @@ export async function loadSettings(admin: SupabaseClient, ownerId: string, brand
     phone: row.phone ?? brand.phone ?? null,
     address: row.address || brand.address || null,
     paymentInstructions: row.payment_instructions ?? null,
+    processor: null,
   };
 }
 
@@ -131,7 +139,11 @@ async function finish(admin: SupabaseClient, inv: BillingInvoice): Promise<Loade
   ]);
   if (lines.error) return { error: lines.error.message };
   if (!brand.data) return { error: "Brand missing." };
-  const settings = await loadSettings(admin, inv.owner_id, brand.data as BillingBrand);
+  const [settings, proc] = await Promise.all([
+    loadSettings(admin, inv.owner_id, brand.data as BillingBrand),
+    loadProcessor(admin, inv.owner_id).catch(() => null),
+  ]);
+  settings.processor = proc && proc.state === "ok" ? proc.row : null;
   return {
     bundle: {
       invoice: inv,

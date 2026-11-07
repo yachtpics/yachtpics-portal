@@ -6,7 +6,7 @@ import { booksServiceClient } from "@/lib/books/staff";
 import { loadInvoiceByToken } from "@/lib/books/invoices";
 import { isBotUa } from "@/lib/emailTracking";
 import { CARD_FEE_NOTE } from "@/lib/books/invoicePdf";
-import { loadProcessor, onlinePayState } from "@/lib/books/onlinePayments";
+import { onlinePayState, payViaLabel } from "@/lib/books/onlinePayments";
 import { stripe } from "@/lib/stripe";
 import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "@/lib/books/types";
 
@@ -56,10 +56,10 @@ export default async function PublicInvoicePage({ params, searchParams }: { para
     : overdue ? { text: `Overdue · was due ${fmtDate(inv.due_date)}`, cls: "bg-danger-50 text-danger-700 border-danger-200" }
     : { text: inv.due_date_manual && inv.due_date ? `Due ${fmtDate(inv.due_date)}` : "Due on receipt", cls: "bg-ink-100 text-ink-700 border-hairline" };
   // Online payment (20261108b). No processor table yet → no button.
-  const proc = await loadProcessor(admin, inv.owner_id);
-  const procRow = proc.state === "ok" ? proc.row : null;
+  // The processor row comes with the bundle (the PDF uses the same row and rule).
+  const procRow = settings.processor;
   const payState = onlinePayState(inv, procRow);
-  const payVia = procRow?.processor === "paypal" ? "PayPal or card" : "Card or US bank account";
+  const payVia = payViaLabel(procRow);
 
   // Back from the processor: re-read state; for Stripe, a bank payment shows "unpaid" until it clears.
   const qp = (k: string) => { const v = searchParams?.[k]; return Array.isArray(v) ? v[0] : v; };
