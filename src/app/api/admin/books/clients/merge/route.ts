@@ -65,6 +65,27 @@ export async function POST(req: NextRequest) {
   // nothing is lost (the duplicates simply still show on the panel).
   const { error: upErr } = await admin.from("billing_clients").update(patch).eq("id", survivorId);
   if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+  // Contacts (20261108c): the others' contacts move to the survivor as
+  // non-primary ones, unless the survivor already has that email. Skipped
+  // quietly if the contacts table isn't there yet.
+  const { data: all, error: kErr } = await admin.from("billing_client_contacts").select("id, client_id, email").in("client_id", [survivorId].concat(otherIds));
+  if (!kErr) {
+    const list = (all ?? []) as { id: string; client_id: string; email: string | null }[];
+    const have: string[] = list.filter((x) => x.client_id === survivorId && x.email).map((x) => (x.email as string).toLowerCase());
+    const move: string[] = [];
+    list.forEach((x) => {
+      if (x.client_id === survivorId) return;
+      const e = (x.email ?? "").toLowerCase();
+      if (e && have.indexOf(e) !== -1) return;
+      if (e) have.push(e);
+      move.push(x.id);
+    });
+    if (move.length) {
+      const { error: mvErr } = await admin.from("billing_client_contacts").update({ client_id: survivorId, is_primary: false, updated_at: now }).in("id", move);
+      if (mvErr) return NextResponse.json({ error: "Kept client updated, but the others' contacts couldn't be moved: " + mvErr.message }, { status: 500 });
+    }
+  }
+
   const { error: delErr } = await admin.from("billing_clients").delete().in("id", otherIds);
   if (delErr) return NextResponse.json({ error: "Kept client updated, but the others couldn't be removed: " + delErr.message }, { status: 500 });
 

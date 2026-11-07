@@ -20,9 +20,10 @@ export function reminderEmailSubject(b: InvoiceBundle): string {
   return `Reminder: Invoice ${b.invoice.number ?? ""} from ${b.brand.display_name}`.replace(/\s+/g, " ").trim();
 }
 
-export function reminderEmailHtml(b: InvoiceBundle): string {
+/** `greet`: see invoiceEmailHtml (left out = the client's first name). */
+export function reminderEmailHtml(b: InvoiceBundle, greet?: string): string {
   const { invoice: inv, client, settings } = b;
-  const first = (client?.first_name || "").trim().split(" ")[0];
+  const first = greet !== undefined ? greet : (client?.first_name || "").trim().split(" ")[0];
   const url = publicInvoiceUrl(inv.public_token);
   const signName = settings.fromName || settings.displayName;
   return emailShellHtml(b, `${emailLogoHtml(b)}
@@ -37,35 +38,38 @@ ${emailFooterBlockHtml(b)}`);
 }
 
 /**
- * Send one reminder for this invoice to `to`. The PDF is attached when it can
- * be built; if it can't, the reminder still goes with the View invoice link.
+ * Send one reminder for this invoice to everyone in `to` (one email, all in
+ * the To line — the same people the invoice went to). The PDF is attached
+ * when it can be built; if it can't, the reminder still goes with the View
+ * invoice link.
  */
 export async function sendReminderEmail(
   b: InvoiceBundle,
-  to: string,
-  day: number
+  to: string[],
+  day: number,
+  greet?: string
 ): Promise<{ ok: boolean; error: string | null; emailLogId: string; resendId: string | null }> {
   const subject = reminderEmailSubject(b);
   const logId = newEmailLogId();
-  const html = trackEmailHtml(reminderEmailHtml(b), logId);
+  const html = trackEmailHtml(reminderEmailHtml(b, greet), logId);
   let pdf: Uint8Array | null = null;
   try {
     pdf = await buildInvoicePdf(b);
   } catch {
     pdf = null;
   }
-  const r = await postBillingEmail(b, { to, subject, html, pdf });
+  const r = await postBillingEmail(b, { to: to.length === 1 ? to[0] : to, subject, html, pdf });
   await logEmail({
     id: logId,
     emailType: "billing_reminder",
-    recipientEmail: to,
+    recipientEmail: to.join(", "),
     recipientRole: "client",
     subject,
     status: r.ok ? "sent" : "failed",
     error: r.message,
     sentBy: "billing_reminders",
     listingId: b.invoice.listing_id,
-    metadata: { invoiceId: b.invoice.id, number: b.invoice.number, brand: b.brand.key, ownerId: b.invoice.owner_id, day, pdf: !!pdf },
+    metadata: { invoiceId: b.invoice.id, number: b.invoice.number, brand: b.brand.key, ownerId: b.invoice.owner_id, day, pdf: !!pdf, recipients: to },
   });
   return { ok: r.ok, error: r.message, emailLogId: logId, resendId: r.id };
 }

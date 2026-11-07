@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import type { BillingClient, DupeGroup, StaffView } from "@/lib/books/types";
 import { booksCall, fieldClass, money } from "./booksApi";
+import ClientContacts from "./ClientContacts";
 
 type Form = {
   display_name: string;
@@ -55,6 +56,9 @@ export default function ClientsPanel({
   const [form, setForm] = useState<Form>(EMPTY);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Contacts (20261108c) loaded for the client being edited: its email / phone
+  // are then edited on the primary contact, not here (one place, no overwrite).
+  const [contactsReady, setContactsReady] = useState(false);
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -68,15 +72,18 @@ export default function ClientsPanel({
 
   const open = (c: BillingClient | null) => {
     setError(null);
+    setContactsReady(false);
     if (c) { setEditing(c.id); setForm(toForm(c)); } else { setEditing("new"); setForm(EMPTY); }
   };
 
   const save = async () => {
     setBusy(true);
     setError(null);
+    const body: Record<string, unknown> = { ...form };
+    if (editing !== "new" && contactsReady) { delete body.email; delete body.phone; delete body.mobile; }
     const { error: err } = editing === "new"
-      ? await booksCall("/api/admin/books/clients", "POST", form)
-      : await booksCall(`/api/admin/books/clients/${editing}`, "PATCH", form);
+      ? await booksCall("/api/admin/books/clients", "POST", body)
+      : await booksCall(`/api/admin/books/clients/${editing}`, "PATCH", body);
     setBusy(false);
     if (err) { setError(err); return; }
     setEditing(null);
@@ -105,18 +112,24 @@ export default function ClientsPanel({
           <span className="label-caps">Company</span>
           <input className={fieldClass + " mt-1"} value={form.company_name} onChange={set("company_name")} />
         </label>
-        <label className="block sm:col-span-2">
-          <span className="label-caps">Email</span>
-          <input className={fieldClass + " mt-1"} type="email" value={form.email} onChange={set("email")} />
-        </label>
-        <label className="block">
-          <span className="label-caps">Phone</span>
-          <input className={fieldClass + " mt-1"} value={form.phone} onChange={set("phone")} />
-        </label>
-        <label className="block">
-          <span className="label-caps">Mobile</span>
-          <input className={fieldClass + " mt-1"} value={form.mobile} onChange={set("mobile")} />
-        </label>
+        {editing !== "new" && contactsReady ? (
+          <p className="sm:col-span-2 text-small text-ink-500">Email and phone are on the primary contact below.</p>
+        ) : (
+          <>
+            <label className="block sm:col-span-2">
+              <span className="label-caps">Email</span>
+              <input className={fieldClass + " mt-1"} type="email" value={form.email} onChange={set("email")} />
+            </label>
+            <label className="block">
+              <span className="label-caps">Phone</span>
+              <input className={fieldClass + " mt-1"} value={form.phone} onChange={set("phone")} />
+            </label>
+            <label className="block">
+              <span className="label-caps">Mobile</span>
+              <input className={fieldClass + " mt-1"} value={form.mobile} onChange={set("mobile")} />
+            </label>
+          </>
+        )}
         <label className="block">
           <span className="label-caps">Status</span>
           <select className={fieldClass + " mt-1"} value={form.status} onChange={set("status")}>
@@ -135,6 +148,11 @@ export default function ClientsPanel({
         <Button size="sm" variant="ghost" onClick={() => setEditing(null)} disabled={busy}>Cancel</Button>
       </div>
       <p className="text-small text-ink-500">If the email matches a Portal login, the client is linked to that broker automatically.</p>
+      {editing && editing !== "new" && (
+        <div className="border-t border-hairline pt-3">
+          <ClientContacts clientId={editing} onReady={setContactsReady} />
+        </div>
+      )}
     </div>
   );
 

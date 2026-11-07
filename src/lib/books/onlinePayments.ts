@@ -27,9 +27,10 @@ import { stripe } from "@/lib/stripe";
 import { loadInvoiceById, PORTAL_ORIGIN, type InvoiceBundle } from "./invoices";
 import { postBillingEmail, emailShellHtml, esc } from "./invoiceEmail";
 import { sendReceiptEmail } from "./receiptEmail";
+import { loadClientContacts } from "./contacts";
 import { decryptSecret, secretsKeyConfigured } from "./secrets";
 import { approveLink, capturePaypalOrder, createPaypalOrder, firstCapture, getPaypalOrder, type PaypalCreds, type PaypalOrder } from "./paypal";
-import { fmtMoney, paymentSourceLabel, todayET, type BillingInvoice, type PaymentMethod, type ProcessorKind, type ProcessorView } from "./types";
+import { fmtMoney, greetingFirstName, invoiceRecipients, paymentSourceLabel, todayET, type BillingInvoice, type PaymentMethod, type ProcessorKind, type ProcessorView } from "./types";
 
 export const BILLING_INVOICE_KIND = "billing_invoice";
 
@@ -130,9 +131,13 @@ export async function recordOnlinePayment(
 
   // Receipt (best-effort — a failed email never un-records the payment).
   const fresh = await loadInvoiceById(admin, inv.id);
-  const to = looksLikeEmail(inv.sent_to) ? inv.sent_to : looksLikeEmail(p.payerEmail) ? p.payerEmail : null;
-  if ("bundle" in fresh && to) {
-    const err = await sendReceiptEmail(fresh.bundle, to, { amount, paidOn: todayET(), method: p.method, via, source: p.source });
+  // Same people the invoice went to (sent_to_all, else sent_to), else the payer.
+  const sentTo = invoiceRecipients("bundle" in fresh ? fresh.bundle.invoice : inv);
+  const to = sentTo.length ? sentTo : looksLikeEmail(p.payerEmail) ? [(p.payerEmail as string).trim().toLowerCase()] : [];
+  if ("bundle" in fresh && to.length) {
+    const contacts = await loadClientContacts(admin, fresh.bundle.invoice.client_id);
+    const greet = greetingFirstName(to, fresh.bundle.client, contacts);
+    const err = await sendReceiptEmail(fresh.bundle, to, { amount, paidOn: todayET(), method: p.method, via, source: p.source }, greet);
     if (err) console.warn(`[billing-pay] receipt for ${inv.id} failed: ${err}`);
   }
   return { duplicate: false };

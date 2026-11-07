@@ -8,7 +8,8 @@
  * billing_staff.profile_id as `owner_id`). Payment reminders (20261108):
  * per-login schedules, per-invoice pause, the daily billing_reminders job.
  * Online payment (20261108b): per-login processor (Stripe platform account or
- * the login's own PayPal), Pay online on /inv. Still to come: quotes.
+ * the login's own PayPal), Pay online on /inv. Contact persons (20261108c):
+ * several people per client, picked at send time. Still to come: quotes.
  */
 
 export type BrandKey = "yachtpics" | "ypdesigns";
@@ -187,6 +188,8 @@ export type BillingInvoice = {
   note: string | null;
   internal_note: string | null;
   sent_to: string | null;
+  /** Every recipient of the last send (sent_to = the first). Undefined until 20261108c. */
+  sent_to_all?: string[] | null;
   public_token: string;
   sent_at: string | null;
   first_viewed_at: string | null;
@@ -397,4 +400,69 @@ export function paymentSourceLabel(source: string | null | undefined): string {
   if (source === "stripe") return "via Stripe";
   if (source === "paypal") return "via PayPal";
   return "";
+}
+
+// ─── Contact persons (20261108c) ───────────────────────────────────────────
+
+export const CONTACTS_NOT_READY =
+  "Contacts aren't switched on yet — the 20261108c billing migration hasn't been added to the database.";
+
+/** Most addresses one invoice email goes to. */
+export const MAX_RECIPIENTS = 10;
+
+/** A person at a client (Zoho's "contact person"). The primary one mirrors the client's email / phone. */
+export type BillingClientContact = {
+  id: string;
+  client_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  /** Free label: "Accounts payable", "Assistant". */
+  role: string | null;
+  is_primary: boolean;
+  /** "Gets invoices" — pre-ticked in the Send dialog. */
+  send_by_default: boolean;
+  zoho_contact_person_id: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export function contactName(c: { first_name: string | null; last_name: string | null }): string {
+  return [c.first_name, c.last_name].filter((x) => !!x && !!String(x).trim()).join(" ").trim();
+}
+
+const RECIPIENT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Who reminders and receipts go to: everyone the invoice was last sent to
+ * (sent_to_all), else sent_to. Lower-cased, de-duplicated, valid only.
+ */
+export function invoiceRecipients(inv: { sent_to: string | null; sent_to_all?: string[] | null }): string[] {
+  const raw = inv.sent_to_all && inv.sent_to_all.length ? inv.sent_to_all : inv.sent_to ? [inv.sent_to] : [];
+  const out: string[] = [];
+  raw.forEach((e) => {
+    const v = String(e ?? "").trim().toLowerCase();
+    if (RECIPIENT_RE.test(v) && out.indexOf(v) === -1) out.push(v);
+  });
+  return out;
+}
+
+/**
+ * The first name to greet in a billing email ("Hi Angela,"), or "" for
+ * "Hello,". One recipient: that contact's first name (the client's first name
+ * when it's the client's own address). Several recipients: "" — they all see
+ * one email, so nobody is singled out.
+ */
+export function greetingFirstName(
+  recipients: string[],
+  client: { first_name: string | null; email: string | null } | null,
+  contacts: { first_name: string | null; email: string | null }[]
+): string {
+  if (recipients.length !== 1) return "";
+  const to = recipients[0];
+  const hit = contacts.filter((c) => (c.email ?? "").trim().toLowerCase() === to)[0];
+  const name = hit ? hit.first_name : client && (client.email ?? "").trim().toLowerCase() === to ? client.first_name : null;
+  return (name ?? "").trim().split(" ")[0];
 }

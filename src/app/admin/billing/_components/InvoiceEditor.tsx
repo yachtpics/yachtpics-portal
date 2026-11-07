@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import {
@@ -18,6 +18,10 @@ import {
   isOverdue,
   nextReminderDate,
   todayET,
+  contactName,
+  invoiceRecipients,
+  MAX_RECIPIENTS,
+  type BillingClientContact,
   type BillingInvoice,
   type BillingItem,
   type BillingPayment,
@@ -27,7 +31,7 @@ import {
 } from "@/lib/books/types";
 import { calcInvoice, calcLine } from "@/lib/books/totals";
 import { pickDefaultItem } from "@/lib/books/defaultLine";
-import { booksCall, fieldClass } from "./booksApi";
+import { booksCall, booksGet, fieldClass } from "./booksApi";
 import StatusBadge from "./StatusBadge";
 
 /*
@@ -48,6 +52,10 @@ import StatusBadge from "./StatusBadge";
  * Payment reminders (20261108): "Pause reminders" saves at once (allowed
  * after send); the card shows the last reminder and when the next would go,
  * from the login's own schedule (Settings → Payment reminders).
+ *
+ * Recipients (20261108c): the Send dialog lists the client's contacts as
+ * checkboxes (pre-ticked: the last send's recipients, else "Gets invoices",
+ * else the primary) plus one-off addresses; one email goes to all of them.
  */
 
 /** Payment reminder state for this invoice (from the page). ready=false: 20261108 not applied. */
@@ -329,7 +337,7 @@ export default function InvoiceEditor({
             {brands.length > 1 && <Badge>{BRAND_LABEL[inv.brand]}</Badge>}
           </div>
           <p className="text-small text-ink-500 mt-1">
-            {inv.sent_at ? `Sent ${fmtDate(inv.sent_at.slice(0, 10))}${inv.sent_to ? ` to ${inv.sent_to}` : ""}` : "Not sent yet"}
+            {inv.sent_at ? `Sent ${fmtDate(inv.sent_at.slice(0, 10))}${invoiceRecipients(inv).length ? ` to ${invoiceRecipients(inv).join(", ")}` : ""}` : "Not sent yet"}
             {inv.view_count ? ` · Viewed ${inv.view_count}× · last ${fmtDate((inv.last_viewed_at ?? "").slice(0, 10))}` : inv.sent_at ? " · Not viewed yet" : ""}
             {reminders?.last ? ` · Reminder sent ${fmtDate(dateET(reminders.last.sentAt))}` : ""}
           </p>
@@ -560,22 +568,26 @@ export default function InvoiceEditor({
 
       {sendOpen && (
         <SendDialog
-          defaultTo={inv.sent_to || (h.is_test ? "" : client?.email) || ""}
+          clientId={h.client_id}
+          clientName={client?.display_name ?? ""}
+          clientEmail={client?.email ?? ""}
+          lastSent={invoiceRecipients(inv)}
           resend={sentOnce}
           test={h.is_test}
           canMarkSent={inv.status === "draft"}
           busy={busy === "send"}
           onClose={() => setSendOpen(false)}
-          onSend={async (to, email) => {
+          onSend={async (to, email, saveContacts) => {
             setBusy("send");
             setError(null);
             if (dirty && !(await save())) { setBusy(null); return; }
-            const r = await booksCall(`/api/admin/books/invoices/${inv.id}/send`, "POST", { to, email });
+            const r = await booksCall(`/api/admin/books/invoices/${inv.id}/send`, "POST", email ? { to, email, saveContacts } : { email });
             setBusy(null);
             if (r.error) { setError(r.error); setSendOpen(false); router.refresh(); return; }
             setSendOpen(false);
             const label = h.is_test ? "Test invoice" : (r.data?.number as string);
-            setNotice(email ? `Sent ${label} to ${to}.` : `${label} marked as sent.`);
+            const saved = Number(r.data?.savedContacts ?? 0);
+            setNotice(email ? `Sent ${label} to ${to.join(", ")}.${saved ? ` Saved ${saved === 1 ? "1 new contact" : `${saved} new contacts`} on the client.` : ""}` : `${label} marked as sent.`);
             router.refresh();
           }}
         />
@@ -872,28 +884,141 @@ function BoatPicker({ disabled, boatName, boatLength, linked, onPick, onManual, 
   );
 }
 
-function SendDialog({ defaultTo, resend, test, canMarkSent, busy, onClose, onSend }: {
-  defaultTo: string; resend: boolean; test: boolean; canMarkSent: boolean; busy: boolean;
-  onClose: () => void; onSend: (to: string, email: boolean) => void;
+type Recipient = { email: string; name: string; role: string | null; primary: boolean; oneOff: boolean };
+
+const RECIPIENT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function SendDialog({ clientId, clientName, clientEmail, lastSent, resend, test, canMarkSent, busy, onClose, onSend }: {
+  clientId: string | null; clientName: string; clientEmail: string; lastSent: string[];
+  resend: boolean; test: boolean; canMarkSent: boolean; busy: boolean;
+  onClose: () => void; onSend: (to: string[], email: boolean, saveContacts: string[]) => void;
 }) {
-  const [to, setTo] = useState(defaultTo);
+  const [rows, setRows] = useState<Recipient[] | null>(null);
+  const [ticked, setTicked] = useState<string[]>([]);
+  const [saveAs, setSaveAs] = useState<string[]>([]);
+  const [other, setOther] = useState("");
+  const [otherErr, setOtherErr] = useState<string | null>(null);
+
+  // The client's contacts, fetched when the dialog opens (the client may have
+  // been changed on this draft). Before 20261108c, or with no contacts, the
+  // client's own email is the one row.
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      let contacts: BillingClientContact[] = [];
+      if (clientId) {
+        const r = await booksGet(`/api/admin/books/clients/${clientId}/contacts`);
+        if (!r.error) contacts = (r.data?.contacts as BillingClientContact[]) ?? [];
+      }
+      if (!live) return;
+      const list: Recipient[] = [];
+      const seen: string[] = [];
+      contacts.forEach((c) => {
+        const e = (c.email ?? "").trim().toLowerCase();
+        if (!e || seen.indexOf(e) !== -1) return;
+        seen.push(e);
+        list.push({ email: e, name: contactName(c), role: c.role, primary: c.is_primary, oneOff: false });
+      });
+      const ce = clientEmail.trim().toLowerCase();
+      if (ce && seen.indexOf(ce) === -1) { seen.push(ce); list.push({ email: ce, name: clientName, role: null, primary: !list.length, oneOff: false }); }
+      // Remember the last choice: earlier recipients who aren't contacts show as one-offs.
+      lastSent.forEach((e) => { if (seen.indexOf(e) === -1) { seen.push(e); list.push({ email: e, name: "", role: null, primary: false, oneOff: true }); } });
+
+      let pre: string[];
+      if (lastSent.length) pre = lastSent.slice();
+      else if (test) pre = [];
+      else {
+        const flagged = contacts.filter((c) => c.send_by_default && c.email).map((c) => (c.email as string).trim().toLowerCase());
+        const primary = list.filter((x) => x.primary).map((x) => x.email);
+        pre = flagged.length ? flagged : primary.length ? primary.slice(0, 1) : list.length ? [list[0].email] : [];
+      }
+      setRows(list);
+      setTicked(pre.filter((e) => seen.indexOf(e) !== -1));
+    })();
+    return () => { live = false; };
+  }, [clientId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggle = (e: string) => setTicked(ticked.indexOf(e) === -1 ? ticked.concat([e]) : ticked.filter((x) => x !== e));
+
+  /** Adds the typed address as a ticked one-off row; returns the list to send (or null if it's not an email). */
+  const addOther = (): string[] | null => {
+    const e = other.trim().toLowerCase();
+    if (!e) return ticked;
+    if (!RECIPIENT_RE.test(e)) { setOtherErr("That email doesn't look right."); return null; }
+    setOtherErr(null);
+    setOther("");
+    const list = rows ?? [];
+    if (!list.some((x) => x.email === e)) setRows(list.concat([{ email: e, name: "", role: null, primary: false, oneOff: true }]));
+    const next = ticked.indexOf(e) === -1 ? ticked.concat([e]) : ticked;
+    setTicked(next);
+    return next;
+  };
+
+  const send = () => {
+    const to = addOther();
+    if (!to || !to.length) return;
+    onSend(to, true, saveAs.filter((e) => to.indexOf(e) !== -1));
+  };
+
+  const count = ticked.length + (other.trim() && ticked.indexOf(other.trim().toLowerCase()) === -1 ? 1 : 0);
   return (
     <Overlay onClose={onClose}>
       <h2 className="text-h2 text-ink-900">{test ? (resend ? "Resend test invoice" : "Send test invoice") : resend ? "Resend invoice" : "Send invoice"}</h2>
       <p className="text-small text-ink-500 mt-1">
         {test
-          ? "A test invoice gets no number. It can only go to a billing staff address or an @yachtpics.com address."
+          ? "A test invoice gets no number. Everyone ticked must be a billing staff address or an @yachtpics.com address."
           : resend ? "Same number, a fresh email with the PDF attached." : "It gets its number now, and the client gets an email with a link and the PDF. It can't be edited after this — only voided."}
       </p>
-      <label className="block mt-4">
-        <span className="label-caps">To</span>
-        <input className={fieldClass + " mt-1"} type="email" value={to} onChange={(e) => setTo(e.target.value)} autoFocus />
-      </label>
-      <div className="flex flex-wrap gap-2 mt-5">
-        <Button onClick={() => onSend(to, true)} disabled={busy || !to.trim()}>{busy ? "Sending…" : "Send"}</Button>
-        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
-        {canMarkSent && <Button variant="ghost" className="sm:ml-auto" onClick={() => onSend(to, false)} disabled={busy}>Mark as sent, no email</Button>}
+      <div className="mt-4">
+        <span className="label-caps">Send to</span>
+        {rows === null ? (
+          <p className="text-small text-ink-400 mt-2">Loading contacts…</p>
+        ) : (
+          <ul className="mt-1.5 divide-y divide-hairline border border-hairline rounded-card">
+            {rows.length === 0 && <li className="px-3 py-2.5 text-small text-ink-500">This client has no email yet — add an address below.</li>}
+            {rows.map((r) => (
+              <li key={r.email} className="px-3 py-2">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input type="checkbox" className="mt-1" checked={ticked.indexOf(r.email) !== -1} onChange={() => toggle(r.email)} disabled={busy} />
+                  <span className="min-w-0">
+                    <span className="block text-sm text-ink-900">
+                      {r.name || r.email}
+                      {r.primary && <span className="text-small text-ink-500"> · primary</span>}
+                      {r.role && <span className="text-small text-ink-500"> · {r.role}</span>}
+                    </span>
+                    {r.name && <span className="block text-small text-ink-500 break-all">{r.email}</span>}
+                  </span>
+                </label>
+                {r.oneOff && clientId && (
+                  <label className="flex items-center gap-2 ml-7 mt-1 text-small text-ink-600">
+                    <input type="checkbox" checked={saveAs.indexOf(r.email) !== -1} disabled={busy}
+                      onChange={() => setSaveAs(saveAs.indexOf(r.email) === -1 ? saveAs.concat([r.email]) : saveAs.filter((x) => x !== r.email))} />
+                    Save as contact (gets this client&apos;s invoices from now on)
+                  </label>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
+      <label className="block mt-3">
+        <span className="label-caps">Add another address</span>
+        <div className="flex gap-2 mt-1">
+          <input className={fieldClass} type="email" value={other} placeholder="name@example.com" disabled={busy}
+            onChange={(e) => { setOther(e.target.value); setOtherErr(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addOther(); } }} />
+          <Button size="sm" variant="secondary" onClick={() => addOther()} disabled={busy || !other.trim()}>Add</Button>
+        </div>
+        {otherErr && <p className="text-small text-danger-700 mt-1">{otherErr}</p>}
+      </label>
+      {count > 1 && <p className="text-small text-ink-500 mt-3">One email goes to all {count} — they&apos;ll see each other&apos;s addresses.</p>}
+      {count > MAX_RECIPIENTS && <p className="text-small text-danger-700 mt-1">At most {MAX_RECIPIENTS} addresses.</p>}
+      <div className="flex flex-wrap gap-2 mt-5">
+        <Button onClick={send} disabled={busy || rows === null || count === 0 || count > MAX_RECIPIENTS}>{busy ? "Sending…" : "Send"}</Button>
+        <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+        {canMarkSent && <Button variant="ghost" className="sm:ml-auto" onClick={() => onSend([], false, [])} disabled={busy}>Mark as sent, no email</Button>}
+      </div>
+      {count === 0 && rows !== null && <p className="text-small text-ink-500 mt-2">Tick at least one person to send it to.</p>}
     </Overlay>
   );
 }

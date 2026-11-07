@@ -23,6 +23,7 @@ export default function SettingsPanel({ brands, people, invoicingReady }: { bran
       {people.map((p) => <PersonCard key={p.profile_id} person={p} invoicingReady={invoicingReady} />)}
       <BackupCard ready={invoicingReady} />
       <ImportCard />
+      <ContactsImportCard />
     </div>
   );
 }
@@ -269,6 +270,51 @@ function ImportCard() {
         <Msg msg={msg} />
         {result && <p className="text-sm text-ink-600">{result}</p>}
         <Button size="sm" variant="secondary" onClick={go} disabled={busy}>{busy ? "Importing…" : "Re-pull"}</Button>
+      </CardBody>
+    </Card>
+  );
+}
+
+/** Owner-only: Zoho "contact persons" export → each client's Contacts (20261108c). */
+function ContactsImportCard() {
+  const [file, setFile] = useState<File | null>(null);
+  const [result, setResult] = useState<string[] | null>(null);
+  const { busy, msg, run, setMsg } = useSaver();
+
+  const go = async () => {
+    if (!file) { setMsg({ ok: false, text: "Choose the contact persons CSV." }); return; }
+    const fd = new FormData();
+    fd.append("contacts", file);
+    setResult(null);
+    const res = await run("/api/admin/books/clients/import-contacts", "POST", fd, "Contacts imported.");
+    if (!res.error && res.data) {
+      const d = res.data as Record<string, unknown>;
+      const lines = [
+        `${d.rows} rows · ${d.clientsMatched} clients matched · ${d.added} contacts added · ${d.updated} updated · ${d.unchanged} already up to date${Number(d.madePrimary) ? ` · ${d.madePrimary} made primary` : ""} · ${d.skipped} skipped.`,
+      ];
+      const reasons = (d.skippedReasons ?? {}) as Record<string, number>;
+      Object.keys(reasons).forEach((k) => lines.push(`Skipped ${reasons[k]}: ${k}.`));
+      const ex = (d.skippedExamples ?? []) as string[];
+      if (ex.length) lines.push("Examples: " + ex.join("; "));
+      setResult(lines);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader
+        title="Import Zoho contacts (CSV)"
+        kicker="Zoho wind-down"
+        description="The contact persons export (columns zoho_contact_id, contact_person_id, is_primary_contact, first_name, last_name, email, phone, mobile, designation, department). Each person is added to the matching client's Contacts. Zoho's primary contact gets invoices; everyone else comes in unticked — open the client and tick “Gets invoices” for the people who should get them. Safe to run again: people already brought in are updated, not doubled, and your ticks stay."
+      />
+      <CardBody className="space-y-3">
+        <label className="block">
+          <span className="label-caps">Contact persons CSV</span>
+          <input type="file" accept=".csv,text/csv" className="mt-1 block w-full text-sm text-ink-600" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+        </label>
+        <Msg msg={msg} />
+        {result && <div className="text-sm text-ink-600 space-y-0.5">{result.map((l, i) => <p key={i}>{l}</p>)}</div>}
+        <Button size="sm" variant="secondary" onClick={go} disabled={busy}>{busy ? "Importing…" : "Import Zoho contacts (CSV)"}</Button>
       </CardBody>
     </Card>
   );

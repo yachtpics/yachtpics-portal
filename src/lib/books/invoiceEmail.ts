@@ -67,7 +67,7 @@ ${inner}
  */
 export async function postBillingEmail(
   b: InvoiceBundle,
-  opts: { to: string; subject: string; html: string; pdf: Uint8Array | null }
+  opts: { to: string | string[]; subject: string; html: string; pdf: Uint8Array | null }
 ): Promise<{ ok: boolean; id: string | null; message: string | null }> {
   if (!process.env.RESEND_API_KEY) return { ok: false, id: null, message: "Email isn't configured (RESEND_API_KEY)." };
   const fromName = (b.settings.fromName || b.brand.display_name).replace(/["<>]/g, "");
@@ -77,6 +77,7 @@ export async function postBillingEmail(
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({
         from: `${fromName} <${SENDER}>`,
+        // Several recipients go in ONE email (they see each other), never separate copies.
         to: opts.to,
         ...(b.settings.replyTo ? { reply_to: b.settings.replyTo } : {}),
         subject: opts.subject,
@@ -98,9 +99,13 @@ export function invoiceEmailSubject(b: InvoiceBundle): string {
   return `Invoice ${b.invoice.number ?? ""} from ${b.brand.display_name}${what ? ` — ${what}` : ""}`.replace(/\s+/g, " ").trim();
 }
 
-export function invoiceEmailHtml(b: InvoiceBundle): string {
+/**
+ * `greet` = the first name to greet (greetingFirstName), "" for "Hello,".
+ * Left out: the client's first name, as before contacts existed.
+ */
+export function invoiceEmailHtml(b: InvoiceBundle, greet?: string): string {
   const { invoice: inv, client, brand, settings } = b;
-  const first = (client?.first_name || client?.display_name || "").split(" ")[0];
+  const first = greet !== undefined ? greet : (client?.first_name || client?.display_name || "").split(" ")[0];
   const url = publicInvoiceUrl(inv.public_token);
   const what = inv.boat_name ? `for ${esc(inv.boat_name)}` : client?.company_name ? `for ${esc(client.company_name)}` : "";
   const pay = emailPayBlockHtml(b);
@@ -126,28 +131,31 @@ ${pay}
 ${footer}`);
 }
 
+/** One email to every address in `to` (all in the To line). */
 export async function sendInvoiceEmail(
   b: InvoiceBundle,
   pdf: Uint8Array,
-  to: string,
-  sentBy: string
+  to: string[],
+  sentBy: string,
+  greet?: string
 ): Promise<{ error: string | null }> {
   if (!process.env.RESEND_API_KEY) return { error: "Email isn't configured (RESEND_API_KEY)." };
+  if (!to.length) return { error: "No recipient." };
   const subject = invoiceEmailSubject(b);
   const logId = newEmailLogId();
-  const html = trackEmailHtml(invoiceEmailHtml(b), logId);
-  const r = await postBillingEmail(b, { to, subject, html, pdf });
+  const html = trackEmailHtml(invoiceEmailHtml(b, greet), logId);
+  const r = await postBillingEmail(b, { to: to.length === 1 ? to[0] : to, subject, html, pdf });
   await logEmail({
     id: logId,
     emailType: "billing_invoice",
-    recipientEmail: to,
+    recipientEmail: to.join(", "),
     recipientRole: "client",
     subject,
     status: r.ok ? "sent" : "failed",
     error: r.message,
     sentBy,
     listingId: b.invoice.listing_id,
-    metadata: { invoiceId: b.invoice.id, number: b.invoice.number, brand: b.brand.key },
+    metadata: { invoiceId: b.invoice.id, number: b.invoice.number, brand: b.brand.key, recipients: to },
   });
   return { error: r.message };
 }

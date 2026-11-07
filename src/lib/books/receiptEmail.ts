@@ -19,9 +19,10 @@ export function receiptEmailSubject(b: InvoiceBundle): string {
   return `Payment received — Invoice ${b.invoice.number ?? ""}`.replace(/\s+/g, " ").trim();
 }
 
-export function receiptEmailHtml(b: InvoiceBundle, p: { amount: number; paidOn: string; method: PaymentMethod; via: string }): string {
+/** `greet`: see invoiceEmailHtml (left out = the client's first name). */
+export function receiptEmailHtml(b: InvoiceBundle, p: { amount: number; paidOn: string; method: PaymentMethod; via: string }, greet?: string): string {
   const { invoice: inv, client, settings } = b;
-  const first = (client?.first_name || "").trim().split(" ")[0];
+  const first = greet !== undefined ? greet : (client?.first_name || "").trim().split(" ")[0];
   const signName = settings.fromName || settings.displayName;
   const rest = inv.balance_due > 0.005
     ? `<p style="margin:14px 0 0;font-size:14px;color:#374151;">Remaining balance: <strong>${esc(fmtMoney(inv.balance_due))}</strong></p>`
@@ -40,30 +41,35 @@ ${rest}
 ${emailFooterBlockHtml(b)}`);
 }
 
-/** Best-effort: returns the error text (never throws). */
+/**
+ * Best-effort: returns the error text (never throws). `to` = everyone the
+ * invoice was sent to (invoiceRecipients), in one email.
+ */
 export async function sendReceiptEmail(
   b: InvoiceBundle,
-  to: string,
-  p: { amount: number; paidOn: string; method: PaymentMethod; via: string; source: string }
+  to: string[],
+  p: { amount: number; paidOn: string; method: PaymentMethod; via: string; source: string },
+  greet?: string
 ): Promise<string | null> {
   try {
+    if (!to.length) return "No recipient.";
     const subject = receiptEmailSubject(b);
     const logId = newEmailLogId();
-    const html = trackEmailHtml(receiptEmailHtml(b, p), logId);
+    const html = trackEmailHtml(receiptEmailHtml(b, p, greet), logId);
     let pdf: Uint8Array | null = null;
     try { pdf = await buildInvoicePdf(b); } catch { pdf = null; }
-    const r = await postBillingEmail(b, { to, subject, html, pdf });
+    const r = await postBillingEmail(b, { to: to.length === 1 ? to[0] : to, subject, html, pdf });
     await logEmail({
       id: logId,
       emailType: "billing_receipt",
-      recipientEmail: to,
+      recipientEmail: to.join(", "),
       recipientRole: "client",
       subject,
       status: r.ok ? "sent" : "failed",
       error: r.message,
       sentBy: `billing_${p.source}`,
       listingId: b.invoice.listing_id,
-      metadata: { invoiceId: b.invoice.id, number: b.invoice.number, brand: b.brand.key, ownerId: b.invoice.owner_id, amount: p.amount, method: p.method, pdf: !!pdf },
+      metadata: { invoiceId: b.invoice.id, number: b.invoice.number, brand: b.brand.key, ownerId: b.invoice.owner_id, amount: p.amount, method: p.method, pdf: !!pdf, recipients: to },
     });
     return r.message;
   } catch (e) {

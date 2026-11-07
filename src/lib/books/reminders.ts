@@ -9,7 +9,8 @@
  * emailed (sent_to) and still has a balance: daysPast = today (ET) − due
  * date. The step due is the largest scheduled day ≤ daysPast; if neither it
  * nor a later step has gone yet, ONE reminder goes (so an invoice paused for
- * a while gets one catch-up, not three).
+ * a while gets one catch-up, not three). It goes to everyone the invoice was
+ * last sent to (sent_to_all, 20261108c), else sent_to — in one email.
  *
  * Safe to re-run the same day: a step is claimed by inserting its
  * billing_reminders_sent row (unique invoice_id + day) BEFORE the email goes;
@@ -20,7 +21,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingBillingTable } from "./staff";
 import { loadInvoiceByToken } from "./invoices";
 import { sendReminderEmail } from "./reminderEmail";
-import { cleanReminderDays, daysBetween, reminderStepDue, todayET } from "./types";
+import { loadClientContacts } from "./contacts";
+import { cleanReminderDays, daysBetween, greetingFirstName, invoiceRecipients, reminderStepDue, todayET } from "./types";
 
 export type ReminderRunResult = {
   /** Logins with reminders on. */
@@ -158,16 +160,25 @@ export async function runBillingReminders(
         continue;
       }
 
-      const r = await sendReminderEmail(b, to, step);
+      // Everyone the invoice was last sent to (sent_to_all, else sent_to) — one email, all in To.
+      const recipients = invoiceRecipients(cur);
+      if (!recipients.length) {
+        await release();
+        out.notDue++;
+        continue;
+      }
+      const contacts = await loadClientContacts(svc, cur.client_id);
+      const r = await sendReminderEmail(b, recipients, step, greetingFirstName(recipients, b.client, contacts));
       if (!r.ok) {
         await release();
         out.failed++;
         out.log.push(`${cur.number}: the reminder didn't go (${r.error ?? "unknown error"}) — will try again tomorrow.`);
         continue;
       }
-      await svc.from("billing_reminders_sent").update({ email_log_id: r.emailLogId, resend_id: r.resendId }).eq("id", claimId);
+      const toText = recipients.join(", ");
+      await svc.from("billing_reminders_sent").update({ email_log_id: r.emailLogId, resend_id: r.resendId, sent_to: toText }).eq("id", claimId);
       out.sent++;
-      out.log.push(`${who}: reminder for ${cur.number} (${step} day${step === 1 ? "" : "s"} past due) sent to ${to}.`);
+      out.log.push(`${who}: reminder for ${cur.number} (${step} day${step === 1 ? "" : "s"} past due) sent to ${toText}.`);
     }
   }
   return out;
