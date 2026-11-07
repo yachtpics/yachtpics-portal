@@ -8,6 +8,7 @@ import {
   BRAND_LABEL,
   LOCKED_MESSAGE,
   METHOD_LABEL,
+  paymentSourceLabel,
   PAYMENT_METHODS,
   dateET,
   fmtDate,
@@ -360,8 +361,8 @@ export default function InvoiceEditor({
                 {payments.map((p) => (
                   <li key={p.id} className="py-2.5 flex items-center justify-between gap-3 text-sm">
                     <span className="min-w-0">
-                      <span className="text-ink-900">{METHOD_LABEL[p.method]}</span>
-                      <span className="text-ink-500"> · {fmtDate(p.paid_on)}{p.reference ? ` · ${p.reference}` : ""}{p.source !== "manual" ? ` · ${p.source}` : ""}</span>
+                      <span className="text-ink-900">{METHOD_LABEL[p.method]}{p.source !== "manual" ? ` ${paymentSourceLabel(p.source)}` : ""}</span>
+                      <span className="text-ink-500"> · {fmtDate(p.paid_on)}{p.reference ? ` · ${p.reference}` : ""}</span>
                       {p.note && <span className="block text-small text-ink-500">{p.note}</span>}
                     </span>
                     <span className="flex items-center gap-2 shrink-0">

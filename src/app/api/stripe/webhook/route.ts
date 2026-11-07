@@ -11,6 +11,7 @@ import {
   isReelServiceSubscription,
 } from "@/lib/reelServiceStripe";
 import { planItemOf, syncWebsiteFromPlanSubscription } from "@/lib/websiteAddon";
+import { BILLING_INVOICE_KIND, handleBillingCheckoutEvent } from "@/lib/books/onlinePayments";
 
 export const runtime = "nodejs";
 // A paid Reel Service checkout plans the boat's month right here.
@@ -175,6 +176,28 @@ export async function POST(req: NextRequest) {
         }),
       });
     } catch { /* never fail the webhook over a notification */ }
+  }
+
+  // Billing invoices (phase 3, Nov 8): a one-off Checkout from the public
+  // /inv page, metadata kind = "billing_invoice". Routed FIRST and answered
+  // here — never falls through to the plan / Reel Service code below. The
+  // handler is safe to replay (unique (source, external_id) on
+  // billing_payments); 500 on error so Stripe retries.
+  if (
+    event.type === "checkout.session.completed" ||
+    event.type === "checkout.session.async_payment_succeeded" ||
+    event.type === "checkout.session.async_payment_failed"
+  ) {
+    const session = event.data.object as Stripe.Checkout.Session;
+    if (session.metadata?.kind === BILLING_INVOICE_KIND) {
+      try {
+        await handleBillingCheckoutEvent(supabase, event);
+        return NextResponse.json({ received: true });
+      } catch (err) {
+        console.error(`[billing-pay] webhook ${event.type} ${event.id} failed:`, err);
+        return NextResponse.json({ error: "Billing handler failed" }, { status: 500 });
+      }
+    }
   }
 
   // Reel Service (Oct 24): one Stripe subscription per boat, metadata

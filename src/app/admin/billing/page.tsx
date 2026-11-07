@@ -18,6 +18,8 @@ import ClientsPanel from "./_components/ClientsPanel";
 import CatalogPanel from "./_components/CatalogPanel";
 import SettingsPanel from "./_components/SettingsPanel";
 import ReminderSettings from "./_components/ReminderSettings";
+import OnlinePaymentSettings from "./_components/OnlinePaymentSettings";
+import { loadProcessor, processorView } from "@/lib/books/onlinePayments";
 import InvoicesPanel from "./_components/InvoicesPanel";
 import DashboardPanel from "./_components/DashboardPanel";
 import NewInvoiceButton from "./_components/NewInvoiceButton";
@@ -37,7 +39,7 @@ export const dynamic = "force-dynamic";
 
 type Tab = "overview" | "invoices" | "dashboard" | "clients" | "catalog" | "settings";
 // Settings is open to every login since payment reminders (20261108): each
-// login sets its own reminder schedule there. Everything else on that tab
+// login sets its own reminder schedule and online payments there. Everything else on that tab
 // (brands, logins, backups, Zoho re-pull) is still rendered for the owner only.
 const TABS: { key: Tab; label: string; ownerOnly?: boolean }[] = [
   { key: "overview", label: "Overview" },
@@ -286,7 +288,15 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
     const others = staff.isOwner
       ? scheds.filter((r) => r.profile_id !== staff.profileId && names[r.profile_id]).map((r) => ({ ...r, display_name: names[r.profile_id] }))
       : [];
-    reminderCard = <ReminderSettings ready={!schedErr} mine={mine} others={others} />;
+    // Online payments (20261108b): own processor only.
+    const proc = await loadProcessor(admin, staff.profileId);
+    const procView = proc.state === "ok" ? processorView(proc.row, staff.isOwner ? "stripe_platform" : "paypal") : null;
+    reminderCard = (
+      <div className="space-y-6">
+        <ReminderSettings ready={!schedErr} mine={mine} others={others} />
+        <OnlinePaymentSettings processor={procView} />
+      </div>
+    );
     if (!staff.isOwner) content = reminderCard;
   }
 

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isBrandKey, requireBillingStaff } from "@/lib/books/staff";
 import { dbError, isDate, toCsv } from "@/lib/books/api";
 import { listInvoices } from "@/lib/books/reports";
-import { BRAND_LABEL, METHOD_LABEL, STATUS_LABEL, todayET, type BrandKey, type PaymentMethod } from "@/lib/books/types";
+import { BRAND_LABEL, METHOD_LABEL, paymentSourceLabel, STATUS_LABEL, todayET, type BrandKey, type PaymentMethod } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
   ((pays ?? []) as { invoice_id: string; method: PaymentMethod; amount: number; paid_on: string; reference: string | null; note: string | null; source: string }[]).forEach((p) => {
     const inv = byId[p.invoice_id];
     if (!inv) return;
-    rows.push(["Payment", inv.number, BRAND_LABEL[inv.brand], STATUS_LABEL[inv.status], inv.client_name, inv.boat_name, inv.issue_date, inv.due_date, "", "", "", "", "", "", "", p.paid_on, METHOD_LABEL[p.method] + (p.source !== "manual" ? ` (${p.source})` : ""), Number(p.amount), p.reference, p.note]);
+    rows.push(["Payment", inv.number, BRAND_LABEL[inv.brand], STATUS_LABEL[inv.status], inv.client_name, inv.boat_name, inv.issue_date, inv.due_date, "", "", "", "", "", "", "", p.paid_on, METHOD_LABEL[p.method] + (p.source !== "manual" ? ` ${paymentSourceLabel(p.source)}` : ""), Number(p.amount), p.reference, p.note]);
   });
 
   return new NextResponse(toCsv(head, rows), {

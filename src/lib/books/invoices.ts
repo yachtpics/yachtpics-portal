@@ -154,6 +154,15 @@ export async function loadInvoice(admin: SupabaseClient, staff: BillingStaff, id
   return finish(admin, inv);
 }
 
+/** One invoice by id with NO login check — for the Stripe webhook / PayPal return only. */
+export async function loadInvoiceById(admin: SupabaseClient, id: string): Promise<Loaded> {
+  if (!/^[0-9a-f-]{36}$/i.test(id)) return { notFound: true };
+  const { data, error } = await admin.from("billing_invoices").select(INVOICE_COLS).eq("id", id).maybeSingle();
+  if (error) return isMissingBillingTable(error) ? { notReady: true } : { error: error.message };
+  if (!data) return { notFound: true };
+  return finish(admin, normInvoice(data as Record<string, unknown>));
+}
+
 export async function loadInvoiceByToken(admin: SupabaseClient, token: string): Promise<Loaded> {
   if (!/^[0-9a-f]{20,64}$/i.test(token)) return { notFound: true };
   const { data, error } = await admin.from("billing_invoices").select(INVOICE_COLS).eq("public_token", token).maybeSingle();

@@ -6,6 +6,8 @@ import { booksServiceClient } from "@/lib/books/staff";
 import { loadInvoiceByToken } from "@/lib/books/invoices";
 import { isBotUa } from "@/lib/emailTracking";
 import { CARD_FEE_NOTE } from "@/lib/books/invoicePdf";
+import { loadProcessor, onlinePayState } from "@/lib/books/onlinePayments";
+import { stripe } from "@/lib/stripe";
 import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "@/lib/books/types";
 
 export const dynamic = "force-dynamic";
@@ -23,9 +25,13 @@ export const metadata: Metadata = {
  * view_count / first_viewed_at / last_viewed_at — the trustworthy
  * replacement for Zoho's "viewed".
  *
- * PHASE 3: the Pay button (Stripe / PayPal) goes in the marked slot below.
+ * Phase 3 (20261108b): "Pay online" — Stripe Checkout (card / US bank) for a
+ * login on the YachtPics Stripe account, PayPal for a login with their own
+ * PayPal. Shown only for sent / part-paid invoices with a balance, not tests,
+ * when the invoice login's processor is on. ?paid=1 / ?payfail=1 come back
+ * from the processor (see /api/inv/[token]/pay and …/paypal/return).
  */
-export default async function PublicInvoicePage({ params }: { params: { token: string } }) {
+export default async function PublicInvoicePage({ params, searchParams }: { params: { token: string }; searchParams?: Record<string, string | string[] | undefined> }) {
   const admin = booksServiceClient();
   const r = await loadInvoiceByToken(admin, params.token);
   if (!("bundle" in r)) notFound();
@@ -49,6 +55,31 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
     : inv.status === "void" ? { text: "Void", cls: "bg-ink-100 text-ink-600 border-hairline" }
     : overdue ? { text: `Overdue · was due ${fmtDate(inv.due_date)}`, cls: "bg-danger-50 text-danger-700 border-danger-200" }
     : { text: inv.due_date_manual && inv.due_date ? `Due ${fmtDate(inv.due_date)}` : "Due on receipt", cls: "bg-ink-100 text-ink-700 border-hairline" };
+  // Online payment (20261108b). No processor table yet → no button.
+  const proc = await loadProcessor(admin, inv.owner_id);
+  const procRow = proc.state === "ok" ? proc.row : null;
+  const payState = onlinePayState(inv, procRow);
+  const payVia = procRow?.processor === "paypal" ? "PayPal or card" : "Card or US bank account";
+
+  // Back from the processor: re-read state; for Stripe, a bank payment shows "unpaid" until it clears.
+  const qp = (k: string) => { const v = searchParams?.[k]; return Array.isArray(v) ? v[0] : v; };
+  let returned: "paid" | "pending" | "bank" | "fail" | "processing" | null = null;
+  if (qp("paid") === "1") {
+    returned = inv.status === "paid" ? "paid" : "pending";
+    if (inv.status !== "paid" && procRow?.processor === "stripe_platform" && inv.stripe_checkout_session_id) {
+      try {
+        const sess = await stripe.checkout.sessions.retrieve(inv.stripe_checkout_session_id);
+        const pi = typeof sess.payment_intent === "string" ? sess.payment_intent : sess.payment_intent?.id;
+        if (sess.status === "complete" && sess.payment_status === "unpaid") returned = "bank";
+        else if (pi && r.bundle.payments.some((p) => p.source === "stripe" && p.external_id === pi)) returned = "paid";
+      } catch {
+        returned = "pending";
+      }
+    } else if (inv.status !== "paid" && procRow?.processor === "paypal" && r.bundle.payments.some((p) => p.source === "paypal")) {
+      returned = "paid"; // the return route records before it redirects here
+    }
+  } else if (qp("payfail") === "processing") returned = "processing";
+  else if (qp("payfail")) returned = "fail";
   const sentOn = dateET(inv.sent_at);
   const footer = invoiceFooter(brand, settings.paymentInstructions);
   const pdfHref = `/inv/${params.token}/pdf`;
@@ -56,6 +87,31 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
   return (
     <div className="min-h-screen bg-ink-50 py-8 sm:py-14 px-4">
       <div className="max-w-3xl mx-auto">
+        {returned === "paid" && (
+          <p className="mb-4 rounded-card border border-success-200 bg-success-50 px-4 py-2.5 text-sm font-semibold text-success-700 text-center">
+            Payment received, thank you.
+          </p>
+        )}
+        {returned === "pending" && (
+          <p className="mb-4 rounded-card border border-success-200 bg-success-50 px-4 py-2.5 text-sm font-semibold text-success-700 text-center">
+            Payment received — your invoice will update shortly.
+          </p>
+        )}
+        {returned === "bank" && (
+          <p className="mb-4 rounded-card border border-success-200 bg-success-50 px-4 py-2.5 text-sm font-semibold text-success-700 text-center">
+            Bank payment started, thank you. It takes a few business days to clear; the invoice updates when it does.
+          </p>
+        )}
+        {returned === "processing" && (
+          <p className="mb-4 rounded-card border border-hairline bg-white px-4 py-2.5 text-sm text-ink-700 text-center">
+            A bank payment for this invoice is already on its way. It takes a few business days to clear.
+          </p>
+        )}
+        {returned === "fail" && (
+          <p className="mb-4 rounded-card border border-hairline bg-white px-4 py-2.5 text-sm text-ink-700 text-center">
+            The payment didn&apos;t go through. You can try again or pay by check, Zelle or Venmo.
+          </p>
+        )}
         {inv.is_test && (
           <p className="mb-4 rounded-card border border-warn-200 bg-warn-50 px-4 py-2.5 text-sm font-semibold text-warn-700 text-center">
             Test invoice — not a real invoice. Nothing is owed.
@@ -138,7 +194,20 @@ export default async function PublicInvoicePage({ params }: { params: { token: s
 
           {inv.note && <p className="mt-8 text-sm text-ink-700 whitespace-pre-line">{inv.note}</p>}
 
-          {/* PHASE 3: Pay by card / PayPal button goes here (status sent/partial only). */}
+          {payState === "ok" && returned !== "bank" && returned !== "processing" && (
+            <form method="post" action={`/api/inv/${params.token}/pay`} className="mt-8 flex flex-col sm:flex-row sm:items-center gap-3">
+              <button
+                type="submit"
+                className="inline-flex items-center justify-center rounded-ctl bg-accent-500 text-ink-950 text-sm font-semibold px-6 py-3 hover:bg-accent-400 transition-colors duration-fast ease-quiet"
+              >
+                Pay online · {fmtMoney(inv.balance_due)}
+              </button>
+              <p className="text-small text-ink-500">{payVia}</p>
+            </form>
+          )}
+          {payState === "test" && (
+            <p className="mt-8 text-small text-ink-500">Test invoice — online payment disabled.</p>
+          )}
 
           {settings.paymentInstructions && inv.status !== "paid" && inv.status !== "void" && (
             <div className="mt-8 rounded-card border border-hairline bg-ink-50 px-5 py-4">

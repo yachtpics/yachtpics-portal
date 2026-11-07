@@ -7,7 +7,8 @@
  * dashboard, CSV export and backups (each login's book is keyed by
  * billing_staff.profile_id as `owner_id`). Payment reminders (20261108):
  * per-login schedules, per-invoice pause, the daily billing_reminders job.
- * Still to come: Stripe / PayPal payments and quotes.
+ * Online payment (20261108b): per-login processor (Stripe platform account or
+ * the login's own PayPal), Pay online on /inv. Still to come: quotes.
  */
 
 export type BrandKey = "yachtpics" | "ypdesigns";
@@ -170,6 +171,9 @@ export type BillingInvoice = {
   is_test?: boolean;
   /** No payment reminders while true ("a check is on the way"). Undefined until 20261108. */
   reminders_paused?: boolean;
+  /** Last Stripe Checkout / PayPal order started from /inv. Undefined until 20261108b. */
+  stripe_checkout_session_id?: string | null;
+  paypal_order_id?: string | null;
   subtotal: number;
   discount_total: number;
   tax_rate: number;
@@ -221,6 +225,7 @@ export type BillingPayment = {
   reference: string | null;
   note: string | null;
   source: "manual" | "stripe" | "paypal";
+  external_id?: string | null;
   created_at: string;
 };
 
@@ -364,4 +369,32 @@ export function nextReminderDate(dueDate: string | null, days: number[], sentDay
     if (days[i] > past && days[i] > maxSent) return addDays(dueDate, days[i]);
   }
   return null;
+}
+
+// ─── Online payment (20261108b) ────────────────────────────────────────────
+
+export const PROCESSORS_NOT_READY =
+  "Online payments aren't switched on yet — the 20261108b billing migration hasn't been added to the database.";
+
+/** Which account takes a login's online payments. A setting per login, not hard-coded. */
+export type ProcessorKind = "stripe_platform" | "paypal";
+export type PaypalEnv = "live" | "sandbox";
+
+/** A login's processor as the browser sees it — the PayPal secret never leaves the server. */
+export type ProcessorView = {
+  processor: ProcessorKind;
+  enabled: boolean;
+  paypalClientId: string | null;
+  paypalEnv: PaypalEnv;
+  /** A PayPal secret is stored (shown as dots). */
+  secretSaved: boolean;
+  /** BILLING_SECRETS_KEY is set on the server (needed to save a PayPal secret). */
+  keyConfigured: boolean;
+};
+
+/** "via Stripe" / "via PayPal" after an online payment's method; "" for manual ones. */
+export function paymentSourceLabel(source: string | null | undefined): string {
+  if (source === "stripe") return "via Stripe";
+  if (source === "paypal") return "via PayPal";
+  return "";
 }
