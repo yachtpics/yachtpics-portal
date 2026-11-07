@@ -5,13 +5,17 @@
  * gaussian of about 24px at 1080 wide on Medium) and darkened by a quarter,
  * crossfading to another photograph every `bgEvery` seconds — the cover,
  * then up to three more (profiles, running shots and aerials first). Over
- * it the listing's photographs scroll steadily upward on small rounded,
- * softly shadowed cards in a loose masonry: one or two columns, mixed 3:2
- * and 4:5 crops, the second column offset from the first. The layout is
- * random but seeded from the listing and its photographs, so every render
- * of the same selection is identical. Every photograph is shown before any
- * repeats; the strip is as long as the reel needs. The scroll eases to a
- * stop over the last two seconds and dissolves into the end card.
+ * it the listing's photographs drift upward as a loose pile of instant
+ * prints (Charlie's rework, Nov 7): one column of large polaroids, ~78–84%
+ * of the frame wide, each photograph (cropped 3:2 or 4:5) in a white frame
+ * with an even ~3% border and a deeper ~12% foot, a soft drop shadow, barely
+ * rounded corners, a slight tilt that alternates from one print to the next,
+ * and each print overlapping the one before by ~8–12% of its height (the
+ * later print on top). The layout is random but seeded from the listing and
+ * its photographs, so every render of the same selection is identical.
+ * Every photograph is shown before any repeats; the strip is as long as the
+ * reel needs. The scroll eases to a stop over the last two seconds and
+ * dissolves into the end card.
  *
  * Pure drawing helpers — no DOM lookups — so ReelMaker and a local frame
  * check can both call them. ReelMaker owns the timeline (planBlurScroll in
@@ -21,21 +25,24 @@
 import { seededRandom } from "./reelTransitions";
 
 export type BlurScrollOptions = {
-  columns: 1 | 2;
   blur: "low" | "medium" | "high";
   speed: "slow" | "normal" | "fast";
   /** Seconds between background changes. */
   bgEvery: number;
+  /** How far each print leans: none, slight (3–5°) or more (5–7°). */
+  tilt: "none" | "slight" | "more";
 };
 
-export const BLUR_SCROLL_DEFAULTS: BlurScrollOptions = { columns: 2, blur: "medium", speed: "normal", bgEvery: 8 };
+export const BLUR_SCROLL_DEFAULTS: BlurScrollOptions = { blur: "medium", speed: "normal", bgEvery: 8, tilt: "slight" };
 /** Offered in the admin builder. */
 export const BLUR_SCROLL_BG_CHOICES = [6, 8, 12];
 
 /** Gaussian blur radius at a 1080px-wide frame (scaled with the frame). */
 export const BLUR_SCROLL_BLUR_PX: Record<BlurScrollOptions["blur"], number> = { low: 12, medium: 24, high: 40 };
-/** Seconds an average card spends on screen, bottom edge to top edge. */
-export const BLUR_SCROLL_ON_SCREEN: Record<BlurScrollOptions["speed"], number> = { slow: 4.5, normal: 3, fast: 2.2 };
+/** Seconds an average print spends on screen, bottom edge to top edge. */
+export const BLUR_SCROLL_ON_SCREEN: Record<BlurScrollOptions["speed"], number> = { slow: 6, normal: 4.5, fast: 3.2 };
+/** Tilt range per option, in degrees (sign alternates print to print). */
+const TILT_DEG: Record<BlurScrollOptions["tilt"], [number, number]> = { none: [0, 0], slight: [3, 5], more: [5, 7] };
 
 /** The scroll eases to a stop over this many seconds at the end of its unit. */
 export const BLUR_SCROLL_SETTLE = 2;
@@ -51,52 +58,60 @@ const BG_DARKEN = 0.25;
 const BG_MAX = 4;
 const BG_CATEGORIES = ["profiles", "profiles running", "aerial"];
 
+/** Print proportions, as shares of the print's width. */
+const PRINT_BORDER = 0.03;
+const PRINT_FOOT = 0.12;
+
 type Img = CanvasImageSource & { width: number; height: number };
 type MakeCanvas = (w: number, h: number) => HTMLCanvasElement;
 
-export type ScrollCard = { index: number; x: number; y: number; w: number; h: number };
+/**
+ * One print. (x, y) is its top-left before the tilt; `angle` (radians)
+ * turns it about its centre. The photograph sits `pad` in from the top and
+ * sides, `photoH` tall; the foot below it is the rest.
+ */
+export type ScrollCard = { index: number; x: number; y: number; w: number; h: number; angle: number; pad: number; photoH: number };
 export type ScrollLayout = {
   cards: ScrollCard[];
   /** Pixels per second while cruising. */
   speed: number;
-  margin: number;
   radius: number;
 };
 
 /**
- * Lay the strip out. `shapes[i]` is photograph i's width / height (decides
+ * Lay the pile out. `shapes[i]` is photograph i's width / height (decides
  * whether a 4:5 crop is likely); the strip runs until it covers the whole
  * scroll of a unit `hold` seconds long, plus a screen.
  */
 export function layoutBlurScroll(o: {
   shapes: number[]; W: number; H: number; sc: number;
-  columns: 1 | 2; speed: BlurScrollOptions["speed"]; hold: number; seed: number;
+  speed: BlurScrollOptions["speed"]; tilt: BlurScrollOptions["tilt"]; hold: number; seed: number;
 }): ScrollLayout {
   const { shapes, W, H, sc, hold } = o;
   const n = shapes.length;
-  const cols = o.columns === 1 ? 1 : 2;
-  const margin = (cols === 2 ? 44 : 120) * sc;
-  const gap = 26 * sc;
-  const cw = cols === 2 ? (W - margin * 2 - gap) / 2 : W - margin * 2;
-  const avgH = cw * ((1 / 1.5 + 1.25) / 2);
+  // An average print: 81% wide, a photo half 3:2 / half 4:5, its frame.
+  const avgW = W * 0.81;
+  const avgH = avgW * (PRINT_BORDER + PRINT_FOOT) + avgW * (1 - 2 * PRINT_BORDER) * ((1 / 1.5 + 1.25) / 2);
   const speed = (H + avgH) / BLUR_SCROLL_ON_SCREEN[o.speed];
-  const radius = 16 * sc;
+  const radius = 2.5 * sc;
   const cards: ScrollCard[] = [];
-  if (n === 0) return { cards, speed, margin, radius };
+  if (n === 0) return { cards, speed, radius };
 
   const rand = seededRandom(o.seed * 17 + 3);
   const need = scrollOffset(hold + 10, hold, speed) + H + avgH;
-  // Column heads. The second column starts half a card higher, so the two
-  // never line up across the frame.
-  const colY = cols === 2 ? [36 * sc, 36 * sc - avgH * 0.5] : [36 * sc];
+  const [tMin, tMax] = TILT_DEG[o.tilt] ?? TILT_DEG.slight;
   // Play order: the selection as chosen, then seeded reshuffles of it — each
   // pass shows every photograph once, and no photograph follows itself.
   let order: number[] = [];
   for (let i = 0; i < n; i++) order.push(i);
   let k = 0;
-  let lastAspect: number[] = [0, 0];
+  let run = 0; // >0: that many 4:5 in a row; <0: that many 3:2
+  let sign = rand() < 0.5 ? -1 : 1;
+  // The first print starts a little below the top so frame one is a pile,
+  // not a print cut in half.
+  let y = 70 * sc;
   let guard = 0;
-  while (Math.min.apply(null, colY) < need && guard++ < 5000) {
+  while (y < need && guard++ < 5000) {
     if (k >= order.length) {
       const prevLast = order[order.length - 1];
       const next = order.slice();
@@ -109,25 +124,27 @@ export function layoutBlurScroll(o: {
       k = 0;
     }
     const index = order[k++];
-    // The shorter column takes the next card — that is the masonry.
-    let col = 0;
-    if (cols === 2 && colY[1] < colY[0]) col = 1;
     // Crop: a portrait photograph usually gets the taller 4:5; a landscape
-    // the 3:2 more often than not. Never three of one shape running in a
-    // column, so the rhythm stays loose.
+    // the 3:2 more often than not. Never three of one shape running.
     const portrait = (shapes[index] || 1.5) < 1;
     let tall = rand() < (portrait ? 0.8 : 0.4);
-    const run = lastAspect[col];
     if (run >= 2 && tall) tall = false;
     else if (run <= -2 && !tall) tall = true;
-    lastAspect[col] = tall ? (run > 0 ? run + 1 : 1) : (run < 0 ? run - 1 : -1);
-    const h = tall ? cw * 1.25 : cw / 1.5;
-    const jitter = (rand() - 0.5) * 12 * sc;
-    const x = margin + col * (cw + gap) + (cols === 2 ? jitter : 0);
-    cards.push({ index, x, y: colY[col], w: cw, h });
-    colY[col] += h + gap * (0.85 + rand() * 0.6);
+    run = tall ? (run > 0 ? run + 1 : 1) : (run < 0 ? run - 1 : -1);
+    const w = W * (0.78 + rand() * 0.06);
+    const pad = w * PRINT_BORDER;
+    const photoW = w - pad * 2;
+    const photoH = tall ? photoW * 1.25 : photoW / 1.5;
+    const h = pad + photoH + w * PRINT_FOOT;
+    const x = (W - w) / 2 + (rand() - 0.5) * W * 0.05;
+    const deg = tMin + rand() * (tMax - tMin);
+    const angle = (sign * deg * Math.PI) / 180;
+    sign = -sign;
+    cards.push({ index, x, y, w, h, angle, pad, photoH });
+    // The next print overlaps this one by 8–12% of this one's height.
+    y += h * (1 - (0.08 + rand() * 0.04));
   }
-  return { cards, speed, margin, radius };
+  return { cards, speed, radius };
 }
 
 /**
@@ -261,29 +278,40 @@ export function drawBlurScroll(ctx: CanvasRenderingContext2D, o: {
     }
   }
   const off = scrollOffset(local, hold, layout.speed);
+  // Scroll order is draw order: each later print lies on top of the one
+  // before it, so the pile reads as dealt from the bottom.
   for (let c = 0; c < layout.cards.length; c++) {
     const card = layout.cards[c];
     const y = card.y - off;
-    if (y > H + 40 * sc) break; // cards are laid out top to bottom per column; past the frame on both, stop
-    if (y + card.h < -40 * sc) continue;
+    // Tilted, a print reaches a little past its own box; allow for it.
+    const slack = card.w * 0.15;
+    if (y > H + slack) break; // laid out top to bottom: everything after is below the frame
+    if (y + card.h < -slack) continue;
     const img = o.images[card.index];
     if (!img) continue;
-    // The shadow, on a plate the size of the card.
     ctx.save();
-    ctx.shadowColor = "rgba(0,0,0,0.42)";
-    ctx.shadowBlur = 28 * sc;
-    ctx.shadowOffsetY = 10 * sc;
-    roundRectPath(ctx, card.x, y, card.w, card.h, layout.radius);
-    ctx.fillStyle = o.ground;
+    ctx.translate(card.x + card.w / 2, y + card.h / 2);
+    ctx.rotate(card.angle);
+    const x0 = -card.w / 2, y0 = -card.h / 2;
+    // The print, with its shadow.
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.45)";
+    ctx.shadowBlur = 34 * sc;
+    ctx.shadowOffsetY = 12 * sc;
+    roundRectPath(ctx, x0, y0, card.w, card.h, layout.radius);
+    ctx.fillStyle = "#fbfaf7";
     ctx.fill();
     ctx.restore();
-    // The photograph, cropped to cover the card.
+    // The photograph, cropped to cover its window in the print.
+    const pw = card.w - card.pad * 2;
     ctx.save();
-    roundRectPath(ctx, card.x, y, card.w, card.h, layout.radius);
+    ctx.beginPath();
+    ctx.rect(x0 + card.pad, y0 + card.pad, pw, card.photoH);
     ctx.clip();
-    const s = Math.max(card.w / img.width, card.h / img.height);
+    const s = Math.max(pw / img.width, card.photoH / img.height);
     const dw = img.width * s, dh = img.height * s;
-    ctx.drawImage(img, card.x + (card.w - dw) / 2, y + (card.h - dh) / 2, dw, dh);
+    ctx.drawImage(img, x0 + card.pad + (pw - dw) / 2, y0 + card.pad + (card.photoH - dh) / 2, dw, dh);
+    ctx.restore();
     ctx.restore();
   }
   ctx.restore();

@@ -1692,7 +1692,7 @@ export default function ReelMaker({
         bsLayout = layoutBlurScroll({
           shapes: selectedPhotos.map((_, i) => (bitmaps[i] ? bitmaps[i].width / Math.max(1, bitmaps[i].height) : 1.5)),
           W, H, sc: Math.min(W, H) / 1080,
-          columns: blurScrollOpts.columns, speed: blurScrollOpts.speed,
+          speed: blurScrollOpts.speed, tilt: blurScrollOpts.tilt,
           hold: bsUnit.hold, seed: seedFromString(seedStr),
         });
         blurScrollBackgrounds(selectedPhotos.map((p) => p.category ?? null)).forEach((i) => {
@@ -3617,9 +3617,9 @@ export default function ReelMaker({
           <p className="label-caps text-ink-500 mb-2">Blur scroll options <span className="normal-case font-normal text-ink-400">(admin)</span></p>
           <div className="space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-ink-500 w-28">Columns</span>
-              {([1, 2] as BlurScrollOptions["columns"][]).map((v) => (
-                <button key={v} onClick={() => { setBlurScrollOpts({ ...blurScrollOpts, columns: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(blurScrollOpts.columns === v)}>{v}</button>
+              <span className="text-xs text-ink-500 w-28">Tilt</span>
+              {([["none", "None"], ["slight", "Slight"], ["more", "More"]] as [BlurScrollOptions["tilt"], string][]).map(([v, label]) => (
+                <button key={v} onClick={() => { setBlurScrollOpts({ ...blurScrollOpts, tilt: v }); setResult(null); setPhase("idle"); }} disabled={busy} className={chip(blurScrollOpts.tilt === v)}>{label}</button>
               ))}
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -3641,7 +3641,7 @@ export default function ReelMaker({
               ))}
             </div>
           </div>
-          <p className="text-xs text-ink-400 mt-2">Normal keeps each photo on screen about 3 seconds (slow 4.5, fast 2.2). Every photo shows before any repeats; the layout is the same every time for the same photos.</p>
+          <p className="text-xs text-ink-400 mt-2">Normal keeps each photo on screen about 4.5 seconds (slow 6, fast 3.2). Every photo shows before any repeats; the layout is the same every time for the same photos.</p>
         </div>
       )}
 

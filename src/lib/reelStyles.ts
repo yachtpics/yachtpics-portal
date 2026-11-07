@@ -87,8 +87,9 @@ export type ReelStyle = {
    *
    * "blur_scroll" (Nov 7): the cover blurred behind everything, crossfading
    * to another photograph every few seconds, and the listing's photographs
-   * scrolling up over it on rounded cards in a loose masonry
-   * (@/lib/reelBlurScroll). Reels only, photographs only.
+   * drifting up over it
+   * (@/lib/reelBlurScroll) — one column of tilted, overlapping instant
+   * prints. Reels only, photographs only.
    */
   layout?: "single" | "stack" | "marquee" | "logo_stack" | "blur_scroll";
   /**
@@ -550,16 +551,17 @@ export const REEL_STYLES: Record<StyleKey, ReelStyle> = {
    *
    * The cover photograph fills the frame behind everything, blurred and
    * darkened, crossfading to another photograph every eight seconds or so.
-   * Over it the listing's photographs scroll steadily upward on small
-   * rounded cards in two loose columns — mixed 3:2 and 4:5 crops, offset
-   * from each other — laid out from a seed so every render of the same
+   * Over it the listing's photographs drift slowly upward as a loose pile of
+   * large instant prints — one column, white frames with a deep foot, mixed
+   * 3:2 and 4:5 crops, each tilted a little the other way from the last and
+   * overlapping it — laid out from a seed so every render of the same
    * photographs is identical. Every photograph shows before any repeats.
    * The scroll eases to a stop over the last two seconds, into the end card.
    */
   blur_scroll: {
     key: "blur_scroll",
     name: "Blur scroll",
-    blurb: "Photos drifting up in two columns over a soft, blurred cover.",
+    blurb: "Photos drifting up as a pile of instant prints over a soft, blurred cover.",
     ground: "#050b14",
     text: "#ffffff",
     soft: "rgba(255,255,255,0.86)",
