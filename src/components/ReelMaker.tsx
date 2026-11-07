@@ -1660,7 +1660,9 @@ export default function ReelMaker({
       // Logo stack (Nov 7): the bands, the plate, and the mark on it — the
       // end card's logo, or YachtPics' when the brokerage has none or the
       // admin chose ours (the white mark on a dark plate, the dark on a light).
-      const lsBands = logoStackBands(W, H, logoStackOpts.middle);
+      // Keep clear of social overlays (default on): the bands sit in the
+      // 11%–79% block and the band colour fills the frame around them.
+      const lsBands = logoStackBands(W, H, logoStackOpts.middle, logoStackOpts.safeZone);
       const lsPlate = logoStackPlate(logoStackOpts.background, st.accent);
       let lsMark: (CanvasImageSource & { width: number; height: number }) | null = null;
       const lsLine = logoStackOpts.showName
@@ -2647,13 +2649,16 @@ export default function ReelMaker({
       /**
        * Logo stack (Nov 7): Stack's band swaps in the top and bottom bands
        * (rows 0 and 1 of the unit's events), the logo band between them,
-       * unchanging. No seams: the plate's own edge divides the frame.
+       * unchanging. No seams: the plate's own edge divides the frame. With
+       * the safe zone on, the frame outside the bands is the band colour too
+       * (one framed composition, not a letterbox); every swap is clipped to
+       * its band (drawBand), so nothing moves into the overlay areas.
        */
       const drawLogoStack = (events: StackEvent[], runEnd: number, t: number, alpha: number) => {
         stackAlpha = alpha;
         ctx.save();
         ctx.globalAlpha = alpha;
-        ctx.fillStyle = st.ground;
+        ctx.fillStyle = logoStackOpts.safeZone ? lsPlate : st.ground;
         ctx.fillRect(0, 0, W, H);
         ctx.restore();
         drawStackRow(events, 0, lsBands.top, runEnd, t, false);
@@ -3592,6 +3597,16 @@ export default function ReelMaker({
                 className="h-4 w-4 rounded border-hairline-strong text-accent-600 focus:ring-accent-500"
               />
               Boat name and length under the logo
+            </label>
+            <label className="flex items-center gap-2 text-xs text-ink-600 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={logoStackOpts.safeZone}
+                disabled={busy}
+                onChange={(e) => { setLogoStackOpts({ ...logoStackOpts, safeZone: e.target.checked }); setResult(null); setPhase("idle"); }}
+                className="h-4 w-4 rounded border-hairline-strong text-accent-600 focus:ring-accent-500"
+              />
+              Keep clear of Instagram/Facebook overlays
             </label>
           </div>
           <p className="text-xs text-ink-400 mt-2">The logo is the end card&rsquo;s; with no brokerage logo, YachtPics&rsquo; is used. Accent is the look&rsquo;s accent, or the broker&rsquo;s colour when set.</p>

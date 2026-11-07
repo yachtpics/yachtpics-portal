@@ -24,9 +24,26 @@ export type LogoStackOptions = {
   showName: boolean;
   /** Whose logo: the brokerage's (end card's), or YachtPics'. */
   logo: "brokerage" | "yachtpics";
+  /**
+   * Keep clear of Instagram/Facebook overlays: the bands occupy only
+   * SAFE_TOP–SAFE_BOTTOM of the frame (the username/audio row above, the
+   * caption and right-hand buttons below), with the band colour filling the
+   * frame around them so it reads as one framed composition.
+   */
+  safeZone: boolean;
 };
 
-export const LOGO_STACK_DEFAULTS: LogoStackOptions = { middle: "third", background: "navy", showName: false, logo: "brokerage" };
+export const LOGO_STACK_DEFAULTS: LogoStackOptions = { middle: "third", background: "navy", showName: false, logo: "brokerage", safeZone: true };
+
+/**
+ * The share of a 9:16 frame Instagram and Facebook leave uncovered on a
+ * reel: their header (username, audio) sits over the top ~11%, the caption
+ * and the right-hand buttons over the bottom ~21%. 1080×1920 → 211 to 1517.
+ * A picture rule, unlike ReelMaker's type rules (14% top, 65% floor), which
+ * only keep TEXT out of the way.
+ */
+export const SOCIAL_SAFE_TOP = 0.11;
+export const SOCIAL_SAFE_BOTTOM = 0.79;
 export const LOGO_STACK_NAVY = "#0b1d36";
 const MIDDLE_FRACTION: Record<LogoStackOptions["middle"], number> = { third: 1 / 3, quarter: 1 / 4, fifth: 1 / 5 };
 
@@ -38,14 +55,24 @@ type Rect = { x: number; y: number; w: number; h: number };
 type Img = CanvasImageSource & { width: number; height: number };
 type MakeCanvas = (w: number, h: number) => HTMLCanvasElement;
 
-/** The three bands on a W×H frame. The photo bands split what the logo band leaves. */
-export function logoStackBands(W: number, H: number, middle: LogoStackOptions["middle"]): { top: Rect; mid: Rect; bottom: Rect } {
-  const midH = Math.round(H * (MIDDLE_FRACTION[middle] ?? MIDDLE_FRACTION.third));
-  const photoH = Math.round((H - midH) / 2);
+/**
+ * The three bands on a W×H frame. The logo band takes its fraction of the
+ * block the bands occupy — the whole frame, or with `safe` the
+ * SOCIAL_SAFE_TOP–SOCIAL_SAFE_BOTTOM block — and the photo bands split
+ * what it leaves. `block` is that block; outside it the renderer fills the
+ * band colour.
+ */
+export function logoStackBands(W: number, H: number, middle: LogoStackOptions["middle"], safe = false): { top: Rect; mid: Rect; bottom: Rect; block: Rect } {
+  const y0 = safe ? Math.round(H * SOCIAL_SAFE_TOP) : 0;
+  const y1 = safe ? Math.round(H * SOCIAL_SAFE_BOTTOM) : H;
+  const bh = y1 - y0;
+  const midH = Math.round(bh * (MIDDLE_FRACTION[middle] ?? MIDDLE_FRACTION.third));
+  const photoH = Math.round((bh - midH) / 2);
   return {
-    top: { x: 0, y: 0, w: W, h: photoH },
-    mid: { x: 0, y: photoH, w: W, h: midH },
-    bottom: { x: 0, y: photoH + midH, w: W, h: H - photoH - midH },
+    top: { x: 0, y: y0, w: W, h: photoH },
+    mid: { x: 0, y: y0 + photoH, w: W, h: midH },
+    bottom: { x: 0, y: y0 + photoH + midH, w: W, h: bh - photoH - midH },
+    block: { x: 0, y: y0, w: W, h: bh },
   };
 }
 
