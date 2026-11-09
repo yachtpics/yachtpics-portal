@@ -6,6 +6,17 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type FolderTarget } from "@/lib/zipDownload";
+import { DOWNLOAD_SIZES, type DownloadSize } from "@/components/listing-photos/useDownloads";
+
+/** The size the broker's downloads use — the same remembered choice as the
+ *  size menu on the listing page (Web & MLS unless they picked another). */
+function rememberedDownloadSize(): DownloadSize {
+  try {
+    const v = localStorage.getItem("yp_download_size");
+    if (v === "full" || v === "web" || v === "social") return v;
+  } catch { /* private mode */ }
+  return "web";
+}
 
 // Zips stream through src/lib/zipDownload.ts (its own small store-mode writer — unlike
 // JSZip, which used to be loaded on demand here and held the whole zip in memory).
@@ -52,6 +63,11 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   const separateAbort = useRef<AbortController | null>(null);
   const [canFolder, setCanFolder] = useState(false);
   useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
+  // Size this row's download uses (Nov 9): it used to send the originals
+  // whatever the size menu said — 10–30 MB each since the hi-res uploads.
+  const [rowSize, setRowSize] = useState<DownloadSize>("web");
+  useEffect(() => { setRowSize(rememberedDownloadSize()); }, []);
+  const rowSizeInfo = DOWNLOAD_SIZES.find((o) => o.value === rowSize) ?? DOWNLOAD_SIZES[0];
 
   // Share state
   const [shareCopied, setShareCopied] = useState(false);
@@ -158,14 +174,17 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     // while the click still counts as a gesture; then the photos stream into
     // it one by one (any size). Browsers without the dialog get zip parts.
     // "folder": the photos are written into a folder the broker picks.
-    const zipBase = `${listing.vessel_name ?? "photos"}-photos`;
+    const size = rememberedDownloadSize();
+    setRowSize(size);
+    const sizeInfo = DOWNLOAD_SIZES.find((o) => o.value === size) ?? DOWNLOAD_SIZES[0];
+    const zipBase = `${listing.vessel_name ?? "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}`;
     let folder: Extract<FolderTarget, { kind: "folder" }> | null = null;
     if (mode === "folder") {
-      const f = await openFolderTarget(`${listing.vessel_name ?? "Photos"} – Full resolution`, { listingId: listing.id, size: "full" });
+      const f = await openFolderTarget(`${listing.vessel_name ?? "Photos"} – ${sizeInfo.short}`, { listingId: listing.id, size });
       if (f.kind === "cancelled") return;
       if (f.kind === "folder") folder = f;
     }
-    const target = folder ? null : await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size: "full" });
+    const target = folder ? null : await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size });
     if (target?.kind === "cancelled") return;
     setDownloading(true);
     setDownloadProgress(0);
@@ -178,7 +197,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
 
       const { data: photos } = await supabase
         .from("photos")
-        .select("storage_path, filename, category")
+        .select("id, storage_path, filename, category")
         .eq("listing_id", listing.id)
         .eq("is_visible", true)
         .order("display_order");
@@ -193,13 +212,37 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
 
       const paths = photos.map((p) => p.storage_path);
       // Supabase or R2, per photo (src/lib/photoStoreClient.ts).
-      const signed = await signOriginalsInBrowser(supabase, paths, 3600);
+      // Full resolution: the originals, signed here. Web & MLS / Social: the
+      // sized files from the same route the listing page uses (files still
+      // being made come back as `pending` and are asked for again).
+      const urlById = new Map<string, string>();
+      const madeExt: Record<string, string> = {};
+      if (size === "full") {
+        const signed = await signOriginalsInBrowser(supabase, paths, 3600);
+        photos.forEach((p) => { const u = signed.get(p.storage_path); if (u) urlById.set(p.id, u); });
+      } else {
+        let ask = photos.map((p) => p.id as string);
+        for (let attempt = 0; ask.length > 0 && attempt < 6; attempt++) {
+          const res = await fetch(`/api/listings/${listing.id}/photos/download-urls`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ photoIds: ask, size }),
+          });
+          if (!res.ok) break;
+          const d = await res.json().catch(() => null);
+          Object.entries((d?.urls ?? {}) as Record<string, string>).forEach(([id, u]) => urlById.set(id, u));
+          Object.assign(madeExt, (d?.ext ?? {}) as Record<string, string>);
+          ask = Array.isArray(d?.pending) ? (d.pending as string[]) : [];
+        }
+      }
 
       const entries = photos.map((photo, i) => {
-        const ext = photo.filename?.split(".").pop() ?? "jpg";
+        const own = (photo.filename?.split(".").pop() ?? "jpg").toLowerCase();
+        const made = madeExt[photo.id];
+        const ext = !made ? own : made === "jpg" && own === "jpeg" ? "jpeg" : made;
         return {
           name: `${String(i + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`,
-          url: signed.get(photo.storage_path) ?? null,
+          url: urlById.get(photo.id) ?? null,
         };
       });
 
@@ -213,7 +256,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
           entries,
           {
             signal: ctl.signal,
-            context: { listingId: listing.id, size: "full" },
+            context: { listingId: listing.id, size },
             onProgress: (p) => {
               setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
               setSeparateLabel(`${p.done}/${p.total}`);
@@ -233,7 +276,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       } else if (target) {
         const result = await writeZip(target, entries, {
           baseName: zipBase,
-          context: { listingId: listing.id, size: "full" },
+          context: { listingId: listing.id, size },
           onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
         });
         if (!result.ok) {
@@ -419,7 +462,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
           <button
             onClick={() => handleDownload(canFolder ? "folder" : "zip")}
             disabled={downloading}
-            title={canFolder ? "Pick a folder — the photos are saved straight into it" : "Download all photos as ZIP"}
+            title={`${canFolder ? "Pick a folder — the photos are saved straight into it" : "Download all photos as ZIP"} · ${rowSizeInfo.label}. Change the size on the boat's page.`}
             className={`${quickAction}
               ${downloadDone
                 ? "border-success-200 bg-success-50 text-success-700"
@@ -450,7 +493,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
             ) : (
               <>
                 <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                <span className="hidden sm:inline">Photos</span>
+                <span className="hidden sm:inline">Photos<span className="hidden lg:inline text-ink-400"> · {rowSizeInfo.short}</span></span>
               </>
             )}
           </button>
