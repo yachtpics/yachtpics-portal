@@ -16,7 +16,7 @@ export function clientFields(body: Record<string, unknown>, creating: boolean): 
     if (body.status !== "active" && body.status !== "inactive") return { fields, error: "Status must be active or inactive." };
     fields.status = body.status;
   }
-  // "Online payment" (20261109): false = pays by check only. New clients default to on (column default).
+  // "Online payment" (20261109): false = pays by check, Zelle or Venmo only. New clients default to on (column default).
   if ("online_pay" in body) {
     if (typeof body.online_pay !== "boolean") return { fields, error: "Online payment must be on or off." };
     fields.online_pay = body.online_pay;

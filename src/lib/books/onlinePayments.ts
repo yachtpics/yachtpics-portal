@@ -206,6 +206,35 @@ export async function startStripeCheckout(admin: SupabaseClient, b: InvoiceBundl
   return { url: session.url };
 }
 
+/**
+ * A sent invoice was edited (20261109b): the amount due may have changed, so
+ * an open Stripe Checkout Session for the old amount is expired and the
+ * stored ids are cleared. Best-effort — logs and never throws. A session
+ * that completed with a bank payment still clearing keeps its id, so
+ * startStripeCheckout still refuses a second payment while it clears. The
+ * PayPal order id is cleared: an order the buyer hasn't come back from can
+ * then no longer be captured (PayPal only charges on capture), and the next
+ * Pay click starts a fresh order at the current balance.
+ */
+export async function cancelOpenCheckouts(admin: SupabaseClient, inv: BillingInvoice): Promise<void> {
+  const clear: Record<string, null> = {};
+  if (inv.stripe_checkout_session_id) {
+    let keep = false;
+    try {
+      const s = await stripe.checkout.sessions.retrieve(inv.stripe_checkout_session_id);
+      if (s.status === "open") await stripe.checkout.sessions.expire(s.id);
+      else if (s.status === "complete" && s.payment_status === "unpaid") keep = true;
+    } catch (e) {
+      console.warn(`[billing-pay] expiring checkout ${inv.stripe_checkout_session_id} after edit of ${inv.id} failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    if (!keep) clear.stripe_checkout_session_id = null;
+  }
+  if (inv.paypal_order_id) clear.paypal_order_id = null;
+  if (!Object.keys(clear).length) return;
+  const { error } = await admin.from("billing_invoices").update(clear).eq("id", inv.id);
+  if (error) console.warn(`[billing-pay] clearing checkout ids on ${inv.id} after edit failed: ${error.message}`);
+}
+
 /** card / bank from the PaymentIntent's payment method (falls back to the session's types). */
 async function stripeMethodOf(session: Stripe.Checkout.Session, piId: string): Promise<PaymentMethod> {
   try {

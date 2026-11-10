@@ -8,6 +8,15 @@ const LINE_KINDS: LineKind[] = ["standard", "card_fee", "reimbursement", "discou
 export const AFTER_SEND_KEYS = ["internal_note", "due_date", "reminders_paused", "online_pay"];
 
 /**
+ * Extra keys a PATCH may change on a sent / part-paid invoice when it carries
+ * an edit reason (20261109b). Brand and is_test never change after send.
+ */
+export const EDIT_WITH_REASON_KEYS = ["client_id", "listing_id", "boat_name", "boat_length_ft", "note", "issue_date"];
+
+/** The edit envelope keys (not invoice columns) — stripped before headerFields. */
+export const EDIT_ENVELOPE_KEYS = ["edit_reason", "edit_id"];
+
+/**
  * Header fields from a PATCH body (only keys present). Terms are always 0
  * ("Due on receipt") — a terms_days in the body is ignored. Due date: a date
  * sets it by hand (due_date_manual = true); null resets it to the default —

@@ -6,7 +6,8 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import {
   BRAND_LABEL,
-  LOCKED_MESSAGE,
+  EDIT_REASON_MAX,
+  EDIT_REASON_MIN,
   METHOD_LABEL,
   paymentSourceLabel,
   PAYMENT_METHODS,
@@ -15,6 +16,7 @@ import {
   fmtMoney,
   fmtPct,
   isLockedInvoice,
+  canEditWithReason,
   isOverdue,
   nextReminderDate,
   todayET,
@@ -26,6 +28,7 @@ import {
   type BillingItem,
   type BillingPayment,
   type BrandKey,
+  type InvoiceEdit,
   type InvoiceLine,
   type PaymentMethod,
 } from "@/lib/books/types";
@@ -40,9 +43,13 @@ import StatusBadge from "./StatusBadge";
  * later never changes this invoice. Totals here are a live preview — the
  * server recalculates (billing_recalc_invoice) on every save.
  *
- * Void-only rule: once sent (sent / partial / paid / void) the invoice is
- * read-only — only the internal note and a by-hand due date can change. To
- * change anything else: Void, then Duplicate.
+ * After send the invoice is locked — only the internal note, a by-hand due
+ * date, Pause reminders and Offer Pay online change. Sent / part-paid
+ * invoices can be edited with a reason (20261109b, mirrors Zoho): "Edit
+ * invoice" asks for it, unlocks the same controls as a draft (not brand or
+ * test), and Save sends edit_reason + one edit_id with both calls so the
+ * server keeps ONE history row per save. After the save it re-locks and
+ * offers to re-send. Paid / void: Void-and-Duplicate as before.
  *
  * Dates: Invoice date (issue_date) — editable on a draft, pre-filled from the
  * boat's shoot date when a listing is picked. Sent — stamped at first send.
@@ -104,6 +111,7 @@ export default function InvoiceEditor({
   brands,
   publicUrl,
   reminders,
+  edits = [],
 }: {
   invoice: BillingInvoice;
   lines: InvoiceLine[];
@@ -114,16 +122,24 @@ export default function InvoiceEditor({
   brands: BrandKey[];
   publicUrl: string;
   reminders?: ReminderInfo;
+  edits?: InvoiceEdit[];
 }) {
   const router = useRouter();
   const inv = invoice;
-  // Sent (or paid / void): read-only, void-only rule.
-  const locked = isLockedInvoice(inv);
+  // Editing a sent / part-paid invoice with a reason (null = not editing).
+  const [editReason, setEditReason] = useState<string | null>(null);
+  const editIdRef = useRef<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [resendPrompt, setResendPrompt] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const editable = canEditWithReason(inv);
+  // Sent (or paid / void): read-only unless being edited with a reason.
+  const locked = isLockedInvoice(inv) && editReason === null;
   const isVoid = inv.status === "void";
   const sentOnce = inv.status !== "draft";
   const numbered = !!inv.number;
   const [clients, setClients] = useState<PickerClient[]>(initialClients);
-  const [h, setH] = useState<Header>({
+  const headerOf = (): Header => ({
     brand: inv.brand,
     client_id: inv.client_id,
     listing_id: inv.listing_id,
@@ -137,6 +153,7 @@ export default function InvoiceEditor({
     is_test: !!inv.is_test,
     online_pay: inv.online_pay !== false,
   });
+  const [h, setH] = useState<Header>(headerOf);
   // Sent to the server only when switched here (else the server follows the client).
   const [payTouched, setPayTouched] = useState(false);
   // The due date is only sent to the server when it was changed or reset here.
@@ -150,6 +167,37 @@ export default function InvoiceEditor({
   const [sendOpen, setSendOpen] = useState(false);
   const [payOpen, setPayOpen] = useState(false);
   const [paused, setPaused] = useState(!!inv.reminders_paused);
+
+  // After an edit is saved the page refreshes (and this editor remounts), so the
+  // "Send the updated invoice?" prompt is carried over in sessionStorage.
+  const promptKey = `yp_inv_edited:${inv.id}`;
+  useEffect(() => {
+    try {
+      if (window.sessionStorage.getItem(promptKey)) { window.sessionStorage.removeItem(promptKey); setResendPrompt(true); }
+    } catch { /* storage blocked: no prompt after refresh */ }
+  }, [promptKey]);
+
+  const startEdit = (reason: string) => {
+    editIdRef.current = newEditId();
+    setEditReason(reason);
+    setEditOpen(false);
+    setResendPrompt(false);
+    setError(null);
+    setNotice(null);
+  };
+  /** Back to the saved invoice, locked again. */
+  const cancelEdit = () => {
+    setEditReason(null);
+    editIdRef.current = null;
+    setH(headerOf());
+    setLines(initialLines.map((l) => ({ ...l, key: l.id ?? k() })));
+    setDirty(false);
+    setDueTouched(false);
+    setPayTouched(false);
+    setIssueFromShoot(false);
+    setAutoPhotoHint(null);
+    setError(null);
+  };
 
   const setHeader = (patch: Partial<Header>) => { setH({ ...h, ...patch }); setDirty(true); };
   const setLine = (i: number, patch: Partial<EditLine>) => {
@@ -251,18 +299,32 @@ export default function InvoiceEditor({
       internal_note: h.internal_note,
       ...due,
     };
-    if (!numbered && h.brand !== inv.brand) head.brand = h.brand;
-    if (!numbered && h.is_test !== !!inv.is_test) head.is_test = h.is_test;
+    if (!numbered && inv.status === "draft" && h.brand !== inv.brand) head.brand = h.brand;
+    if (!numbered && inv.status === "draft" && h.is_test !== !!inv.is_test) head.is_test = h.is_test;
     if (payTouched) head.online_pay = h.online_pay;
-    const a = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", head);
+    // Editing a sent invoice: the same reason + edit id on both calls = one history row.
+    // The id is kept until the save succeeds, so a retry extends the same row.
+    const envelope = editReason !== null ? { edit_reason: editReason, edit_id: editIdRef.current } : {};
+    const a = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", { ...head, ...envelope });
     if (a.error) { setError(a.error); return false; }
-    const b = await booksCall(`/api/admin/books/invoices/${inv.id}/lines`, "PUT", { lines: next });
+    const b = await booksCall(`/api/admin/books/invoices/${inv.id}/lines`, "PUT", { lines: next, ...envelope });
     if (b.error) { setError(b.error); return false; }
     setDirty(false);
     setDueTouched(false);
     setPayTouched(false);
+    if (editReason !== null) { setEditReason(null); editIdRef.current = null; }
     return true;
   };
+  /** The Save button: after saving an edit of a sent invoice, offer to re-send it. */
+  const saveClicked = () => run("save", async () => {
+    const wasEditing = editReason !== null;
+    const ok = await save();
+    if (ok && wasEditing) {
+      setResendPrompt(true);
+      try { window.sessionStorage.setItem(promptKey, "1"); } catch { /* ignore */ }
+    }
+    return ok;
+  });
 
   /** "Offer Pay online" picked here, or from a newly picked client: off drops the card-fee line. */
   const payPatch = (on: boolean, extra: Partial<Header> = {}) => {
@@ -371,7 +433,7 @@ export default function InvoiceEditor({
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button size="sm" variant="secondary" onClick={() => run("save", save)} disabled={!!busy || !dirty}>{busy === "save" ? "Saving…" : dirty ? "Save" : "Saved"}</Button>
+          <Button size="sm" variant="secondary" onClick={saveClicked} disabled={!!busy || !dirty}>{busy === "save" ? "Saving…" : dirty ? "Save" : "Saved"}</Button>
           <Button size="sm" variant="secondary" onClick={preview} disabled={!!busy}>{busy === "preview" ? "Opening…" : "Preview PDF"}</Button>
           {!isVoid && <Button size="sm" onClick={() => { setError(null); setSendOpen(true); }} disabled={!!busy}>{sentOnce ? "Resend" : "Send"}</Button>}
         </div>
@@ -379,10 +441,36 @@ export default function InvoiceEditor({
 
       {locked && (
         <div className="rounded-card border border-hairline bg-ink-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-sm text-ink-700">{LOCKED_MESSAGE}{isVoid ? "" : inv.status === "paid" ? " The internal note and the due date can still change." : " The internal note, the due date and Offer Pay online can still change."}</p>
+          <p className="text-sm text-ink-700">
+            {isVoid
+              ? "Void invoices can't be edited."
+              : inv.status === "paid"
+                ? "Paid invoices can't be edited. The internal note and the due date can still change."
+                : "This invoice has been sent. To change it, use Edit invoice — you'll be asked for a reason, which is kept in its history. The internal note, the due date and Offer Pay online can change any time."}
+          </p>
           <div className="flex gap-2 shrink-0">
+            {editable && <Button size="sm" onClick={() => { setError(null); setEditOpen(true); }} disabled={!!busy}>Edit invoice</Button>}
             {!isVoid && <Button size="sm" variant="secondary" onClick={voidIt} disabled={!!busy}>Void</Button>}
             <Button size="sm" variant="secondary" onClick={duplicate} disabled={!!busy}>{busy === "dup" ? "Copying…" : "Duplicate"}</Button>
+          </div>
+        </div>
+      )}
+
+      {editReason !== null && (
+        <div className="rounded-card border border-accent-500/50 bg-accent-500/10 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-ink-900 min-w-0 break-words">
+            <span className="font-semibold">Editing a sent invoice</span> — reason: {editReason}
+          </p>
+          <button type="button" className="text-small font-semibold text-ink-500 hover:text-ink-900 shrink-0" onClick={cancelEdit} disabled={!!busy}>Cancel editing</button>
+        </div>
+      )}
+
+      {resendPrompt && !isVoid && (
+        <div className="rounded-card border border-hairline bg-ink-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <p className="text-sm text-ink-900">Invoice updated. Send the updated invoice to the client?</p>
+          <div className="flex gap-2 shrink-0">
+            <Button size="sm" onClick={() => { setResendPrompt(false); setError(null); setSendOpen(true); }} disabled={!!busy}>Re-send…</Button>
+            <Button size="sm" variant="ghost" onClick={() => setResendPrompt(false)}>Not now</Button>
           </div>
         </div>
       )}
@@ -439,7 +527,7 @@ export default function InvoiceEditor({
       <Card>
         <CardHeader title="Bill to" kicker={numbered || locked ? BRAND_LABEL[inv.brand] : undefined} />
         <CardBody className="space-y-4">
-          {!numbered && !locked && brands.length > 1 && (
+          {!numbered && inv.status === "draft" && brands.length > 1 && (
             <div className="inline-flex rounded-ctl border border-hairline-strong p-0.5">
               {brands.map((b) => (
                 <button key={b} type="button" disabled={locked} onClick={() => setHeader({ brand: b })}
@@ -596,6 +684,31 @@ export default function InvoiceEditor({
         </CardBody>
       </Card>
 
+      {edits.length > 0 && (
+        <Card>
+          <CardHeader
+            title="History"
+            description={`${edits.length === 1 ? "1 edit" : `${edits.length} edits`} after sending`}
+            action={<Button size="sm" variant="ghost" onClick={() => setHistoryOpen(!historyOpen)}>{historyOpen ? "Hide" : "Show"}</Button>}
+          />
+          {historyOpen && (
+            <CardBody>
+              <ul className="divide-y divide-hairline border-y border-hairline">
+                {edits.map((e) => (
+                  <li key={e.id} className="py-2.5 text-sm">
+                    <span className="text-ink-900">
+                      {fmtDate(dateET(e.edited_at))} · {e.edited_by_name || "Someone"} — {e.reason}
+                      {e.total_before != null && e.total_after != null ? <span className="tabular-nums"> — {fmtMoney(e.total_before)} → {fmtMoney(e.total_after)}</span> : null}
+                    </span>
+                    {e.changes && <span className="block text-small text-ink-500">{e.changes}</span>}
+                  </li>
+                ))}
+              </ul>
+            </CardBody>
+          )}
+        </Card>
+      )}
+
       {/* Secondary actions */}
       <div className="flex flex-wrap gap-2 pb-6">
         {!locked && <Button size="sm" variant="ghost" onClick={duplicate} disabled={!!busy}>Duplicate</Button>}
@@ -606,6 +719,8 @@ export default function InvoiceEditor({
         ) : null}
         {sentOnce && <Button size="sm" variant="ghost" onClick={copyLink}>Copy client link</Button>}
       </div>
+
+      {editOpen && <EditReasonDialog onClose={() => setEditOpen(false)} onConfirm={startEdit} />}
 
       {sendOpen && (
         <SendDialog
@@ -1024,7 +1139,7 @@ function SendDialog({ clientId, clientName, clientEmail, lastSent, resend, test,
       <p className="text-small text-ink-500 mt-1">
         {test
           ? "A test invoice gets no number. Everyone ticked must be a billing staff address or an @yachtpics.com address."
-          : resend ? "Same number, a fresh email with the PDF attached." : "It gets its number now, and the client gets an email with a link and the PDF. It can't be edited after this — only voided."}
+          : resend ? "Same number, a fresh email with the PDF attached." : "It gets its number now, and the client gets an email with a link and the PDF. After this, any change needs a reason and is kept in the invoice's history."}
       </p>
       <div className="mt-4">
         <span className="label-caps">Send to</span>
@@ -1140,6 +1255,38 @@ function PaymentSheet({ balance, feeIncluded, onClose, onSave }: {
           if (e) setErr(e);
         }}>{busy ? "Saving…" : "Save payment"}</Button>
         <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+      </div>
+    </Overlay>
+  );
+}
+
+/** A uuid for one save of an edited sent invoice (crypto.randomUUID where there is one). */
+function newEditId(): string {
+  const c = typeof window !== "undefined" ? (window.crypto as Crypto & { randomUUID?: () => string }) : undefined;
+  if (c && typeof c.randomUUID === "function") return c.randomUUID();
+  const b = new Uint8Array(16);
+  if (c) c.getRandomValues(b); else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = Array.from(b).map((x) => (x + 0x100).toString(16).slice(1)).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+function EditReasonDialog({ onClose, onConfirm }: { onClose: () => void; onConfirm: (reason: string) => void }) {
+  const [reason, setReason] = useState("");
+  const clean = reason.replace(/\s+/g, " ").trim();
+  const ok = clean.length >= EDIT_REASON_MIN && clean.length <= EDIT_REASON_MAX;
+  return (
+    <Overlay onClose={onClose}>
+      <h2 className="text-h2 text-ink-900">Edit a sent invoice</h2>
+      <p className="text-small text-ink-500 mt-1">This invoice has already been sent. Say why it&rsquo;s changing — the reason is kept in the invoice&rsquo;s history.</p>
+      <label className="block mt-4">
+        <span className="label-caps">Reason for the change</span>
+        <textarea className={fieldClass + " mt-1 min-h-[90px]"} autoFocus maxLength={EDIT_REASON_MAX} value={reason} onChange={(e) => setReason(e.target.value)} />
+      </label>
+      <div className="mt-5 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button onClick={() => { if (ok) onConfirm(clean); }} disabled={!ok}>Edit invoice</Button>
       </div>
     </Overlay>
   );

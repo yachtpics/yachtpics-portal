@@ -17,7 +17,7 @@ type Form = {
   mobile: string;
   status: "active" | "inactive";
   notes: string;
-  /** "Online payment" (20261109). Off = pays by check only. */
+  /** "Online payment" (20261109). Off = pays by check, Zelle or Venmo only. */
   online_pay: boolean;
 };
 
@@ -144,7 +144,7 @@ export default function ClientsPanel({
           <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#c39e4e]" checked={form.online_pay} onChange={(e) => setForm({ ...form, online_pay: e.target.checked })} />
           <span>
             <span className="block text-sm font-medium text-ink-900">Online payment</span>
-            <span className="block text-small text-ink-500">Untick for clients who pay by check only — their invoices won&rsquo;t offer Pay online.</span>
+            <span className="block text-small text-ink-500">Untick for clients who pay by check, Zelle or Venmo only — their invoices won&rsquo;t offer Pay online.</span>
           </span>
         </label>
         <label className="block sm:col-span-2">
@@ -214,7 +214,7 @@ export default function ClientsPanel({
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium text-ink-900">{c.display_name}</span>
                           {c.status === "inactive" && <Badge>Inactive</Badge>}
-                          {c.online_pay === false && <Badge title="Invoices don't offer Pay online">Check only</Badge>}
+                          {c.online_pay === false && <Badge title="Invoices don't offer Pay online">No online pay</Badge>}
                           {c.broker_profile_id && (
                             <Badge tone="info" title="Matched to a Portal login by email">
                               Portal · {brokerNames[c.broker_profile_id] ?? "linked"}

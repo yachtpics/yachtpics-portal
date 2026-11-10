@@ -91,7 +91,7 @@ export type BillingClient = {
   zoho_contact_id: string | null;
   zoho_merged_ids: string[] | null;
   zoho_open_balance: number | null;
-  /** False = pays by check only: their invoices don't offer Pay online. Undefined until 20261109 (= on). */
+  /** False = pays by check, Zelle or Venmo only: their invoices don't offer Pay online. Undefined until 20261109 (= on). */
   online_pay?: boolean;
   created_at: string;
 };
@@ -244,12 +244,43 @@ export const INVOICING_NOT_READY =
 export const TESTS_NOT_READY =
   "Test invoices aren't switched on yet — the 20261107b billing migration hasn't been added to the database.";
 
-export const LOCKED_MESSAGE = "Sent invoices can't be edited. Void it and duplicate to make changes.";
+export const LOCKED_MESSAGE =
+  "This invoice has been sent, so a change needs a reason — open it in Billing and use Edit invoice. Paid and void invoices can't be edited.";
 
-/** Sent / part paid / paid / void: lines and money are fixed (void-only rule). */
+/**
+ * Sent / part paid / paid / void: locked by default. Sent and part-paid
+ * invoices can still be edited when the request carries a reason
+ * (canEditWithReason, 20261109b); paid and void never.
+ */
 export function isLockedInvoice(inv: { status: InvoiceStatus }): boolean {
   return inv.status !== "draft";
 }
+
+/** Sent / part paid: editable with a reason (kept in billing_invoice_edits). */
+export function canEditWithReason(inv: { status: InvoiceStatus }): boolean {
+  return inv.status === "sent" || inv.status === "partial";
+}
+
+// ─── Edit a sent invoice with a reason (20261109b) ────────────────────────
+
+export const EDITS_NOT_READY =
+  "Editing a sent invoice isn't switched on yet — the 20261109b billing migration hasn't been added to the database. Nothing was changed.";
+
+export const EDIT_REASON_MIN = 3;
+export const EDIT_REASON_MAX = 500;
+
+/** One saved edit of a sent invoice (newest first in the editor's History card). */
+export type InvoiceEdit = {
+  id: string;
+  invoice_id: string;
+  edited_by: string | null;
+  edited_by_name: string | null;
+  edited_at: string;
+  reason: string;
+  total_before: number | null;
+  total_after: number | null;
+  changes: string | null;
+};
 
 /** What prints where the number goes: the number, "TEST" for a test invoice, else "Draft". */
 export function invoiceLabel(inv: { number: string | null; is_test?: boolean }): string {
