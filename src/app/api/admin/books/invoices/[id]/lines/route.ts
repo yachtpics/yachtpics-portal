@@ -12,7 +12,8 @@ export const runtime = "nodejs";
  * snapshots of the catalog at the time they're added; editing the catalog
  * later never changes them. Only the owner sets a line's tax: for anyone
  * else a catalog line keeps the item's setting and a custom line is exempt.
- * The card-fee line's amount is worked out by billing_recalc_invoice.
+ * The card-fee line's amount is worked out by billing_recalc_invoice, and
+ * it's dropped when the invoice's "Offer Pay online" is off.
  */
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireBillingStaff();
@@ -26,8 +27,11 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   if (isLockedInvoice(inv)) return bad(LOCKED_MESSAGE, 409);
 
   const body = (await req.json().catch(() => null)) as { lines?: unknown } | null;
-  const { lines, error } = lineRows(body?.lines);
-  if (error) return bad(error);
+  const parsed = lineRows(body?.lines);
+  if (parsed.error) return bad(parsed.error);
+  // "Offer Pay online" off (20261109): no card fee on a check / Zelle / Venmo-only invoice.
+  const lines = inv.online_pay === false ? parsed.lines.filter((l) => l.kind !== "card_fee") : parsed.lines;
+  lines.forEach((l, i) => { l.position = i; });
 
   if (!staff.isOwner) {
     const ids: string[] = [];

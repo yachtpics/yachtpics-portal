@@ -53,6 +53,11 @@ import StatusBadge from "./StatusBadge";
  * after send); the card shows the last reminder and when the next would go,
  * from the login's own schedule (Settings → Payment reminders).
  *
+ * Offer Pay online (20261109): follows the client's "Online payment" switch
+ * (set by the server when the client changes); overridable here. On a draft
+ * it saves with Save; after send (sent / part paid) it saves at once; not on
+ * paid / void. Off: no card-fee line (removed here and by the lines PUT).
+ *
  * Recipients (20261108c): the Send dialog lists the client's contacts as
  * checkboxes (pre-ticked: the last send's recipients, else "Gets invoices",
  * else the primary) plus one-off addresses; one email goes to all of them.
@@ -67,7 +72,7 @@ export type ReminderInfo = {
   last: { sentAt: string; day: number; to: string | null } | null;
 };
 
-export type PickerClient = { id: string; display_name: string; company_name: string | null; email: string | null; status: string };
+export type PickerClient = { id: string; display_name: string; company_name: string | null; email: string | null; status: string; online_pay?: boolean };
 
 type EditLine = InvoiceLine & { key: string; saveToCatalog?: boolean; fromLength?: boolean };
 type Header = {
@@ -82,6 +87,7 @@ type Header = {
   note: string;
   internal_note: string;
   is_test: boolean;
+  online_pay: boolean;
 };
 type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; broker: string | null; vesselType: string | null; suggestedClient: { id: string; display_name: string } | null; shootDate: string | null };
 
@@ -129,7 +135,10 @@ export default function InvoiceEditor({
     note: inv.note ?? "",
     internal_note: inv.internal_note ?? "",
     is_test: !!inv.is_test,
+    online_pay: inv.online_pay !== false,
   });
+  // Sent to the server only when switched here (else the server follows the client).
+  const [payTouched, setPayTouched] = useState(false);
   // The due date is only sent to the server when it was changed or reset here.
   const [dueTouched, setDueTouched] = useState(false);
   const [issueFromShoot, setIssueFromShoot] = useState(false);
@@ -192,7 +201,7 @@ export default function InvoiceEditor({
     return base.filter((l) => l.kind !== "card_fee").concat([line], fee);
   };
   const addItem = (it: BillingItem) => {
-    if (it.kind === "card_fee") { if (!hasFee) toggleFee(); return; }
+    if (it.kind === "card_fee") { if (!hasFee && h.online_pay) toggleFee(); return; }
     setLines(withItemLine(lines, it, boatFt));
     setDirty(true);
   };
@@ -244,13 +253,21 @@ export default function InvoiceEditor({
     };
     if (!numbered && h.brand !== inv.brand) head.brand = h.brand;
     if (!numbered && h.is_test !== !!inv.is_test) head.is_test = h.is_test;
+    if (payTouched) head.online_pay = h.online_pay;
     const a = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", head);
     if (a.error) { setError(a.error); return false; }
     const b = await booksCall(`/api/admin/books/invoices/${inv.id}/lines`, "PUT", { lines: next });
     if (b.error) { setError(b.error); return false; }
     setDirty(false);
     setDueTouched(false);
+    setPayTouched(false);
     return true;
+  };
+
+  /** "Offer Pay online" picked here, or from a newly picked client: off drops the card-fee line. */
+  const payPatch = (on: boolean, extra: Partial<Header> = {}) => {
+    if (!on && hasFee) setLines(lines.filter((l) => l.kind !== "card_fee"));
+    setHeader({ ...extra, online_pay: on });
   };
 
   const run = async (label: string, fn: () => Promise<boolean | void>) => {
@@ -306,6 +323,17 @@ export default function InvoiceEditor({
     if (r.error) { setPaused(!next); setError(r.error); return false; }
     setNotice(next ? "Reminders paused for this invoice." : "Reminders back on for this invoice.");
   });
+  // Draft: part of the header (Save). Sent / part paid: saves at once (allowed after send).
+  const toggleOnlinePay = (next: boolean) => {
+    if (!locked) { payPatch(next); setPayTouched(true); return; }
+    run("onlinepay", async () => {
+      setError(null);
+      setH({ ...h, online_pay: next });
+      const r = await booksCall(`/api/admin/books/invoices/${inv.id}`, "PATCH", { online_pay: next });
+      if (r.error) { setH({ ...h, online_pay: !next }); setError(r.error); return false; }
+      setNotice(next ? "Pay online is back on this invoice." : "Pay online is off for this invoice.");
+    });
+  };
   const copyLink = async () => {
     try { await navigator.clipboard.writeText(publicUrl); setNotice("Link copied."); } catch { window.prompt("Copy this link", publicUrl); }
   };
@@ -351,7 +379,7 @@ export default function InvoiceEditor({
 
       {locked && (
         <div className="rounded-card border border-hairline bg-ink-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <p className="text-sm text-ink-700">{LOCKED_MESSAGE}{isVoid ? "" : " The internal note and the due date can still change."}</p>
+          <p className="text-sm text-ink-700">{LOCKED_MESSAGE}{isVoid ? "" : inv.status === "paid" ? " The internal note and the due date can still change." : " The internal note, the due date and Offer Pay online can still change."}</p>
           <div className="flex gap-2 shrink-0">
             {!isVoid && <Button size="sm" variant="secondary" onClick={voidIt} disabled={!!busy}>Void</Button>}
             <Button size="sm" variant="secondary" onClick={duplicate} disabled={!!busy}>{busy === "dup" ? "Copying…" : "Duplicate"}</Button>
@@ -403,6 +431,10 @@ export default function InvoiceEditor({
         <RemindersCard inv={inv} info={reminders} paused={paused} busy={busy === "pause"} onToggle={togglePause} />
       )}
 
+      {inv.status !== "paid" && !isVoid && (
+        <OnlinePayCard on={h.online_pay} busy={busy === "onlinepay"} disabled={!!busy && busy !== "onlinepay"} onToggle={toggleOnlinePay} />
+      )}
+
       {/* Header */}
       <Card>
         <CardHeader title="Bill to" kicker={numbered || locked ? BRAND_LABEL[inv.brand] : undefined} />
@@ -421,8 +453,12 @@ export default function InvoiceEditor({
             clients={clients}
             value={client}
             disabled={locked}
-            onPick={(c) => setHeader({ client_id: c ? c.id : null })}
-            onAdded={(c) => { setClients(clients.concat([c])); setHeader({ client_id: c.id }); }}
+            onPick={(c) => {
+              // A new client brings its "Online payment" default (the server does the same on save).
+              if (c && c.id !== h.client_id) { setPayTouched(false); payPatch(c.online_pay !== false, { client_id: c.id }); }
+              else setHeader({ client_id: c ? c.id : null });
+            }}
+            onAdded={(c) => { setClients(clients.concat([c])); setPayTouched(false); payPatch(true, { client_id: c.id }); }}
           />
           {h.brand === "yachtpics" && (
             <BoatPicker
@@ -436,6 +472,8 @@ export default function InvoiceEditor({
                 if (hit.shootDate && inv.status === "draft") { patch.issue_date = hit.shootDate; setIssueFromShoot(true); }
                 if (!h.client_id && hit.suggestedClient) {
                   patch.client_id = hit.suggestedClient.id;
+                  const known = clients.filter((c) => c.id === hit.suggestedClient!.id)[0];
+                  if (known) { patch.online_pay = known.online_pay !== false; setPayTouched(false); }
                   if (!clients.some((c) => c.id === hit.suggestedClient!.id)) {
                     setClients(clients.concat([{ id: hit.suggestedClient.id, display_name: hit.suggestedClient.display_name, company_name: null, email: null, status: "active" }]));
                   }
@@ -449,6 +487,7 @@ export default function InvoiceEditor({
                   nextLines = withItemLine([], photo, ft);
                   setAutoPhotoHint(photo.name);
                 }
+                if (patch.online_pay === false && nextLines.some((l) => l.kind === "card_fee")) nextLines = nextLines.filter((l) => l.kind !== "card_fee");
                 if (nextLines !== lines) setLines(nextLines);
                 setHeader(patch);
               }}
@@ -523,10 +562,12 @@ export default function InvoiceEditor({
             <div className="flex flex-col sm:flex-row gap-2 pt-1">
               <CatalogSearch items={catalog} onPick={addItem} />
               <Button size="sm" variant="secondary" onClick={addCustom}>Custom line</Button>
-              <label className="inline-flex items-center gap-2 text-sm text-ink-700 sm:ml-auto">
-                <input type="checkbox" checked={hasFee} onChange={toggleFee} className="h-4 w-4 accent-[#c39e4e]" />
-                Add card fee ({fmtPct(inv.card_fee_rate)})
-              </label>
+              {h.online_pay && (
+                <label className="inline-flex items-center gap-2 text-sm text-ink-700 sm:ml-auto">
+                  <input type="checkbox" checked={hasFee} onChange={toggleFee} className="h-4 w-4 accent-[#c39e4e]" />
+                  Add card fee ({fmtPct(inv.card_fee_rate)})
+                </label>
+              )}
             </div>
           )}
 
@@ -639,6 +680,22 @@ function RemindersCard({ inv, info, paused, busy, onToggle }: {
             : "No reminder sent yet."}{" "}
           {next}
         </p>
+      </CardBody>
+    </Card>
+  );
+}
+
+function OnlinePayCard({ on, busy, disabled, onToggle }: { on: boolean; busy: boolean; disabled: boolean; onToggle: (next: boolean) => void }) {
+  return (
+    <Card>
+      <CardBody className="space-y-2">
+        <label className="flex items-start gap-3 cursor-pointer">
+          <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#c39e4e]" checked={on} disabled={busy || disabled} onChange={(e) => onToggle(e.target.checked)} />
+          <span>
+            <span className="block text-sm font-medium text-ink-900">Offer Pay online{busy ? " …" : ""}</span>
+            {!on && <span className="block text-small text-ink-500">Check, Zelle or Venmo only — no Pay online button or link.</span>}
+          </span>
+        </label>
       </CardBody>
     </Card>
   );

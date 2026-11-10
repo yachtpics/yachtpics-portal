@@ -35,9 +35,12 @@ export async function POST(req: NextRequest) {
   const brand = (isBrandKey(body.brand) ? body.brand : staff.brands[0]) as BrandKey;
   if (staff.brands.indexOf(brand) === -1) return bad("You don't bill under that brand.", 403);
 
-  const [{ data: s, error: sErr }, { data: tax }] = await Promise.all([
+  const clientId = isUuid(body.client_id) ? (body.client_id as string) : null;
+  const [{ data: s, error: sErr }, { data: tax }, { data: cl }] = await Promise.all([
     admin.from("billing_staff").select("*").eq("profile_id", staff.profileId).maybeSingle(),
     admin.from("billing_tax_rates").select("rate").eq("is_default", true).eq("active", true).maybeSingle(),
+    // select("*"): works before 20261109 too (then online_pay is just absent).
+    clientId ? admin.from("billing_clients").select("*").eq("id", clientId).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   if (sErr) return dbError(sErr);
   const sx = (s ?? {}) as Record<string, unknown>;
@@ -45,6 +48,9 @@ export async function POST(req: NextRequest) {
   // sent date). billing_staff.default_terms_days is kept at 0 and not read.
   const issue = todayET();
   const now = new Date().toISOString();
+  // "Offer Pay online" follows the client's "Online payment" switch (20261109).
+  // Only written when the client row has the column, so a pre-migration DB still inserts.
+  const clientPay = (cl as { online_pay?: unknown } | null)?.online_pay;
 
   const { data, error } = await admin
     .from("billing_invoices")
@@ -52,7 +58,8 @@ export async function POST(req: NextRequest) {
       owner_id: staff.profileId,
       brand,
       status: "draft",
-      client_id: isUuid(body.client_id) ? body.client_id : null,
+      client_id: clientId,
+      ...(typeof clientPay === "boolean" ? { online_pay: clientPay } : {}),
       listing_id: isUuid(body.listing_id) ? body.listing_id : null,
       boat_name: typeof body.boat_name === "string" ? body.boat_name.slice(0, 120) : null,
       boat_length_ft: typeof body.boat_length_ft === "number" ? body.boat_length_ft : null,

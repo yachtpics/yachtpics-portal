@@ -34,9 +34,13 @@ const MIN_ONLINE = 0.5;
 /**
  * What the Pay slot on /inv shows: 'ok' (Pay online), 'test' (the "Test
  * invoice — online payment disabled" line) or 'hidden'. The invoice PDF draws
- * its "Pay online" link only on 'ok'.
+ * its "Pay online" link only on 'ok'. The single rule for all three (/inv,
+ * the pay route, the PDF): first the invoice's own "Offer Pay online" switch
+ * (online_pay, 20261109 — copied from the client's "Online payment"; false
+ * for check-only clients), then the login's processor, status and balance.
  */
 export function onlinePayState(inv: BillingInvoice, row: ProcessorRow | null): "ok" | "test" | "hidden" {
+  if (inv.online_pay === false) return "hidden";
   if (!row || !row.enabled) return "hidden";
   if (row.processor === "paypal" && (!row.paypal_client_id || !row.paypal_secret_enc)) return "hidden";
   if (inv.status !== "sent" && inv.status !== "partial") return "hidden";

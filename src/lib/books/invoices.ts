@@ -54,6 +54,7 @@ export function normInvoice(r: Record<string, unknown>): BillingInvoice {
     due_date_manual: r.due_date_manual === true,
     is_test: r.is_test === true,
     reminders_paused: r.reminders_paused === true,
+    online_pay: r.online_pay !== false,
     sent_to_all: Array.isArray(r.sent_to_all) ? (r.sent_to_all as unknown[]).map((x) => String(x)) : null,
   };
 }
@@ -64,6 +65,8 @@ export const TERMS_MIGRATION_COLS = ["due_date_manual", "is_test"];
 export const REMINDERS_MIGRATION_COLS = ["reminders_paused"];
 /** Columns added by 20261108c (contact persons). */
 export const CONTACTS_MIGRATION_COLS = ["sent_to_all"];
+/** Columns added by 20261109 (online payment switch). */
+export const ONLINE_PAY_MIGRATION_COLS = ["online_pay"];
 
 /** Unknown column (PostgREST schema cache or Postgres): the migration isn't applied yet. */
 export function isMissingColumn(err: { code?: string; message?: string } | null | undefined): boolean {
@@ -73,9 +76,9 @@ export function isMissingColumn(err: { code?: string; message?: string } | null 
 }
 
 /**
- * Update one invoice row. If 20261107b / 20261108 / 20261108c aren't applied
- * yet, their columns (due_date_manual / is_test / reminders_paused /
- * sent_to_all) are dropped and the
+ * Update one invoice row. If 20261107b / 20261108 / 20261108c / 20261109
+ * aren't applied yet, their columns (due_date_manual / is_test /
+ * reminders_paused / sent_to_all / online_pay) are dropped and the
  * rest is saved, so the editor keeps working. Returns the error, if any, and whether columns were dropped.
  */
 export async function updateInvoiceRow(
@@ -89,7 +92,7 @@ export async function updateInvoiceRow(
   const rest: Record<string, unknown> = {};
   const dropped: string[] = [];
   Object.keys(fields).forEach((k) => {
-    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1 || REMINDERS_MIGRATION_COLS.indexOf(k) !== -1 || CONTACTS_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
+    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1 || REMINDERS_MIGRATION_COLS.indexOf(k) !== -1 || CONTACTS_MIGRATION_COLS.indexOf(k) !== -1 || ONLINE_PAY_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
     else rest[k] = fields[k];
   });
   if (!dropped.length) return { error: first.error, dropped };

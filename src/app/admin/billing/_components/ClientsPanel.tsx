@@ -17,9 +17,11 @@ type Form = {
   mobile: string;
   status: "active" | "inactive";
   notes: string;
+  /** "Online payment" (20261109). Off = pays by check only. */
+  online_pay: boolean;
 };
 
-const EMPTY: Form = { display_name: "", company_name: "", first_name: "", last_name: "", email: "", phone: "", mobile: "", status: "active", notes: "" };
+const EMPTY: Form = { display_name: "", company_name: "", first_name: "", last_name: "", email: "", phone: "", mobile: "", status: "active", notes: "", online_pay: true };
 
 function toForm(c: BillingClient): Form {
   return {
@@ -32,6 +34,7 @@ function toForm(c: BillingClient): Form {
     mobile: c.mobile ?? "",
     status: c.status,
     notes: c.notes ?? "",
+    online_pay: c.online_pay !== false,
   };
 }
 
@@ -137,6 +140,13 @@ export default function ClientsPanel({
             <option value="inactive">Inactive</option>
           </select>
         </label>
+        <label className="flex items-start gap-3 cursor-pointer sm:col-span-2">
+          <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#c39e4e]" checked={form.online_pay} onChange={(e) => setForm({ ...form, online_pay: e.target.checked })} />
+          <span>
+            <span className="block text-sm font-medium text-ink-900">Online payment</span>
+            <span className="block text-small text-ink-500">Untick for clients who pay by check only — their invoices won&rsquo;t offer Pay online.</span>
+          </span>
+        </label>
         <label className="block sm:col-span-2">
           <span className="label-caps">Notes</span>
           <textarea className={fieldClass + " mt-1 min-h-[72px]"} value={form.notes} onChange={set("notes")} />
@@ -204,6 +214,7 @@ export default function ClientsPanel({
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="text-sm font-medium text-ink-900">{c.display_name}</span>
                           {c.status === "inactive" && <Badge>Inactive</Badge>}
+                          {c.online_pay === false && <Badge title="Invoices don't offer Pay online">Check only</Badge>}
                           {c.broker_profile_id && (
                             <Badge tone="info" title="Matched to a Portal login by email">
                               Portal · {brokerNames[c.broker_profile_id] ?? "linked"}

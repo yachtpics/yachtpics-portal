@@ -3,7 +3,7 @@ import { isBrandKey, requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError } from "@/lib/books/api";
 import { loadInvoice, recalcInvoice, updateInvoiceRow } from "@/lib/books/invoices";
 import { AFTER_SEND_KEYS, headerFields } from "@/lib/books/invoiceInput";
-import { LOCKED_MESSAGE, REMINDERS_NOT_READY, TESTS_NOT_READY, isLockedInvoice, type BrandKey } from "@/lib/books/types";
+import { LOCKED_MESSAGE, ONLINE_PAY_NOT_READY, REMINDERS_NOT_READY, TESTS_NOT_READY, isLockedInvoice, type BrandKey } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
@@ -22,8 +22,11 @@ export async function GET(_req: NextRequest, { params }: Ctx) {
 
 // PATCH — header fields. Drafts: everything (brand only while unnumbered).
 // Once sent (sent / partial / paid / void) only the internal note, a by-hand
-// due date and "Pause reminders" may change; anything else is a 409
-// (void-only rule).
+// due date, "Pause reminders" and "Offer Pay online" may change; anything
+// else is a 409 (void-only rule). "Offer Pay online" (online_pay, 20261109):
+// follows the client's "Online payment" when the client changes; an explicit
+// online_pay in the same body wins; not on paid / void invoices. Turning it
+// off on a draft also drops the card-fee line.
 export async function PATCH(req: NextRequest, { params }: Ctx) {
   const auth = await requireBillingStaff();
   if (auth.error) return auth.error;
@@ -44,6 +47,9 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     if (blocked.length) return bad(LOCKED_MESSAGE, 409);
     if (inv.status === "void" && "due_date" in body) return bad("This invoice is void.", 409);
   }
+  if ("online_pay" in body && (inv.status === "paid" || inv.status === "void")) {
+    return bad(inv.status === "paid" ? "This invoice is paid." : "This invoice is void.", 409);
+  }
 
   const { fields, error } = headerFields(body, inv);
   if (error) return bad(error);
@@ -57,8 +63,11 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
     fields.brand = body.brand;
   }
   if (fields.client_id) {
-    const { data: c } = await admin.from("billing_clients").select("id").eq("id", fields.client_id as string).maybeSingle();
+    // select("*"): works before 20261109 too (then online_pay is just absent).
+    const { data: c } = await admin.from("billing_clients").select("*").eq("id", fields.client_id as string).maybeSingle();
     if (!c) return bad("That client no longer exists.");
+    const clientPay = (c as { online_pay?: unknown }).online_pay;
+    if (fields.client_id !== inv.client_id && !("online_pay" in fields) && typeof clientPay === "boolean") fields.online_pay = clientPay;
   }
   if (!Object.keys(fields).length) return NextResponse.json({ ok: true });
 
@@ -70,6 +79,12 @@ export async function PATCH(req: NextRequest, { params }: Ctx) {
   if (upErr) return dbError(upErr);
   if (dropped.indexOf("is_test") !== -1) return bad(TESTS_NOT_READY, 503);
   if (dropped.indexOf("reminders_paused") !== -1) return bad(REMINDERS_NOT_READY, 503);
+  if (dropped.indexOf("online_pay") !== -1 && fields.online_pay === false) return bad(ONLINE_PAY_NOT_READY, 503);
+  // Off on a draft: no card fee (the lines PUT drops it too).
+  if (fields.online_pay === false && inv.status === "draft") {
+    const { error: feeErr } = await admin.from("billing_invoice_lines").delete().eq("invoice_id", inv.id).eq("kind", "card_fee");
+    if (feeErr) return dbError(feeErr);
+  }
   const rc = await recalcInvoice(admin, inv.id);
   if (rc) return bad(rc, 500);
   return NextResponse.json({ ok: true });

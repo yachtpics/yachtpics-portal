@@ -5,7 +5,7 @@ import { dateET, type InvoiceLine, type LineKind } from "./types";
 const LINE_KINDS: LineKind[] = ["standard", "card_fee", "reimbursement", "discount", "deposit", "custom"];
 
 /** Keys a PATCH may still change once the invoice is sent (void-only rule). */
-export const AFTER_SEND_KEYS = ["internal_note", "due_date", "reminders_paused"];
+export const AFTER_SEND_KEYS = ["internal_note", "due_date", "reminders_paused", "online_pay"];
 
 /**
  * Header fields from a PATCH body (only keys present). Terms are always 0
@@ -52,6 +52,10 @@ export function headerFields(body: Record<string, unknown>, current: { status: s
   }
   if ("is_test" in body) f.is_test = body.is_test === true;
   if ("reminders_paused" in body) f.reminders_paused = body.reminders_paused === true;
+  if ("online_pay" in body) {
+    if (typeof body.online_pay !== "boolean") return { fields: f, error: "Offer Pay online must be on or off." };
+    f.online_pay = body.online_pay;
+  }
   return { fields: f };
 }
 

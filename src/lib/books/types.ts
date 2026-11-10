@@ -9,7 +9,9 @@
  * per-login schedules, per-invoice pause, the daily billing_reminders job.
  * Online payment (20261108b): per-login processor (Stripe platform account or
  * the login's own PayPal), Pay online on /inv. Contact persons (20261108c):
- * several people per client, picked at send time. Still to come: quotes.
+ * several people per client, picked at send time. Online payment switch
+ * (20261109): per-client online_pay (check-only clients) copied onto each
+ * invoice, overridable per invoice. Still to come: quotes.
  */
 
 export type BrandKey = "yachtpics" | "ypdesigns";
@@ -89,6 +91,8 @@ export type BillingClient = {
   zoho_contact_id: string | null;
   zoho_merged_ids: string[] | null;
   zoho_open_balance: number | null;
+  /** False = pays by check only: their invoices don't offer Pay online. Undefined until 20261109 (= on). */
+  online_pay?: boolean;
   created_at: string;
 };
 
@@ -175,6 +179,8 @@ export type BillingInvoice = {
   /** Last Stripe Checkout / PayPal order started from /inv. Undefined until 20261108b. */
   stripe_checkout_session_id?: string | null;
   paypal_order_id?: string | null;
+  /** Offer Pay online on this invoice (from the client, overridable). normInvoice: true until 20261109. */
+  online_pay: boolean;
   subtotal: number;
   discount_total: number;
   tax_rate: number;
@@ -311,6 +317,9 @@ export function fmtPct(rate: number): string {
 }
 
 // ─── Payment reminders (20261108) ──────────────────────────────────────────
+
+export const ONLINE_PAY_NOT_READY =
+  "The Online payment switch isn't switched on yet — the 20261109 billing migration hasn't been added to the database.";
 
 export const REMINDERS_NOT_READY =
   "Payment reminders aren't switched on yet — the 20261108 billing migration hasn't been added to the database.";

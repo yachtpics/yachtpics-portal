@@ -24,6 +24,7 @@ import InvoicesPanel from "./_components/InvoicesPanel";
 import DashboardPanel from "./_components/DashboardPanel";
 import NewInvoiceButton from "./_components/NewInvoiceButton";
 import { buildDashboard, listInvoices, type RangePreset } from "@/lib/books/reports";
+import { isMissingColumn } from "@/lib/books/invoices";
 import { isDate } from "@/lib/books/api";
 import { INVOICING_NOT_READY, cleanReminderDays, fmtMoney } from "@/lib/books/types";
 
@@ -222,16 +223,16 @@ export default async function BillingPage({ searchParams }: { searchParams: { ta
   }
 
   if (tab === "clients") {
-    const [{ data: clientRows, error }, { data: dismissed }] = await Promise.all([
-      admin
-        .from("billing_clients")
-        .select("id, display_name, company_name, first_name, last_name, email, phone, mobile, status, notes, broker_profile_id, zoho_contact_id, zoho_merged_ids, zoho_open_balance, created_at")
-        .order("display_name")
-        .range(0, 4999),
+    const CLIENT_COLS = "id, display_name, company_name, first_name, last_name, email, phone, mobile, status, notes, broker_profile_id, zoho_contact_id, zoho_merged_ids, zoho_open_balance, created_at";
+    const listClients = (cols: string) => admin.from("billing_clients").select(cols).order("display_name").range(0, 4999);
+    const [firstTry, { data: dismissed }] = await Promise.all([
+      listClients(CLIENT_COLS + ", online_pay"),
       admin.from("billing_client_dupe_dismissals").select("client_a, client_b").range(0, 9999),
     ]);
+    // Before 20261109 there's no online_pay column: read without it (every client counts as on).
+    const { data: clientRows, error } = firstTry.error && isMissingColumn(firstTry.error) ? await listClients(CLIENT_COLS) : firstTry;
     if (error && !isMissingBillingTable(error)) content = <p className="text-sm text-danger-700">{error.message}</p>;
-    const clients = (clientRows ?? []) as BillingClient[];
+    const clients = (clientRows ?? []) as unknown as BillingClient[];
     const brokerIds: string[] = [];
     clients.forEach((c) => { if (c.broker_profile_id && brokerIds.indexOf(c.broker_profile_id) === -1) brokerIds.push(c.broker_profile_id); });
     const brokerNames: Record<string, string> = {};
