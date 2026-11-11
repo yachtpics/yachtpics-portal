@@ -8,7 +8,9 @@ import {
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { formatBytes, openZipTarget, partLimitBytes, folderSaveSupported, openFolderTarget, saveToFolder, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
+import { formatBytes, openZipTarget, partLimitBytes, folderSaveSupported, openFolderTarget, reportZipIssue, saveToFolder, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
+import { createClient } from "@/lib/supabase/client";
+import { fullSizeNote, signPhotosForDownload, type SignedDownloads } from "./signDownloads";
 
 // Two ways photos leave a listing page, one per role:
 //
@@ -112,33 +114,18 @@ export function useSizedDownloads(opts: {
    * which expire). Full resolution are the originals; the others are resized
    * by Supabase when fetched — or, for originals on R2, pre-made files the
    * server may still be making (`pending`: asked again, a few times).
-   * `ext` = the extension of a pre-made file (jpg / png).
+   * `ext` = the extension of a pre-made file (jpg / png). Photos whose sized
+   * copy couldn't be had come down as originals (`original`) — see
+   * ./signDownloads.ts, shared with the My Listings row.
    */
-  async function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<{ urls: Record<string, string>; ext: Record<string, string>; bytes: Record<string, number> }> {
-    const urls: Record<string, string> = {};
-    const ext: Record<string, string> = {};
-    const bytes: Record<string, number> = {};
-    let ask = targets.map((t) => t.id);
-    for (let attempt = 0; ask.length > 0 && attempt < 6; attempt++) {
-      let pending: string[] = [];
-      try {
-        const res = await fetch(`/api/listings/${listingId}/photos/download-urls`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ photoIds: ask, size }),
-        });
-        if (!res.ok) break;
-        const d = await res.json().catch(() => null);
-        Object.assign(urls, (d?.urls ?? {}) as Record<string, string>);
-        Object.assign(ext, (d?.ext ?? {}) as Record<string, string>);
-        Object.assign(bytes, (d?.bytes ?? {}) as Record<string, number>);
-        pending = Array.isArray(d?.pending) ? (d.pending as string[]) : [];
-      } catch {
-        break;
-      }
-      ask = pending;
-    }
-    return { urls, ext, bytes };
+  function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<SignedDownloads> {
+    return signPhotosForDownload(listingId, targets, size, createClient());
+  }
+
+  /** Nothing could be signed at all: say so (never a silent finish) and log it. */
+  function signedNothing(count: number, size: DownloadSize) {
+    reportZipIssue("sign-empty", new Error("no download links"), { listingId, size, total: count });
+    onMessage({ kind: "error", text: "The photos couldn't be downloaded. Please try again in a moment.", ms: 10000 });
   }
 
   /** Total bytes of these photos at each size (no links signed); null if unknown. */
@@ -193,8 +180,18 @@ export function useSizedDownloads(opts: {
     setDownloadLabel("Preparing…");
     const ctl = new AbortController();
     abortRef.current = ctl;
-    const { urls, ext } = await signForDownload(targets, size);
+    const { urls, ext, original } = await signForDownload(targets, size);
+    if (Object.keys(urls).length === 0) {
+      abortRef.current = null;
+      setDownloading(false);
+      setSavingToFolder(false);
+      setDownloadProgress(0);
+      setDownloadLabel(null);
+      signedNothing(targets.length, size);
+      return;
+    }
     const extFor = extWith(ext);
+    const fullNote = fullSizeNote(targets.filter((t) => original.indexOf(t.id) >= 0).length);
     const pad = Math.max(2, String(targets.length).length);
     const entries = targets.map((photo, i) => {
       const label = cleanName(photo.category ?? "Photo") || "Photo";
@@ -229,7 +226,7 @@ export function useSizedDownloads(opts: {
     } else if (result.failed > 0) {
       onMessage({ kind: "error", text: `Saved ${result.written} photos to ${folder.path}. ${result.failed} couldn't be downloaded; try ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`, ms: 12000 });
     } else {
-      onMessage({ kind: "success", text: `Saved ${result.written} photo${result.written !== 1 ? "s" : ""} to ${folder.path} (${formatBytes(result.bytes)}).`, ms: 8000 });
+      onMessage({ kind: "success", text: `Saved ${result.written} photo${result.written !== 1 ? "s" : ""} to ${folder.path} (${formatBytes(result.bytes)}).${fullNote ? ` ${fullNote}` : ""}`, ms: fullNote ? 10000 : 8000 });
     }
   }
 
@@ -281,8 +278,17 @@ export function useSizedDownloads(opts: {
       }
     }
 
-    const { urls: fresh, ext: madeExt, bytes: madeBytes } = await signForDownload(targets, size);
+    const { urls: fresh, ext: madeExt, bytes: madeBytes, original } = await signForDownload(targets, size);
     const extFor = extWith(madeExt);
+    if (Object.keys(fresh).length === 0) {
+      if (zipTarget?.kind === "stream") await zipTarget.writable.abort().catch(() => {});
+      setDownloading(false);
+      setDownloadProgress(0);
+      setDownloadLabel(null);
+      signedNothing(targets.length, size);
+      return;
+    }
+    const fullNote = fullSizeNote(targets.filter((t) => original.indexOf(t.id) >= 0).length);
 
     // Single photo — direct download, no ZIP needed
     if (targets.length === 1) {
@@ -296,7 +302,9 @@ export function useSizedDownloads(opts: {
         // identifiable in a Downloads folder full of "Salon.jpg"s. Resized
         // copies say their size so they can't be mistaken for the original.
         const label = cleanName(photo.category ?? "Photo") || "Photo";
-        const filename = `${vessel ? `${vessel} – ` : ""}${label}${sizeInfo.suffix ? ` (${sizeInfo.suffix})` : ""}.${ext}`;
+        // Served as the original (its sized copy couldn't be made): no size in the name.
+        const suffix = original.indexOf(photo.id) >= 0 ? "" : sizeInfo.suffix;
+        const filename = `${vessel ? `${vessel} – ` : ""}${label}${suffix ? ` (${suffix})` : ""}.${ext}`;
         triggerDownload(blob, filename);
         // Log download silently (fire-and-forget)
         logDownload(1);
@@ -349,8 +357,8 @@ export function useSizedDownloads(opts: {
     } else {
       onMessage({
         kind: "success",
-        text: `Saved ${result.written} photos (${formatBytes(result.bytes)})${result.parts > 1 ? ` in ${result.parts} zip files` : ""}.`,
-        ms: 5000,
+        text: `Saved ${result.written} photos (${formatBytes(result.bytes)})${result.parts > 1 ? ` in ${result.parts} zip files` : ""}.${fullNote ? ` ${fullNote}` : ""}`,
+        ms: fullNote ? 8000 : 5000,
       });
     }
   }

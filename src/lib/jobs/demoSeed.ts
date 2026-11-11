@@ -32,7 +32,7 @@ import { CopyObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from "@a
 import { r2, R2_VIDEO_BUCKET, r2VideoConfigured, r2VideoCopy, r2VideoDelete } from "@/lib/r2";
 import { PHOTO_BUCKET, R2_PHOTO_BUCKET, r2PhotoKey, r2PhotosConfigured, noteR2PhotoExists, deleteOriginals } from "@/lib/photoStore";
 import { ensureDerivatives, removeDerivatives } from "@/lib/photoDerivatives";
-import { allDerivativePaths, downloadSizePath, DOWNLOAD_SIZE_EDGES, type DownloadSizeName } from "@/lib/photoDerivativePaths";
+import { allDerivativePaths, downloadSizePath, downloadSizesErrorRecord, DOWNLOAD_SIZE_EDGES, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 import { newSlideshowSlug } from "@/lib/slideshowPublish";
 import { DEMO_COMPANY, DEMO_EMAIL, DEMO_FIRST_NAME, DEMO_LAST_NAME, isDemoUser } from "@/lib/demo";
 import { forgetDemoAccounts } from "@/lib/demoServer";
@@ -409,7 +409,7 @@ async function deriveSome(svc: SupabaseClient, listingId: string, deadlineMs: nu
     for (const r of (data ?? []) as { id: string; storage_path: string }[]) {
       if (Date.now() > deadlineMs - MARGIN_MS) break;
       await storeDownloadSizes(svc, r).catch(async (e) => {
-        await svc.from("photos").update({ download_sizes: { path: r.storage_path, error: errText(e) } }).eq("id", r.id).then(() => {}, () => {});
+        await svc.from("photos").update({ download_sizes: downloadSizesErrorRecord(r.storage_path, errText(e)) }).eq("id", r.id).then(() => {}, () => {});
       });
     }
   }

@@ -19,7 +19,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { ensureDerivatives } from "@/lib/photoDerivatives";
 import { deleteR2Original, headR2Original, putR2Original, PHOTO_BUCKET, r2PhotosConfigured, noteR2PhotoExists } from "@/lib/photoStore";
 import { originalContentType } from "@/lib/photoStoreShared";
-import { DOWNLOAD_SIZE_EDGES, downloadSizeExt, downloadSizePath, type DownloadSizeName } from "@/lib/photoDerivativePaths";
+import { DOWNLOAD_SIZE_EDGES, downloadSizeExt, downloadSizePath, downloadSizesErrorRecord, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 import { r2Configured, r2Exists } from "@/lib/r2";
 import { JobFatalError, type JobHandler } from "./types";
 
@@ -411,7 +411,7 @@ export const r2PhotoFinish: JobHandler = async (job, { svc, deadlineMs }) => {
           if (e.failed.length) throw new Error(e.failed[0].reason);
         } else if (!r.download_sizes) {
           await storeDownloadSizes(svc, r).catch(async (err) => {
-            await svc.from("photos").update({ download_sizes: { path: r.storage_path, error: String(err).slice(0, 200) } })
+            await svc.from("photos").update({ download_sizes: downloadSizesErrorRecord(r.storage_path, err) })
               .eq("id", r.id).then(() => {}, () => {});
             throw err;
           });
@@ -420,7 +420,7 @@ export const r2PhotoFinish: JobHandler = async (job, { svc, deadlineMs }) => {
         // inside ensureDerivatives): mark it so the job moves on.
         const { data: after } = await svc.from("photos").select("derivatives_at, download_sizes").eq("id", r.id).maybeSingle();
         if (after && after.derivatives_at && !after.download_sizes) {
-          await svc.from("photos").update({ download_sizes: { path: r.storage_path, error: "not made" } }).eq("id", r.id);
+          await svc.from("photos").update({ download_sizes: downloadSizesErrorRecord(r.storage_path, "not made") }).eq("id", r.id);
         }
         if (after && !after.derivatives_at) skip.add(r.id);
         done++;

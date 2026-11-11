@@ -3,13 +3,26 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { originalPathInScope, presignR2Original, signOriginalPaths } from "@/lib/photoStore";
-import { downloadSizeExt, downloadSizePath, hasDownloadSize, webServesOriginal, type DownloadSizeName, type DownloadSizesRecord } from "@/lib/photoDerivativePaths";
+import { downloadSizeExt, downloadSizePath, downloadSizeFailedRecently, downloadSizesErrorRecord, hasDownloadSize, webServesOriginal, type DownloadSizeName, type DownloadSizesRecord } from "@/lib/photoDerivativePaths";
 
 export const runtime = "nodejs";
 // 60 s: an R2 photo whose Web / Social file isn't made yet is made here (sharp).
 export const maxDuration = 60;
-/** Time this request may spend making missing Web / Social files; the rest come back as `pending`. */
-const MAKE_BUDGET_MS = 35_000;
+/** No new Web / Social file is started after this long into the request; the rest come back as `pending`. */
+const MAKE_BUDGET_MS = 25_000;
+/** One file's make may take this long before the photo's original is served instead. */
+const MAKE_TIMEOUT_MS = 20_000;
+/** Every make is cut off by this point of the request — the answer leaves well inside maxDuration. */
+const HARD_STOP_MS = 48_000;
+
+/** `p`, or a rejection after `ms` (p keeps running; its result is ignored). */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const t = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`timed out after ${Math.round(ms / 1000)} s`)), ms);
+  });
+  return Promise.race([p, t]).finally(() => { if (timer) clearTimeout(timer); });
+}
 
 const BUCKET = "listing-photos";
 const TTL = 60 * 60;
@@ -31,7 +44,8 @@ type DownloadSize = keyof typeof SIZES;
 
 /**
  * POST /api/listings/[id]/photos/download-urls  { photoIds: string[], size }
- *   → { urls: { [photoId]: signedUrl }, failed: photoId[], pending?: photoId[], ext?: { [photoId]: "jpg" | "png" } }
+ *   → { urls: { [photoId]: signedUrl }, failed: photoId[], pending?: photoId[], ext?: { [photoId]: "jpg" | "png" },
+ *       original?: photoId[], bytes }
  *
  * Oct 28 — originals on R2: Supabase can't resize them, so their Web & MLS /
  * Social files are PRE-MADE with sharp (same long edge and quality as the
@@ -40,6 +54,13 @@ type DownloadSize = keyof typeof SIZES;
  * that isn't made yet is made here on demand (stored, then served); any not
  * reached within MAKE_BUDGET_MS come back as `pending` and the page asks
  * again. `ext` is the made file's extension (jpg, or png for PNG originals).
+ *
+ * Nov 11 — a photo whose file can't be made (sharp and the staged transform
+ * both fail; or the make runs past MAKE_TIMEOUT_MS) gets its ORIGINAL, listed
+ * in `original` so the page names it as the original. The failure is stamped
+ * on photos.download_sizes (`error`, `error_at`) and not tried again for 24 h.
+ * Ready links are signed before any make starts, and no make outlives
+ * HARD_STOP_MS, so the answer is never lost to the 60 s limit.
  *
  * The broker listing page asks for these at download time (never reusing
  * page-load links, which expire), for one photo, a selection or the whole
@@ -52,6 +73,7 @@ type DownloadSize = keyof typeof SIZES;
  * (is_shared) listing still downloads.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+  const requestStarted = Date.now();
   try {
     const listingId = params.id;
     const body = await req.json().catch(() => ({}));
@@ -128,6 +150,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const urls: Record<string, string> = {};
     const ext: Record<string, "jpg" | "png"> = {};
     const pending: string[] = [];
+    /** Served as the ORIGINAL because the sized file doesn't exist and can't be made now. */
+    const original: string[] = [];
     const edge = SIZES[size];
     if (edge === null) {
       const signed = await signOriginalPaths(svc, rows.map((r) => r.storage_path), TTL);
@@ -135,47 +159,50 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       signed.forEach((d) => { if (d.signedUrl) byPath.set(d.path, d.signedUrl); });
       rows.forEach((r) => { const u = byPath.get(r.storage_path); if (u) urls[r.id] = u; });
     } else {
-      // R2 originals: the pre-made file (made now if missing, within budget).
+      // Nov 11 (41 Bahama): ready links first, so a photo whose sized copy
+      // can't be made never costs the others theirs; then whatever time is
+      // left makes missing files. A photo that can't have its file gets its
+      // ORIGINAL (listed in `original`) rather than nothing.
       const name = size as DownloadSizeName;
       const r2Rows = rows.filter((r) => r.storage_backend === "r2" && originalPathInScope(r.storage_path, r));
-      const started = Date.now();
-      // Web & MLS of an original no bigger than 2048 px (YachtPics' 2000 px
-      // deliveries): the original itself, named exactly as the Web & MLS
-      // download is today (the page adds " (2048px)" and the original's extension).
-      const isWebOriginal = (r: { storage_path: string; download_sizes: unknown }) => name === "web" && webServesOriginal(r);
-      for (const r of r2Rows) {
-        if (isWebOriginal(r)) {
-          try { urls[r.id] = await presignR2Original(r.storage_path, TTL); } catch { /* failed below */ }
-          continue;
-        }
-        let ready = hasDownloadSize(r, name);
-        if (!ready) {
-          if (Date.now() - started > MAKE_BUDGET_MS) {
-            pending.push(r.id);
-            continue;
-          }
-          try {
-            const { storeDownloadSizes } = await import("@/lib/photoSharp");
-            const rec = await storeDownloadSizes(svc, r);
-            if (rec && name === "web" && rec.web_original) {
-              try { urls[r.id] = await presignR2Original(r.storage_path, TTL); } catch { /* failed below */ }
-              continue;
-            }
-            ready = !!rec && typeof rec[name] === "number";
-          } catch (e) {
-            console.warn(`download size ${name} for ${r.id}: ${e instanceof Error ? e.message : e}`);
-          }
-        }
-        if (!ready) continue;
+      type Row = (typeof rows)[number];
+      const serveOriginal = async (r: Row) => {
+        try {
+          urls[r.id] = await presignR2Original(r.storage_path, TTL);
+          original.push(r.id);
+          delete ext[r.id];
+          const ob = r.original_bytes && r.original_bytes > 0 ? Number(r.original_bytes) : 0;
+          if (ob) bytes[r.id] = ob; else delete bytes[r.id];
+        } catch { /* failed below */ }
+      };
+      const serveMade = async (r: Row) => {
         try {
           urls[r.id] = await presignR2Original(downloadSizePath(r, name), TTL);
           ext[r.id] = downloadSizeExt(r.storage_path);
         } catch { /* failed below */ }
+      };
+      // Web & MLS of an original no bigger than 2048 px (YachtPics' 2000 px
+      // deliveries): the original itself, named exactly as the Web & MLS
+      // download is today (the page adds " (2048px)" and the original's extension).
+      const isWebOriginal = (r: { storage_path: string; download_sizes: unknown }) => name === "web" && webServesOriginal(r);
+
+      // 1 — ready: sign now (local presigning, no network).
+      const toMake: Row[] = [];
+      for (const r of r2Rows) {
+        if (isWebOriginal(r)) {
+          try { urls[r.id] = await presignR2Original(r.storage_path, TTL); } catch { /* failed below */ }
+        } else if (hasDownloadSize(r, name)) {
+          await serveMade(r);
+        } else if (downloadSizeFailedRecently(r)) {
+          // Failed within 24 h: don't try again on every download.
+          await serveOriginal(r);
+        } else {
+          toMake.push(r);
+        }
       }
-    }
-    if (edge !== null) {
+
+      // 2 — originals on Supabase: transform links (one signature each).
       const supaRows = rows.filter((r) => r.storage_backend !== "r2");
-      // Supabase signs transforms one url at a time.
       const CHUNK = 50;
       for (let i = 0; i < supaRows.length; i += CHUNK) {
         await Promise.all(
@@ -187,6 +214,52 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
           })
         );
       }
+
+      // 3 — missing files: made one at a time while the budget lasts, each
+      // with its own time limit, so the answer always leaves well inside
+      // maxDuration. Not reached: `pending` (asked again) — except a photo
+      // that already failed once, which gets its original straight away.
+      if (toMake.length) {
+        const { storeDownloadSizes } = await import("@/lib/photoSharp");
+        for (const r of toMake) {
+          const hadError = !!(r.download_sizes as DownloadSizesRecord | null)?.error &&
+            (r.download_sizes as DownloadSizesRecord).path === r.storage_path;
+          const elapsed = Date.now() - requestStarted;
+          if (elapsed > MAKE_BUDGET_MS) {
+            if (hadError) await serveOriginal(r);
+            else pending.push(r.id);
+            continue;
+          }
+          const limit = Math.max(1000, Math.min(MAKE_TIMEOUT_MS, HARD_STOP_MS - elapsed));
+          let rec: DownloadSizesRecord | null = null;
+          let problem: unknown = null;
+          try {
+            rec = await withTimeout(storeDownloadSizes(svc, r), limit);
+          } catch (e) {
+            problem = e;
+          }
+          if (rec && name === "web" && rec.web_original) {
+            try { urls[r.id] = await presignR2Original(r.storage_path, TTL); } catch { /* failed below */ }
+            continue;
+          }
+          if (rec && typeof rec[name] === "number") {
+            await serveMade(r);
+            continue;
+          }
+          const msg = problem instanceof Error ? problem.message : String(problem ?? "not made");
+          console.warn(`download size ${name} for ${r.id}: ${msg} — serving the original`);
+          // Stamp the failure (only if no good record landed meanwhile), so
+          // the next 24 h of downloads serve the original without trying.
+          await svc
+            .from("photos")
+            .update({ download_sizes: downloadSizesErrorRecord(r.storage_path, problem instanceof Error ? `Error: ${problem.message}` : problem ?? "not made") })
+            .eq("id", r.id)
+            .eq("storage_path", r.storage_path)
+            .is("download_sizes->>social", null)
+            .then(() => {}, () => {});
+          await serveOriginal(r);
+        }
+      }
     }
 
     const failed = ids.filter((pid) => !urls[pid] && !pending.includes(pid));
@@ -195,6 +268,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       failed,
       ...(pending.length ? { pending } : {}),
       ...(Object.keys(ext).length ? { ext } : {}),
+      ...(original.length ? { original } : {}),
       bytes,
     });
   } catch (err) {

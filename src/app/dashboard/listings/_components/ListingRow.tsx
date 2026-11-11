@@ -5,8 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type FolderTarget } from "@/lib/zipDownload";
+import { folderSaveSupported, openFolderTarget, openZipTarget, reportZipIssue, saveToFolder, writeZip, type FolderTarget } from "@/lib/zipDownload";
 import { DOWNLOAD_SIZES, type DownloadSize } from "@/components/listing-photos/useDownloads";
+import { fullSizeNote, signPhotosForDownload } from "@/components/listing-photos/signDownloads";
 
 /** The size the broker's downloads use — the same remembered choice as the
  *  size menu on the listing page (Web & MLS unless they picked another). */
@@ -56,6 +57,10 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [downloadDone, setDownloadDone] = useState(false);
+  /** Links are being signed (sized files may be made first — up to a minute on a big listing). */
+  const [preparing, setPreparing] = useState(false);
+  /** After a download: "5 photos were saved at full size." (sized copies that couldn't be made). */
+  const [doneNote, setDoneNote] = useState("");
   const [noPhotos, setNoPhotos] = useState(false);
   // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs
   // that block zips): progress + cancel.
@@ -189,7 +194,9 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     setDownloading(true);
     setDownloadProgress(0);
     setDownloadDone(false);
+    setDoneNote("");
     setNoPhotos(false);
+    setPreparing(true);
 
     let fallBack = false;
     try {
@@ -210,30 +217,31 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         return;
       }
 
-      const paths = photos.map((p) => p.storage_path);
       // Supabase or R2, per photo (src/lib/photoStoreClient.ts).
       // Full resolution: the originals, signed here. Web & MLS / Social: the
-      // sized files from the same route the listing page uses (files still
-      // being made come back as `pending` and are asked for again).
+      // sized files from the same route and helper the listing page uses
+      // (src/components/listing-photos/signDownloads.ts) — files still being
+      // made are asked for again; any it can't give come down as originals.
       const urlById = new Map<string, string>();
-      const madeExt: Record<string, string> = {};
+      let madeExt: Record<string, string> = {};
+      let fullCount = 0;
       if (size === "full") {
-        const signed = await signOriginalsInBrowser(supabase, paths, 3600);
+        const signed = await signOriginalsInBrowser(supabase, photos.map((p) => p.storage_path), 3600);
         photos.forEach((p) => { const u = signed.get(p.storage_path); if (u) urlById.set(p.id, u); });
       } else {
-        let ask = photos.map((p) => p.id as string);
-        for (let attempt = 0; ask.length > 0 && attempt < 6; attempt++) {
-          const res = await fetch(`/api/listings/${listing.id}/photos/download-urls`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ photoIds: ask, size }),
-          });
-          if (!res.ok) break;
-          const d = await res.json().catch(() => null);
-          Object.entries((d?.urls ?? {}) as Record<string, string>).forEach(([id, u]) => urlById.set(id, u));
-          Object.assign(madeExt, (d?.ext ?? {}) as Record<string, string>);
-          ask = Array.isArray(d?.pending) ? (d.pending as string[]) : [];
-        }
+        const signed = await signPhotosForDownload(listing.id, photos, size, supabase);
+        Object.keys(signed.urls).forEach((id) => urlById.set(id, signed.urls[id]));
+        madeExt = signed.ext;
+        fullCount = signed.original.length;
+      }
+      setPreparing(false);
+
+      if (urlById.size === 0) {
+        // Never a silent finish: nothing could be signed at all.
+        if (target?.kind === "stream") await target.writable.abort().catch(() => {});
+        reportZipIssue("sign-empty", new Error("no download links"), { listingId: listing.id, size, total: photos.length });
+        alert("The photos couldn't be downloaded. Please try again in a moment.");
+        return;
       }
 
       const entries = photos.map((photo, i) => {
@@ -294,12 +302,15 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         body: JSON.stringify({ photoCount: written }),
       }).catch(() => {});
 
+      const note = fullSizeNote(fullCount);
+      setDoneNote(note);
       setDownloadDone(true);
-      setTimeout(() => setDownloadDone(false), 3000);
+      setTimeout(() => { setDownloadDone(false); setDoneNote(""); }, note ? 8000 : 3000);
     } catch {
       alert("The download didn't finish. Please try again.");
     } finally {
       setDownloading(false);
+      setPreparing(false);
       setDownloadProgress(0);
       setSeparateLabel(null);
       separateAbort.current = null;
@@ -462,7 +473,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
           <button
             onClick={() => handleDownload(canFolder ? "folder" : "zip")}
             disabled={downloading}
-            title={`${canFolder ? "Pick a folder — the photos are saved straight into it" : "Download all photos as ZIP"} · ${rowSizeInfo.label}. Change the size on the boat's page.`}
+            title={downloadDone && doneNote ? doneNote : `${canFolder ? "Pick a folder — the photos are saved straight into it" : "Download all photos as ZIP"} · ${rowSizeInfo.label}. Change the size on the boat's page.`}
             className={`${quickAction}
               ${downloadDone
                 ? "border-success-200 bg-success-50 text-success-700"
@@ -478,12 +489,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>
-                <span className="hidden sm:inline">{downloadProgress}%</span>
+                <span className="hidden sm:inline">{preparing ? "Preparing…" : `${downloadProgress}%`}</span>
               </>
             ) : downloadDone ? (
               <>
                 <svg className="w-3.5 h-3.5" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" /></svg>
-                <span className="hidden sm:inline">Done</span>
+                <span className="hidden sm:inline">Done{doneNote ? <span className="font-normal"> · {doneNote.split(" ")[0]} at full size</span> : null}</span>
               </>
             ) : noPhotos ? (
               <>

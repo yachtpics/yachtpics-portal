@@ -117,8 +117,33 @@ export function downloadSizePath(photo: DerivativeSource, size: DownloadSizeName
  * original's long side is ≤ 2048, so no Web & MLS file is made and that
  * download serves the original itself.
  */
-export type DownloadSizesRecord = { path: string; w?: number; h?: number; web_original?: boolean; error?: string } &
-  Partial<Record<DownloadSizeName, number>>;
+export type DownloadSizesRecord = {
+  path: string; w?: number; h?: number; web_original?: boolean;
+  /** The sizes couldn't be made for this original (message). */
+  error?: string;
+  /** When that error was recorded (ISO). Missing on records from before Nov 11. */
+  error_at?: string;
+} & Partial<Record<DownloadSizeName, number>>;
+
+/** An error record for `path`, stamped now (every writer of an error uses this). */
+export function downloadSizesErrorRecord(path: string, err: unknown): DownloadSizesRecord {
+  return { path, error: String(err ?? "not made").slice(0, 200), error_at: new Date().toISOString() };
+}
+
+/** How long a recorded failure stops the download route from trying again. */
+export const DOWNLOAD_SIZE_RETRY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The sizes of this photo's CURRENT original failed within the last 24 h —
+ * don't try again yet (serve the original). An error without `error_at`
+ * (written before Nov 11) counts as old: tried once more, then stamped.
+ */
+export function downloadSizeFailedRecently(photo: { storage_path: string; download_sizes?: unknown }, now = Date.now()): boolean {
+  const rec = photo.download_sizes as DownloadSizesRecord | null | undefined;
+  if (!rec || rec.path !== photo.storage_path || !rec.error || !rec.error_at) return false;
+  const t = Date.parse(rec.error_at);
+  return Number.isFinite(t) && now - t < DOWNLOAD_SIZE_RETRY_MS;
+}
 
 /** Web & MLS of this photo is its original (long side ≤ 2048, recorded for the current original). */
 export function webServesOriginal(photo: { storage_path: string; download_sizes?: unknown }): boolean {
