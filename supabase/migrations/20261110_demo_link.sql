@@ -90,7 +90,7 @@ set search_path = public, pg_catalog
 as $fn$
 declare
   t record;
-  cmd text;
+  v_cmd text;
   made integer := 0;
   tmade integer;
   expr constant text := $e$coalesce(((select auth.jwt()) -> 'app_metadata' ->> 'demo'), 'false') <> 'true'$e$;
@@ -109,15 +109,15 @@ begin
     -- the run carries on with the next table.
     tmade := 0;
     begin
-      foreach cmd in array array['insert', 'update', 'delete'] loop
+      foreach v_cmd in array array['insert', 'update', 'delete'] loop
         if not exists (
           select 1 from pg_policies p
-           where p.schemaname = t.schema_name and p.tablename = t.table_name and p.policyname = 'demo_readonly_' || cmd
+           where p.schemaname = t.schema_name and p.tablename = t.table_name and p.policyname = 'demo_readonly_' || v_cmd
         ) then
           execute format(
             'create policy %I on %I.%I as restrictive for %s to authenticated %s',
-            'demo_readonly_' || cmd, t.schema_name, t.table_name, cmd,
-            case cmd
+            'demo_readonly_' || v_cmd, t.schema_name, t.table_name, v_cmd,
+            case v_cmd
               when 'insert' then format('with check (%s)', expr)
               when 'update' then format('using (%s) with check (%s)', expr, expr)
               else format('using (%s)', expr)
@@ -135,15 +135,15 @@ begin
   -- storage.objects: uploads, overwrites (upsert) and deletes in every bucket.
   tmade := 0;
   begin
-    foreach cmd in array array['insert', 'update', 'delete'] loop
+    foreach v_cmd in array array['insert', 'update', 'delete'] loop
       if not exists (
         select 1 from pg_policies p
-         where p.schemaname = 'storage' and p.tablename = 'objects' and p.policyname = 'demo_readonly_' || cmd
+         where p.schemaname = 'storage' and p.tablename = 'objects' and p.policyname = 'demo_readonly_' || v_cmd
       ) then
         execute format(
           'create policy %I on storage.objects as restrictive for %s to authenticated %s',
-          'demo_readonly_' || cmd, cmd,
-          case cmd
+          'demo_readonly_' || v_cmd, v_cmd,
+          case v_cmd
             when 'insert' then format('with check (%s)', expr)
             when 'update' then format('using (%s) with check (%s)', expr, expr)
             else format('using (%s)', expr)

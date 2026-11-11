@@ -1,6 +1,6 @@
 # Where we are — October 6, 2026
 
-## Demo link — read-only sample broker account at /demo/{token} (Nov 10, 2026) — MIGRATION `20261110_demo_link.sql` NOT APPLIED · NOT PUSHED · demo_seed NOT RUN
+## Demo link — read-only sample broker account at /demo/{token} (Nov 10, 2026) — MIGRATION `20261110_demo_link.sql` APPLIED (Nov 10; 213 read-only policies) · PUSHED
 
 Owner decision: a private link opens a sample broker account with no sign-in, for the capture browser now and a "Try the live demo" button later. Nothing reachable through it may send, delete, pay, upload or change anything; a leaked link at worst shows one sample boat. Typecheck clean, NOT BROWSER-TESTED, nothing run against a database. No new dependency, no new env var.
 
