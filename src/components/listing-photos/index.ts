@@ -11,3 +11,6 @@ export { DownloadSizeSelect, SavePanel, FolderDownloadHint } from "./DownloadCon
 export { PhotoToolbar, DeletePhotosDialogs } from "./PhotoToolbar";
 export { PhotoFileInputs, UploadProgress, UploadFailedNotice, UncategorizedPrompt } from "./UploadStatus";
 export { default as OrientedThumbnail } from "./OrientedThumbnail";
+export {
+  DownloadDialog, DownloadToast, useDownloadMessages, PICKER_HINT, PICKER_REPEAT, ZIP_INSTEAD_LABEL,
+} from "./DownloadNotice";

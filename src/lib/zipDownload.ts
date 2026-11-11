@@ -212,8 +212,9 @@ export type ZipTarget =
   | { kind: "stream"; writable: WritableStream<Uint8Array>; name: string }
   /** `blocked`: the Save dialog was refused (managed PC) — this is the fallback. */
   | { kind: "parts"; blocked?: boolean }
-  /** `ms`: how long the dialog was up before it came back "cancelled". */
-  | { kind: "cancelled"; ms: number };
+  /** `ms`: how long the dialog was up before it came back "cancelled";
+   *  `repeat`: the previous attempt in this tab was cancelled too (≤ 10 min). */
+  | { kind: "cancelled"; ms: number; repeat?: boolean };
 
 export type ZipResult =
   /** `fellBack`: the Save-dialog file couldn't be written; the zip went out as plain downloads. */
@@ -284,6 +285,61 @@ export function setPlainDownloads(on: boolean) {
 export function choosePlainDownloads(ctx: ZipContext & { mode: string; ms?: number; total?: number }) {
   reportZipIssue("plain-chosen", null, ctx);
   setPlainDownloads(true);
+  forgetPickerCancel();
+}
+
+// ── Two "cancels" in a row (Nov 11, later) ────────────────────────────────
+// Live traces: on one office PC the refused window comes back after 2.3–4.1 s
+// — too slow to call "blocked", so it reads as a cancel. One cancel can be
+// real; a second one in the same tab within 10 minutes (with no successful
+// window, and without the user taking "Download as a zip instead" in
+// between) is treated as "this computer is blocking it": callers say so more
+// firmly (`repeat` on the cancelled result) and it is reported
+// (`picker-repeat-cancel`). Nothing is started without a click.
+const CANCEL_KEY = "yp_picker_cancel_at";
+const REPEAT_WINDOW_MS = 10 * 60 * 1000;
+let lastCancelAt = 0;
+
+function readCancelAt(): number {
+  try {
+    const v = Number(window.sessionStorage.getItem(CANCEL_KEY) || 0);
+    if (Number.isFinite(v) && v > lastCancelAt) lastCancelAt = v;
+  } catch { /* storage blocked */ }
+  return lastCancelAt;
+}
+
+/** A window came back cancelled: was the previous attempt in this tab cancelled too (≤ 10 min)? Records this one. */
+function notePickerCancel(ctx: ZipContext, mode: string, ms: number): boolean {
+  const t = Date.now();
+  const prev = readCancelAt();
+  const repeat = prev > 0 && t - prev <= REPEAT_WINDOW_MS;
+  lastCancelAt = t;
+  try { window.sessionStorage.setItem(CANCEL_KEY, String(t)); } catch { /* storage blocked */ }
+  if (repeat) reportZipIssue("picker-repeat-cancel", null, { ...ctx, mode, ms });
+  return repeat;
+}
+
+/** An attempt that didn't end in a cancelled window (or the user chose the plain zip): start counting again. */
+export function forgetPickerCancel() {
+  lastCancelAt = 0;
+  try { window.sessionStorage.removeItem(CANCEL_KEY); } catch { /* storage blocked */ }
+}
+
+// ── Did the page lose focus while the window was "open"? (diagnostic) ─────
+// A real native file window normally blurs the page; a policy block usually
+// doesn't. Sent as `blurred` in the `picker` trace event — not acted on yet.
+let lastPickerBlurred: boolean | null = null;
+
+/** Whether the page blurred during the last Save / folder window (null: no window was asked for). */
+export function pickerBlurred(): boolean | null {
+  return lastPickerBlurred;
+}
+
+function watchBlur(): () => void {
+  lastPickerBlurred = false;
+  const onBlur = () => { lastPickerBlurred = true; };
+  try { window.addEventListener("blur", onBlur); } catch { /* ignore */ }
+  return () => { try { window.removeEventListener("blur", onBlur); } catch { /* ignore */ } };
 }
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
@@ -297,7 +353,7 @@ const errName = (e: unknown) => (e && typeof e === "object" && "name" in e ? Str
 // No file names, URLs or emails. Remove or reduce once that case is understood.
 
 /** Identifies the deployed JavaScript in traces (bump when the trace code changes). */
-export const DOWNLOAD_TRACE_BUILD = "2026-11-11b";
+export const DOWNLOAD_TRACE_BUILD = "2026-11-11c";
 
 /** Fire-and-forget; never throws. */
 export function traceDownload(event: string, data: Record<string, unknown>) {
@@ -408,21 +464,32 @@ function isEmbeddedWebView(): boolean {
  * browser switched to plain downloads, gets parts mode.
  */
 export async function openZipTarget(suggestedName: string, ctx: ZipContext = {}, opts: { plain?: boolean } = {}): Promise<ZipTarget> {
+  const t = await openZipTargetInner(suggestedName, ctx, opts);
+  if (t.kind === "cancelled") t.repeat = notePickerCancel(ctx, "zip", t.ms);
+  else forgetPickerCancel();
+  return t;
+}
+
+async function openZipTargetInner(suggestedName: string, ctx: ZipContext, opts: { plain?: boolean }): Promise<ZipTarget> {
   const w = window as PickerWindow;
+  lastPickerBlurred = null;
   if (opts.plain || plainDownloadsPreferred()) return { kind: "parts" };
   if (typeof w.showSaveFilePicker !== "function") return { kind: "parts" };
   if (isEmbeddedWebView()) return { kind: "parts" };
   let step = "picker";
   const t0 = now();
+  const stopBlur = watchBlur();
   try {
     const handle = await w.showSaveFilePicker({
       suggestedName,
       types: [{ description: "ZIP archive", accept: { "application/zip": [".zip"] } }],
     });
+    stopBlur();
     step = "createWritable";
     const writable = await handle.createWritable();
     return { kind: "stream", writable, name: handle.name ?? suggestedName };
   } catch (e) {
+    stopBlur();
     const ms = Math.round(now() - t0);
     if (step === "picker" && errName(e) === "AbortError") {
       if (ms >= PICKER_BLOCKED_MS) return { kind: "cancelled", ms };
@@ -734,7 +801,7 @@ function safeFileName(n: string): string {
 export type FolderTarget =
   | { kind: "folder"; dir: DirHandle; path: string }
   /** `ms`: how long the window was up — may have been blocked, not cancelled (say so). */
-  | { kind: "cancelled"; ms: number }
+  | { kind: "cancelled"; ms: number; repeat?: boolean }
   /** No folder saving here, or the window / subfolder failed (`blocked`:
    *  plain downloads are now remembered, so openZipTarget skips its window) —
    *  use the zip instead. */
@@ -746,12 +813,22 @@ export type FolderTarget =
  * "<subfolder> (2)" … if that name is taken.
  */
 export async function openFolderTarget(subfolder: string, ctx: ZipContext = {}): Promise<FolderTarget> {
+  const t = await openFolderTargetInner(subfolder, ctx);
+  if (t.kind === "cancelled") t.repeat = notePickerCancel(ctx, "folder", t.ms);
+  else forgetPickerCancel();
+  return t;
+}
+
+async function openFolderTargetInner(subfolder: string, ctx: ZipContext): Promise<FolderTarget> {
   const w = window as DirPickerWindow;
+  lastPickerBlurred = null;
   if (!folderSaveSupported() || !w.showDirectoryPicker) return { kind: "unsupported" };
   let step = "dirPicker";
   const t0 = now();
+  const stopBlur = watchBlur();
   try {
     const parent = await w.showDirectoryPicker({ mode: "readwrite", startIn: "downloads", id: "yp-photos" });
+    stopBlur();
     step = "subfolder";
     const base = safeFileName(subfolder);
     let name = base;
@@ -766,6 +843,7 @@ export async function openFolderTarget(subfolder: string, ctx: ZipContext = {}):
     const dir = await parent.getDirectoryHandle(name, { create: true });
     return { kind: "folder", dir, path: `${parent.name}/${dir.name}` };
   } catch (e) {
+    stopBlur();
     const ms = Math.round(now() - t0);
     if (step === "dirPicker" && errName(e) === "AbortError") {
       if (ms >= PICKER_BLOCKED_MS) return { kind: "cancelled", ms };

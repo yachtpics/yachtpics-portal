@@ -7,7 +7,8 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/photos/download-fallback
  *   { step, errorName?, message?, mode?, listingId?, size?, bytes?, done?, total?, ms? } → { ok }
- *   (`ms`, Nov 11: how long a Save / folder window was up — see zipDownload.ts "plain downloads")
+ *   (`ms`, Nov 11: how long a Save / folder window was up — see zipDownload.ts "plain downloads";
+ *   trace `blurred`: the page lost focus while that window was asked for — diagnostic only)
  *
  * Diagnostics only (Oct 30): when a "Download all" zip fails, or the
  * Save-dialog stream falls back to plain downloads (src/lib/zipDownload.ts
@@ -18,7 +19,7 @@ export const dynamic = "force-dynamic";
  */
 const TRACE_STR = ["event", "attempt", "parent", "listingId", "size", "via", "picker", "kind", "mode", "outcome", "visibility", "build", "error"];
 const TRACE_NUM = ["count", "ms", "urls", "original", "bytes", "written", "failed", "zips"];
-const TRACE_BOOL = ["canFolder", "plainFlag", "hasDirPicker", "hasSavePicker", "blocked"];
+const TRACE_BOOL = ["canFolder", "plainFlag", "hasDirPicker", "hasSavePicker", "blocked", "blurred", "repeat"];
 
 export async function POST(req: NextRequest) {
   const raw = await req.text().catch(() => "");

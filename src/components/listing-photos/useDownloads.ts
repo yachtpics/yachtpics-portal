@@ -11,8 +11,9 @@ import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 import {
   formatBytes, openZipTarget, partLimitBytes, folderSaveAvailable, openFolderTarget, reportZipIssue, saveToFolder, writeZip,
   plainDownloadsPreferred, setPlainDownloads, choosePlainDownloads, type ZipEntry, type ZipTarget,
-  startDownloadTrace, traceDownload, traceErrorText, type DownloadTrace, type TraceOutcome,
+  startDownloadTrace, traceDownload, traceErrorText, pickerBlurred, type DownloadTrace, type TraceOutcome,
 } from "@/lib/zipDownload";
+import { PICKER_HINT, PICKER_REPEAT, ZIP_INSTEAD_LABEL } from "./DownloadNotice";
 import { createClient } from "@/lib/supabase/client";
 import { fullSizeNote, signPhotosForDownload, type SignedDownloads } from "./signDownloads";
 
@@ -72,8 +73,10 @@ export function useSizedDownloads(opts: {
   logDownloads?: boolean;
   /** localStorage key for the remembered size (admin keeps its own). */
   sizeStorageKey?: string;
+  /** A download the user started (not a follow-on) — the page clears a stale notice. */
+  onStart?: () => void;
 }) {
-  const { listingId, vesselName, onMessage, onFinished, logDownloads = true, sizeStorageKey = "yp_download_size" } = opts;
+  const { listingId, vesselName, onMessage, onFinished, logDownloads = true, sizeStorageKey = "yp_download_size", onStart } = opts;
   const [downloading, setDownloading] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState(0);
   /** What the zip is doing, e.g. "12 of 194 photos · 480 MB" (null when idle). */
@@ -145,15 +148,19 @@ export function useSizedDownloads(opts: {
    * silence: say nothing was saved and offer the plain zip — ordinary browser
    * downloads, no window. Choosing it is reported and remembered.
    */
-  function pickerCancelled(targets: ListingPhoto[], mode: "folder" | "zip", ms: number, trace: DownloadTrace) {
+  function pickerCancelled(targets: ListingPhoto[], mode: "folder" | "zip", ms: number, trace: DownloadTrace, repeat = false) {
     const size = downloadSize;
-    trace.send("hint-shown", { picker: mode });
+    // Second cancel in a row in this tab (src/lib/zipDownload.ts): say it firmly.
+    if (repeat) trace.send("picker-repeat-cancel", { picker: mode, ms });
+    trace.send("hint-shown", { picker: mode, repeat });
+    const copy = repeat ? PICKER_REPEAT : PICKER_HINT;
     onMessage({
       kind: "info",
-      text: "Nothing was saved. If you didn't cancel, your computer may be blocking that —",
-      ms: 20000,
+      title: copy.title,
+      text: copy.body,
+      dismissLabel: "Not now",
       action: {
-        label: "Download as a zip instead",
+        label: ZIP_INSTEAD_LABEL,
         run: () => {
           if (trace.attempt) traceDownload("hint-clicked", { attempt: trace.attempt, listingId, size, count: targets.length, picker: mode });
           if (busyRef.current) return;
@@ -168,7 +175,7 @@ export function useSizedDownloads(opts: {
   /** Nothing could be signed at all: say so (never a silent finish) and log it. */
   function signedNothing(count: number, size: DownloadSize) {
     reportZipIssue("sign-empty", new Error("no download links"), { listingId, size, total: count });
-    onMessage({ kind: "error", text: "The photos couldn't be downloaded. Please try again in a moment.", ms: 10000 });
+    onMessage({ kind: "error", title: "The photos couldn't be downloaded.", text: "Nothing was saved. Please try again in a moment." });
   }
 
   /** Total bytes of these photos at each size (no links signed); null if unknown. */
@@ -207,6 +214,7 @@ export function useSizedDownloads(opts: {
    */
   async function saveToFolderAction(targets: ListingPhoto[], via = "download-all") {
     if (targets.length === 0 || downloading) return;
+    onStart?.();
     // Nov 11 bulk-download trace (src/lib/zipDownload.ts): `end` sent once, whatever happens.
     const trace = startDownloadTrace({ via, listingId, size: downloadSize, count: targets.length, canFolder });
     const end: TraceEnd = { outcome: "error", data: { mode: "folder" } };
@@ -229,11 +237,11 @@ export function useSizedDownloads(opts: {
     const folder = await openFolderTarget(`${vessel || "Photos"} – ${sizeInfo.short}`, { listingId, size });
     trace.send("picker", {
       picker: "folder", kind: folder.kind, blocked: folder.kind === "unsupported" && !!folder.blocked,
-      ms: folder.kind === "cancelled" ? folder.ms : trace.ms() - p0,
+      ms: folder.kind === "cancelled" ? folder.ms : trace.ms() - p0, blurred: pickerBlurred(),
     });
     if (folder.kind === "cancelled") {
       end.outcome = "cancelled";
-      pickerCancelled(targets, "folder", folder.ms, trace);
+      pickerCancelled(targets, "folder", folder.ms, trace, !!folder.repeat);
       return;
     }
     if (folder.kind === "unsupported") {
@@ -301,9 +309,9 @@ export function useSizedDownloads(opts: {
     }
     onFinished();
     if (result.written === 0) {
-      onMessage({ kind: "error", text: "The photos couldn't be downloaded. Please try again in a moment.", ms: 10000 });
+      onMessage({ kind: "error", title: "The photos couldn't be downloaded.", text: "Nothing was saved. Please try again in a moment." });
     } else if (result.failed > 0) {
-      onMessage({ kind: "error", text: `Saved ${result.written} photos to ${folder.path}. ${result.failed} couldn't be downloaded; try ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`, ms: 12000 });
+      onMessage({ kind: "error", title: `${result.failed} photo${result.failed !== 1 ? "s" : ""} didn't download.`, text: `Saved ${result.written} photos to ${folder.path}. ${result.failed} couldn't be downloaded; try ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.` });
     } else {
       onMessage({ kind: "success", text: `Saved ${result.written} photo${result.written !== 1 ? "s" : ""} to ${folder.path} (${formatBytes(result.bytes)}).${fullNote ? ` ${fullNote}` : ""}`, ms: fullNote ? 10000 : 8000 });
     }
@@ -321,6 +329,7 @@ export function useSizedDownloads(opts: {
    */
   async function downloadPhotos(targets: ListingPhoto[], opts: { plain?: boolean; via?: string; parent?: string } = {}) {
     if (targets.length === 0) return;
+    if (!opts.parent) onStart?.();
     // Nov 11 bulk-download trace (none for one photo): `end` sent once, whatever happens.
     const trace = startDownloadTrace({
       via: opts.via ?? (canFolder ? "zip-link" : "download-all"),
@@ -356,14 +365,14 @@ export function useSizedDownloads(opts: {
       zipTarget = await openZipTarget(zipName, { listingId, size }, { plain: !!opts.plain });
       trace.send("picker", {
         picker: "zip", kind: zipTarget.kind, blocked: zipTarget.kind === "parts" && !!zipTarget.blocked,
-        ms: zipTarget.kind === "cancelled" ? zipTarget.ms : trace.ms() - p0,
+        ms: zipTarget.kind === "cancelled" ? zipTarget.ms : trace.ms() - p0, blurred: pickerBlurred(),
       });
       end.data.mode = zipTarget.kind === "cancelled" ? null : zipTarget.kind;
       if (zipTarget.kind === "cancelled") {
         end.outcome = "cancelled";
         setDownloading(false);
         setDownloadProgress(0);
-        pickerCancelled(targets, "zip", zipTarget.ms, trace);
+        pickerCancelled(targets, "zip", zipTarget.ms, trace, !!zipTarget.repeat);
         return;
       }
       if (zipTarget.kind === "parts" && zipTarget.blocked) syncPlain();
@@ -425,7 +434,7 @@ export function useSizedDownloads(opts: {
         logDownload(1);
         onFinished();
       } catch {
-        onMessage({ kind: "error", text: "That photo couldn't be downloaded. Please try again in a moment.", ms: 6000 });
+        onMessage({ kind: "error", title: "That photo couldn't be downloaded.", text: "Please try again in a moment." });
       }
       setDownloading(false);
       setDownloadProgress(0);
@@ -464,7 +473,7 @@ export function useSizedDownloads(opts: {
     if (result.ok && result.fellBack) syncPlain();
     if (!result.ok) {
       setZipFailed(targets);
-      onMessage({ kind: "error", text: canFolder ? `${result.error} Or use Save to a folder.` : result.error, ms: 12000 });
+      onMessage({ kind: "error", title: "The download didn't finish.", text: canFolder ? `${result.error} Or use Save to a folder.` : result.error });
       return;
     }
     logDownload(result.written);
@@ -472,8 +481,8 @@ export function useSizedDownloads(opts: {
     if (result.failed > 0) {
       onMessage({
         kind: "error",
+        title: `${result.failed} photo${result.failed !== 1 ? "s" : ""} didn't download.`,
         text: `Saved ${result.written} photos${result.parts > 1 ? ` in ${result.parts} zip files` : ""}. ${result.failed} couldn't be downloaded — download ${result.failed !== 1 ? "them" : "it"} again on ${result.failed !== 1 ? "their" : "its"} own.`,
-        ms: 10000,
       });
     } else {
       // Plain downloads: name the zip files and where they went.
@@ -529,8 +538,10 @@ export function useOriginalSave(opts: {
   onMessage: OnPhotoMessage;
   /** After a successful save (the page leaves select mode). */
   onFinished: () => void;
+  /** A save the user started (not a follow-on) — the page clears a stale notice. */
+  onStart?: () => void;
 }) {
-  const { supabase, vesselName, photos, onMessage, onFinished } = opts;
+  const { supabase, vesselName, photos, onMessage, onFinished, onStart } = opts;
   const [saveBusy, setSaveBusy] = useState<{ done: number; total: number; zipping?: boolean } | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [shareJob, setShareJob] = useState<{ targets: ListingPhoto[]; start: number; files: File[]; failed: number } | null>(null);
@@ -573,6 +584,7 @@ export function useOriginalSave(opts: {
   async function savePhotos(targets: ListingPhoto[], via = "originals", parent?: string) {
     if (targets.length === 0 || saveLocked) return;
     setSaveError(null);
+    if (!parent) onStart?.();
     if (shouldUseShareSheet()) {
       await prepareShareBatch(targets, 0);
       return;
@@ -601,19 +613,24 @@ export function useOriginalSave(opts: {
       const target = await openZipTarget(`${base}-photos.zip`);
       trace.send("picker", {
         picker: "zip", kind: target.kind, blocked: target.kind === "parts" && !!target.blocked,
-        ms: target.kind === "cancelled" ? target.ms : trace.ms() - p0,
+        ms: target.kind === "cancelled" ? target.ms : trace.ms() - p0, blurred: pickerBlurred(),
       });
       if (target.kind === "cancelled") {
         end.outcome = "cancelled";
-        // May have been blocked, not cancelled: say so and offer the plain zip.
+        // May have been blocked, not cancelled: say so and offer the plain zip
+        // (more firmly the second time in a row — src/lib/zipDownload.ts).
         const ms = target.ms;
-        trace.send("hint-shown", { picker: "zip" });
+        const repeat = !!target.repeat;
+        if (repeat) trace.send("picker-repeat-cancel", { picker: "zip", ms });
+        trace.send("hint-shown", { picker: "zip", repeat });
+        const copy = repeat ? PICKER_REPEAT : PICKER_HINT;
         onMessage({
           kind: "info",
-          text: "Nothing was saved. If you didn't cancel, your computer may be blocking that —",
-          ms: 20000,
+          title: copy.title,
+          text: copy.body,
+          dismissLabel: "Not now",
           action: {
-            label: "Download as a zip instead",
+            label: ZIP_INSTEAD_LABEL,
             run: () => {
               if (trace.attempt) traceDownload("hint-clicked", { attempt: trace.attempt, count: targets.length, picker: "zip" });
               choosePlainDownloads({ mode: "originals", ms, total: targets.length });

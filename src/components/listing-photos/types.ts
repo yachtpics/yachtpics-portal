@@ -31,12 +31,18 @@ export type PhotoVariant = "broker" | "admin";
  * `ms` is a suggested auto-dismiss time (0 = leave it up). "info" is a calm,
  * neutral note (not a failure). `action`, when given, is a button shown after
  * the text (e.g. "Download as a zip instead") — render it with the text.
+ * Download messages go to ./DownloadNotice.tsx (useDownloadMessages), not the
+ * page banner: errors / actions as a dialog, successes as a bottom notice.
  */
 export type PhotoMessage = {
   kind: "success" | "error" | "info";
+  /** Optional bold first line; `text` is then the body (download messages, Nov 11). */
+  title?: string;
   text: string;
   ms?: number;
   action?: { label: string; run: () => void };
+  /** Label of the "no" button beside `action` (default "Not now"; "Close" for errors). */
+  dismissLabel?: string;
 };
 export type OnPhotoMessage = (m: PhotoMessage) => void;
 

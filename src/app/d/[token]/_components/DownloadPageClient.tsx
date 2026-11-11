@@ -58,7 +58,7 @@ export default function DownloadPageClient({
   useEffect(() => { setCanFolder(folderSaveSupported()); setFolderAvail(folderSaveAvailable()); }, []);
   // Nov 11: a Save / folder window that came back "cancelled" (maybe blocked
   // on a managed PC) — offer the plain zip instead of silence.
-  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number } | null>(null);
+  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number; repeat?: boolean } | null>(null);
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [sepDone, setSepDone] = useState<string | null>(null);
   const sepAbort = useRef<AbortController | null>(null);
@@ -97,7 +97,7 @@ export default function DownloadPageClient({
     if (busy || available.length === 0) return;
     setPickerHint(null);
     const folder = await openFolderTarget(`${vesselName} – Photos`);
-    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms }); return; }
+    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms, repeat: !!folder.repeat }); return; }
     // Blocked windows are remembered: downloadAll skips its Save window.
     if (folder.kind === "unsupported") { setCanFolder(folderSaveSupported()); return downloadAll(); }
     setBusy(true);
@@ -159,7 +159,7 @@ export default function DownloadPageClient({
       setPickerHint(null);
       const target = await openZipTarget(`${safeName}-photos.zip`);
       setCanFolder(folderSaveSupported());
-      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms }); return; }
+      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms, repeat: !!target.repeat }); return; }
       const result = await writeZip(
         target,
         available.map((photo, k) => ({
@@ -262,11 +262,7 @@ export default function DownloadPageClient({
           )}
           {!busy && sepDone && <p className="mt-3 text-sm text-white/80">{sepDone}</p>}
           {!busy && pickerHint && (
-            <PickerCancelledHint
-              onPlain={plainInstead}
-              className="mt-3 text-sm text-white/80"
-              buttonClassName="font-semibold underline underline-offset-2 text-white hover:text-accent-300"
-            />
+            <PickerCancelledHint repeat={pickerHint.repeat} onPlain={plainInstead} onDismiss={() => setPickerHint(null)} />
           )}
           {!busy && folderAvail && !canFolder && available.length > 1 && (
             <p className="mt-2">

@@ -23,7 +23,7 @@ import { arrayMove } from "@dnd-kit/sortable";
 // lightbox, saving originals) is shared with the broker listing page.
 import {
   ADMIN_PHOTO_CAPABILITIES, type PhotoMessage,
-  useListingPhotos, usePhotoActions, useOriginalSave, useSizedDownloads,
+  useListingPhotos, usePhotoActions, useOriginalSave, useSizedDownloads, useDownloadMessages,
   PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, SavePanel, DownloadSizeSelect, FolderDownloadHint,
   PhotoFileInputs, UploadProgress, UploadFailedNotice,
 } from "@/components/listing-photos";
@@ -198,11 +198,16 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
     // Files go under the listing's broker, as with every admin upload.
     ownerFolder: () => listing.broker_id,
   });
+  // Download / save messages (Nov 11): errors and "Nothing was saved." as a
+  // box that must be answered, successes as a fixed notice at the bottom —
+  // not the banner (src/components/listing-photos/DownloadNotice.tsx).
+  const downloadMessages = useDownloadMessages();
   const save = useOriginalSave({
     supabase,
     vesselName: listing.vessel_name,
     photos,
-    onMessage: onPhotoMessage,
+    onMessage: downloadMessages.show,
+    onStart: downloadMessages.clear,
     onFinished: photoActions.clearSelection,
   });
   // Sized downloads (Full / Web & MLS / Social) through the same streaming
@@ -211,7 +216,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const sized = useSizedDownloads({
     listingId: listing.id,
     vesselName: listing.vessel_name,
-    onMessage: onPhotoMessage,
+    onMessage: downloadMessages.show,
+    onStart: downloadMessages.clear,
     onFinished: photoActions.clearSelection,
     logDownloads: false,
     sizeStorageKey: "yp_admin_download_size",
@@ -982,6 +988,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           </button>
         </div>
       </div>
+
+      {downloadMessages.element}
 
       {message && (
         <div

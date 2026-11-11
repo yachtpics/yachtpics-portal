@@ -28,7 +28,7 @@ import SortableVideoList from "@/components/SortableVideoList";
 // lightbox, downloads) is shared with the admin listing page.
 import {
   BROKER_PHOTO_CAPABILITIES, type PhotoMessage,
-  useListingPhotos, usePhotoActions, useSizedDownloads,
+  useListingPhotos, usePhotoActions, useSizedDownloads, useDownloadMessages,
   PhotoGrid, PhotoLightbox, PhotoToolbar, DeletePhotosDialogs, DownloadSizeSelect, FolderDownloadHint,
   PhotoFileInputs, UploadProgress, UploadFailedNotice, UncategorizedPrompt,
 } from "@/components/listing-photos";
@@ -106,13 +106,18 @@ export default function BrokerListingPage() {
     setReelNudgeDismissed(true);
     try { sessionStorage.setItem(reelNudgeKey, "1"); } catch { /* storage blocked */ }
   }
+  // Download messages (Nov 11): not the page banner (it sits far below
+  // Download All) — errors and "Nothing was saved." as a box that must be
+  // answered, successes as a fixed notice at the bottom of the screen.
+  const downloadMessages = useDownloadMessages();
   const downloads = useSizedDownloads({
     listingId: id,
     vesselName: listing?.vessel_name ?? null,
     onMessage: (m) => {
-      onPhotoMessage(m);
+      downloadMessages.show(m);
       if (m.kind === "success" && m.text.startsWith("Saved ")) setDownloadedOk(true);
     },
+    onStart: downloadMessages.clear,
     onFinished: photoActions.clearSelection,
   });
   const dragCounter = useRef(0);
@@ -932,6 +937,8 @@ export default function BrokerListingPage() {
           Scroll to the <span className="font-medium">Client Slideshow</span> section below and click Create Slideshow — then the Send to Client button turns on.
         </div>
       )}
+
+      {downloadMessages.element}
 
       {message && (
         <div

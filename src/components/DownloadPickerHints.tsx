@@ -1,5 +1,7 @@
 "use client";
 
+import { DownloadDialog, PICKER_HINT, PICKER_REPEAT, ZIP_INSTEAD_LABEL } from "@/components/listing-photos/DownloadNotice";
+
 /**
  * Nov 11 — bulk downloads on locked-down work computers (src/lib/zipDownload.ts,
  * "plain downloads"). Two small pieces the public download pages share
@@ -8,26 +10,34 @@
  *
  *  - PickerCancelledHint: the Save / folder window came back "cancelled". A
  *    managed PC that blocks it answers exactly like Cancel, so never end in
- *    silence — say nothing was saved and offer the plain zip (ordinary
- *    browser downloads, no window).
+ *    silence — a box says nothing was saved and offers the plain zip
+ *    (ordinary browser downloads, no window).
  *  - RestoreFolderLink: plain downloads are remembered in this browser but it
  *    can save to a folder — a quiet way back.
  */
 
-export const PICKER_HINT_TEXT = "Nothing was saved. If you didn't cancel, your computer may be blocking that —";
-
-export function PickerCancelledHint({ onPlain, className, buttonClassName }: {
+/**
+ * Nov 11 (later): a box that must be answered, not a line under the buttons —
+ * the assistant on a managed PC never noticed the line. Same dialog as the
+ * listing pages (src/components/listing-photos/DownloadNotice.tsx); these
+ * pages have no dialog of their own. `repeat`: the second cancel in a row in
+ * this tab (src/lib/zipDownload.ts) — said more firmly.
+ */
+export function PickerCancelledHint({ onPlain, onDismiss, repeat = false }: {
   onPlain: () => void;
-  className?: string;
-  buttonClassName?: string;
+  onDismiss: () => void;
+  repeat?: boolean;
 }) {
+  const copy = repeat ? PICKER_REPEAT : PICKER_HINT;
   return (
-    <p role="status" className={className ?? "mt-3 text-sm text-ink-600"}>
-      {PICKER_HINT_TEXT}{" "}
-      <button onClick={onPlain} className={buttonClassName ?? "font-semibold underline underline-offset-2 text-ink-900 hover:text-accent-700"}>
-        Download as a zip instead
-      </button>
-    </p>
+    <DownloadDialog
+      title={copy.title}
+      body={copy.body}
+      primaryLabel={ZIP_INSTEAD_LABEL}
+      onPrimary={onPlain}
+      secondaryLabel="Not now"
+      onClose={onDismiss}
+    />
   );
 }
 

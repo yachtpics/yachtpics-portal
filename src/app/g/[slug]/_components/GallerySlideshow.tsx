@@ -164,7 +164,7 @@ export default function GallerySlideshow({
   useEffect(() => { setCanFolder(folderSaveSupported()); setFolderAvail(folderSaveAvailable()); }, []);
   // Nov 11: a Save / folder window that came back "cancelled" (maybe blocked
   // on a managed PC) — offer the plain zip instead of silence.
-  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number } | null>(null);
+  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number; repeat?: boolean } | null>(null);
   const [plainDone, setPlainDone] = useState("");
   // Chrome / Edge on a computer: Download saves straight into a folder; the zip is "or as a .zip".
   const useFolder = canFolder && photos.length > 1;
@@ -261,7 +261,7 @@ export default function GallerySlideshow({
     if (photos.length > 1) {
       target = await openZipTarget(`${safeTitle}-photos.zip`);
       setCanFolder(folderSaveSupported());
-      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms }); return; }
+      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms, repeat: !!target.repeat }); return; }
     }
     setDownloadingAll(true);
     setDlProgress(0);
@@ -318,7 +318,7 @@ export default function GallerySlideshow({
     if (downloadingAll || photos.length === 0) return;
     setPickerHint(null);
     const folder = await openFolderTarget(`${title} – Photos`);
-    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms }); return; }
+    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms, repeat: !!folder.repeat }); return; }
     // Blocked windows are remembered: the zip skips its Save window.
     if (folder.kind === "unsupported") { setCanFolder(folderSaveSupported()); return downloadAllPhotos(); }
     setDownloadingAll(true);
@@ -595,9 +595,7 @@ export default function GallerySlideshow({
       )}
 
       {downloadsEnabled && !downloadingAll && pickerHint && (
-        <div className="mx-4 sm:mx-6">
-          <PickerCancelledHint onPlain={plainInstead} />
-        </div>
+        <PickerCancelledHint repeat={pickerHint.repeat} onPlain={plainInstead} onDismiss={() => setPickerHint(null)} />
       )}
       {downloadsEnabled && !downloadingAll && plainDone && (
         <p className="mx-4 sm:mx-6 mt-3 text-sm text-ink-600">{plainDone}</p>

@@ -53,7 +53,7 @@ export default function ClientGalleryView({
   useEffect(() => { setCanFolder(folderSaveSupported()); setFolderAvail(folderSaveAvailable()); }, []);
   // Nov 11: a Save / folder window that came back "cancelled" (maybe blocked
   // on a managed PC) — offer the plain zip instead of silence.
-  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number } | null>(null);
+  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number; repeat?: boolean } | null>(null);
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [sepDone, setSepDone] = useState("");
   const [zipFailed, setZipFailed] = useState(false);
@@ -248,7 +248,7 @@ export default function ClientGalleryView({
     if (busy || expired || available.length === 0) return;
     setPickerHint(null);
     const folder = await openFolderTarget(`${title} – Photos`);
-    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms }); return; }
+    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms, repeat: !!folder.repeat }); return; }
     // Blocked windows are remembered: downloadAll skips its Save window.
     if (folder.kind === "unsupported") { setCanFolder(folderSaveSupported()); return downloadAll(); }
     setBusy(true);
@@ -313,7 +313,7 @@ export default function ClientGalleryView({
       setPickerHint(null);
       const target = await openZipTarget(`${safeName}-photos.zip`);
       setCanFolder(folderSaveSupported());
-      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms }); return; }
+      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms, repeat: !!target.repeat }); return; }
       // Re-sign everything first — the links this page was given may already
       // have expired, and a large set takes a while to pull down.
       const fresh = await freshUrls();
@@ -408,7 +408,7 @@ export default function ClientGalleryView({
 
       {!expired && <FolderDownloadHint show={useFolder} />}
       {!busy && sepDone && <p className="mt-3 text-sm text-ink-600">{sepDone}</p>}
-      {!busy && !expired && pickerHint && <PickerCancelledHint onPlain={plainInstead} />}
+      {!busy && !expired && pickerHint && <PickerCancelledHint repeat={pickerHint.repeat} onPlain={plainInstead} onDismiss={() => setPickerHint(null)} />}
       {!busy && !expired && folderAvail && !canFolder && available.length > 1 && (
         <p className="mt-2">
           <RestoreFolderLink onRestore={() => { setPlainDownloads(false); setCanFolder(folderSaveSupported()); }} />
