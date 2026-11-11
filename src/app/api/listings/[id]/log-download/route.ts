@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { assertListingAccess } from "@/lib/assertListingAccess";
+import { demoGuard } from "@/lib/demoServer";
 
 export async function POST(
   req: NextRequest,
@@ -17,6 +18,8 @@ export async function POST(
     const serverSupabase = await createServerClient();
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     // Use service role to bypass RLS for the insert
     const supabase = createClient(

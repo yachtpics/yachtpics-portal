@@ -4,6 +4,8 @@ import { redirect } from "next/navigation";
 import DashboardNav from "./_components/DashboardNav";
 import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
+import DemoBanner from "./_components/DemoBanner";
+import { isDemoUser } from "@/lib/demo";
 import { getAccessStatus, trialDaysFor } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
 import { paidReelServiceBrokerIds, reelServiceGivesAccess } from "@/lib/brokerAccess";
@@ -163,9 +165,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           accessStatus={accessStatus}
           isBrokerageAdmin={profile?.is_brokerage_admin ?? false}
           showReels={showReels}
+          hideShowcase={isDemoUser(user)}
         />
       )}
       <main className="flex-1 overflow-auto pb-20 md:pb-0 pt-12 md:pt-0">
+        {/* Read-only demo account (app_metadata.demo — src/lib/demo.ts). */}
+        {isDemoUser(user) && <DemoBanner />}
         {role === "broker" && (
           <TrialBanner accessStatus={accessStatus} trialEndsAt={trialEndsAt} />
         )}

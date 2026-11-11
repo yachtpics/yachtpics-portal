@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { validCreditBrokerId } from "@/lib/reelCredit";
 import { claimedRenders, reelsTakenCount, reelsUnlimited, remainingOf, REELS_PER_LISTING } from "@/lib/reelAllowance";
+import { demoForbidden, isDemoUser } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,7 +43,7 @@ async function authorise(listingId: string) {
   const svc = service();
   const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
   if (access instanceof NextResponse) return access;
-  return { svc, userId: user.id, brokerId: access.brokerId };
+  return { svc, userId: user.id, brokerId: access.brokerId, demo: isDemoUser(user) };
 }
 
 export async function GET(req: NextRequest) {
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
 
   const a = await authorise(listingId);
   if (a instanceof NextResponse) return a;
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (a.demo) return demoForbidden();
 
   try {
     const { unlimited, role } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId });

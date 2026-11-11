@@ -12,6 +12,7 @@ import { planLabel } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { signResizedPaths } from "@/lib/photoStore";
+import { isDemoUser } from "@/lib/demo";
 
 function statusTone(status: string): BadgeTone {
   if (status === "active") return "success";
@@ -63,6 +64,7 @@ export default async function DashboardPage() {
   const supabase = await createClient();
   const user = await getCurrentUser();
   if (!user) redirect("/auth/login");
+  const demo = isDemoUser(user);
 
   // Who you are and the Recently Photographed strip don't depend on each
   // other, so they're fetched together rather than one waiting on the other.
@@ -73,7 +75,8 @@ export default async function DashboardPage() {
       .eq("id", user.id)
       .single(),
     // Recently Photographed rotating strip (shared by broker + assistant views).
-    supabase.rpc("showcase_listings"),
+    // Not for the read-only demo: those are other brokers' boats (M1).
+    demo ? Promise.resolve({ data: [] as unknown[] }) : supabase.rpc("showcase_listings"),
     // Latest in yachting — three headlines, asked for on the same trip as the rest.
     supabase
       .from("industry_news")

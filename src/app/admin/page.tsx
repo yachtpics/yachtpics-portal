@@ -7,6 +7,7 @@ import RepublishLiveBoats from "./_components/RepublishLiveBoats";
 import RetiredPages from "./_components/RetiredPages";
 import GenerateThumbnails from "./_components/GenerateThumbnails";
 import { daysUntilBirthday } from "@/lib/brokerContact";
+import { demoListingIds, demoUserIds } from "@/lib/demoServer";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,16 @@ export default async function AdminPage() {
   // an MRR figure of $0 for each of them.
   const subByBroker = new Map((subs ?? []).map((s) => [s.broker_id as string, s]));
 
+  // The read-only demo account isn't a customer: leave it (and its sample
+  // listing + sample views) out of every figure on this page.
+  const [demoIds, demoListings] = await Promise.all([demoUserIds(service), demoListingIds(service)]);
+  const realBrokers = (brokers ?? []).filter((b) => demoIds.indexOf(b.id as string) < 0);
+  const { count: demoViews30 } = demoListings.length
+    ? await service.from("slideshow_views").select("*", { count: "exact", head: true }).in("listing_id", demoListings).gte("viewed_at", since30)
+    : { count: 0 };
+  const listingCountReal = listingCount == null ? null : Math.max(0, listingCount - demoListings.length);
+  const views30Real = views30 == null ? null : Math.max(0, views30 - (demoViews30 ?? 0));
+
   const payingBrokers: { name: string; planName: string | null; price: number }[] = [];
   let mrr = 0;
   let comped = 0;
@@ -70,7 +81,7 @@ export default async function AdminPage() {
   let expiringSoon = 0;
   let expired = 0;
 
-  for (const b of brokers ?? []) {
+  for (const b of realBrokers) {
     const sub = subByBroker.get(b.id) ?? null;
 
     if (isStripePaid(sub)) {
@@ -102,7 +113,7 @@ export default async function AdminPage() {
 
   payingBrokers.sort((a, b) => b.price - a.price);
   const paying = payingBrokers.length;
-  const brokerCount = (brokers ?? []).length;
+  const brokerCount = realBrokers.length;
 
   // ---- Storage ----
   const usedBytes = ((storageRows ?? []) as { bytes: number }[]).reduce((sum, r) => sum + (r.bytes ?? 0), 0);
@@ -220,11 +231,11 @@ export default async function AdminPage() {
         </Link>
         <Link href="/admin/listings" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
           <p className="label-caps">Listings</p>
-          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{listingCount ?? 0}</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{listingCountReal ?? 0}</p>
         </Link>
         <Link href="/admin/metrics" className="bg-white border border-hairline rounded-card shadow-elev-1 p-5 hover:border-accent-500 transition-colors duration-fast ease-quiet">
           <p className="label-caps">Buyer Views (30d)</p>
-          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{views30 ?? 0}</p>
+          <p className="text-3xl font-light tabular-nums text-ink-900 mt-1">{views30Real ?? 0}</p>
           <p className="text-ink-400 text-xs mt-1">{sends30 ?? 0} sent to clients</p>
         </Link>
         <div className="bg-white border border-hairline rounded-card shadow-elev-1 p-5">

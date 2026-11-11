@@ -34,6 +34,11 @@ one-line copy change, a grep), do it directly; otherwise delegate.
   `src/lib/photoDerivativePaths.ts` / `src/lib/photoDerivatives.ts`; anything
   that deletes a photo's file must also call `removeDerivatives`. Reels,
   showroom and other render pipelines keep using originals.
+- Read-only demo (`src/lib/demo.ts`): after any migration that creates a
+  table or enables RLS, run `select public.demo_apply_readonly_policies();`
+  (check with `select * from public.demo_readonly_gaps();`). Any new
+  service-role write route a signed-in broker can call needs `demoGuard`
+  (`src/lib/demoServer.ts`) right after its `getUser()`.
 - Listing photo management (grid, upload, replace, delete, reorder, categories,
   cover, show/hide, AI labels, lightbox, downloads) lives in ONE place:
   `src/components/listing-photos/`, used by both the broker listing page and

@@ -9,6 +9,7 @@ import {
   websiteEntitlement,
   websiteItemOf,
 } from "@/lib/websiteAddon";
+import { demoForbidden } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   const who = await resolveActingBroker(req.nextUrl.searchParams.get("brokerId"));
   if (!who.ok) return NextResponse.json({ error: who.error }, { status: who.status });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (who.demo) return demoForbidden();
   if (!(who.role === "broker" && who.brokerId === who.userId)) {
     return NextResponse.json({ error: "Only the broker can change their plan. They can add the website from their own Website or Billing page." }, { status: 403 });
   }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logShowcaseEvent } from "@/lib/showcaseEvents";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -11,6 +12,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const body = await req.json().catch(() => ({}));
   const kind = body?.kind;

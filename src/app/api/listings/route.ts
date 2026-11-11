@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { demoGuard } from "@/lib/demoServer";
 
 export async function POST(req: NextRequest) {
   try {
@@ -22,6 +23,8 @@ export async function POST(req: NextRequest) {
     const serverSupabase = await createServerClient();
     const { data: { user: caller } } = await serverSupabase.auth.getUser();
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(caller); if (demo) return demo; }
 
     const { data: callerProfile } = await serverSupabase
       .from("profiles")

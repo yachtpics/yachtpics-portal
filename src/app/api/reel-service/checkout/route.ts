@@ -9,6 +9,7 @@ import {
   loadListingReelService,
   rowBlocksCheckout,
 } from "@/lib/reelServiceStripe";
+import { demoGuardFromSession } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ export async function POST(req: NextRequest) {
   const listingId = body?.listingId;
   const who = await reelServiceCaller(listingId);
   if (who.error) return who.error;
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = await demoGuardFromSession(); if (demo) return demo; }
   const { service, brokerId, userId } = who;
   if (!who.canBuy) {
     return NextResponse.json({ error: "Admins can’t buy for a broker — copy the pay link or comp the boat." }, { status: 403 });

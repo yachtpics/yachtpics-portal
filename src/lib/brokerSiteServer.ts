@@ -1,6 +1,7 @@
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
+import { isDemoUser } from "@/lib/demo";
 import { serviceClient, LISTING_COLUMNS, type SlideshowListing } from "@/lib/publicSlideshow";
 import { orderPhotos } from "@/lib/photoOrder";
 import { websiteEntitlement } from "@/lib/websiteAddon";
@@ -51,6 +52,8 @@ export type ActingBroker =
       brokerId: string;
       /** Brokers an assistant can switch between (empty for brokers/admins). */
       brokers: { id: string; name: string }[];
+      /** The signed-in user is the read-only demo (src/lib/demo.ts) — write handlers refuse. */
+      demo: boolean;
     }
   | { ok: false; status: number; error: string };
 
@@ -62,6 +65,7 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { ok: false, status: 401, error: "Please sign in." };
+  const demo = isDemoUser(user);
 
   const svc = serviceClient();
   const { data: me } = await svc
@@ -77,7 +81,7 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
     if (!brokerId) return { ok: false, status: 400, error: "Open a broker from Admin → Brokers to edit their website." };
     const { data: b } = await svc.from("profiles").select("id, role").eq("id", brokerId).maybeSingle();
     if (!b) return { ok: false, status: 404, error: "Broker not found." };
-    return { ok: true, userId: user.id, role: "admin", brokerId, brokers: [] };
+    return { ok: true, userId: user.id, role: "admin", brokerId, brokers: [], demo };
   }
 
   if (role === "assistant") {
@@ -91,19 +95,19 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
     if (brokers.length === 0) return { ok: false, status: 403, error: "You aren't linked to a broker yet." };
     const chosen = requested ? brokers.find((b) => b.id === requested) : brokers[0];
     if (!chosen) return { ok: false, status: 403, error: "You don't work for that broker." };
-    return { ok: true, userId: user.id, role: "assistant", brokerId: chosen.id, brokers };
+    return { ok: true, userId: user.id, role: "assistant", brokerId: chosen.id, brokers, demo };
   }
 
   if (role === "broker") {
     if (!requested || requested === user.id) {
-      return { ok: true, userId: user.id, role: "broker", brokerId: user.id, brokers: [] };
+      return { ok: true, userId: user.id, role: "broker", brokerId: user.id, brokers: [], demo };
     }
     // A brokerage admin may act for a broker in their own brokerage (same
     // rule as assistant_has_access in RLS).
     if (me?.is_brokerage_admin === true && me.brokerage_id) {
       const { data: other } = await svc.from("profiles").select("brokerage_id").eq("id", requested).maybeSingle();
       if (other?.brokerage_id && other.brokerage_id === me.brokerage_id) {
-        return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [] };
+        return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [], demo };
       }
     }
     // Also allow when the broker has linked this broker as an assistant.
@@ -113,7 +117,7 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
       .eq("broker_id", requested)
       .eq("assistant_id", user.id)
       .maybeSingle();
-    if (link) return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [] };
+    if (link) return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [], demo };
     return { ok: false, status: 403, error: "Forbidden" };
   }
 

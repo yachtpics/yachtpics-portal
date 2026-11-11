@@ -5,6 +5,7 @@ import { graphErrorMessage } from "@/lib/meta/graph";
 import { PENDING_COOKIE, listPages, revokePermissions, type PendingConnect } from "@/lib/meta/oauth";
 import { deleteFacebookVideo } from "@/lib/meta/publish";
 import { CONNECTION_PUBLIC_COLUMNS, loadConnection, socialViewer } from "@/lib/meta/server";
+import { demoForbidden } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -139,6 +140,9 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const viewer = await socialViewer();
   if (!viewer) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3). DELETE doesn't check `allowed` (a broker may
+  // disconnect after the flag goes off), so the demo is refused explicitly.
+  if (viewer.demo) return demoForbidden();
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id." }, { status: 400 });
   const conn = await loadConnection(viewer.svc, id);

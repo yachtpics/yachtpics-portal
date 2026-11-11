@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { findExistingUser } from "@/lib/findExistingUser";
 import { safeNextPath } from "@/lib/safeNext";
+import { demoUserIds } from "@/lib/demoServer";
 
 /**
  * Passwordless sign-in. The broker types their email, we generate a one-time
@@ -40,6 +41,11 @@ export async function POST(req: NextRequest) {
     // the response can't be used to probe who has an account.
     const existing = await findExistingUser(supabase, cleanEmail);
     if (!existing) {
+      return NextResponse.json({ success: true });
+    }
+    // The read-only demo login is entered only through /demo/{token}: never
+    // mail it a sign-in link (same "success" answer, nothing sent).
+    if ((await demoUserIds(supabase)).indexOf(existing.id) >= 0) {
       return NextResponse.json({ success: true });
     }
 

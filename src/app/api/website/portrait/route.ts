@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { resolveActingBroker, serviceClient, portraitUrl, PORTRAIT_BUCKET } from "@/lib/brokerSiteServer";
 import { isMissingSchema } from "@/lib/brokerSite";
+import { demoForbidden } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -23,6 +24,8 @@ async function currentSite(brokerId: string) {
 export async function POST(req: NextRequest) {
   const who = await resolveActingBroker(req.nextUrl.searchParams.get("brokerId"));
   if (!who.ok) return NextResponse.json({ error: who.error }, { status: who.status });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (who.demo) return demoForbidden();
   const { site, error } = await currentSite(who.brokerId);
   if (error) return NextResponse.json({ error: isMissingSchema(error) ? "Website isn't switched on yet." : error.message }, { status: isMissingSchema(error) ? 503 : 500 });
   if (!site) return NextResponse.json({ error: "Create your website first." }, { status: 400 });
@@ -56,6 +59,8 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const who = await resolveActingBroker(req.nextUrl.searchParams.get("brokerId"));
   if (!who.ok) return NextResponse.json({ error: who.error }, { status: who.status });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (who.demo) return demoForbidden();
   const { site, error } = await currentSite(who.brokerId);
   if (error) return NextResponse.json({ error: isMissingSchema(error) ? "Website isn't switched on yet." : error.message }, { status: isMissingSchema(error) ? 503 : 500 });
   if (!site) return NextResponse.json({ ok: true });

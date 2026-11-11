@@ -6,6 +6,7 @@ import { describeViewSource, describeDevice, describeLocation, referrerHost } fr
 import { formatDateTimeET } from "@/lib/datetime";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import { isDemoListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+
+    // The read-only demo's boat: count nothing, notify nobody.
+    if (await isDemoListing(supabase, String(listingId))) return NextResponse.json({ ok: true });
 
     // Was this slideshow already viewed recently? Check before inserting so the
     // new row doesn't count against itself.

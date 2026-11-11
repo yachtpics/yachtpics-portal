@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
+import { isDemoBroker, isDemoListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -36,6 +37,11 @@ export async function POST(req: NextRequest, { params }: { params: { slug: strin
       .eq("slideshow_published", true)
       .single();
     if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
+    // The read-only demo's boat: the buyer sees the normal thanks, but no
+    // lead is stored and nobody is emailed or pushed.
+    if ((await isDemoBroker(supabase, listing.broker_id)) || (await isDemoListing(supabase, listing.id))) {
+      return NextResponse.json({ success: true });
+    }
 
     // Record the lead.
     await supabase.from("listing_leads").insert({

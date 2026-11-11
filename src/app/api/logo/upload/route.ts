@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { demoGuard } from "@/lib/demoServer";
 
 // Only these image types are accepted; the stored file's extension comes from
 // the type, never from the uploaded filename.
@@ -16,6 +17,8 @@ export async function POST(req: NextRequest) {
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     const formData = await req.formData();
     const file = formData.get("file") as File | null;

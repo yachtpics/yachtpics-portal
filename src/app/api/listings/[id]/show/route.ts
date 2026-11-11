@@ -6,6 +6,7 @@ import {
   getCurrentShows, isShowCurrent, SHOW_LOCATION_MAX, SHOW_NOTE_MAX,
   type BoatShow, type ShowEntry,
 } from "@/lib/boatShows";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,6 +88,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   const { user } = await signedInUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   let body: { showKey?: unknown; location?: unknown; note?: unknown };
   try {
@@ -126,6 +129,8 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
 export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   const { user } = await signedInUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const svc = service();
   const denied = await editorCheck(svc, params.id, user.id);

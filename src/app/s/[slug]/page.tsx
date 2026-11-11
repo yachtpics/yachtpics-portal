@@ -3,11 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
+import { isDemoBroker } from "@/lib/demoServer";
 import {
   canViewSlideshow,
   getPublishedSlideshow,
   NEUTRAL_SLIDESHOW_METADATA,
   ownerHasAccess,
+  serviceClient,
   slideshowMetadata,
   slideshowViewerData,
 } from "@/lib/publicSlideshow";
@@ -24,7 +26,13 @@ export async function generateMetadata({ params }: { params: { slug: string } })
   try {
     const listing = await getPublishedSlideshow(params.slug);
     if (!listing || !(await ownerHasAccess(listing.broker_id))) return NEUTRAL_SLIDESHOW_METADATA;
-    return await slideshowMetadata(listing);
+    const meta = await slideshowMetadata(listing);
+    // The read-only demo's sample boat (M2): never indexed. (This page sets no
+    // response headers of its own, so the meta tag is the whole of it.)
+    if (await isDemoBroker(serviceClient(), listing.broker_id)) {
+      return { ...meta, robots: { index: false, follow: false, nocache: true, googleBot: { index: false, follow: false } } };
+    }
+    return meta;
   } catch {
     return NEUTRAL_SLIDESHOW_METADATA;
   }

@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { logShowcaseEvent } from "@/lib/showcaseEvents";
 import { orderPhotos } from "@/lib/photoOrder";
 import { signOriginalPaths } from "@/lib/photoStore";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +16,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (M1): other brokers' boats aren't shown to it, and this
+  // read logs a showcase_events row — refuse before either.
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const service = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,

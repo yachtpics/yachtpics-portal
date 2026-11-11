@@ -4,12 +4,15 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { stripe } from "@/lib/stripe";
 import { PLANS, planIncludesWebsite } from "@/lib/plans";
 import { ensureWebsitePrice } from "@/lib/websiteAddon";
+import { demoGuard } from "@/lib/demoServer";
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     const { priceId, withWebsite } = await req.json();
 

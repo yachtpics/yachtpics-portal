@@ -20,6 +20,7 @@ import {
   suggestSlug,
   type BrokerSiteRow,
 } from "@/lib/brokerSite";
+import { demoForbidden } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -212,6 +213,8 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const who = await resolveActingBroker(req.nextUrl.searchParams.get("brokerId"));
   if (!who.ok) return NextResponse.json({ error: who.error }, { status: who.status });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (who.demo) return demoForbidden();
   const svc = serviceClient();
   const brokerId = who.brokerId;
 
@@ -308,6 +311,8 @@ export async function PUT(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const who = await resolveActingBroker(req.nextUrl.searchParams.get("brokerId"));
   if (!who.ok) return NextResponse.json({ error: who.error }, { status: who.status });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (who.demo) return demoForbidden();
   const svc = serviceClient();
   const brokerId = who.brokerId;
   const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;

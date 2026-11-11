@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { reelServiceCaller } from "@/lib/reelServiceCaller";
 import { loadListingReelService, syncReelServiceSubscription } from "@/lib/reelServiceStripe";
+import { demoGuardFromSession } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export async function POST(req: NextRequest) {
   const listingId = body?.listingId;
   const who = await reelServiceCaller(listingId);
   if (who.error) return who.error;
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = await demoGuardFromSession(); if (demo) return demo; }
   const { service, brokerId } = who;
 
   const state = await loadListingReelService(service, listingId, brokerId);

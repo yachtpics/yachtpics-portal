@@ -6,6 +6,7 @@ import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { logEmail } from "@/lib/logEmail";
 import { signVideoUrl } from "@/lib/videoUrls";
+import { demoGuard } from "@/lib/demoServer";
 
 export async function POST(req: NextRequest) {
   try {
@@ -17,6 +18,8 @@ export async function POST(req: NextRequest) {
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

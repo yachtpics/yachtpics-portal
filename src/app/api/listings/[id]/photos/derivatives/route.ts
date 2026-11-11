@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { ensureDerivatives, ensureThumb600, serviceRoleClient, signDerivatives } from "@/lib/photoDerivatives";
 import { enqueueJob, jobsBaseUrl, kickWorker } from "@/lib/jobs/queue";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,6 +42,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const supabaseUser = await createServerClient();
   const { data: { user } } = await supabaseUser.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const svc = serviceRoleClient();
   const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });

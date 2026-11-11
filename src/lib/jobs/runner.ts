@@ -23,6 +23,7 @@ import { isMissingTable, jobsServiceClient } from "./queue";
 import { writeWeeklyBackup } from "@/lib/books/backup";
 import { RemindersNotReadyError, runBillingReminders } from "@/lib/books/reminders";
 import { photoOriginalsCleanup, photoOriginalsCopy, r2PhotoFinish, sitePhotosCleanup } from "./photoMigration";
+import { demoReset, demoSeed } from "./demoSeed";
 import {
   JobFatalError,
   isJobFatal,
@@ -250,6 +251,8 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   r2_photo_finish: r2PhotoFinish,
   billing_backup: billingBackup,
   billing_reminders: billingReminders,
+  demo_seed: demoSeed,
+  demo_reset: demoReset,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

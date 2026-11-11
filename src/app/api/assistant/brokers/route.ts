@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
+import { demoGuard } from "@/lib/demoServer";
 
 // POST /api/assistant/brokers — assistant links themselves to a broker
 export async function POST(req: NextRequest) {
@@ -14,6 +15,8 @@ export async function POST(req: NextRequest) {
     const serverSupabase = await createServerClient();
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     const { data: callerProfile } = await serverSupabase
       .from("profiles")
@@ -69,6 +72,8 @@ export async function DELETE(req: NextRequest) {
     const serverSupabase = await createServerClient();
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     const { data: callerProfile } = await serverSupabase
       .from("profiles")

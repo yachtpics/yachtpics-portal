@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { isDemoListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -24,6 +25,9 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
     if (link.expires_at && new Date(link.expires_at).getTime() < Date.now()) {
       return NextResponse.json({ error: "Link expired" }, { status: 410 });
     }
+
+    // The read-only demo's boat: the normal answer, nothing recorded.
+    if (await isDemoListing(supabase, link.listing_id)) return NextResponse.json({ success: true });
 
     await supabase.from("download_link_downloads").insert({
       download_link_id: link.id,

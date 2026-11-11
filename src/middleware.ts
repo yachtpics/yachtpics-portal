@@ -1,6 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { safeNextPath } from '@/lib/safeNext'
+import { accessTokenHasDemoClaim, demoPostAllowed, DEMO_BLOCK_HEADER, DEMO_READ_ONLY_MESSAGE } from '@/lib/demo'
 
 /**
  * Send a signed-out visitor to the login page, remembering where they were
@@ -14,8 +15,135 @@ function redirectToLogin(request: NextRequest) {
   return NextResponse.redirect(loginUrl)
 }
 
+const SAFE_METHODS = ["GET", "HEAD", "OPTIONS"];
+/** Supabase SSR auth cookies (chunked: sb-<ref>-auth-token.0, .1 …). */
+const AUTH_COOKIE_RE = /^sb-.+-auth-token(\.\d+)?$/;
+/** Demo gate: refresh in the middleware when the session ends within this (seconds). */
+const REFRESH_MARGIN_S = 10 * 60;
+
+function demoBlocked(): NextResponse {
+  return NextResponse.json(
+    { error: DEMO_READ_ONLY_MESSAGE, demo: true },
+    { status: 403, headers: { [DEMO_BLOCK_HEADER]: "1", "Cache-Control": "no-store" } }
+  );
+}
+
+/**
+ * Read-only DEMO, layer 1 (Nov 10, 2026 — see src/lib/demo.ts).
+ *
+ * A request that would change something (any method but GET/HEAD/OPTIONS) to
+ * /api/* (here), or to a matched page path (a Next server action is a POST to
+ * the page — the app has none today; checked in middleware() below), is refused with 403
+ * when the session carries the demo claim, unless the /api path is on
+ * DEMO_POST_ALLOWLIST (endpoints that only sign URLs or read).
+ *
+ * The session is read with the SAME @supabase/ssr client the route will use
+ * (getSession(): cookie parsing, chunked cookies, base64- values, and the
+ * refresh of an expired access token all identical), so the token decoded
+ * here is the token the route runs with. getSession() is local — no network
+ * round trip — unless the token has expired, exactly as in the route.
+ *
+ * The claim is read from the token payload WITHOUT verifying the signature.
+ * That is sound for BLOCKING: a forged cookie that hides the claim also fails
+ * getUser() in the route (Supabase Auth verifies the signature), so it gets
+ * nowhere.
+ *
+ * The refresh race (review H1b): a forged access token (no claim) whose
+ * expires_at is close, paired with a real demo refresh token, used to pass
+ * here — and the route, refreshing on its own mid-request, would then run
+ * with a REAL demo token. So: if the session expires within REFRESH_MARGIN_S
+ * (or expires_at is missing / invalid), refresh it HERE, forward the fresh
+ * cookies, and read the claim from the refreshed token; the route then can't
+ * reach its own refresh within any route's run time. If that refresh fails,
+ * the request goes on with the sb-* auth cookies REMOVED, i.e. signed out.
+ * A forged token claiming a far expiry is never refreshed by the route
+ * (getUser() just rejects it).
+ *
+ * Deliberately NO getUser() round trip here (it would slow every save for
+ * every user). That is acceptable only because layer 3 is complete: every
+ * service-role write route for a signed-in broker calls demoGuard itself
+ * (docs/where-we-are.md has the table), and layer 2 (RLS) covers direct
+ * Supabase writes. This gate is the fast, friendly refusal, not the wall.
+ *
+ * Returns a response to send, or null to carry on.
+ */
+async function demoReadOnlyGate(
+  request: NextRequest,
+  supabaseUrl: string,
+  supabaseKey: string
+): Promise<{ block: NextResponse | null; refreshed: NextResponse | null }> {
+  const method = request.method.toUpperCase();
+  if (SAFE_METHODS.indexOf(method) >= 0) return { block: null, refreshed: null };
+  const path = request.nextUrl.pathname;
+  if (path.startsWith("/api/") && demoPostAllowed(path)) return { block: null, refreshed: null };
+
+  // A bearer token (no route reads one for a user today; cheap to cover).
+  const auth = request.headers.get("authorization") ?? "";
+  if (/^bearer\s+/i.test(auth) && accessTokenHasDemoClaim(auth.replace(/^bearer\s+/i, "").trim())) {
+    return { block: demoBlocked(), refreshed: null };
+  }
+
+  // No Supabase auth cookie at all → nothing to decode (public routes, crons, webhooks).
+  const hasAuthCookie = request.cookies.getAll().some((c) => AUTH_COOKIE_RE.test(c.name));
+  if (!hasAuthCookie) return { block: null, refreshed: null };
+
+  let response = NextResponse.next({ request });
+  let wrote = false;
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+        wrote = true;
+        cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+        response = NextResponse.next({ request });
+        cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+      },
+    },
+  });
+  const { data: { session: stored } } = await supabase.auth.getSession();
+  let session = stored;
+  if (session) {
+    const exp = typeof session.expires_at === "number" ? session.expires_at : NaN;
+    if (!Number.isFinite(exp) || exp - Math.floor(Date.now() / 1000) < REFRESH_MARGIN_S) {
+      // A throw counts as a failed refresh (the outer catch fails OPEN, which
+      // would hand the route the un-refreshed cookies).
+      const r = await supabase.auth.refreshSession().catch(() => null);
+      if (!r || r.error || !r.data?.session) {
+        // Forward as signed out: strip every Supabase auth cookie from the
+        // request the route sees. (The browser's cookies are left alone.)
+        request.cookies.getAll().forEach((c) => {
+          if (AUTH_COOKIE_RE.test(c.name)) request.cookies.delete(c.name);
+        });
+        return { block: null, refreshed: NextResponse.next({ request }) };
+      }
+      session = r.data.session;
+    }
+  }
+  if (session && accessTokenHasDemoClaim(session.access_token)) {
+    const block = demoBlocked();
+    // Keep a refreshed session (rotated refresh token) even on a refusal.
+    if (wrote) response.cookies.getAll().forEach((c) => block.cookies.set(c));
+    return { block, refreshed: null };
+  }
+  // If getSession refreshed the token, pass the new cookies on so the route
+  // doesn't refresh (and rotate the refresh token) a second time.
+  return { block: null, refreshed: wrote ? response : null };
+}
+
 export async function middleware(request: NextRequest) {
   try {
+    // /api is matched ONLY for the demo read-only gate; nothing else here
+    // applies to it.
+    if (request.nextUrl.pathname.startsWith("/api/")) {
+      const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+      const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+      if (!url || !key) return NextResponse.next({ request });
+      const gate = await demoReadOnlyGate(request, url, key);
+      return gate.block ?? gate.refreshed ?? NextResponse.next({ request });
+    }
+
     let supabaseResponse = NextResponse.next({ request })
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -75,6 +203,14 @@ export async function middleware(request: NextRequest) {
     } else {
       const { data: { session } } = await supabase.auth.getSession()
       user = session ? true : null
+      // Read-only demo, layer 1 for page paths: a non-GET request to a page
+      // is a Next server action (none exist today) — refused for the demo.
+      // Same token-payload read as demoReadOnlyGate (see its comment).
+      if (session && SAFE_METHODS.indexOf(request.method.toUpperCase()) < 0 && accessTokenHasDemoClaim(session.access_token)) {
+        const block = demoBlocked()
+        supabaseResponse.cookies.getAll().forEach((c) => block.cookies.set(c))
+        return block
+      }
     }
 
     // Protect dashboard routes
@@ -104,12 +240,17 @@ export async function middleware(request: NextRequest) {
 
     return supabaseResponse
   } catch (error) {
-    // If middleware throws, let the request through rather than 500ing
+    // If middleware throws, let the request through rather than 500ing.
+    // Deliberately fail-OPEN for the demo gate too: failing closed would turn
+    // any bug here into "every save in the Portal is broken for everyone".
+    // A demo session that slips past here still meets layers 2 (RLS) and 3.
     console.error('Middleware error:', error)
     return NextResponse.next({ request })
   }
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/client/:path*', '/auth/login', '/auth/signup'],
+  // /api/:path* is here only for the demo read-only gate (non-GET requests
+  // with a Supabase session; everything else passes straight through).
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/client/:path*', '/auth/login', '/auth/signup', '/api/:path*'],
 }

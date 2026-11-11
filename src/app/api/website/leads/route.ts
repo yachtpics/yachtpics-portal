@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveActingBroker, serviceClient } from "@/lib/brokerSiteServer";
 import { isMissingSchema } from "@/lib/brokerSite";
+import { demoForbidden } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,6 +31,8 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const who = await resolveActingBroker(req.nextUrl.searchParams.get("brokerId"));
   if (!who.ok) return NextResponse.json({ error: who.error }, { status: who.status });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  if (who.demo) return demoForbidden();
   const body = (await req.json().catch(() => ({}))) as { id?: unknown; handled?: unknown };
   const id = typeof body.id === "string" && /^[0-9a-f-]{36}$/i.test(body.id) ? body.id : null;
   if (!id) return NextResponse.json({ error: "Inquiry not found." }, { status: 400 });

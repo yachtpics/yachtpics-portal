@@ -5,6 +5,7 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { removeDerivatives } from "@/lib/photoDerivatives";
 import { deleteOriginals } from "@/lib/photoStore";
+import { demoGuard } from "@/lib/demoServer";
 
 /**
  * POST /api/photos/delete
@@ -39,6 +40,8 @@ export async function POST(req: NextRequest) {
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     const svc = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

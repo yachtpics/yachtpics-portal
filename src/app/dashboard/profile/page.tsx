@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import HelpTip from "@/components/HelpTip";
 import EnableNotifications from "@/components/EnableNotifications";
 import SocialAccounts from "@/components/SocialAccounts";
+import { DEMO_READ_ONLY_MESSAGE, isDemoUser } from "@/lib/demo";
 
 interface ProfileData {
   first_name: string;
@@ -56,6 +57,9 @@ export default function ProfilePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  // Read-only demo account: never send a login-email / password change to
+  // Supabase Auth from here (those calls don't pass our server or RLS).
+  const [isDemo, setIsDemo] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
   useEffect(() => { loadData(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -63,6 +67,7 @@ export default function ProfilePage() {
   async function loadData() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
+    setIsDemo(isDemoUser(user));
     const { data: p } = await supabase.from("profiles").select("first_name, last_name, display_email, phone, address, office_phone, instagram_handle, facebook_url, birthday_month, birthday_day, role, notify_on_view, email_opt_out").eq("id", user.id).single();
     const { data: b } = await supabase.from("broker_details").select("brokerage_name, brokerage_address, brokerage_city, brokerage_state, brokerage_zip, brokerage_website, license_number, bio, logo_url").eq("id", user.id).single();
     const { data: a } = await supabase.from("broker_assistants").select("assistant_id, profiles:assistant_id (first_name, last_name, display_email)").eq("broker_id", user.id);
@@ -138,6 +143,7 @@ export default function ProfilePage() {
 
   async function changeLoginEmail() {
     if (!newLoginEmail) return;
+    if (isDemo) { setMessage({ type: "error", text: DEMO_READ_ONLY_MESSAGE }); return; }
     setChangingEmail(true);
     setMessage(null);
     const { error } = await supabase.auth.updateUser({ email: newLoginEmail });
@@ -147,6 +153,7 @@ export default function ProfilePage() {
   }
 
   async function changePassword() {
+    if (isDemo) { setMessage({ type: "error", text: DEMO_READ_ONLY_MESSAGE }); return; }
     if (!newPassword || newPassword.length < 8) { setMessage({ type: "error", text: "Password must be at least 8 characters." }); return; }
     if (newPassword !== confirmPassword) { setMessage({ type: "error", text: "Passwords don't match." }); return; }
     setChangingPassword(true);

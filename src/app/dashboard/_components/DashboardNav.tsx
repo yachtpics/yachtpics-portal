@@ -82,9 +82,11 @@ interface Props {
   isBrokerageAdmin?: boolean;
   /** Reel Service: the broker (or one an assistant works for) is enrolled or has delivered reels. */
   showReels?: boolean;
+  /** Read-only demo: no "Recently Photographed" (other brokers' boats). */
+  hideShowcase?: boolean;
 }
 
-export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus, isBrokerageAdmin, showReels }: Props) {
+export default function DashboardNav({ brokerName, role, plan, trialEndsAt, accessStatus, isBrokerageAdmin, showReels, hideShowcase }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -108,7 +110,8 @@ export default function DashboardNav({ brokerName, role, plan, trialEndsAt, acce
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86400000))
     : null;
 
-  const roleNavItems = role === "assistant" ? assistantNavItems : brokerNavItems;
+  const roleNavItems = (role === "assistant" ? assistantNavItems : brokerNavItems)
+    .filter((i) => !(hideShowcase && i.href === "/dashboard/showcase"));
   // "Your Reels" (Reel Service) sits right after the listings item.
   const listingsAt = roleNavItems.findIndex((i) => i.href === "/dashboard/listings");
   const baseNavItems = showReels

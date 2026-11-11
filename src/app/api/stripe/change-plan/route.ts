@@ -13,6 +13,7 @@ import {
   syncWebsiteFromPlanSubscription,
   websiteItemOf,
 } from "@/lib/websiteAddon";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const body = (await req.json().catch(() => ({}))) as { priceId?: unknown; planKey?: unknown; withWebsite?: unknown };
   const target = PLANS.find((p) => p.priceId === body.priceId || p.id === body.planKey);

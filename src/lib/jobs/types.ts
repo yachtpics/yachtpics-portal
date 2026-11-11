@@ -15,6 +15,8 @@ export const JOB_KINDS = [
   "r2_photo_finish",
   "billing_backup",
   "billing_reminders",
+  "demo_seed",
+  "demo_reset",
 ] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
@@ -33,6 +35,8 @@ export const JOB_LABELS: Record<JobKind, string> = {
   r2_photo_finish: "Finish new R2 photos (2000 px copy + download sizes)",
   billing_backup: "Billing backup (weekly, to R2)",
   billing_reminders: "Billing payment reminders (daily)",
+  demo_seed: "Demo account — create / refresh the sample listing",
+  demo_reset: "Demo account — remove the sample listing",
 };
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";

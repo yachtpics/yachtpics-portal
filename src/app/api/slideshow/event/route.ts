@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { isDemoBroker, isDemoListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -54,6 +55,10 @@ export async function POST(req: NextRequest) {
       .eq("id", listingId)
       .maybeSingle();
     if (!listing) return NextResponse.json({ ok: true });
+    // The read-only demo's boat: store nothing.
+    if ((await isDemoBroker(supabase, listing.broker_id)) || (await isDemoListing(supabase, listing.id))) {
+      return NextResponse.json({ ok: true });
+    }
     let accepted = !!listing.slideshow_published && (!slug || listing.slideshow_slug === slug);
     if (!accepted && site) {
       const { data: s } = await supabase.from("broker_sites").select("broker_id, published").eq("slug", site).maybeSingle();

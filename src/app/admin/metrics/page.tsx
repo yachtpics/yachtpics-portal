@@ -1,6 +1,7 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { demoUserIds } from "@/lib/demoServer";
 
 export const dynamic = "force-dynamic";
 
@@ -15,10 +16,13 @@ export default async function MetricsPage() {
   );
 
   // Pull brokers and assistants
-  const [{ data: brokerProfiles }, { data: assistantProfiles }] = await Promise.all([
+  const [{ data: brokerProfilesAll }, { data: assistantProfiles }, demoIds] = await Promise.all([
     supabase.from("profiles").select("id, first_name, last_name, display_email, created_at").eq("role", "broker").order("first_name"),
     supabase.from("profiles").select("id, first_name, last_name, display_email, created_at").eq("role", "assistant").order("first_name"),
+    demoUserIds(serviceSupabase),
   ]);
+  // The read-only demo account isn't a broker the business should measure.
+  const brokerProfiles = (brokerProfilesAll ?? []).filter((p) => demoIds.indexOf(p.id as string) < 0);
 
   // Auth users for last sign-in (service role only)
   const { data: { users: authUsers } } = await serviceSupabase.auth.admin.listUsers({ perPage: 1000 });

@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { logEmail } from "@/lib/logEmail";
 import { findExistingUser } from "@/lib/findExistingUser";
+import { demoGuard } from "@/lib/demoServer";
 
 function generateTempPassword(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
     const serverSupabase = await createServerClient();
     const { data: { user: caller } } = await serverSupabase.auth.getUser();
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(caller); if (demo) return demo; }
 
     const { data: callerProfile } = await serverSupabase
       .from("profiles")
@@ -192,6 +195,8 @@ export async function DELETE(req: NextRequest) {
     const serverSupabase = await createServerClient();
     const { data: { user: caller } } = await serverSupabase.auth.getUser();
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(caller); if (demo) return demo; }
 
     const { data: callerProfile } = await serverSupabase
       .from("profiles").select("role").eq("id", caller.id).single();

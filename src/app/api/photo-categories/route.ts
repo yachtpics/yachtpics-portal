@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
+import { demoGuard } from "@/lib/demoServer";
 
 // GET — return all custom categories (those not in the hardcoded list)
 export async function GET() {
@@ -19,6 +20,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const { name } = await req.json();
   const trimmed = name?.trim();
@@ -43,6 +46,8 @@ export async function DELETE(req: NextRequest) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   const { data: profile } = await supabase
     .from("profiles")

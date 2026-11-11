@@ -6,6 +6,7 @@ import { r2Configured, r2Delete, r2VideoDelete, r2VideoSize } from "@/lib/r2";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { buildListingFiles, markSitePhotosBackend } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -23,6 +24,8 @@ export async function POST(req: NextRequest) {
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // Read-only demo (layer 3 — src/lib/demo.ts).
+    { const demo = demoGuard(user); if (demo) return demo; }
 
     // Use service role for all permission checks — avoids RLS blocking the join read
     const supabaseAdmin = createClient(

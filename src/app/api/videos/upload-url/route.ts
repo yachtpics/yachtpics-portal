@@ -3,6 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { r2SignedPutUrl, r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
 import { resolveVideoUploadTarget, sanitizeVideoContentType } from "@/lib/videoUploadTarget";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   if (!r2VideoConfigured()) {
     return NextResponse.json({ error: "Video storage isn't configured." }, { status: 500 });

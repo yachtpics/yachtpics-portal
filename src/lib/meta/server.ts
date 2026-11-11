@@ -8,6 +8,7 @@ import {
   createInstagramReelContainer, facebookPermalink, facebookVideoStatus, publishFacebookReel,
   publishInstagramContainer, setFacebookVideoThumbnail, waitForInstagramContainer,
 } from "./publish";
+import { isDemoUser } from "@/lib/demo";
 
 /**
  * Server-only glue for social publishing: who may use it, reading a
@@ -20,7 +21,7 @@ export function serviceClient(): SupabaseClient {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
 }
 
-export type SocialViewer = { userId: string; isAdmin: boolean; allowed: boolean; svc: SupabaseClient };
+export type SocialViewer = { userId: string; isAdmin: boolean; allowed: boolean; demo: boolean; svc: SupabaseClient };
 
 /** The signed-in viewer and whether Social accounts is open to them. null = not signed in. */
 export async function socialViewer(): Promise<SocialViewer | null> {
@@ -31,8 +32,10 @@ export async function socialViewer(): Promise<SocialViewer | null> {
   const { data: me } = await svc.from("profiles").select("role").eq("id", user.id).maybeSingle();
   const isAdmin = me?.role === "admin";
   const isBroker = me?.role === "broker" || !me?.role;
-  const allowed = metaAppIdConfigured() && (isAdmin || (SOCIAL_PUBLISHING_FOR_BROKERS && isBroker));
-  return { userId: user.id, isAdmin, allowed, svc };
+  // The read-only demo never gets social posting (layer 3 — src/lib/demo.ts).
+  const demo = isDemoUser(user);
+  const allowed = metaAppIdConfigured() && !demo && (isAdmin || (SOCIAL_PUBLISHING_FOR_BROKERS && isBroker));
+  return { userId: user.id, isAdmin, allowed, demo, svc };
 }
 
 /** Columns safe to send to a browser — never page_token_enc. */

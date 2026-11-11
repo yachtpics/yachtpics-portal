@@ -2,6 +2,7 @@ import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { serviceClient, getSlideshowRows } from "@/lib/publicSlideshow";
 import { signDerivatives } from "@/lib/photoDerivatives";
+import { demoListingIds, demoUserIds } from "@/lib/demoServer";
 import { OG_TRANSFORM, signOneTransformed } from "@/lib/publicPhotoUrls";
 import { r2SignedGetUrl, r2VideoConfigured, r2VideoSize } from "@/lib/r2";
 import {
@@ -147,16 +148,27 @@ async function allValues(svc: SupabaseClient, table: string, column: string, eq?
 export const getSeeStats = cache(async (): Promise<SeeStats | null> => {
   try {
     const svc = serviceClient();
-    const [brokerIds, listingBrokerIds, listings, photos] = await Promise.all([
+    // The read-only demo account (and its sample copy of a real boat) is
+    // left out of every figure (src/lib/demoServer.ts; [] before the demo
+    // migration is applied).
+    const [demoIds, demoListings] = await Promise.all([demoUserIds(svc), demoListingIds(svc)]);
+    const [brokerIds, listingBrokerIds, listings, photos, demoPhotos] = await Promise.all([
       allValues(svc, "profiles", "id", ["role", "broker"]),
       allValues(svc, "listings", "broker_id"),
       svc.from("listings").select("id", { count: "exact", head: true }),
       svc.from("photos").select("id", { count: "exact", head: true }),
+      demoListings.length
+        ? svc.from("photos").select("id", { count: "exact", head: true }).in("listing_id", demoListings)
+        : Promise.resolve({ count: 0, error: null }),
     ]);
-    if (listings.error || photos.error || listings.count == null || photos.count == null) return null;
+    if (listings.error || photos.error || listings.count == null || photos.count == null || demoPhotos.error) return null;
     const withListing = new Set(listingBrokerIds);
-    const brokers = brokerIds.filter((id) => withListing.has(id)).length;
-    return { brokers, listings: listings.count, photos: photos.count };
+    const brokers = brokerIds.filter((id) => withListing.has(id) && demoIds.indexOf(id) < 0).length;
+    return {
+      brokers,
+      listings: Math.max(0, listings.count - demoListings.length),
+      photos: Math.max(0, photos.count - (demoPhotos.count ?? 0)),
+    };
   } catch {
     return null;
   }

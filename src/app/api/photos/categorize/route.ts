@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { isAiConfigured } from "@/lib/ai";
 import { labelListingPhotos } from "@/lib/labelPhotos";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -27,6 +28,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   if (!isAiConfigured()) return NextResponse.json({ configured: false, updated: [], considered: 0, unsure: 0 });
 

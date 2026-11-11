@@ -9,6 +9,7 @@ import {
   sanitizeVideoContentType,
 } from "@/lib/videoUploadTarget";
 import type { PartRef } from "@/lib/r2ChunkedCopy";
+import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -50,6 +51,8 @@ export async function POST(req: NextRequest) {
   const supabase = await createServerClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  // Read-only demo (layer 3 — src/lib/demo.ts).
+  { const demo = demoGuard(user); if (demo) return demo; }
 
   if (!r2VideoConfigured()) {
     return NextResponse.json({ error: "Video storage isn't configured." }, { status: 500 });
