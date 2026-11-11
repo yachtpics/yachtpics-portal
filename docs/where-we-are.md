@@ -1,5 +1,13 @@
 # Where we are — October 6, 2026
 
+## Reel length keeps your photos; Seller Report dates in Eastern time (Nov 10, 2026) — PUSHED · no migration · no new dependency
+
+- **Reel Maker — Length / format trim is remembered** — `chooseLength` / `chooseFormat` (`src/components/ReelMaker.tsx`) used to slice `chosen` to the new cap and forget the rest, so 27 → Short (12) → Full stayed 12 of 27. Now `fitSelectionToCap` (`src/lib/reelSelection.ts`) keeps the pre-trim selection in `trimMemoryRef`; a longer Length (or Film → Reel) restores it, in order, up to the new cap. Any hand change (tap, First N, Clear, add clip) drops the memory, and the memory only applies while the selection is still exactly what the trim left — nothing the broker removed comes back. Clips and Marquee Top pins held back by a trim are kept until the trim is undone or overridden. Looks have no photo cap of their own (no change there). Same component, so Reel Studio gets the fix too; Reel Service auto renders never call either function (unchanged).
+- **Seller Report / Engagement dates in Eastern** — "As of", "Online since", sent / last-opened dates use `formatDateET` (`src/lib/datetime.ts`, now exporting `BUSINESS_TZ` plus `dayKeyET`, `addDaysToKey`, `formatDayKey`). `buildEngagement` (`src/lib/engagement.ts`) buckets the 30-day chart by Eastern day (was UTC), so a 9 pm view counts on that day; `byDay[].day` is still YYYY-MM-DD (now Eastern). Chart labels use `formatDayKey` (no shift). "Views this week" / 30-day totals are rolling 7×24 h / 30×24 h — timezone-neutral, unchanged.
+- **Help** — no change: Help describes Length's caps and times only, which are unchanged.
+- Typecheck clean, NOT BROWSER-TESTED.
+- **To check after push (Charlie):** (1) A listing with 27+ photos → Reel → Short (12 of 12) → Full: back to 27 of 27, same order. (2) Short → untick two → Full: stays 10 — tap more or "First 27" to add. (3) After 8 pm, open a listing's Engagement → Seller Report: "As of" shows today's date, and today's views sit in the last bar ("today").
+
 ## Demo link — read-only sample broker account at /demo/{token} (Nov 10, 2026) — MIGRATION `20261110_demo_link.sql` APPLIED (Nov 10; 213 read-only policies) · PUSHED
 
 Owner decision: a private link opens a sample broker account with no sign-in, for the capture browser now and a "Try the live demo" button later. Nothing reachable through it may send, delete, pay, upload or change anything; a leaked link at worst shows one sample boat. Typecheck clean, NOT BROWSER-TESTED, nothing run against a database. No new dependency, no new env var.

@@ -9,6 +9,7 @@ import { buildEngagement } from "@/lib/engagement";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { signResizedPath } from "@/lib/photoStore";
+import { formatDateET, formatDayKey } from "@/lib/datetime";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,10 @@ function fmtDuration(s: number | null) {
   const m = Math.floor(s / 60), r = s % 60;
   return r ? `${m}m ${r}s` : `${m}m`;
 }
+// Timestamps print in Eastern (the business timezone): the server runs in UTC,
+// so an evening send in Florida would otherwise show as the next day.
 function fmtDate(iso: string | null, opts: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }) {
-  return iso ? new Date(iso).toLocaleDateString("en-US", opts) : "—";
+  return iso ? formatDateET(iso, opts) : "—";
 }
 
 export default async function SellerReportPage({ params }: { params: { id: string } }) {
@@ -72,7 +75,7 @@ export default async function SellerReportPage({ params }: { params: { id: strin
 
   const brokerName = profile?.first_name ? `${profile.first_name} ${profile.last_name ?? ""}`.trim() : (profile?.display_email ?? "Broker");
   const subtitle = [listing.year, listing.make, listing.model].filter(Boolean).join(" ");
-  const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const today = formatDateET(new Date(), { month: "long", day: "numeric", year: "numeric" });
   const maxDay = Math.max(1, ...eng.byDay.map((d) => d.views));
   const sourceLabel: Record<string, string> = { send: "Emailed by broker", qr: "QR code", link: "Direct link", share: "Shared link", social: "Social media", flyer: "Spec sheet", site: "yachtpics.com", showcase: "Showcase" };
 
@@ -153,7 +156,7 @@ export default async function SellerReportPage({ params }: { params: { id: strin
                   <g key={d.day}>
                     <rect x={x} y={80 - h} width={14} height={h} fill={d.views ? BRASS : "#eef0f2"} rx="1" />
                     {(i === 0 || i === 29 || i === 15) && (
-                      <text x={x + 7} y={89} fontSize="8" fill="#99a2ad" textAnchor="middle">{fmtDate(d.day)}</text>
+                      <text x={x + 7} y={89} fontSize="8" fill="#99a2ad" textAnchor="middle">{formatDayKey(d.day)}</text>
                     )}
                   </g>
                 );

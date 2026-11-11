@@ -48,6 +48,7 @@ import {
 // Type only: the engine itself is loaded with a dynamic import inside
 // render(), and only when a Walkthrough render starts.
 import type { DepthMotion } from "@/lib/depthMotion";
+import { fitSelectionToCap, liveMemory, type TrimMemory } from "@/lib/reelSelection";
 
 export type { ClipSource, ClipLength } from "@/lib/reelClips";
 
@@ -507,6 +508,12 @@ export default function ReelMaker({
   }, []);
   const [chosen, setChosen] = useState<string[]>(autoStart?.ids ?? []);
   /**
+   * The selection as it was before the last automatic trim (a shorter Length,
+   * or Film's smaller cap), so a longer Length brings it back. See
+   * `src/lib/reelSelection.ts` for the rule; any hand change drops it.
+   */
+  const trimMemoryRef = useRef<TrimMemory | null>(null);
+  /**
    * Video clips the broker has cut and added, as picker items (a ReelPhoto
    * with `clip` set). Their ids start "clip:" and sit in `chosen` alongside
    * the photo ids, so a clip takes its place in the order like a photograph.
@@ -850,21 +857,32 @@ export default function ReelMaker({
     setResult(null);
     setPhase("idle");
     const nextCap = Math.min(capFor(f, length), budget?.maxPhotos ?? Infinity);
-    setChosen((prev) => {
-      // Keep the broker's order, just trimmed to the new format's cap.
-      const kept = prev.slice(0, nextCap);
-      return kept.length ? kept : photos.slice(0, nextCap).map((p) => p.id);
-    });
+    // Keep the broker's order, just fitted to the new format's cap — and if an
+    // earlier automatic trim is still in force, fit the selection from before
+    // it, so photos the app (not the broker) took out come back.
+    const fitted = fitSelectionToCap(chosen, nextCap, trimMemoryRef.current);
+    if (fitted.chosen.length) {
+      trimMemoryRef.current = fitted.memory;
+      setChosen(fitted.chosen);
+    } else {
+      trimMemoryRef.current = null;
+      setChosen(photos.slice(0, nextCap).map((p) => p.id));
+    }
   }
 
   // Switching length changes the cap, so a selection made for the long version
   // is trimmed — in the broker's own order — rather than silently over-filling.
+  // That trim is remembered: going back to a longer length restores the photos
+  // it took out (up to the new cap), unless the broker has changed the
+  // selection by hand since — then their selection stands (reelSelection.ts).
   function chooseLength(next: Length) {
     setLength(next);
     setResult(null);
     setPhase("idle");
     const nextCap = Math.min(capFor(format, next), budget?.maxPhotos ?? Infinity);
-    setChosen((prev) => (prev.length > nextCap ? prev.slice(0, nextCap) : prev));
+    const fitted = fitSelectionToCap(chosen, nextCap, trimMemoryRef.current);
+    trimMemoryRef.current = fitted.memory;
+    setChosen(fitted.chosen);
   }
 
   // ── Video clips ─────────────────────────────────────────────────────────
@@ -927,6 +945,7 @@ export default function ReelMaker({
       },
     };
     setClipItems((prev) => [...prev, item]);
+    trimMemoryRef.current = null;
     setChosen((prev) => (prev.length >= cap ? prev : [...prev, id]));
     closeTrimmer();
     setResult(null);
@@ -983,6 +1002,8 @@ export default function ReelMaker({
   }, [trim]);
 
   function togglePhoto(pid: string) {
+    // A hand change: this is now the broker's selection (no restore later).
+    trimMemoryRef.current = null;
     setChosen((prev) => {
       // Tap to add at the end; tap again to remove and let the rest close up.
       if (prev.includes(pid)) return prev.filter((x) => x !== pid);
@@ -993,20 +1014,23 @@ export default function ReelMaker({
     setPhase("idle");
   }
 
-  // A clip trimmed out of the selection (a format or length trim, Clear) is
-  // gone — cut it again to bring it back.
+  // A clip out of the selection (Clear, a tap) is gone — cut it again to bring
+  // it back. One left out only by an automatic length/format trim is kept
+  // while that trim can still be undone, so a longer length restores it.
   useEffect(() => {
+    const held = liveMemory(chosen, trimMemoryRef.current)?.before ?? [];
     setClipItems((prev) => {
-      const next = prev.filter((c) => chosen.indexOf(c.id) >= 0);
+      const next = prev.filter((c) => chosen.indexOf(c.id) >= 0 || held.indexOf(c.id) >= 0);
       return next.length === prev.length ? prev : next;
     });
   }, [chosen]);
 
-  // A photo that leaves the selection (tap, Clear, a format/length trim)
-  // leaves the top band with it.
+  // A photo that leaves the selection (tap, Clear) leaves the top band with
+  // it; one held back by an automatic trim keeps its pin until it returns.
   useEffect(() => {
+    const held = liveMemory(chosen, trimMemoryRef.current)?.before ?? [];
     setTopIds((prev) => {
-      const next = prev.filter((x) => chosen.indexOf(x) >= 0);
+      const next = prev.filter((x) => chosen.indexOf(x) >= 0 || held.indexOf(x) >= 0);
       return next.length === prev.length ? prev : next;
     });
   }, [chosen]);
@@ -3965,10 +3989,11 @@ export default function ReelMaker({
             <button onClick={() => {
               // Clips already cut stay in, at the end; photographs fill the rest.
               const clipIds = chosen.filter(isClipId);
+              trimMemoryRef.current = null;
               setChosen(photos.slice(0, Math.max(0, cap - clipIds.length)).map((p) => p.id).concat(clipIds));
               setResult(null); setPhase("idle");
             }} disabled={busy} className="text-xs font-semibold text-accent-700 hover:underline">First {cap}</button>
-            <button onClick={() => { setChosen([]); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-ink-400 hover:underline">Clear</button>
+            <button onClick={() => { trimMemoryRef.current = null; setChosen([]); setResult(null); setPhase("idle"); }} disabled={busy} className="text-xs font-semibold text-ink-400 hover:underline">Clear</button>
           </div>
         </div>
         {clipsBlocked && chosenClipCount > 0 && (

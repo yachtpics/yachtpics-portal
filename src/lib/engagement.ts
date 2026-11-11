@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { addDaysToKey, dayKeyET } from "@/lib/datetime";
 
 /**
  * Everything the portal knows about how a listing's slideshow is being looked
@@ -15,6 +16,7 @@ export type EngagementSummary = {
   avgSeconds: number | null;
   avgPhotosSeen: number | null;
   bySource: { source: string; views: number }[];
+  /** Last 30 days, oldest first; `day` is the Eastern calendar day, YYYY-MM-DD. */
   byDay: { day: string; views: number }[];
   sends: {
     id: string; client_email: string; client_name: string | null; sent_at: string;
@@ -72,16 +74,21 @@ export async function buildEngagement(
     if (typeof v.photos_seen === "number" && v.photos_seen > 0) seen.push(v.photos_seen);
     const src = v.source ?? "link";
     bySourceMap.set(src, (bySourceMap.get(src) ?? 0) + 1);
-    if (t >= d30) {
-      const day = new Date(v.viewed_at).toISOString().slice(0, 10);
+    // Bucket by the Eastern calendar day (the business timezone), not UTC:
+    // an evening view in Florida is that day's view, not tomorrow's. A day or
+    // so of slack here; only the 30 days filled in below are kept.
+    if (t >= d30 - 2 * 86400000) {
+      const day = dayKeyET(t);
       byDayMap.set(day, (byDayMap.get(day) ?? 0) + 1);
     }
   }
 
-  // Fill the last 30 days so the chart has a bar (or a gap) for every day.
+  // Fill the last 30 Eastern days (today back to 29 days ago) so the chart has
+  // a bar (or a gap) for every day. `day` is YYYY-MM-DD in Eastern time.
   const byDay: { day: string; views: number }[] = [];
+  const todayKey = dayKeyET(now);
   for (let i = 29; i >= 0; i--) {
-    const day = new Date(now - i * 86400000).toISOString().slice(0, 10);
+    const day = addDaysToKey(todayKey, -i);
     byDay.push({ day, views: byDayMap.get(day) ?? 0 });
   }
 
