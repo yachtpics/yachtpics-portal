@@ -1,6 +1,6 @@
 # Where we are — October 6, 2026
 
-## Photo grid shows the file name (Nov 11, 2026) — PUSHED · HELP PDF NOT REBUILT · no migration · no new dependency
+## Photo grid shows the file name (Nov 11, 2026) — PUSHED · Help PDF rebuilt Nov 11 · no migration · no new dependency
 
 - Admin listing page: every photo tile now has one small grey line under the category with the file name, shortened in the middle so the start and the number + extension stay readable (e.g. `2026-11-03_41_B…g_0217.jpg`; short names like `41_bahama_tower_02.jpg` show whole; helper `src/components/listing-photos/middleTruncate.ts`); full name on hover. The line is always reserved, so tiles stay level; no name = blank line. No per-photo menu exists, so no "Copy file name".
 - Broker/assistant page: no new line on the tile; hovering the photo shows the full file name. Both lightboxes show the file name under the category/counter (small, muted).
@@ -8,7 +8,7 @@
 - Help: added "Hover a photo to see its file name." to the Listings step in `src/app/dashboard/help/page.tsx`. **PDF guide NOT rebuilt** (fonts not installed here) — run `python3 scripts/build_user_guide.py` before/with the push.
 - Typecheck clean, NOT BROWSER-TESTED (checked in a static harness only). Check: admin listing → each tile shows its file name under the category, phone and desktop; broker listing → hover a photo, tooltip shows the name; open the lightbox on both → name under the counter.
 
-## Bulk downloads on locked-down work computers: blocked save window no longer fails silently (Nov 11, 2026) — PUSHED · no migration · no new dependency · HELP PDF NOT REBUILT
+## Bulk downloads on locked-down work computers: blocked save window no longer fails silently (Nov 11, 2026) — PUSHED · no migration · no new dependency · Help PDF rebuilt Nov 11
 
 - **TRACING ADDED (Nov 11, later — NOT PUSHED, TEMPORARY):** every bulk download (> 1 photo) from a boat's page (Download All, "or as a .zip", selected, admin Save originals) and the My Listings Photos button now logs `[download-trace]` lines (error level) via `/api/photos/download-fallback` (`trace: true`; helper `startDownloadTrace` in `src/lib/zipDownload.ts`, build tag `DOWNLOAD_TRACE_BUILD = "2026-11-11b"`).
 - Line format: `[download-trace] {"user","role","event","attempt",...,"ua"}` — events `start` (via, canFolder, plainFlag, hasDirPicker, hasSavePicker, visibility, build) → `picker` (picker, kind, blocked, ms) → `signed` (urls, original, ms) → `first-write` (ms, bytes) → `end` (outcome saved/partial/none/cancelled/error/fallback, mode, written, failed, bytes, zips, ms, error), plus `hint-shown`, `hint-clicked`, `js-error`; group by `attempt` (a follow-on attempt carries `parent`). No file names, URLs or emails. The read-only demo's traces are refused (403) by the middleware.
