@@ -1,6 +1,6 @@
 # Where we are — October 6, 2026
 
-## Download notices are fixed, prominent and persistent; repeat-cancel prompt (Nov 11, 2026) — PUSHED · no migration · no new dependency · HELP PDF NOT REBUILT
+## Download notices are fixed, prominent and persistent; repeat-cancel prompt (Nov 11, 2026) — PUSHED · no migration · no new dependency · Help PDF rebuilt Nov 11
 
 - **What the traces proved:** a brokerage's managed office PCs (Chrome 157, Windows) refuse the Save / folder windows (`AbortError`). One PC answers in ~450 ms → the existing auto-fallback (`PICKER_BLOCKED_MS = 700`, unchanged) sent an ordinary zip and it worked. Another answers in 2.3–4.1 s → classed as a cancel; the "Nothing was saved…" hint appeared in the page banner, far below Download All (under "Publish your slideshow" / Reel Service) and vanished after 20 s — missed three times, button never clicked.
 - **Owner's call:** "Nothing was saved" must be acknowledged. So download messages no longer use the banner. New `src/components/listing-photos/DownloadNotice.tsx`:
