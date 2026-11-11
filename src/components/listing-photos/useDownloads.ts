@@ -11,6 +11,7 @@ import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 import {
   formatBytes, openZipTarget, partLimitBytes, folderSaveAvailable, openFolderTarget, reportZipIssue, saveToFolder, writeZip,
   plainDownloadsPreferred, setPlainDownloads, choosePlainDownloads, type ZipEntry, type ZipTarget,
+  startDownloadTrace, traceDownload, traceErrorText, type DownloadTrace, type TraceOutcome,
 } from "@/lib/zipDownload";
 import { createClient } from "@/lib/supabase/client";
 import { fullSizeNote, signPhotosForDownload, type SignedDownloads } from "./signDownloads";
@@ -33,6 +34,9 @@ export const DOWNLOAD_SIZES: { value: DownloadSize; label: string; short: string
   { value: "social", label: "Social (1080px)", short: "Social", suffix: "1080px" },
   { value: "full", label: "Full resolution (print)", short: "Full resolution", suffix: "" },
 ];
+
+/** How a traced bulk download ended (filled in as it goes; sent in `finally`). */
+type TraceEnd = { outcome: TraceOutcome; data: Record<string, unknown> };
 
 /** fetch → blob, retrying a 429 / 5xx twice with a short back-off. */
 async function fetchBlobWithRetry(url: string): Promise<Blob> {
@@ -141,8 +145,9 @@ export function useSizedDownloads(opts: {
    * silence: say nothing was saved and offer the plain zip — ordinary browser
    * downloads, no window. Choosing it is reported and remembered.
    */
-  function pickerCancelled(targets: ListingPhoto[], mode: "folder" | "zip", ms: number) {
+  function pickerCancelled(targets: ListingPhoto[], mode: "folder" | "zip", ms: number, trace: DownloadTrace) {
     const size = downloadSize;
+    trace.send("hint-shown", { picker: mode });
     onMessage({
       kind: "info",
       text: "Nothing was saved. If you didn't cancel, your computer may be blocking that —",
@@ -150,10 +155,11 @@ export function useSizedDownloads(opts: {
       action: {
         label: "Download as a zip instead",
         run: () => {
+          if (trace.attempt) traceDownload("hint-clicked", { attempt: trace.attempt, listingId, size, count: targets.length, picker: mode });
           if (busyRef.current) return;
           choosePlainDownloads({ listingId, size, mode, ms, total: targets.length });
           syncPlain();
-          void downloadPhotos(targets, { plain: true });
+          void downloadPhotos(targets, { plain: true, via: "hint-zip", parent: trace.attempt });
         },
       },
     });
@@ -199,20 +205,42 @@ export function useSizedDownloads(opts: {
    * zips. Call it straight from the click (the folder picker needs it).
    * If the folder can't be used, it falls back to the zip.
    */
-  async function saveToFolderAction(targets: ListingPhoto[]) {
+  async function saveToFolderAction(targets: ListingPhoto[], via = "download-all") {
     if (targets.length === 0 || downloading) return;
+    // Nov 11 bulk-download trace (src/lib/zipDownload.ts): `end` sent once, whatever happens.
+    const trace = startDownloadTrace({ via, listingId, size: downloadSize, count: targets.length, canFolder });
+    const end: TraceEnd = { outcome: "error", data: { mode: "folder" } };
+    try {
+      await saveToFolderSteps(targets, trace, end);
+    } catch (e) {
+      end.outcome = "error";
+      end.data.error = traceErrorText(e);
+      throw e;
+    } finally {
+      trace.end(end.outcome, end.data);
+    }
+  }
+
+  async function saveToFolderSteps(targets: ListingPhoto[], trace: DownloadTrace, end: TraceEnd) {
     const size = downloadSize;
     const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
     const vessel = vesselName ? cleanName(vesselName) : "";
+    const p0 = trace.ms();
     const folder = await openFolderTarget(`${vessel || "Photos"} – ${sizeInfo.short}`, { listingId, size });
+    trace.send("picker", {
+      picker: "folder", kind: folder.kind, blocked: folder.kind === "unsupported" && !!folder.blocked,
+      ms: folder.kind === "cancelled" ? folder.ms : trace.ms() - p0,
+    });
     if (folder.kind === "cancelled") {
-      pickerCancelled(targets, "folder", folder.ms);
+      end.outcome = "cancelled";
+      pickerCancelled(targets, "folder", folder.ms, trace);
       return;
     }
     if (folder.kind === "unsupported") {
       // Blocked (managed PC): plain zip downloads, no Save window — and from now on.
       syncPlain();
-      await downloadPhotos(targets, { plain: !!folder.blocked });
+      trace.end("fallback", { mode: "folder" });
+      await downloadPhotos(targets, { plain: !!folder.blocked, via: "folder-fallback", parent: trace.attempt });
       return;
     }
     setZipFailed(null);
@@ -222,8 +250,11 @@ export function useSizedDownloads(opts: {
     setDownloadLabel("Preparing…");
     const ctl = new AbortController();
     abortRef.current = ctl;
+    const s0 = trace.ms();
     const { urls, ext, original } = await signForDownload(targets, size);
+    trace.send("signed", { urls: Object.keys(urls).length, original: original.length, ms: trace.ms() - s0 });
     if (Object.keys(urls).length === 0) {
+      end.outcome = "none";
       abortRef.current = null;
       setDownloading(false);
       setSavingToFolder(false);
@@ -243,6 +274,7 @@ export function useSizedDownloads(opts: {
       signal: ctl.signal,
       context: { listingId, size },
       onProgress: (p) => {
+        trace.progress(p.done - p.failed, p.bytes);
         setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
         setDownloadLabel(`${p.done} of ${p.total} photos`);
       },
@@ -252,11 +284,14 @@ export function useSizedDownloads(opts: {
     setSavingToFolder(false);
     setDownloadProgress(0);
     setDownloadLabel(null);
+    end.data = { mode: "folder", written: result.written, failed: result.failed, bytes: result.bytes };
+    end.outcome = result.fallback ? "fallback" : result.cancelled ? "cancelled" : result.written === 0 ? "none" : result.failed > 0 ? "partial" : "saved";
     if (result.fallback) {
       // Nothing was written (blocked folder): the zip as plain downloads, no Save window.
       syncPlain();
       onMessage({ kind: "info", text: "That folder couldn't be written to — downloading a zip instead.", ms: 8000 });
-      await downloadPhotos(targets, { plain: true });
+      trace.end(end.outcome, end.data);
+      await downloadPhotos(targets, { plain: true, via: "folder-fallback", parent: trace.attempt });
       return;
     }
     if (result.written > 0) logDownload(result.written);
@@ -284,8 +319,26 @@ export function useSizedDownloads(opts: {
    * window (Chrome / Edge), or as ordinary downloads in ≤ 400 MB parts
    * (other browsers, `opts.plain`, or a browser switched to plain downloads).
    */
-  async function downloadPhotos(targets: ListingPhoto[], opts: { plain?: boolean } = {}) {
+  async function downloadPhotos(targets: ListingPhoto[], opts: { plain?: boolean; via?: string; parent?: string } = {}) {
     if (targets.length === 0) return;
+    // Nov 11 bulk-download trace (none for one photo): `end` sent once, whatever happens.
+    const trace = startDownloadTrace({
+      via: opts.via ?? (canFolder ? "zip-link" : "download-all"),
+      listingId, size: downloadSize, count: targets.length, canFolder, parent: opts.parent,
+    });
+    const end: TraceEnd = { outcome: "error", data: {} };
+    try {
+      await downloadPhotosSteps(targets, opts, trace, end);
+    } catch (e) {
+      end.outcome = "error";
+      end.data.error = traceErrorText(e);
+      throw e;
+    } finally {
+      trace.end(end.outcome, end.data);
+    }
+  }
+
+  async function downloadPhotosSteps(targets: ListingPhoto[], opts: { plain?: boolean }, trace: DownloadTrace, end: TraceEnd) {
     setZipFailed(null);
     setDownloading(true);
     setDownloadProgress(0);
@@ -299,11 +352,18 @@ export function useSizedDownloads(opts: {
     let zipTarget: ZipTarget | null = null;
     if (targets.length > 1) {
       const zipName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
+      const p0 = trace.ms();
       zipTarget = await openZipTarget(zipName, { listingId, size }, { plain: !!opts.plain });
+      trace.send("picker", {
+        picker: "zip", kind: zipTarget.kind, blocked: zipTarget.kind === "parts" && !!zipTarget.blocked,
+        ms: zipTarget.kind === "cancelled" ? zipTarget.ms : trace.ms() - p0,
+      });
+      end.data.mode = zipTarget.kind === "cancelled" ? null : zipTarget.kind;
       if (zipTarget.kind === "cancelled") {
+        end.outcome = "cancelled";
         setDownloading(false);
         setDownloadProgress(0);
-        pickerCancelled(targets, "zip", zipTarget.ms);
+        pickerCancelled(targets, "zip", zipTarget.ms, trace);
         return;
       }
       if (zipTarget.kind === "parts" && zipTarget.blocked) syncPlain();
@@ -320,6 +380,7 @@ export function useSizedDownloads(opts: {
             `Full resolution is ${formatBytes(est.full)} — it'll save as about ${zips} zips in your Downloads folder. Web & MLS is ${formatBytes(est.web)}.\n\nOK to continue at full resolution, or Cancel and pick Web & MLS from the size menu.`
           );
           if (!go) {
+            end.outcome = "cancelled";
             setDownloading(false);
             setDownloadProgress(0);
             setDownloadLabel(null);
@@ -329,9 +390,12 @@ export function useSizedDownloads(opts: {
       }
     }
 
+    const s0 = trace.ms();
     const { urls: fresh, ext: madeExt, bytes: madeBytes, original } = await signForDownload(targets, size);
+    trace.send("signed", { urls: Object.keys(fresh).length, original: original.length, ms: trace.ms() - s0 });
     const extFor = extWith(madeExt);
     if (Object.keys(fresh).length === 0) {
+      end.outcome = "none";
       if (zipTarget?.kind === "stream") await zipTarget.writable.abort().catch(() => {});
       setDownloading(false);
       setDownloadProgress(0);
@@ -383,12 +447,17 @@ export function useSizedDownloads(opts: {
       baseName,
       context: { listingId, size },
       onProgress: (p) => {
+        trace.progress(p.done - p.failed, p.bytes);
         setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
         setDownloadLabel(
           `${p.parts && p.parts > 1 ? `Part ${p.part} of ${p.parts} · ` : ""}${p.done} of ${p.total} photos · ${formatBytes(p.bytes)}`
         );
       },
     });
+    end.data = result.ok
+      ? { mode: result.fellBack ? "parts" : zipTarget?.kind, written: result.written, failed: result.failed, bytes: result.bytes, zips: result.parts }
+      : { mode: zipTarget?.kind, written: result.written, failed: result.failed, error: result.error };
+    end.outcome = result.written === 0 ? "none" : result.ok && result.failed === 0 ? "saved" : "partial";
     setDownloading(false);
     setDownloadProgress(0);
     setDownloadLabel(null);
@@ -433,7 +502,7 @@ export function useSizedDownloads(opts: {
     saveToFolder: canFolder ? saveToFolderAction : null,
     savingToFolder, cancelDownload,
     /** After a failed zip: the same photos to a folder (null when nothing failed / unsupported). */
-    retryToFolder: zipFailed && canFolder ? () => saveToFolderAction(zipFailed) : null,
+    retryToFolder: zipFailed && canFolder ? () => saveToFolderAction(zipFailed, "retry-folder") : null,
     /** Plain downloads are remembered here but the browser can save to a
      *  folder: "Save straight to a folder instead" (null otherwise). */
     restoreFolder: folderAvailable && plain ? restoreFolder : null,
@@ -501,22 +570,44 @@ export function useOriginalSave(opts: {
     }
   }
 
-  async function savePhotos(targets: ListingPhoto[]) {
+  async function savePhotos(targets: ListingPhoto[], via = "originals", parent?: string) {
     if (targets.length === 0 || saveLocked) return;
     setSaveError(null);
     if (shouldUseShareSheet()) {
       await prepareShareBatch(targets, 0);
       return;
     }
+    // Nov 11 bulk-download trace (computers only; none for one photo): `end` sent once.
+    const trace = startDownloadTrace({ via, count: targets.length, canFolder: false, parent });
+    const end: TraceEnd = { outcome: "error", data: {} };
+    try {
+      await savePhotosSteps(targets, trace, end);
+    } catch (e) {
+      end.outcome = "error";
+      end.data.error = traceErrorText(e);
+      throw e;
+    } finally {
+      trace.end(end.outcome, end.data);
+    }
+  }
+
+  async function savePhotosSteps(targets: ListingPhoto[], trace: DownloadTrace, end: TraceEnd) {
     // Several photos on a desktop: a streaming zip (src/lib/zipDownload.ts) —
     // full-resolution shoots are several GB, far more than fits in memory.
     // The Save dialog is opened first, while the click still counts.
     if (targets.length > 1 && !isTouchDevice()) {
       const base = (vesselName ?? "photos").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "photos";
+      const p0 = trace.ms();
       const target = await openZipTarget(`${base}-photos.zip`);
+      trace.send("picker", {
+        picker: "zip", kind: target.kind, blocked: target.kind === "parts" && !!target.blocked,
+        ms: target.kind === "cancelled" ? target.ms : trace.ms() - p0,
+      });
       if (target.kind === "cancelled") {
+        end.outcome = "cancelled";
         // May have been blocked, not cancelled: say so and offer the plain zip.
         const ms = target.ms;
+        trace.send("hint-shown", { picker: "zip" });
         onMessage({
           kind: "info",
           text: "Nothing was saved. If you didn't cancel, your computer may be blocking that —",
@@ -524,20 +615,28 @@ export function useOriginalSave(opts: {
           action: {
             label: "Download as a zip instead",
             run: () => {
+              if (trace.attempt) traceDownload("hint-clicked", { attempt: trace.attempt, count: targets.length, picker: "zip" });
               choosePlainDownloads({ mode: "originals", ms, total: targets.length });
-              void savePhotos(targets);
+              void savePhotos(targets, "hint-zip", trace.attempt);
             },
           },
         });
         return;
       }
+      end.data.mode = target.kind;
       setSaveBusy({ done: 0, total: targets.length });
       try {
+        const s0 = trace.ms();
         const items = await saveItems(targets);
+        trace.send("signed", { urls: items.length, original: items.length, ms: trace.ms() - s0 });
         const result = await writeZip(target, items.map((it) => ({ name: it.name, url: it.url })), {
           baseName: `${base}-photos`,
-          onProgress: (p) => setSaveBusy({ done: p.done, total: p.total }),
+          onProgress: (p) => { trace.progress(p.done - p.failed, p.bytes); setSaveBusy({ done: p.done, total: p.total }); },
         });
+        end.data = result.ok
+          ? { mode: result.fellBack ? "parts" : target.kind, written: result.written, failed: result.failed, bytes: result.bytes, zips: result.parts }
+          : { mode: target.kind, written: result.written, failed: result.failed, error: result.error };
+        end.outcome = result.written === 0 ? "none" : result.ok && result.failed === 0 && items.length === targets.length ? "saved" : "partial";
         if (!result.ok) setSaveError(result.error);
         else {
           const missed = result.failed + (targets.length - items.length);
@@ -545,21 +644,27 @@ export function useOriginalSave(opts: {
           else onMessage({ kind: "success", text: `${result.written} photos saved${result.parts > 1 ? ` in ${result.parts} zip files` : ""}.`, ms: 4000 });
           onFinished();
         }
-      } catch {
+      } catch (e) {
+        end.outcome = "error";
+        end.data.error = traceErrorText(e);
         setSaveError("The download didn't finish. Please try again.");
       } finally {
         setSaveBusy(null);
       }
       return;
     }
+    end.data.mode = "files";
     setSaveBusy({ done: 0, total: targets.length });
     try {
       const items = await saveItems(targets);
       const { files, failed } = await fetchPhotoFiles(items, (done, total) => setSaveBusy({ done, total }));
       if (files.length === 0) {
+        end.outcome = "none";
         setSaveError("Couldn't get the photos. Check your connection and try again.");
         return;
       }
+      end.outcome = files.length < targets.length ? "partial" : "saved";
+      end.data.written = files.length;
       if (files.length === 1 || isTouchDevice()) {
         await saveFilesSequentially(files);
       } else {
@@ -571,7 +676,9 @@ export function useOriginalSave(opts: {
       if (missed > 0) setSaveError(`${missed} photo${missed !== 1 ? "s" : ""} couldn't be downloaded; the rest were saved.`);
       else onMessage({ kind: "success", text: `${files.length} photo${files.length !== 1 ? "s" : ""} downloaded.`, ms: 3000 });
       onFinished();
-    } catch {
+    } catch (e) {
+      end.outcome = "error";
+      end.data.error = traceErrorText(e);
       setSaveError("The download didn't finish. Please try again.");
     } finally {
       setSaveBusy(null);

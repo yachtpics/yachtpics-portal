@@ -289,6 +289,105 @@ export function choosePlainDownloads(ctx: ZipContext & { mode: string; ms?: numb
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 const errName = (e: unknown) => (e && typeof e === "object" && "name" in e ? String((e as { name: unknown }).name) : "");
 
+// ── Bulk-download trace (Nov 11, TEMPORARY) ───────────────────────────────
+// One assistant on a managed work PC gets "nothing downloads" from Download
+// All and nothing reached the logs. Every bulk download (> 1 photo) from the
+// listing page / My Listings row now sends small events to the same
+// diagnostics route, logged as `[download-trace]` lines grouped by `attempt`.
+// No file names, URLs or emails. Remove or reduce once that case is understood.
+
+/** Identifies the deployed JavaScript in traces (bump when the trace code changes). */
+export const DOWNLOAD_TRACE_BUILD = "2026-11-11b";
+
+/** Fire-and-forget; never throws. */
+export function traceDownload(event: string, data: Record<string, unknown>) {
+  try {
+    fetch("/api/photos/download-fallback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({ trace: true, event, ...data }),
+    }).catch(() => {});
+  } catch { /* diagnostics never break a download */ }
+}
+
+/** "Name: message", trimmed to 200 characters. */
+export function traceErrorText(e: unknown): string {
+  const name = errName(e);
+  const msg = e instanceof Error ? e.message : e && typeof e === "object" && "message" in e ? String((e as { message: unknown }).message) : String(e ?? "");
+  return (name ? `${name}: ${msg}` : msg).slice(0, 200);
+}
+
+export type TraceOutcome = "saved" | "partial" | "none" | "cancelled" | "error" | "fallback";
+
+export type DownloadTrace = {
+  /** "" when not traced (single photo). */
+  attempt: string;
+  /** ms since the click. */
+  ms: () => number;
+  setCount: (n: number) => void;
+  send: (event: string, data?: Record<string, unknown>) => void;
+  /** Call from onProgress: sends `first-write` once, when the first photo is written. */
+  progress: (written: number, bytes: number) => void;
+  /** Sends `end` once (later calls ignored) and removes the error listeners. */
+  end: (outcome: TraceOutcome, data?: Record<string, unknown>) => void;
+};
+
+const NO_TRACE: DownloadTrace = { attempt: "", ms: () => 0, setCount() {}, send() {}, progress() {}, end() {} };
+
+/** Start tracing one bulk download attempt — call at the click, before any window. */
+export function startDownloadTrace(base: {
+  via: string; listingId?: string | null; size?: string | null; count?: number | null; canFolder?: boolean; parent?: string;
+}): DownloadTrace {
+  if (typeof window === "undefined" || (base.count != null && base.count <= 1)) return NO_TRACE;
+  const attempt = Math.random().toString(36).slice(2, 10).padEnd(8, "0");
+  const t0 = now();
+  const ms = () => Math.round(now() - t0);
+  const ctx: Record<string, unknown> = { attempt, listingId: base.listingId ?? null, size: base.size ?? null, count: base.count ?? null };
+  let ended = false;
+  let wrote = false;
+  const send = (event: string, data: Record<string, unknown> = {}) => { if (!ended) traceDownload(event, { ...ctx, ...data }); };
+  const onError = (e: ErrorEvent) => send("js-error", { error: (e.message || traceErrorText(e.error)).slice(0, 200) });
+  const onRejection = (e: PromiseRejectionEvent) => send("js-error", { error: traceErrorText(e.reason) });
+  try {
+    window.addEventListener("error", onError);
+    window.addEventListener("unhandledrejection", onRejection);
+  } catch { /* ignore */ }
+  const w = window as unknown as { showDirectoryPicker?: unknown; showSaveFilePicker?: unknown };
+  let visibility: string | null = null;
+  try { visibility = document.visibilityState; } catch { /* ignore */ }
+  send("start", {
+    via: base.via,
+    canFolder: !!base.canFolder,
+    plainFlag: plainDownloadsPreferred(),
+    hasDirPicker: typeof w.showDirectoryPicker === "function",
+    hasSavePicker: typeof w.showSaveFilePicker === "function",
+    visibility,
+    build: DOWNLOAD_TRACE_BUILD,
+    parent: base.parent,
+  });
+  return {
+    attempt,
+    ms,
+    setCount(n) { ctx.count = n; },
+    send,
+    progress(written, bytes) {
+      if (wrote || written < 1) return;
+      wrote = true;
+      send("first-write", { ms: ms(), bytes });
+    },
+    end(outcome, data = {}) {
+      if (ended) return;
+      send("end", { outcome, ms: ms(), ...data });
+      ended = true;
+      try {
+        window.removeEventListener("error", onError);
+        window.removeEventListener("unhandledrejection", onRejection);
+      } catch { /* ignore */ }
+    },
+  };
+}
+
 /**
  * An embedded browser (Outlook / Teams / an app's WebView) — the Save dialog
  * there may exist but fail to write, so these always use parts mode.

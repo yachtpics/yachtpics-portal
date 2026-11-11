@@ -8,6 +8,7 @@ import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 import {
   folderSaveAvailable, folderSaveSupported, openFolderTarget, openZipTarget, reportZipIssue, saveToFolder, writeZip,
   choosePlainDownloads, setPlainDownloads, type FolderTarget,
+  startDownloadTrace, traceDownload, traceErrorText, type TraceOutcome,
 } from "@/lib/zipDownload";
 import { DOWNLOAD_SIZES, type DownloadSize } from "@/components/listing-photos/useDownloads";
 import { fullSizeNote, signPhotosForDownload } from "@/components/listing-photos/signDownloads";
@@ -76,9 +77,9 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   // Nov 11: the Save / folder window came back "cancelled" — maybe blocked
   // (managed PC). A small line under the buttons for ~20 s offers the plain
   // zip instead of ending in silence.
-  const [pickerHint, setPickerHint] = useState<{ mode: "folder" | "zip"; ms: number; size: DownloadSize } | null>(null);
+  const [pickerHint, setPickerHint] = useState<{ mode: "folder" | "zip"; ms: number; size: DownloadSize; attempt?: string } | null>(null);
   const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function showPickerHint(h: { mode: "folder" | "zip"; ms: number; size: DownloadSize }) {
+  function showPickerHint(h: { mode: "folder" | "zip"; ms: number; size: DownloadSize; attempt?: string }) {
     setPickerHint(h);
     if (hintTimer.current) clearTimeout(hintTimer.current);
     hintTimer.current = setTimeout(() => setPickerHint(null), 20000);
@@ -185,12 +186,16 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     }
   }
 
-  async function handleDownload(mode: "zip" | "folder" = "zip"): Promise<void> {
+  async function handleDownload(mode: "zip" | "folder" = "zip", via = "row", parent?: string): Promise<void> {
     if (downloading) {
       // The Folder button doubles as Cancel while saving to a folder.
       if (mode === "folder") separateAbort.current?.abort();
       return;
     }
+    // Nov 11 bulk-download trace (src/lib/zipDownload.ts); count known once the photos are read.
+    const trace = startDownloadTrace({ via, listingId: listing.id, size: rememberedDownloadSize(), count: null, canFolder, parent });
+    let outcome: TraceOutcome = "error";
+    let endData: Record<string, unknown> = { mode: mode === "folder" ? "folder" : null };
     // Streaming zip (src/lib/zipDownload.ts): the Save dialog opens first,
     // while the click still counts as a gesture; then the photos stream into
     // it one by one (any size). Browsers without the dialog get zip parts.
@@ -202,14 +207,29 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     let folder: Extract<FolderTarget, { kind: "folder" }> | null = null;
     setPickerHint(null);
     if (mode === "folder") {
+      const p0 = trace.ms();
       const f = await openFolderTarget(`${listing.vessel_name ?? "Photos"} – ${sizeInfo.short}`, { listingId: listing.id, size });
-      if (f.kind === "cancelled") { showPickerHint({ mode: "folder", ms: f.ms, size }); return; }
+      trace.send("picker", { picker: "folder", kind: f.kind, blocked: f.kind === "unsupported" && !!f.blocked, ms: f.kind === "cancelled" ? f.ms : trace.ms() - p0 });
+      if (f.kind === "cancelled") {
+        trace.send("hint-shown", { picker: "folder" });
+        trace.end("cancelled", { mode: "folder" });
+        showPickerHint({ mode: "folder", ms: f.ms, size, attempt: trace.attempt });
+        return;
+      }
       if (f.kind === "folder") folder = f;
       // "unsupported": blocked windows are remembered — the zip below skips its window.
     }
+    const z0 = trace.ms();
     const target = folder ? null : await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size });
+    if (target) trace.send("picker", { picker: "zip", kind: target.kind, blocked: target.kind === "parts" && !!target.blocked, ms: target.kind === "cancelled" ? target.ms : trace.ms() - z0 });
+    endData.mode = folder ? "folder" : target && target.kind !== "cancelled" ? target.kind : null;
     setCanFolder(folderSaveSupported());
-    if (target?.kind === "cancelled") { showPickerHint({ mode: "zip", ms: target.ms, size }); return; }
+    if (target?.kind === "cancelled") {
+      trace.send("hint-shown", { picker: "zip" });
+      trace.end("cancelled", { mode: null });
+      showPickerHint({ mode: "zip", ms: target.ms, size, attempt: trace.attempt });
+      return;
+    }
     setDownloading(true);
     setDownloadProgress(0);
     setDownloadDone(false);
@@ -228,7 +248,9 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         .eq("is_visible", true)
         .order("display_order");
 
+      trace.setCount(photos?.length ?? 0);
       if (!photos || photos.length === 0) {
+        outcome = "none";
         if (target?.kind === "stream") await target.writable.abort().catch(() => {});
         setNoPhotos(true);
         setTimeout(() => setNoPhotos(false), 3000);
@@ -244,6 +266,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       const urlById = new Map<string, string>();
       let madeExt: Record<string, string> = {};
       let fullCount = 0;
+      const s0 = trace.ms();
       if (size === "full") {
         const signed = await signOriginalsInBrowser(supabase, photos.map((p) => p.storage_path), 3600);
         photos.forEach((p) => { const u = signed.get(p.storage_path); if (u) urlById.set(p.id, u); });
@@ -254,8 +277,10 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         fullCount = signed.original.length;
       }
       setPreparing(false);
+      trace.send("signed", { urls: urlById.size, original: size === "full" ? urlById.size : fullCount, ms: trace.ms() - s0 });
 
       if (urlById.size === 0) {
+        outcome = "none";
         // Never a silent finish: nothing could be signed at all.
         if (target?.kind === "stream") await target.writable.abort().catch(() => {});
         reportZipIssue("sign-empty", new Error("no download links"), { listingId: listing.id, size, total: photos.length });
@@ -285,6 +310,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
             signal: ctl.signal,
             context: { listingId: listing.id, size },
             onProgress: (p) => {
+              trace.progress(p.done - p.failed, p.bytes);
               setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0);
               setSeparateLabel(`${p.done}/${p.total}`);
             },
@@ -292,6 +318,8 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         );
         separateAbort.current = null;
         written = res.written;
+        endData = { mode: "folder", written: res.written, failed: res.failed, bytes: res.bytes };
+        outcome = res.fallback ? "fallback" : res.cancelled ? "cancelled" : res.written === 0 ? "none" : res.failed > 0 ? "partial" : "saved";
         if (res.fallback) {
           fallBack = true;
           return;
@@ -304,8 +332,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         const result = await writeZip(target, entries, {
           baseName: zipBase,
           context: { listingId: listing.id, size },
-          onProgress: (p) => setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0),
+          onProgress: (p) => { trace.progress(p.done - p.failed, p.bytes); setDownloadProgress(p.total ? Math.round((p.done / p.total) * 100) : 0); },
         });
+        endData = result.ok
+          ? { mode: result.fellBack ? "parts" : target.kind, written: result.written, failed: result.failed, bytes: result.bytes, zips: result.parts }
+          : { mode: target.kind, written: result.written, failed: result.failed, error: result.error };
+        outcome = result.written === 0 ? "none" : result.ok && result.failed === 0 ? "saved" : "partial";
         if (!result.ok) {
           alert(canFolder ? `${result.error}\n\nOr click Photos — it saves the photos straight into a folder, no zip.` : result.error);
           return;
@@ -325,9 +357,12 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       setDoneNote(note);
       setDownloadDone(true);
       setTimeout(() => { setDownloadDone(false); setDoneNote(""); }, note ? 8000 : 3000);
-    } catch {
+    } catch (e) {
+      outcome = "error";
+      endData.error = traceErrorText(e);
       alert("The download didn't finish. Please try again.");
     } finally {
+      trace.end(outcome, endData);
       setDownloading(false);
       setPreparing(false);
       setDownloadProgress(0);
@@ -337,16 +372,17 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     }
     // The folder couldn't be written to: the zip instead (plain downloads —
     // saveToFolder remembered it, so no Save window).
-    if (fallBack) void handleDownload("zip");
+    if (fallBack) void handleDownload("zip", "folder-fallback", trace.attempt);
   }
 
   /** "Download as a zip instead" after a cancelled window: report, remember, go. */
   function plainZipInstead() {
     const h = pickerHint;
     setPickerHint(null);
+    if (h?.attempt) traceDownload("hint-clicked", { attempt: h.attempt, listingId: listing.id, size: h.size, picker: h.mode });
     choosePlainDownloads({ listingId: listing.id, size: h?.size ?? null, mode: h?.mode ?? "zip", ms: h?.ms });
     setCanFolder(folderSaveSupported());
-    void handleDownload("zip");
+    void handleDownload("zip", "hint-zip", h?.attempt);
   }
 
   async function handleSend(e: React.FormEvent) {

@@ -857,10 +857,10 @@ export default function BrokerListingPage() {
             downloadBusy={downloads.downloading}
             busyLabel={downloads.downloadLabel ?? `Downloading... ${downloads.downloadProgress}%`}
             onDownloadAll={() => requireDownloadLicense(() => downloads.downloadPhotos(visiblePhotos))}
-            onDownloadSelected={() => requireDownloadLicense(() => downloads.downloadPhotos(selectedPhotos))}
+            onDownloadSelected={() => requireDownloadLicense(() => downloads.downloadPhotos(selectedPhotos, { via: "select" }))}
             sizeSelect={<DownloadSizeSelect value={downloads.downloadSize} onChange={downloads.setDownloadSize} disabled={downloads.downloading} />}
             onSaveToFolder={downloads.saveToFolder && (() => requireDownloadLicense(() => downloads.saveToFolder?.(visiblePhotos)))}
-            onSaveToFolderSelected={downloads.saveToFolder && (() => requireDownloadLicense(() => downloads.saveToFolder?.(selectedPhotos)))}
+            onSaveToFolderSelected={downloads.saveToFolder && (() => requireDownloadLicense(() => downloads.saveToFolder?.(selectedPhotos, "select")))}
             onCancelDownload={downloads.savingToFolder ? downloads.cancelDownload : null}
             onRetryToFolder={downloads.retryToFolder}
             onRestoreFolder={downloads.restoreFolder}
