@@ -38,7 +38,7 @@ const sections = [
     title: "Managing Your Listings",
     steps: [
       "Create a new listing and upload photos yourself, or listings appear automatically when YachtPics delivers. Click any listing to open it.",
-      "Drag and drop photos to reorder them. Click a photo to open the full-screen lightbox.",
+      "Drag and drop photos to reorder them. Click a photo to open the full-screen lightbox. Hover a photo to see its file name.",
       "Click 'Sort to standard order' to rewrite the order into the standard walk-through — outside, up top, cockpit, engine room, then the interior. Drag from there to fine-tune.",
       "Use categories (Profiles, Foredeck, Cockpit, Skylounge, Beach Club, Engine Room — or Port and Starboard Engine Room — Electrical Panel, staterooms and more) to organize photos — clients see these labels in the slideshow.",
       "Toggle the eye icon on any photo to hide it. Hidden photos stay on your listing but are left out of both the client slideshow and client downloads.",

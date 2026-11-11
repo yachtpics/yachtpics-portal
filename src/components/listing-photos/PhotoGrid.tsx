@@ -10,6 +10,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import RetryImg from "@/components/RetryImg";
 import OrientedThumbnail from "./OrientedThumbnail";
+import { middleTruncate } from "./middleTruncate";
 import type { ListingPhoto, PhotoVariant, ReplaceStage } from "./types";
 
 export interface PhotoGridProps {
@@ -265,6 +266,15 @@ function AdminPhotoGrid({
                   </select>
                 )}
                 {!photo.is_visible && <span className="text-[10px] text-ink-400 ml-1">· hidden</span>}
+                {/* File name — always one line (reserved even when empty, so
+                    tiles stay level), shortened in the middle to keep the
+                    frame number + extension; full name on hover. */}
+                <p
+                  className="h-[14px] text-[10px] leading-[14px] text-ink-400 whitespace-nowrap overflow-hidden"
+                  title={photo.filename || undefined}
+                >
+                  {photo.filename ? middleTruncate(photo.filename, 26) : null}
+                </p>
                 {!selectMode && (
                   <div className="flex gap-1.5 mt-2">
                     <button
@@ -438,6 +448,7 @@ function BrokerPhotoCard({
         {/* The photograph — a print on a white mat, lifted by its shadow, nothing over it at rest */}
         <div
           onClick={onTap}
+          title={photo.filename || undefined}
           onTouchStart={(e) => { tapStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }; }}
           onTouchEnd={(e) => {
             if (!tapStart.current) return;

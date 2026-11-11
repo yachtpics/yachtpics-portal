@@ -3,6 +3,7 @@
 import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
 import { createPortal } from "react-dom";
 import type { ListingPhoto, PhotoVariant } from "./types";
+import { middleTruncate } from "./middleTruncate";
 
 /**
  * Full-screen photo viewer. Render it only while open (index !== null).
@@ -99,9 +100,12 @@ function BrokerLightbox({ photos, index, setIndex, displayCopies = {}, signDispl
     >
       {/* Header — counter above a single hairline */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px 6px 20px", flexShrink: 0, borderBottom: "1px solid var(--hairline)" }}>
-        <span style={{ color: "var(--ink-600)", fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
-          {photo?.category ? `${photo.category} · ` : ""}{index + 1} / {photos.length}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, marginRight: 12 }}>
+          <span style={{ color: "var(--ink-600)", fontSize: 11, fontWeight: 600, letterSpacing: "0.14em", textTransform: "uppercase" }}>
+            {photo?.category ? `${photo.category} · ` : ""}{index + 1} / {photos.length}
+          </span>
+          <FileNameLine name={photo?.filename} color="#6d7581" size={11} max={40} />
+        </div>
         <button
           onClick={() => setIndex(null)}
           aria-label="Close"
@@ -143,9 +147,12 @@ function AdminLightbox({ photos, index, setIndex, thumbs = {}, onSave, saveLocke
       onClick={() => setIndex(null)}
     >
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 16px", flexShrink: 0 }}>
-        <span style={{ color: "#9ca3af", fontSize: 14 }}>
-          {photo?.category ? `${photo.category} · ` : ""}{index + 1} / {photos.length}
-        </span>
+        <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0, marginRight: 12 }}>
+          <span style={{ color: "#9ca3af", fontSize: 14 }}>
+            {photo?.category ? `${photo.category} · ` : ""}{index + 1} / {photos.length}
+          </span>
+          <FileNameLine name={photo?.filename} color="#6b7280" size={12} max={32} />
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {photo && onSave && (
             <button
@@ -187,6 +194,21 @@ function AdminLightbox({ photos, index, setIndex, thumbs = {}, onSave, saveLocke
         ))}
       </div>
     </div>
+  );
+}
+
+// The open photo's file name, small and muted under the counter. Nothing when
+// the photo has no name. Shortened in the middle so the number stays visible.
+function FileNameLine({ name, color, size, max }: { name?: string | null; color: string; size: number; max: number }) {
+  if (!name) return null;
+  return (
+    <span
+      title={name}
+      onClick={(e) => e.stopPropagation()}
+      style={{ color, fontSize: size, lineHeight: 1.3, marginTop: 2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", userSelect: "text" }}
+    >
+      {middleTruncate(name, max)}
+    </span>
   );
 }
 
