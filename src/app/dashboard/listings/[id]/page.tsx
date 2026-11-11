@@ -65,10 +65,14 @@ export default function BrokerListingPage() {
   const [message, setMessage] = useState("");
   // Colour of the banner above. Most messages are confirmations (green);
   // flash(..., "error") shows a failure in red.
-  const [messageTone, setMessageTone] = useState<"success" | "error">("success");
-  function flash(text: string, tone: "success" | "error" = "success", ms = 4000) {
+  const [messageTone, setMessageTone] = useState<"success" | "error" | "info">("success");
+  // A button after the banner text (Nov 11: "Download as a zip instead"),
+  // tied to the text it came with so a later message never carries it.
+  const [messageAction, setMessageAction] = useState<{ text: string; label: string; run: () => void } | null>(null);
+  function flash(text: string, tone: "success" | "error" | "info" = "success", ms = 4000, action?: { label: string; run: () => void }) {
     setMessageTone(tone);
     setMessage(text);
+    setMessageAction(action ? { text, label: action.label, run: action.run } : null);
     if (ms > 0) setTimeout(() => setMessage((cur) => (cur === text ? "" : cur)), ms);
   }
 
@@ -78,7 +82,7 @@ export default function BrokerListingPage() {
   // capabilities, its banner, and the rights / licence gates.
   const photoState = useListingPhotos({ supabase, listingId: id, caps: BROKER_PHOTO_CAPABILITIES });
   const { photos, setPhotos, thumbs, heroPhotoId, setHeroPhotoId } = photoState;
-  const onPhotoMessage = (m: PhotoMessage) => flash(m.text, m.kind, m.ms ?? 4000);
+  const onPhotoMessage = (m: PhotoMessage) => flash(m.text, m.kind, m.ms ?? 4000, m.action);
   const photoActions = usePhotoActions({
     supabase,
     listingId: id,
@@ -859,6 +863,7 @@ export default function BrokerListingPage() {
             onSaveToFolderSelected={downloads.saveToFolder && (() => requireDownloadLicense(() => downloads.saveToFolder?.(selectedPhotos)))}
             onCancelDownload={downloads.savingToFolder ? downloads.cancelDownload : null}
             onRetryToFolder={downloads.retryToFolder}
+            onRestoreFolder={downloads.restoreFolder}
           />
 
           {hasAccess(accessStatus) ? (
@@ -934,10 +939,23 @@ export default function BrokerListingPage() {
           className={`mb-5 px-4 py-3 rounded-lg text-sm ${
             messageTone === "error"
               ? "bg-danger-50 border border-danger-200 text-danger-700"
-              : "bg-success-50 border border-success-200 text-success-700"
+              : messageTone === "info"
+                ? "bg-ink-50 border border-hairline-strong text-ink-700"
+                : "bg-success-50 border border-success-200 text-success-700"
           }`}
         >
           {message}
+          {messageAction && messageAction.text === message && (
+            <>
+              {" "}
+              <button
+                onClick={() => { const run = messageAction.run; setMessage(""); setMessageAction(null); run(); }}
+                className="font-semibold underline underline-offset-2 hover:text-ink-950"
+              >
+                {messageAction.label}
+              </button>
+            </>
+          )}
         </div>
       )}
 

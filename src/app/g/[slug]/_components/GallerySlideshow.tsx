@@ -7,7 +7,8 @@ import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/photoAlt";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
 import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
-import { folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, writeZip, type ZipTarget } from "@/lib/zipDownload";
+import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip, type ZipTarget } from "@/lib/zipDownload";
+import { PickerCancelledHint, RestoreFolderLink } from "@/components/DownloadPickerHints";
 
 type GalleryPhoto = {
   id: string;
@@ -159,7 +160,12 @@ export default function GallerySlideshow({
   const [dlError, setDlError] = useState("");
   // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs that block zip files).
   const [canFolder, setCanFolder] = useState(false);
-  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
+  const [folderAvail, setFolderAvail] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); setFolderAvail(folderSaveAvailable()); }, []);
+  // Nov 11: a Save / folder window that came back "cancelled" (maybe blocked
+  // on a managed PC) — offer the plain zip instead of silence.
+  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number } | null>(null);
+  const [plainDone, setPlainDone] = useState("");
   // Chrome / Edge on a computer: Download saves straight into a folder; the zip is "or as a .zip".
   const useFolder = canFolder && photos.length > 1;
   const [sepLabel, setSepLabel] = useState<string | null>(null);
@@ -250,9 +256,12 @@ export default function GallerySlideshow({
     // counts (streaming zip — src/lib/zipDownload.ts).
     const safeTitle = title.replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-") || "gallery";
     let target: ZipTarget | null = null;
+    setPickerHint(null);
+    setPlainDone("");
     if (photos.length > 1) {
       target = await openZipTarget(`${safeTitle}-photos.zip`);
-      if (target.kind === "cancelled") return;
+      setCanFolder(folderSaveSupported());
+      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms }); return; }
     }
     setDownloadingAll(true);
     setDlProgress(0);
@@ -293,6 +302,9 @@ export default function GallerySlideshow({
         }
         logDownload(result.written, "zip");
         setDlProgress(100);
+        if (target.kind === "parts" || result.fellBack) {
+          setPlainDone(`Saved ${result.written} photos in ${result.parts} zip file${result.parts !== 1 ? "s" : ""} — in your Downloads folder.`);
+        }
       }
     } catch {
       /* ignore */
@@ -304,9 +316,11 @@ export default function GallerySlideshow({
   // Call straight from the click: the folder picker needs it.
   const savePhotosSeparately = useCallback(async () => {
     if (downloadingAll || photos.length === 0) return;
+    setPickerHint(null);
     const folder = await openFolderTarget(`${title} – Photos`);
-    if (folder.kind === "cancelled") return;
-    if (folder.kind === "unsupported") return downloadAllPhotos();
+    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms }); return; }
+    // Blocked windows are remembered: the zip skips its Save window.
+    if (folder.kind === "unsupported") { setCanFolder(folderSaveSupported()); return downloadAllPhotos(); }
     setDownloadingAll(true);
     setDlProgress(0);
     setDlError("");
@@ -314,6 +328,7 @@ export default function GallerySlideshow({
     setSepLabel("Preparing…");
     const ctl = new AbortController();
     sepAbort.current = ctl;
+    let fellBack = false;
     try {
       const fresh = await freshUrls();
       const res = await saveToFolder(
@@ -331,7 +346,7 @@ export default function GallerySlideshow({
         }
       );
       if (res.written > 0) logDownload(res.written, "single");
-      if (res.fallback) setDlError("That folder couldn't be written to — use Download instead.");
+      if (res.fallback) fellBack = true; // nothing written (blocked folder): the plain zip, below
       else if (!res.cancelled && res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
       else if (!res.cancelled && res.failed) setDlError(`Saved ${res.written} photos to ${folder.path}; ${res.failed} couldn't be downloaded. Refresh the page and download ${res.failed === 1 ? "it" : "them"} on ${res.failed === 1 ? "its" : "their"} own.`);
     } finally {
@@ -339,8 +354,19 @@ export default function GallerySlideshow({
       setSepLabel(null);
       setDownloadingAll(false);
       setDlProgress(0);
+      setCanFolder(folderSaveSupported());
     }
+    if (fellBack) void downloadAllPhotos();
   }, [downloadingAll, photos, title, logDownload, freshUrls, downloadAllPhotos]);
+
+  /** "Download as a zip instead" after a cancelled window: report, remember, go. */
+  const plainInstead = () => {
+    const h = pickerHint;
+    setPickerHint(null);
+    choosePlainDownloads({ mode: h?.mode ?? "zip", ms: h?.ms, total: photos.length });
+    setCanFolder(folderSaveSupported());
+    void downloadAllPhotos();
+  };
 
   const hasVideo = videos.length > 0;
   const [view, setView] = useState<"slideshow" | "grid" | "video">(
@@ -568,6 +594,19 @@ export default function GallerySlideshow({
         </div>
       )}
 
+      {downloadsEnabled && !downloadingAll && pickerHint && (
+        <div className="mx-4 sm:mx-6">
+          <PickerCancelledHint onPlain={plainInstead} />
+        </div>
+      )}
+      {downloadsEnabled && !downloadingAll && plainDone && (
+        <p className="mx-4 sm:mx-6 mt-3 text-sm text-ink-600">{plainDone}</p>
+      )}
+      {downloadsEnabled && !downloadingAll && folderAvail && !canFolder && photos.length > 1 && (
+        <div className="mx-4 sm:mx-6 mt-2">
+          <RestoreFolderLink onRestore={() => { setPlainDownloads(false); setCanFolder(folderSaveSupported()); setPlainDone(""); }} />
+        </div>
+      )}
       {downloadsEnabled && useFolder && (
         <div className="mx-4 sm:mx-6">
           <FolderDownloadHint show />

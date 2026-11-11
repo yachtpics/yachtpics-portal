@@ -8,7 +8,10 @@ import {
 } from "@/lib/photoSave";
 import type { ListingPhoto, OnPhotoMessage } from "./types";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { formatBytes, openZipTarget, partLimitBytes, folderSaveSupported, openFolderTarget, reportZipIssue, saveToFolder, usesZipParts, writeZip, type ZipEntry, type ZipTarget } from "@/lib/zipDownload";
+import {
+  formatBytes, openZipTarget, partLimitBytes, folderSaveAvailable, openFolderTarget, reportZipIssue, saveToFolder, writeZip,
+  plainDownloadsPreferred, setPlainDownloads, choosePlainDownloads, type ZipEntry, type ZipTarget,
+} from "@/lib/zipDownload";
 import { createClient } from "@/lib/supabase/client";
 import { fullSizeNote, signPhotosForDownload, type SignedDownloads } from "./signDownloads";
 
@@ -73,9 +76,19 @@ export function useSizedDownloads(opts: {
   const [downloadLabel, setDownloadLabel] = useState<string | null>(null);
   /** "Save to a folder" running — it can be cancelled. */
   const [savingToFolder, setSavingToFolder] = useState(false);
-  /** This browser can "Save to a folder" (Chrome / Edge on a computer) — known after mount. */
-  const [canFolder, setCanFolder] = useState(false);
-  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
+  /** This browser has "Save to a folder" (Chrome / Edge on a computer) — known after mount. */
+  const [folderAvailable, setFolderAvailable] = useState(false);
+  /** Nov 11: this browser is switched to plain downloads (localStorage
+   *  "yp_plain_downloads" — a locked-down PC blocked the Save / folder
+   *  window, or the user chose "Download as a zip instead"): no windows,
+   *  Download All goes straight to ordinary zip downloads. */
+  const [plain, setPlain] = useState(false);
+  const syncPlain = () => setPlain(plainDownloadsPreferred());
+  useEffect(() => { setFolderAvailable(folderSaveAvailable()); syncPlain(); }, []);
+  const canFolder = folderAvailable && !plain;
+  /** A download is running (read by the banner's "Download as a zip instead", whose closure is older). */
+  const busyRef = useRef(false);
+  useEffect(() => { busyRef.current = downloading; }, [downloading]);
   const abortRef = useRef<AbortController | null>(null);
   /** The photos of a zip that just failed — offered "Save to a folder instead". */
   const [zipFailed, setZipFailed] = useState<ListingPhoto[] | null>(null);
@@ -120,6 +133,30 @@ export function useSizedDownloads(opts: {
    */
   function signForDownload(targets: ListingPhoto[], size: DownloadSize): Promise<SignedDownloads> {
     return signPhotosForDownload(listingId, targets, size, createClient());
+  }
+
+  /**
+   * The Save / folder window came back "cancelled". It may really have been
+   * blocked (a managed work PC answers exactly like Cancel), so never end in
+   * silence: say nothing was saved and offer the plain zip — ordinary browser
+   * downloads, no window. Choosing it is reported and remembered.
+   */
+  function pickerCancelled(targets: ListingPhoto[], mode: "folder" | "zip", ms: number) {
+    const size = downloadSize;
+    onMessage({
+      kind: "info",
+      text: "Nothing was saved. If you didn't cancel, your computer may be blocking that —",
+      ms: 20000,
+      action: {
+        label: "Download as a zip instead",
+        run: () => {
+          if (busyRef.current) return;
+          choosePlainDownloads({ listingId, size, mode, ms, total: targets.length });
+          syncPlain();
+          void downloadPhotos(targets, { plain: true });
+        },
+      },
+    });
   }
 
   /** Nothing could be signed at all: say so (never a silent finish) and log it. */
@@ -168,9 +205,14 @@ export function useSizedDownloads(opts: {
     const sizeInfo = DOWNLOAD_SIZES.find((s) => s.value === size) ?? DOWNLOAD_SIZES[0];
     const vessel = vesselName ? cleanName(vesselName) : "";
     const folder = await openFolderTarget(`${vessel || "Photos"} – ${sizeInfo.short}`, { listingId, size });
-    if (folder.kind === "cancelled") return;
+    if (folder.kind === "cancelled") {
+      pickerCancelled(targets, "folder", folder.ms);
+      return;
+    }
     if (folder.kind === "unsupported") {
-      await downloadPhotos(targets);
+      // Blocked (managed PC): plain zip downloads, no Save window — and from now on.
+      syncPlain();
+      await downloadPhotos(targets, { plain: !!folder.blocked });
       return;
     }
     setZipFailed(null);
@@ -211,8 +253,10 @@ export function useSizedDownloads(opts: {
     setDownloadProgress(0);
     setDownloadLabel(null);
     if (result.fallback) {
-      onMessage({ kind: "error", text: "That folder couldn't be written to — downloading a zip instead.", ms: 8000 });
-      await downloadPhotos(targets);
+      // Nothing was written (blocked folder): the zip as plain downloads, no Save window.
+      syncPlain();
+      onMessage({ kind: "info", text: "That folder couldn't be written to — downloading a zip instead.", ms: 8000 });
+      await downloadPhotos(targets, { plain: true });
       return;
     }
     if (result.written > 0) logDownload(result.written);
@@ -235,7 +279,12 @@ export function useSizedDownloads(opts: {
     abortRef.current?.abort();
   }
 
-  async function downloadPhotos(targets: ListingPhoto[]) {
+  /**
+   * One photo: the file. Several: a zip — into the file picked in the Save
+   * window (Chrome / Edge), or as ordinary downloads in ≤ 400 MB parts
+   * (other browsers, `opts.plain`, or a browser switched to plain downloads).
+   */
+  async function downloadPhotos(targets: ListingPhoto[], opts: { plain?: boolean } = {}) {
     if (targets.length === 0) return;
     setZipFailed(null);
     setDownloading(true);
@@ -250,23 +299,25 @@ export function useSizedDownloads(opts: {
     let zipTarget: ZipTarget | null = null;
     if (targets.length > 1) {
       const zipName = `${vesselName ? cleanName(vesselName) : "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}.zip`;
-      zipTarget = await openZipTarget(zipName, { listingId, size });
+      zipTarget = await openZipTarget(zipName, { listingId, size }, { plain: !!opts.plain });
       if (zipTarget.kind === "cancelled") {
         setDownloading(false);
         setDownloadProgress(0);
+        pickerCancelled(targets, "zip", zipTarget.ms);
         return;
       }
+      if (zipTarget.kind === "parts" && zipTarget.blocked) syncPlain();
       setDownloadLabel("Preparing…");
 
-      // Full resolution in a browser without the Save dialog (Safari, iPhone,
-      // Firefox) goes out as several zips — say so first, with the Web & MLS
-      // size beside it, when it's more than ~500 MB.
-      if (zipTarget.kind === "parts" && size === "full" && usesZipParts()) {
+      // Full resolution as plain downloads (Safari, iPhone, Firefox, or a
+      // PC whose Save window is blocked) goes out as several zips — say so
+      // first, with the Web & MLS size beside it, when it's more than ~500 MB.
+      if (zipTarget.kind === "parts" && size === "full") {
         const est = await estimateSizes(targets);
         if (est && est.full > 500 * 1024 * 1024) {
           const zips = Math.max(2, Math.ceil(est.full / partLimitBytes()));
           const go = window.confirm(
-            `Full resolution is ${formatBytes(est.full)} — it'll save as about ${zips} zips. Web & MLS is ${formatBytes(est.web)}.\n\nOK to continue at full resolution, or Cancel and pick Web & MLS from the size menu.`
+            `Full resolution is ${formatBytes(est.full)} — it'll save as about ${zips} zips in your Downloads folder. Web & MLS is ${formatBytes(est.web)}.\n\nOK to continue at full resolution, or Cancel and pick Web & MLS from the size menu.`
           );
           if (!go) {
             setDownloading(false);
@@ -341,6 +392,7 @@ export function useSizedDownloads(opts: {
     setDownloading(false);
     setDownloadProgress(0);
     setDownloadLabel(null);
+    if (result.ok && result.fellBack) syncPlain();
     if (!result.ok) {
       setZipFailed(targets);
       onMessage({ kind: "error", text: canFolder ? `${result.error} Or use Save to a folder.` : result.error, ms: 12000 });
@@ -355,12 +407,24 @@ export function useSizedDownloads(opts: {
         ms: 10000,
       });
     } else {
+      // Plain downloads: name the zip files and where they went.
+      const asParts = zipTarget?.kind === "parts" || !!result.fellBack;
+      const where = asParts
+        ? ` in ${result.parts} zip file${result.parts !== 1 ? "s" : ""} — in your Downloads folder${result.parts > 1 ? " (if the browser asked to allow multiple downloads, choose Allow)" : ""}`
+        : "";
       onMessage({
         kind: "success",
-        text: `Saved ${result.written} photos (${formatBytes(result.bytes)})${result.parts > 1 ? ` in ${result.parts} zip files` : ""}.${fullNote ? ` ${fullNote}` : ""}`,
-        ms: fullNote ? 8000 : 5000,
+        text: `Saved ${result.written} photos (${formatBytes(result.bytes)})${where}.${fullNote ? ` ${fullNote}` : ""}`,
+        ms: fullNote || asParts ? 10000 : 5000,
       });
     }
+  }
+
+  /** Back to the Save / folder windows after plain downloads were remembered. */
+  function restoreFolder() {
+    setPlainDownloads(false);
+    syncPlain();
+    onMessage({ kind: "info", text: "Download All will ask for a folder again.", ms: 5000 });
   }
 
   return {
@@ -370,6 +434,9 @@ export function useSizedDownloads(opts: {
     savingToFolder, cancelDownload,
     /** After a failed zip: the same photos to a folder (null when nothing failed / unsupported). */
     retryToFolder: zipFailed && canFolder ? () => saveToFolderAction(zipFailed) : null,
+    /** Plain downloads are remembered here but the browser can save to a
+     *  folder: "Save straight to a folder instead" (null otherwise). */
+    restoreFolder: folderAvailable && plain ? restoreFolder : null,
   };
 }
 
@@ -447,7 +514,23 @@ export function useOriginalSave(opts: {
     if (targets.length > 1 && !isTouchDevice()) {
       const base = (vesselName ?? "photos").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || "photos";
       const target = await openZipTarget(`${base}-photos.zip`);
-      if (target.kind === "cancelled") return;
+      if (target.kind === "cancelled") {
+        // May have been blocked, not cancelled: say so and offer the plain zip.
+        const ms = target.ms;
+        onMessage({
+          kind: "info",
+          text: "Nothing was saved. If you didn't cancel, your computer may be blocking that —",
+          ms: 20000,
+          action: {
+            label: "Download as a zip instead",
+            run: () => {
+              choosePlainDownloads({ mode: "originals", ms, total: targets.length });
+              void savePhotos(targets);
+            },
+          },
+        });
+        return;
+      }
       setSaveBusy({ done: 0, total: targets.length });
       try {
         const items = await saveItems(targets);

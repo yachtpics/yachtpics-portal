@@ -28,9 +28,16 @@ export type PhotoVariant = "broker" | "admin";
 
 /**
  * A banner message for the page to show however it shows banners.
- * `ms` is a suggested auto-dismiss time (0 = leave it up).
+ * `ms` is a suggested auto-dismiss time (0 = leave it up). "info" is a calm,
+ * neutral note (not a failure). `action`, when given, is a button shown after
+ * the text (e.g. "Download as a zip instead") — render it with the text.
  */
-export type PhotoMessage = { kind: "success" | "error"; text: string; ms?: number };
+export type PhotoMessage = {
+  kind: "success" | "error" | "info";
+  text: string;
+  ms?: number;
+  action?: { label: string; run: () => void };
+};
 export type OnPhotoMessage = (m: PhotoMessage) => void;
 
 export interface PhotoCapabilities {

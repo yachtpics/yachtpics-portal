@@ -210,11 +210,14 @@ export type ZipProgress = {
 
 export type ZipTarget =
   | { kind: "stream"; writable: WritableStream<Uint8Array>; name: string }
-  | { kind: "parts" }
-  | { kind: "cancelled" };
+  /** `blocked`: the Save dialog was refused (managed PC) — this is the fallback. */
+  | { kind: "parts"; blocked?: boolean }
+  /** `ms`: how long the dialog was up before it came back "cancelled". */
+  | { kind: "cancelled"; ms: number };
 
 export type ZipResult =
-  | { ok: true; written: number; failed: number; bytes: number; parts: number }
+  /** `fellBack`: the Save-dialog file couldn't be written; the zip went out as plain downloads. */
+  | { ok: true; written: number; failed: number; bytes: number; parts: number; fellBack?: boolean }
   | { ok: false; error: string; written: number; failed: number };
 
 type PickerWindow = Window & {
@@ -230,7 +233,7 @@ export type ZipContext = { listingId?: string | null; size?: string | null };
  * back to parts, is reported to /api/photos/download-fallback, which writes
  * one `[download-fallback]` line to the Vercel runtime logs. Fire-and-forget.
  */
-export function reportZipIssue(step: string, err: unknown, extra: ZipContext & { mode?: string; bytes?: number; done?: number; total?: number } = {}) {
+export function reportZipIssue(step: string, err: unknown, extra: ZipContext & { mode?: string; bytes?: number; done?: number; total?: number; ms?: number } = {}) {
   try {
     const name = err && typeof err === "object" && "name" in err ? String((err as { name: unknown }).name) : typeof err;
     const message = err instanceof Error ? err.message : String(err ?? "");
@@ -242,6 +245,49 @@ export function reportZipIssue(step: string, err: unknown, extra: ZipContext & {
     }).catch(() => {});
   } catch { /* diagnostics never break a download */ }
 }
+
+// ── Plain downloads on locked-down PCs (Nov 11) ───────────────────────────
+// A managed work computer can block Chrome's File System Access (enterprise
+// policy, endpoint protection): the Save / folder window then comes back as
+// an AbortError — the same error as a real "Cancel" — and the download used
+// to end in silence. Now: an AbortError faster than a person could close a
+// dialog, or any failure after the window (subfolder, createWritable, the
+// first write), counts as "blocked": it is reported, the download goes out
+// as ordinary browser downloads (parts mode — no File System Access), and
+// this browser remembers it (localStorage "yp_plain_downloads" = "1"):
+// both windows are skipped from then on until the user picks "Save straight
+// to a folder instead". A slower AbortError may be a real cancel — callers
+// show "Nothing was saved … Download as a zip instead".
+
+const PLAIN_KEY = "yp_plain_downloads";
+/** An AbortError sooner than this after the call = the window never really opened. */
+export const PICKER_BLOCKED_MS = 700;
+
+/** This browser has been switched to plain downloads (no Save / folder window). */
+export function plainDownloadsPreferred(): boolean {
+  try { return typeof window !== "undefined" && window.localStorage.getItem(PLAIN_KEY) === "1"; } catch { return false; }
+}
+
+/** Remember (or forget) plain downloads in this browser. */
+export function setPlainDownloads(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(PLAIN_KEY, "1");
+    else window.localStorage.removeItem(PLAIN_KEY);
+  } catch { /* storage blocked */ }
+}
+
+/**
+ * The user clicked "Download as a zip instead" after a cancelled window:
+ * report it, remember plain downloads. Then start the zip (it will skip the
+ * window: openZipTarget sees the flag).
+ */
+export function choosePlainDownloads(ctx: ZipContext & { mode: string; ms?: number; total?: number }) {
+  reportZipIssue("plain-chosen", null, ctx);
+  setPlainDownloads(true);
+}
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+const errName = (e: unknown) => (e && typeof e === "object" && "name" in e ? String((e as { name: unknown }).name) : "");
 
 /**
  * An embedded browser (Outlook / Teams / an app's WebView) — the Save dialog
@@ -257,14 +303,18 @@ function isEmbeddedWebView(): boolean {
 
 /**
  * Open where the zip goes. Call it first thing in the click handler. A
- * cancelled Save dialog comes back as { kind: "cancelled" } (reset the button);
- * a browser without the dialog, or one that refuses it, gets parts mode.
+ * cancelled Save dialog comes back as { kind: "cancelled", ms } — the caller
+ * must say so (it may have been blocked, not cancelled: offer the plain zip);
+ * a browser without the dialog, one that refuses it, `opts.plain`, or a
+ * browser switched to plain downloads, gets parts mode.
  */
-export async function openZipTarget(suggestedName: string, ctx: ZipContext = {}): Promise<ZipTarget> {
+export async function openZipTarget(suggestedName: string, ctx: ZipContext = {}, opts: { plain?: boolean } = {}): Promise<ZipTarget> {
   const w = window as PickerWindow;
+  if (opts.plain || plainDownloadsPreferred()) return { kind: "parts" };
   if (typeof w.showSaveFilePicker !== "function") return { kind: "parts" };
   if (isEmbeddedWebView()) return { kind: "parts" };
   let step = "picker";
+  const t0 = now();
   try {
     const handle = await w.showSaveFilePicker({
       suggestedName,
@@ -274,11 +324,21 @@ export async function openZipTarget(suggestedName: string, ctx: ZipContext = {})
     const writable = await handle.createWritable();
     return { kind: "stream", writable, name: handle.name ?? suggestedName };
   } catch (e) {
-    if (step === "picker" && e instanceof DOMException && e.name === "AbortError") return { kind: "cancelled" };
+    const ms = Math.round(now() - t0);
+    if (step === "picker" && errName(e) === "AbortError") {
+      if (ms >= PICKER_BLOCKED_MS) return { kind: "cancelled", ms };
+      // Back before anyone could have clicked Cancel: the window was blocked.
+      reportZipIssue("picker-blocked", e, { ...ctx, mode: "stream→parts", ms });
+      setPlainDownloads(true);
+      return { kind: "parts", blocked: true };
+    }
     // SecurityError (no user activation left), a managed PC that blocks the
-    // file, unsupported context, … → parts mode (plain downloads).
-    reportZipIssue(step, e, { ...ctx, mode: "stream→parts" });
-    return { kind: "parts" };
+    // file, unsupported context, … → parts mode (plain downloads). After the
+    // window (createWritable) or NotAllowed, this browser is blocked: remember.
+    const blocked = step !== "picker" || errName(e) === "NotAllowedError";
+    reportZipIssue(step === "picker" ? "picker-error" : "file-denied", e, { ...ctx, mode: "stream→parts", ms });
+    if (blocked) setPlainDownloads(true);
+    return { kind: "parts", blocked };
   }
 }
 
@@ -335,6 +395,7 @@ export async function writeZip(
   let progress: ZipProgress = { done: 0, total, failed: 0, bytes: 0 };
   const report = () => opts.onProgress?.({ ...progress });
   report();
+  let fellBack = false;
 
   if (target.kind === "stream") {
     // The stream's own counters (`sp`): if it falls back, late callbacks of
@@ -378,6 +439,8 @@ export async function writeZip(
       // downloads (parts mode), the way single photos already save fine.
       reportZipIssue("stream-write", e, { ...opts.context, mode: "stream→parts", bytes: sp.bytes, done: sp.done, total });
       abandoned = true;
+      fellBack = true;
+      setPlainDownloads(true);
       // abort() discards what was written (Chrome writes to a .crswap file
       // and only replaces the picked file on close). The picked file is not
       // removed: it may be an existing file the user chose to overwrite.
@@ -515,7 +578,7 @@ export async function writeZip(
     reportZipIssue("parts-empty", new Error("no photos fetched"), { ...opts.context, mode: "parts", bytes: progress.bytes, done: progress.done, total });
     return { ok: false, error: "None of the photos could be downloaded.", written, failed: progress.failed };
   }
-  return { ok: true, written, failed: progress.failed, bytes: progress.bytes, parts: saved };
+  return { ok: true, written, failed: progress.failed, bytes: progress.bytes, parts: saved, fellBack };
 }
 
 /** True when this browser has no Save dialog, so a zip goes out as parts. */
@@ -553,10 +616,15 @@ type DirHandle = {
 };
 type DirPickerWindow = Window & { showDirectoryPicker?: (o?: unknown) => Promise<DirHandle> };
 
-/** "Save to a folder" works here: Chrome / Edge on a computer (not phones, not embedded browsers). */
-export function folderSaveSupported(): boolean {
+/** The browser has "Save to a folder" (Chrome / Edge on a computer — not phones, not embedded browsers), whatever the user chose. */
+export function folderSaveAvailable(): boolean {
   if (typeof window === "undefined") return false;
   return typeof (window as DirPickerWindow).showDirectoryPicker === "function" && !isTouchDevice() && !isEmbeddedWebView();
+}
+
+/** "Save to a folder" is offered here: available, and this browser isn't switched to plain downloads. */
+export function folderSaveSupported(): boolean {
+  return folderSaveAvailable() && !plainDownloadsPreferred();
 }
 
 /** Characters a Windows / macOS file name can't have; no trailing dots / spaces. */
@@ -566,9 +634,12 @@ function safeFileName(n: string): string {
 
 export type FolderTarget =
   | { kind: "folder"; dir: DirHandle; path: string }
-  | { kind: "cancelled" }
-  /** The picker or the subfolder failed — use the zip instead. */
-  | { kind: "unsupported" };
+  /** `ms`: how long the window was up — may have been blocked, not cancelled (say so). */
+  | { kind: "cancelled"; ms: number }
+  /** No folder saving here, or the window / subfolder failed (`blocked`:
+   *  plain downloads are now remembered, so openZipTarget skips its window) —
+   *  use the zip instead. */
+  | { kind: "unsupported"; blocked?: boolean };
 
 /**
  * Ask for a folder (call FIRST in the click handler — the picker needs the
@@ -579,6 +650,7 @@ export async function openFolderTarget(subfolder: string, ctx: ZipContext = {}):
   const w = window as DirPickerWindow;
   if (!folderSaveSupported() || !w.showDirectoryPicker) return { kind: "unsupported" };
   let step = "dirPicker";
+  const t0 = now();
   try {
     const parent = await w.showDirectoryPicker({ mode: "readwrite", startIn: "downloads", id: "yp-photos" });
     step = "subfolder";
@@ -595,9 +667,20 @@ export async function openFolderTarget(subfolder: string, ctx: ZipContext = {}):
     const dir = await parent.getDirectoryHandle(name, { create: true });
     return { kind: "folder", dir, path: `${parent.name}/${dir.name}` };
   } catch (e) {
-    if (step === "dirPicker" && e instanceof DOMException && e.name === "AbortError") return { kind: "cancelled" };
-    reportZipIssue(step, e, { ...ctx, mode: "folder→zip" });
-    return { kind: "unsupported" };
+    const ms = Math.round(now() - t0);
+    if (step === "dirPicker" && errName(e) === "AbortError") {
+      if (ms >= PICKER_BLOCKED_MS) return { kind: "cancelled", ms };
+      reportZipIssue("picker-blocked", e, { ...ctx, mode: "folder→parts", ms });
+      setPlainDownloads(true);
+      return { kind: "unsupported", blocked: true };
+    }
+    // The window refused (SecurityError, NotAllowed…) or the folder can't be
+    // written (the "let site edit files" prompt denied, policy) → blocked.
+    // SecurityError at the window itself may just be a lost click: no flag.
+    const blocked = step !== "dirPicker" || errName(e) !== "SecurityError";
+    reportZipIssue(step === "dirPicker" ? "picker-error" : "folder-denied", e, { ...ctx, mode: "folder→parts", ms });
+    if (blocked) setPlainDownloads(true);
+    return { kind: "unsupported", blocked };
   }
 }
 
@@ -680,6 +763,7 @@ export async function saveToFolder(
         if (writeStep && written === 0 && !(err instanceof TypeError)) {
           if (fallback) return; // the other worker already reported it
           fallback = true;
+          setPlainDownloads(true);
           reportZipIssue("folder-write", err, { ...opts.context, mode: "folder→zip", bytes: p.bytes, done: p.done, total: p.total });
           return;
         }

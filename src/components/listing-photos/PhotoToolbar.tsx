@@ -14,7 +14,7 @@ import type { PhotoActions } from "./usePhotoActions";
 export function PhotoToolbar({
   variant, actions, photoCount, customCategories, downloadAllCount, downloadBusy, busyLabel,
   onDownloadAll, onDownloadSelected, sizeSelect, onSaveOriginals, onSaveOriginalsSelected, saveOriginalsBusy,
-  onSaveToFolder, onSaveToFolderSelected, onCancelDownload, onRetryToFolder,
+  onSaveToFolder, onSaveToFolderSelected, onCancelDownload, onRetryToFolder, onRestoreFolder,
 }: {
   variant: PhotoVariant;
   actions: PhotoActions;
@@ -43,6 +43,10 @@ export function PhotoToolbar({
   onCancelDownload?: (() => void) | null;
   /** After a zip failed: one click saves the same photos to a folder. */
   onRetryToFolder?: (() => void) | null;
+  /** Nov 11: this browser is on plain downloads (a blocked Save window, or
+   *  "Download as a zip instead") but can save to a folder — a quiet link
+   *  back. Null otherwise. */
+  onRestoreFolder?: (() => void) | null;
 }) {
   const a = actions;
   const n = a.selectedIds.size;
@@ -66,6 +70,15 @@ export function PhotoToolbar({
       {downloadBusy && onCancelDownload && (
         <button onClick={onCancelDownload} className="text-sm text-ink-500 hover:text-ink-900 underline underline-offset-2 px-1">
           Cancel
+        </button>
+      )}
+      {!downloadBusy && onRestoreFolder && (
+        <button
+          onClick={onRestoreFolder}
+          title="Download All will ask for a folder and save the photos straight into it"
+          className="text-xs text-ink-400 hover:text-ink-700 underline underline-offset-2 px-1 whitespace-nowrap"
+        >
+          Save straight to a folder instead
         </button>
       )}
       {!downloadBusy && onRetryToFolder && (

@@ -6,7 +6,8 @@ export const dynamic = "force-dynamic";
 
 /**
  * POST /api/photos/download-fallback
- *   { step, errorName?, message?, mode?, listingId?, size?, bytes?, done?, total? } → { ok }
+ *   { step, errorName?, message?, mode?, listingId?, size?, bytes?, done?, total?, ms? } → { ok }
+ *   (`ms`, Nov 11: how long a Save / folder window was up — see zipDownload.ts "plain downloads")
  *
  * Diagnostics only (Oct 30): when a "Download all" zip fails, or the
  * Save-dialog stream falls back to plain downloads (src/lib/zipDownload.ts
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
       bytes: num(b.bytes),
       done: num(b.done),
       total: num(b.total),
+      ms: num(b.ms),
       ua: str(req.headers.get("user-agent"), 200),
     })
   );

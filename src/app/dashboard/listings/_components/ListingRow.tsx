@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
-import { folderSaveSupported, openFolderTarget, openZipTarget, reportZipIssue, saveToFolder, writeZip, type FolderTarget } from "@/lib/zipDownload";
+import {
+  folderSaveAvailable, folderSaveSupported, openFolderTarget, openZipTarget, reportZipIssue, saveToFolder, writeZip,
+  choosePlainDownloads, setPlainDownloads, type FolderTarget,
+} from "@/lib/zipDownload";
 import { DOWNLOAD_SIZES, type DownloadSize } from "@/components/listing-photos/useDownloads";
 import { fullSizeNote, signPhotosForDownload } from "@/components/listing-photos/signDownloads";
 
@@ -67,7 +70,20 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
   const [separateLabel, setSeparateLabel] = useState<string | null>(null);
   const separateAbort = useRef<AbortController | null>(null);
   const [canFolder, setCanFolder] = useState(false);
-  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
+  /** The browser could save to a folder, even while plain downloads are remembered (Nov 11). */
+  const [folderAvail, setFolderAvail] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); setFolderAvail(folderSaveAvailable()); }, []);
+  // Nov 11: the Save / folder window came back "cancelled" — maybe blocked
+  // (managed PC). A small line under the buttons for ~20 s offers the plain
+  // zip instead of ending in silence.
+  const [pickerHint, setPickerHint] = useState<{ mode: "folder" | "zip"; ms: number; size: DownloadSize } | null>(null);
+  const hintTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  function showPickerHint(h: { mode: "folder" | "zip"; ms: number; size: DownloadSize }) {
+    setPickerHint(h);
+    if (hintTimer.current) clearTimeout(hintTimer.current);
+    hintTimer.current = setTimeout(() => setPickerHint(null), 20000);
+  }
+  useEffect(() => () => { if (hintTimer.current) clearTimeout(hintTimer.current); }, []);
   // Size this row's download uses (Nov 9): it used to send the originals
   // whatever the size menu said — 10–30 MB each since the hi-res uploads.
   const [rowSize, setRowSize] = useState<DownloadSize>("web");
@@ -184,13 +200,16 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
     const sizeInfo = DOWNLOAD_SIZES.find((o) => o.value === size) ?? DOWNLOAD_SIZES[0];
     const zipBase = `${listing.vessel_name ?? "photos"}-photos${sizeInfo.suffix ? `-${sizeInfo.suffix}` : ""}`;
     let folder: Extract<FolderTarget, { kind: "folder" }> | null = null;
+    setPickerHint(null);
     if (mode === "folder") {
       const f = await openFolderTarget(`${listing.vessel_name ?? "Photos"} – ${sizeInfo.short}`, { listingId: listing.id, size });
-      if (f.kind === "cancelled") return;
+      if (f.kind === "cancelled") { showPickerHint({ mode: "folder", ms: f.ms, size }); return; }
       if (f.kind === "folder") folder = f;
+      // "unsupported": blocked windows are remembered — the zip below skips its window.
     }
     const target = folder ? null : await openZipTarget(`${zipBase}.zip`, { listingId: listing.id, size });
-    if (target?.kind === "cancelled") return;
+    setCanFolder(folderSaveSupported());
+    if (target?.kind === "cancelled") { showPickerHint({ mode: "zip", ms: target.ms, size }); return; }
     setDownloading(true);
     setDownloadProgress(0);
     setDownloadDone(false);
@@ -314,9 +333,20 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
       setDownloadProgress(0);
       setSeparateLabel(null);
       separateAbort.current = null;
+      setCanFolder(folderSaveSupported());
     }
-    // The folder couldn't be written to: the zip instead.
+    // The folder couldn't be written to: the zip instead (plain downloads —
+    // saveToFolder remembered it, so no Save window).
     if (fallBack) void handleDownload("zip");
+  }
+
+  /** "Download as a zip instead" after a cancelled window: report, remember, go. */
+  function plainZipInstead() {
+    const h = pickerHint;
+    setPickerHint(null);
+    choosePlainDownloads({ listingId: listing.id, size: h?.size ?? null, mode: h?.mode ?? "zip", ms: h?.ms });
+    setCanFolder(folderSaveSupported());
+    void handleDownload("zip");
   }
 
   async function handleSend(e: React.FormEvent) {
@@ -508,7 +538,25 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
               </>
             )}
           </button>
+          {pickerHint && !downloading && (
+            <p role="status" className="absolute right-0 top-full mt-1.5 z-30 w-72 bg-white border border-hairline rounded-card shadow-elev-2 px-3 py-2 text-xs text-ink-600 leading-snug">
+              Nothing was saved. If you didn&apos;t cancel, your computer may be blocking that —{" "}
+              <button onClick={plainZipInstead} className="font-semibold text-ink-900 underline underline-offset-2 hover:text-accent-700">
+                Download as a zip instead
+              </button>
+            </p>
+          )}
         </div>
+        {!canFolder && folderAvail && !downloading && (
+          // Plain downloads remembered on a browser that can save to a folder: the way back.
+          <button
+            onClick={() => { setPlainDownloads(false); setCanFolder(folderSaveSupported()); }}
+            title="Save straight to a folder instead — Photos will ask for a folder again"
+            className="text-xs text-ink-400 hover:text-ink-700 underline underline-offset-2 px-1"
+          >
+            folder
+          </button>
+        )}
         {canFolder && (
         // Chrome / Edge on a computer: "Photos" saves into a folder; this is
         // the zip instead — and Cancel while the folder save runs.

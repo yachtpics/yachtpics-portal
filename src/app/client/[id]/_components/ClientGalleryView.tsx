@@ -4,7 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
 import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
-import { folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, writeZip } from "@/lib/zipDownload";
+import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip } from "@/lib/zipDownload";
+import { PickerCancelledHint, RestoreFolderLink } from "@/components/DownloadPickerHints";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
 type Photo = { id: string; filename: string | null; category: string | null; is_visible: boolean | null; url: string | null; thumbUrl?: string | null };
@@ -48,7 +49,11 @@ export default function ClientGalleryView({
   const [dlError, setDlError] = useState("");
   // "Save to a folder" (Chrome / Edge on a computer; no zip — office PCs that block zip files).
   const [canFolder, setCanFolder] = useState(false);
-  useEffect(() => { setCanFolder(folderSaveSupported()); }, []);
+  const [folderAvail, setFolderAvail] = useState(false);
+  useEffect(() => { setCanFolder(folderSaveSupported()); setFolderAvail(folderSaveAvailable()); }, []);
+  // Nov 11: a Save / folder window that came back "cancelled" (maybe blocked
+  // on a managed PC) — offer the plain zip instead of silence.
+  const [pickerHint, setPickerHint] = useState<{ mode: string; ms: number } | null>(null);
   const [sepLabel, setSepLabel] = useState<string | null>(null);
   const [sepDone, setSepDone] = useState("");
   const [zipFailed, setZipFailed] = useState(false);
@@ -241,9 +246,11 @@ export default function ClientGalleryView({
   // Call straight from the click: the folder picker needs it.
   async function saveSeparately() {
     if (busy || expired || available.length === 0) return;
+    setPickerHint(null);
     const folder = await openFolderTarget(`${title} – Photos`);
-    if (folder.kind === "cancelled") return;
-    if (folder.kind === "unsupported") return downloadAll();
+    if (folder.kind === "cancelled") { setPickerHint({ mode: "folder", ms: folder.ms }); return; }
+    // Blocked windows are remembered: downloadAll skips its Save window.
+    if (folder.kind === "unsupported") { setCanFolder(folderSaveSupported()); return downloadAll(); }
     setBusy(true);
     setProgress(0);
     setDlError("");
@@ -272,7 +279,11 @@ export default function ClientGalleryView({
     setSepLabel(null);
     setBusy(false);
     setProgress(0);
-    if (res.fallback) setDlError("That folder couldn't be written to — use Download all photos instead.");
+    if (res.fallback) {
+      // Nothing written (blocked folder): the zip as plain downloads, no window.
+      setCanFolder(folderSaveSupported());
+      return downloadAll();
+    }
     else if (res.cancelled) setSepDone(`Stopped — ${res.written} of ${available.length} photos saved to ${folder.path}.`);
     else if (res.written === 0) setDlError("The photos couldn't be downloaded — please refresh the page and try again.");
     else if (res.failed) setDlError(`Saved ${res.written} photos to ${folder.path}; ${res.failed} couldn't be downloaded. Refresh the page and download them on their own.`);
@@ -299,8 +310,10 @@ export default function ClientGalleryView({
       // Streaming zip (src/lib/zipDownload.ts): the Save dialog opens first,
       // while the click still counts; then straight into the file on Chrome /
       // Edge (any size), ≤ 1 GB parts elsewhere.
+      setPickerHint(null);
       const target = await openZipTarget(`${safeName}-photos.zip`);
-      if (target.kind === "cancelled") return;
+      setCanFolder(folderSaveSupported());
+      if (target.kind === "cancelled") { setPickerHint({ mode: "zip", ms: target.ms }); return; }
       // Re-sign everything first — the links this page was given may already
       // have expired, and a large set takes a while to pull down.
       const fresh = await freshUrls();
@@ -328,6 +341,9 @@ export default function ClientGalleryView({
       if (result.ok) {
         log("zip", result.written);
         setProgress(100);
+        if (target.kind === "parts" || result.fellBack) {
+          setSepDone(`Saved ${result.written} photos in ${result.parts} zip file${result.parts !== 1 ? "s" : ""} — in your Downloads folder.`);
+        }
       }
     } catch {
       /* ignore */
@@ -337,6 +353,15 @@ export default function ClientGalleryView({
         setProgress(0);
       }, 600);
     }
+  }
+
+  /** "Download as a zip instead" after a cancelled window: report, remember, go. */
+  function plainInstead() {
+    const h = pickerHint;
+    setPickerHint(null);
+    choosePlainDownloads({ mode: h?.mode ?? "zip", ms: h?.ms, total: available.length });
+    setCanFolder(folderSaveSupported());
+    void downloadAll();
   }
 
   return (
@@ -383,6 +408,12 @@ export default function ClientGalleryView({
 
       {!expired && <FolderDownloadHint show={useFolder} />}
       {!busy && sepDone && <p className="mt-3 text-sm text-ink-600">{sepDone}</p>}
+      {!busy && !expired && pickerHint && <PickerCancelledHint onPlain={plainInstead} />}
+      {!busy && !expired && folderAvail && !canFolder && available.length > 1 && (
+        <p className="mt-2">
+          <RestoreFolderLink onRestore={() => { setPlainDownloads(false); setCanFolder(folderSaveSupported()); }} />
+        </p>
+      )}
 
       {busy && (
         <div className="mt-3 h-1.5 bg-ink-200 rounded-full overflow-hidden">

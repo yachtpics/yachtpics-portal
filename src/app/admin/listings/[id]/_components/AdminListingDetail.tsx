@@ -158,10 +158,14 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   // The banner under the header. `kind` picks the colour: a failure must never
   // show up in the green success style.
   const [message, setMessageText] = useState("");
-  const [messageKind, setMessageKind] = useState<"success" | "error">("success");
-  function setMessage(text: string, kind: "success" | "error" = "success") {
+  const [messageKind, setMessageKind] = useState<"success" | "error" | "info">("success");
+  // A button after the banner text (Nov 11: "Download as a zip instead"),
+  // tied to the text it came with so a later message never carries it.
+  const [messageAction, setMessageAction] = useState<{ text: string; label: string; run: () => void } | null>(null);
+  function setMessage(text: string, kind: "success" | "error" | "info" = "success", action?: { label: string; run: () => void }) {
     setMessageText(text);
     setMessageKind(kind);
+    setMessageAction(action ? { text, label: action.label, run: action.run } : null);
   }
 
   // ── Photos — shared with the broker listing page (src/components/listing-photos).
@@ -179,8 +183,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   });
   const { photos, thumbs, heroPhotoId } = photoState;
   const onPhotoMessage = (m: PhotoMessage) => {
-    setMessage(m.text, m.kind);
-    if (m.kind === "success" && m.ms) {
+    setMessage(m.text, m.kind, m.action);
+    if (m.kind !== "error" && m.ms) {
       const shown = m.text;
       setTimeout(() => setMessageText((cur) => (cur === shown ? "" : cur)), m.ms);
     }
@@ -985,14 +989,29 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           className={`mb-5 px-4 py-3 rounded-ctl text-sm flex items-start justify-between gap-3 ${
             messageKind === "error"
               ? "bg-danger-50 border border-danger-200 text-danger-700"
-              : "bg-success-50 border border-success-200 text-success-700"
+              : messageKind === "info"
+                ? "bg-ink-50 border border-hairline-strong text-ink-700"
+                : "bg-success-50 border border-success-200 text-success-700"
           }`}
         >
-          <span>{message}</span>
+          <span>
+            {message}
+            {messageAction && messageAction.text === message && (
+              <>
+                {" "}
+                <button
+                  onClick={() => { const run = messageAction.run; setMessage(""); run(); }}
+                  className="font-semibold underline underline-offset-2 hover:text-ink-950"
+                >
+                  {messageAction.label}
+                </button>
+              </>
+            )}
+          </span>
           <button
             onClick={() => setMessage("")}
             className={`shrink-0 leading-none text-base font-bold ${
-              messageKind === "error" ? "text-danger-600 hover:text-danger-700" : "text-success-600 hover:text-success-700"
+              messageKind === "error" ? "text-danger-600 hover:text-danger-700" : messageKind === "info" ? "text-ink-500 hover:text-ink-700" : "text-success-600 hover:text-success-700"
             }`}
             aria-label="Dismiss"
           >
@@ -1194,6 +1213,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
               onSaveToFolderSelected={sized.saveToFolder && (() => sized.saveToFolder?.(photos.filter((p) => photoActions.selectedIds.has(p.id))))}
               onCancelDownload={sized.savingToFolder ? sized.cancelDownload : null}
               onRetryToFolder={sized.retryToFolder}
+              onRestoreFolder={sized.restoreFolder}
             />
             {photos.length > 1 && !photoActions.selectMode && (
               <span className="text-xs text-ink-400">Drag photos to set the order buyers see them in.</span>
