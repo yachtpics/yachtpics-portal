@@ -243,7 +243,24 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const [current, setCurrent] = useState(0);
   const [outgoing, setOutgoing] = useState<number | null>(null);
   const [incomingReady, setIncomingReady] = useState(true);
-  const [showThumbs, setShowThumbs] = useState(false);
+  // Filmstrip: null = not chosen yet, which means open on a phone held
+  // upright (fills the space under the photo) and closed on wider screens.
+  // The default is CSS-driven so there's no jump after the page loads.
+  const [showThumbs, setShowThumbs] = useState<boolean | null>(null);
+  const [isPhone, setIsPhone] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 639px)");
+    const update = () => setIsPhone(mq.matches);
+    update();
+    // Safari before 14 only has the older addListener API.
+    if (mq.addEventListener) {
+      mq.addEventListener("change", update);
+      return () => mq.removeEventListener("change", update);
+    }
+    mq.addListener(update);
+    return () => mq.removeListener(update);
+  }, []);
+  const thumbsOpen = showThumbs ?? isPhone;
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [broker, setBroker] = useState<BrokerInfo>(initialBroker);
@@ -458,8 +475,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   // in show order, one after another (the first dozen came with the page).
   const allPhotoIds = useMemo(() => initialPhotos.map((p) => p.id), [initialPhotos]);
   useEffect(() => {
-    if (view === "grid" || showThumbs) want(allPhotoIds, "thumb");
-  }, [view, showThumbs, allPhotoIds, want]);
+    if (view === "grid" || thumbsOpen) want(allPhotoIds, "thumb");
+  }, [view, thumbsOpen, allPhotoIds, want]);
 
   // Warm the neighbouring photographs so paging feels instant.
   useEffect(() => {
@@ -526,14 +543,21 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const caption = currentSlide?.category ?? "";
 
   const tabClass = (active: boolean) =>
-    `text-xs font-medium px-3 min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+    `flex-1 shrink-0 whitespace-nowrap text-center px-2 sm:flex-none sm:px-3 text-xs font-medium min-h-[44px] sm:min-h-0 sm:py-1.5 rounded-[6px] transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
       active ? "bg-ink-950 text-white" : "text-ink-500 hover:text-ink-900"
     }`;
 
   const arrowClass =
-    "absolute top-1/2 -translate-y-1/2 z-[2] flex h-11 w-11 items-center justify-center rounded-full " +
+    "absolute top-1/2 -translate-y-1/2 z-[2] hidden sm:flex h-11 w-11 items-center justify-center rounded-full " +
     "border border-hairline bg-white text-ink-700 text-2xl leading-none shadow-elev-1 " +
     "hover:bg-ink-50 hover:text-ink-950 transition-colors duration-base ease-quiet " +
+    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
+
+  // Phone only: plain chevrons in the controls row under the photo. Greyed and
+  // inert at either end, where the on-photo arrows simply don't show.
+  const phoneArrowClass =
+    "flex sm:hidden h-11 w-11 shrink-0 items-center justify-center rounded-full text-ink-800 " +
+    "hover:text-ink-950 transition-colors duration-base ease-quiet disabled:text-ink-300 disabled:pointer-events-none " +
     "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500";
 
   return (
@@ -548,16 +572,19 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
         </div>
       )}
       {/* Header — one hairline between the vessel and its photographs */}
-      <div className={`flex items-center ${embedded ? "justify-end" : "justify-between"} px-4 sm:px-6 py-3.5 border-b border-hairline gap-4 overflow-x-auto`}>
+      {/* Phone held upright: the vessel gets its own full-width line(s) and the
+          tabs a row of their own beneath. sm and up (and short landscape
+          phones) keep the single row: title left, tabs right. */}
+      <div className={`flex flex-col items-stretch gap-3 sm:flex-row sm:items-center [@media(orientation:landscape)_and_(max-height:499px)]:flex-row [@media(orientation:landscape)_and_(max-height:499px)]:items-center ${embedded ? "sm:justify-end [@media(orientation:landscape)_and_(max-height:499px)]:justify-end" : "sm:justify-between [@media(orientation:landscape)_and_(max-height:499px)]:justify-between"} px-4 sm:px-6 py-3 sm:py-3.5 border-b border-hairline sm:gap-4 sm:overflow-x-auto`}>
         {!embedded && <div className="min-w-0">
-          <h1 className="text-ink-900 font-semibold text-base sm:text-lg truncate">
+          <h1 className="text-ink-900 font-semibold text-base sm:text-lg sm:truncate [@media(orientation:landscape)_and_(max-height:499px)]:truncate">
             {vesselTitle || "Vessel"}
           </h1>
           {vesselDetails && (
-            <p className="text-ink-600 text-xs sm:text-sm mt-0.5 truncate">{vesselDetails}</p>
+            <p className="text-ink-600 text-xs sm:text-sm mt-0.5 sm:truncate [@media(orientation:landscape)_and_(max-height:499px)]:truncate">{vesselDetails}</p>
           )}
         </div>}
-        <div className="flex items-center gap-1 shrink-0 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 w-full sm:w-auto [@media(orientation:landscape)_and_(max-height:499px)]:w-auto overflow-x-auto scrollbar-hide sm:overflow-visible shrink-0 rounded-ctl border border-hairline bg-white p-1 shadow-elev-1">
           {slides.length > 0 && (
             <>
               <button onClick={() => setView("slideshow")} className={tabClass(view === "slideshow")}>
@@ -612,9 +639,13 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       ) : view === "slideshow" && currentSlide ? (
         <>
           {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
+          {/* Phone: the stage sits right under the header, full width less the
+              page margin, sized to the photo (3:2, or 62vh for an upright
+              shot) so there are no empty bands. sm and up: unchanged. */}
           <div
-            className="flex-1 relative select-none overflow-hidden"
-            style={{ minHeight: "calc(100vh - 240px)" }}
+            className={`relative select-none overflow-visible mx-4 mt-3 ${
+              verticalIds.has(currentSlide.id) ? "h-[max(35vh,min(62vh,calc(100vh-360px)))]" : "aspect-[3/2] max-h-[62vh]"
+            } sm:mx-0 sm:mt-0 sm:flex-1 sm:overflow-hidden sm:h-auto sm:aspect-auto sm:max-h-none sm:min-h-[calc(100vh-240px)]`}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
               if (touchStart === null) return;
@@ -629,7 +660,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {outgoingSlide && (outgoingSlide.url ?? outgoingSlide.thumbUrl) && (
               <div
                 key={`out-${outgoing}`}
-                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+                className="absolute inset-0 flex items-start justify-center sm:items-center sm:p-5"
                 style={{
                   zIndex: 0,
                   opacity: incomingReady ? 0 : 1,
@@ -659,7 +690,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {(currentSlide.url ?? currentSlide.thumbUrl) && (
               <div
                 key={`in-${current}`}
-                className="absolute inset-0 flex items-center justify-center p-2 sm:p-5"
+                className="absolute inset-0 flex items-start justify-center sm:items-center sm:p-5"
                 style={{ zIndex: 1 }}
               >
                 <FadePhoto
@@ -669,6 +700,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
                   fadeMs={1200}
                   retries={3}
                   onError={onMediaError}
+                  onLoad={(e) => handleImgLoad(e, currentSlide.id)}
                   className="max-h-full max-w-full object-contain rounded-[2px] shadow-print"
                 />
               </div>
@@ -679,7 +711,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               onClick={() => toggleFavorite(currentSlide.id)}
               aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
               aria-pressed={favorites.has(currentSlide.id)}
-              className={`absolute bottom-3 right-3 z-[3] flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-white shadow-elev-1 transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+              className={`absolute bottom-3 right-3 z-[3] hidden sm:flex h-11 w-11 items-center justify-center rounded-full border border-hairline bg-white shadow-elev-1 transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
                 favorites.has(currentSlide.id) ? "text-accent-600" : "text-ink-400 hover:text-ink-700"
               } ${favPulse === currentSlide.id ? "scale-110" : ""}`}
             >
@@ -703,18 +735,51 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
           </div>
 
-          {/* Caption + counter, with a filmstrip toggle */}
-          <div className="flex items-center justify-center gap-3 pt-2 pb-1.5 px-4">
-            <p className="label-caps text-ink-600">
+          {/* Caption + counter, with a filmstrip toggle. On a phone this is the
+              controls row: heart · ‹ counter › · filmstrip — nothing sits on the photo. */}
+          <div className="flex items-center justify-between gap-0 pt-1 px-2 sm:justify-center sm:gap-3 sm:pt-2 sm:pb-1.5 sm:px-4">
+            <button
+              onClick={() => toggleFavorite(currentSlide.id)}
+              aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
+              aria-pressed={favorites.has(currentSlide.id)}
+              className={`flex sm:hidden h-11 w-11 shrink-0 items-center justify-center rounded-full transition-all duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${
+                favorites.has(currentSlide.id) ? "text-accent-600" : "text-ink-500 hover:text-ink-800"
+              } ${favPulse === currentSlide.id ? "scale-110" : ""}`}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill={favorites.has(currentSlide.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
+              </svg>
+            </button>
+            <button
+              onClick={prev}
+              disabled={current === 0}
+              aria-label="Previous photo"
+              className={phoneArrowClass}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15 5l-7 7 7 7" />
+              </svg>
+            </button>
+            <p className="label-caps text-ink-600 flex-1 min-w-0 text-center sm:flex-none">
               {caption ? `${caption} · ` : ""}
-              {current + 1} / {slides.length}
-              {favorites.size > 0 && <span className="text-accent-700"> · {favorites.size} saved</span>}
+              <span className="whitespace-nowrap">{current + 1} / {slides.length}</span>
+              {favorites.size > 0 && <span className="text-accent-700 whitespace-nowrap"> · {favorites.size} saved</span>}
             </p>
             <button
-              onClick={() => setShowThumbs((v) => !v)}
-              aria-label={showThumbs ? "Hide thumbnails" : "Show thumbnails"}
-              aria-pressed={showThumbs}
-              className={`flex h-6 w-6 items-center justify-center rounded transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${showThumbs ? "text-ink-800" : "text-ink-400 hover:text-ink-700"}`}
+              onClick={next}
+              disabled={current >= slides.length - 1}
+              aria-label="Next photo"
+              className={phoneArrowClass}
+            >
+              <svg className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
+            <button
+              onClick={() => setShowThumbs(!thumbsOpen)}
+              aria-label={thumbsOpen ? "Hide thumbnails" : "Show thumbnails"}
+              aria-pressed={thumbsOpen}
+              className={`flex h-11 w-11 shrink-0 sm:h-6 sm:w-6 items-center justify-center rounded transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 ${thumbsOpen ? "text-ink-800" : "text-ink-400 hover:text-ink-700"}`}
             >
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                 <rect x="2" y="6" width="4" height="8" rx="1" />
@@ -724,9 +789,10 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             </button>
           </div>
 
-          {/* Thumbnail strip — hidden by default so the photograph claims the space; toggle to reveal */}
-          {showThumbs && (
-          <div className="flex gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-hide">
+          {/* Thumbnail strip — open by default on a phone (fills the space under
+              the photo), hidden by default on wider screens; the toggle decides after that */}
+          {showThumbs !== false && (
+          <div className={`${showThumbs === null ? "flex sm:hidden" : "flex"} gap-1.5 px-4 pb-3 overflow-x-auto scrollbar-hide`}>
             {slides.map((slide, i) => (
               <button
                 key={slide.id}
@@ -756,6 +822,9 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             ))}
           </div>
           )}
+          {/* Phone: the stage no longer stretches, so this keeps the broker
+              footer at the bottom of the screen as before. */}
+          <div className="flex-1 sm:hidden" aria-hidden="true" />
         </>
       ) : view === "grid" && slides.length > 0 ? (
         /* Grid view — a gallery wall on paper: large prints on white mats, lifted by their shadows */
