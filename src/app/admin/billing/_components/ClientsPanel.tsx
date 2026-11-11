@@ -216,7 +216,7 @@ export default function ClientsPanel({
                           {c.status === "inactive" && <Badge>Inactive</Badge>}
                           {c.online_pay === false && <Badge title="Invoices don't offer Pay online">No online pay</Badge>}
                           {c.broker_profile_id && (
-                            <Badge tone="info" title="Matched to a Portal login by email">
+                            <Badge tone="info" title="Linked to this broker's Portal login — new Portal brokers are added here automatically">
                               Portal · {brokerNames[c.broker_profile_id] ?? "linked"}
                             </Badge>
                           )}
