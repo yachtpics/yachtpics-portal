@@ -7,7 +7,7 @@ import PresentedThrough from "@/components/PresentedThrough";
 import { photoAlt } from "@/lib/photoAlt";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
 import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
-import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip, type ZipTarget } from "@/lib/zipDownload";
+import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip, type ZipTarget, fileLabel } from "@/lib/zipDownload";
 import { PickerCancelledHint, RestoreFolderLink } from "@/components/DownloadPickerHints";
 
 type GalleryPhoto = {
@@ -219,7 +219,7 @@ export default function GallerySlideshow({
       const url = fresh?.photos?.[index] ?? s.downloadUrl;
       if (!url) throw new Error("no link");
       const blob = await fetchFile(url);
-      triggerDownload(blob, `${s.category ?? "photo"}.jpg`);
+      triggerDownload(blob, `${fileLabel(s.category, "photo")}.jpg`);
       logDownload(1, "single");
     } catch {
       setDlError("That file couldn't be downloaded — please refresh the page and try again.");
@@ -275,7 +275,7 @@ export default function GallerySlideshow({
         const only = fresh?.photos?.[0] ?? photos[0].downloadUrl;
         if (!only) throw new Error("no link");
         const blob = await fetchFile(only);
-        triggerDownload(blob, `${photos[0].category ?? "photo"}.jpg`);
+        triggerDownload(blob, `${fileLabel(photos[0].category, "photo")}.jpg`);
         logDownload(1, "single");
         setDownloadingAll(false);
         return;
@@ -284,7 +284,7 @@ export default function GallerySlideshow({
       const result = await writeZip(
         target,
         photos.map((p, k) => ({
-          name: `${String(k + 1).padStart(3, "0")}-${p.category ?? "photo"}.jpg`,
+          name: `${String(k + 1).padStart(3, "0")}-${fileLabel(p.category, "photo")}.jpg`,
           url: fresh?.photos?.[k] ?? p.downloadUrl,
         })),
         {
@@ -334,7 +334,7 @@ export default function GallerySlideshow({
       const res = await saveToFolder(
         folder,
         photos.map((p, k) => ({
-          name: `${String(k + 1).padStart(3, "0")} ${p.category ?? "Photo"}.jpg`,
+          name: `${String(k + 1).padStart(3, "0")} ${fileLabel(p.category, "Photo")}.jpg`,
           url: fresh?.photos?.[k] ?? p.downloadUrl,
         })),
         {

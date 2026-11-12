@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
 import { FolderDownloadHint } from "@/components/listing-photos/DownloadControls";
-import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip } from "@/lib/zipDownload";
+import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip, fileLabel } from "@/lib/zipDownload";
 import { PickerCancelledHint, RestoreFolderLink } from "@/components/DownloadPickerHints";
 
 // url = full-size original (downloads); thumbUrl = 600px copy for the grid tile.
@@ -215,7 +215,7 @@ export default function ClientGalleryView({
       if (!url) throw new Error("no link");
       const blob = await fetchFile(url);
       const ext = photo.filename?.split(".").pop() ?? "jpg";
-      triggerDownload(blob, photo.filename ?? `${photo.category ?? "photo"}.${ext}`);
+      triggerDownload(blob, photo.filename ?? `${fileLabel(photo.category, "photo")}.${ext}`);
       log("photo", 1);
     } catch {
       setDlError("That photo couldn't be downloaded — please refresh the page and try again.");
@@ -263,7 +263,7 @@ export default function ClientGalleryView({
     const res = await saveToFolder(
       folder,
       available.map((photo, k) => ({
-        name: `${String(k + 1).padStart(3, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+        name: `${String(k + 1).padStart(3, "0")} ${fileLabel(photo.category, "Photo")}.${photo.filename?.split(".").pop() ?? "jpg"}`,
         url: fresh?.photos?.[photo.id] ?? photo.url,
       })),
       {
@@ -320,7 +320,7 @@ export default function ClientGalleryView({
       const result = await writeZip(
         target,
         available.map((photo, k) => ({
-          name: `${String(k + 1).padStart(3, "0")}-${photo.category ?? "photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+          name: `${String(k + 1).padStart(3, "0")}-${fileLabel(photo.category, "photo")}.${photo.filename?.split(".").pop() ?? "jpg"}`,
           url: fresh?.photos?.[photo.id] ?? photo.url,
         })),
         {

@@ -71,7 +71,8 @@ function escapeRegExp(s: string): string {
 type CategoryMatch = { index: number; exact: boolean };
 
 function matchesCategory(name: string, cat: string): CategoryMatch | null {
-  const words = cat.toLowerCase().split(/\s+/);
+  // "/" counts as a word break too ("Dinette/Guest Berth" ← "dinette_guest_berth").
+  const words = cat.toLowerCase().split(/[\s/]+/).filter(Boolean);
   const build = (optionalStateroom: boolean) =>
     new RegExp(
       `\\b${words

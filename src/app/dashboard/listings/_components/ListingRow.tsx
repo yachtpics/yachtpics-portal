@@ -8,8 +8,7 @@ import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
 import {
   folderSaveAvailable, folderSaveSupported, openFolderTarget, openZipTarget, reportZipIssue, saveToFolder, writeZip,
   choosePlainDownloads, setPlainDownloads, type FolderTarget,
-  startDownloadTrace, traceDownload, traceErrorText, pickerBlurred, type TraceOutcome,
-} from "@/lib/zipDownload";
+  startDownloadTrace, traceDownload, traceErrorText, pickerBlurred, type TraceOutcome, fileLabel } from "@/lib/zipDownload";
 import { DOWNLOAD_SIZES, type DownloadSize } from "@/components/listing-photos/useDownloads";
 import { PICKER_HINT, PICKER_REPEAT, ZIP_INSTEAD_LABEL, useDownloadMessages } from "@/components/listing-photos/DownloadNotice";
 import { fullSizeNote, signPhotosForDownload } from "@/components/listing-photos/signDownloads";
@@ -302,7 +301,7 @@ export default function ListingRow({ listing, showBroker, isCoBroker, locked, he
         const made = madeExt[photo.id];
         const ext = !made ? own : made === "jpg" && own === "jpeg" ? "jpeg" : made;
         return {
-          name: `${String(i + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${ext}`,
+          name: `${String(i + 1).padStart(2, "0")}-${fileLabel(photo.category, "photo")}.${ext}`,
           url: urlById.get(photo.id) ?? null,
         };
       });

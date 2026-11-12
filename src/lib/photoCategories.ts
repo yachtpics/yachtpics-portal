@@ -21,6 +21,7 @@ export const PHOTO_CATEGORIES = [
   "Crew Stateroom Head",
   "Day Head",
   "Dinette",
+  "Dinette/Guest Berth",
   "Dining",
   "Electrical Panel",
   "Electrical Room",

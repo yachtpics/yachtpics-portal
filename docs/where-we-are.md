@@ -1,5 +1,12 @@
 # Where we are — October 6, 2026
 
+
+## New photo area "Dinette/Guest Berth" (Nov 11, 2026) — PUSHED · no migration · no new dependency
+
+- Added to `PHOTO_CATEGORIES` (after Dinette) and to the Reel Service's "inside" rooms. Upload auto-labelling: `guessCategory` now treats "/" in an area name as a word break, so `…_dinette_guest_berth_01.jpg` and `DinetteGuestBerth02.jpg` map to it (a bare `guest_berth` still maps to Guest Stateroom).
+- Download file names: new `fileLabel()` in `zipDownload.ts` cleans the area for file names on My Listings rows, /d, /g and client galleries (a "/" would have made a folder inside the zip); the listing page already cleaned it.
+- Help: no change (areas aren't listed there). Typecheck clean, NOT BROWSER-TESTED.
+
 ## Sign-in links survive email scanners: click-to-continue page + helpful expired-link page (Nov 11, 2026) — PUSHED · Help PDF rebuilt Nov 11 · no migration · no new dependency
 
 - **Report:** new assistant at a large brokerage (corporate Microsoft 365) invited 3:35 pm; the email's button showed an expired-link page; Charlie's "Resend login info" at ~4:30 worked. Supabase audit log: `user_invited` 20:35:51 UTC (service_role) → `user_signedup` **by the user 2 s later** (= the invite token was verified at Supabase's `/auth/v1/verify`) → nothing for her click → `user_modified` 21:29:51 (service_role) → `login` 21:30:33.

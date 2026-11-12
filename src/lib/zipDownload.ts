@@ -794,6 +794,12 @@ export function folderSaveSupported(): boolean {
 }
 
 /** Characters a Windows / macOS file name can't have; no trailing dots / spaces. */
+/** A photo area as part of a file name: "Dinette/Guest Berth" → "Dinette Guest Berth" (a "/" would make a folder inside the zip). */
+export function fileLabel(category: string | null | undefined, fallback = "photo"): string {
+  const t = (category ?? "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim();
+  return t || fallback;
+}
+
 function safeFileName(n: string): string {
   return n.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().replace(/[. ]+$/, "") || "photo";
 }

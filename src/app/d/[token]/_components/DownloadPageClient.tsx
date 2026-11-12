@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip } from "@/lib/zipDownload";
+import { choosePlainDownloads, folderSaveAvailable, folderSaveSupported, formatBytes, openFolderTarget, openZipTarget, saveToFolder, setPlainDownloads, writeZip, fileLabel } from "@/lib/zipDownload";
 import { PickerCancelledHint, RestoreFolderLink } from "@/components/DownloadPickerHints";
 import RetryImg from "@/components/RetryImg";
 import { photoAlt } from "@/lib/photoAlt";
@@ -83,7 +83,7 @@ export default function DownloadPageClient({
       const res = await fetch(photo.url);
       const blob = await res.blob();
       const ext = photo.filename?.split(".").pop() ?? "jpg";
-      triggerDownload(blob, `${photo.category ?? "photo"}.${ext}`);
+      triggerDownload(blob, `${fileLabel(photo.category, "photo")}.${ext}`);
       logDownload(1);
     } catch {
       /* ignore */
@@ -110,7 +110,7 @@ export default function DownloadPageClient({
     const res = await saveToFolder(
       folder,
       available.map((photo, k) => ({
-        name: `${String(k + 1).padStart(2, "0")} ${photo.category ?? "Photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+        name: `${String(k + 1).padStart(2, "0")} ${fileLabel(photo.category, "Photo")}.${photo.filename?.split(".").pop() ?? "jpg"}`,
         url: photo.url,
       })),
       {
@@ -148,7 +148,7 @@ export default function DownloadPageClient({
         const res = await fetch(only.url!);
         const blob = await res.blob();
         const ext = only.filename?.split(".").pop() ?? "jpg";
-        triggerDownload(blob, `${only.category ?? "photo"}.${ext}`);
+        triggerDownload(blob, `${fileLabel(only.category, "photo")}.${ext}`);
         logDownload(1);
         setBusy(false);
         return;
@@ -163,7 +163,7 @@ export default function DownloadPageClient({
       const result = await writeZip(
         target,
         available.map((photo, k) => ({
-          name: `${String(k + 1).padStart(2, "0")}-${photo.category ?? "photo"}.${photo.filename?.split(".").pop() ?? "jpg"}`,
+          name: `${String(k + 1).padStart(2, "0")}-${fileLabel(photo.category, "photo")}.${photo.filename?.split(".").pop() ?? "jpg"}`,
           url: photo.url,
         })),
         {

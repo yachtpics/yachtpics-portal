@@ -167,7 +167,7 @@ const lc = (c: string | null) => (c ?? "").trim().toLowerCase();
 /** Running, aerial and profile shots lead the Underway angle, in this order. */
 const UNDERWAY_LEAD = ["profiles running", "aerial", "profiles", "tower"];
 const INSIDE = new Set([
-  "salon", "galley", "dinette", "dining", "pantry", "foyer", "main deck foyer", "skylounge", "skylounge day head",
+  "salon", "galley", "dinette", "dinette/guest berth", "dining", "pantry", "foyer", "main deck foyer", "skylounge", "skylounge day head",
   "day head", "companionway", "lower companionway", "lower foyer", "cabin", "aft cabin", "aft berth", "forward cabin",
   "laundry", "port passageway", "starboard passageway",
 ]);
