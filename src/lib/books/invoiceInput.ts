@@ -11,7 +11,7 @@ export const AFTER_SEND_KEYS = ["internal_note", "due_date", "reminders_paused",
  * Extra keys a PATCH may change on a sent / part-paid invoice when it carries
  * an edit reason (20261109b). Brand and is_test never change after send.
  */
-export const EDIT_WITH_REASON_KEYS = ["client_id", "listing_id", "boat_name", "boat_length_ft", "note", "issue_date"];
+export const EDIT_WITH_REASON_KEYS = ["client_id", "listing_id", "boat_name", "boat_length_ft", "boat_make", "boat_model", "boat_year", "note", "issue_date"];
 
 /** The edit envelope keys (not invoice columns) — stripped before headerFields. */
 export const EDIT_ENVELOPE_KEYS = ["edit_reason", "edit_id"];
@@ -43,6 +43,14 @@ export function headerFields(body: Record<string, unknown>, current: { status: s
       f.boat_length_ft = Math.round(n * 100) / 100;
     }
   }
+  // Boat snapshot from the picked listing (20261112_billing_boat_details).
+  if ("boat_make" in body) f.boat_make = cleanText(body.boat_make, 120);
+  if ("boat_model" in body) f.boat_model = cleanText(body.boat_model, 120);
+  if ("boat_year" in body) {
+    const y = cleanBoatYear(body.boat_year);
+    if (y === undefined) return { fields: f, error: "Boat year must be a year like 2019." };
+    f.boat_year = y;
+  }
   if ("note" in body) f.note = cleanText(body.note, 4000);
   if ("internal_note" in body) f.internal_note = cleanText(body.internal_note, 4000);
   if ("issue_date" in body) {
@@ -66,6 +74,14 @@ export function headerFields(body: Record<string, unknown>, current: { status: s
     f.online_pay = body.online_pay;
   }
   return { fields: f };
+}
+
+/** A boat year: null for blank, a whole year 1900–2100, else undefined (invalid). */
+export function cleanBoatYear(raw: unknown): number | null | undefined {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  if (!isFinite(n) || Math.floor(n) !== n || n < 1900 || n > 2100) return undefined;
+  return n;
 }
 
 /** Validated line rows (no ids, positions renumbered) from a PUT body. */

@@ -167,6 +167,10 @@ export type BillingInvoice = {
   listing_id: string | null;
   boat_name: string | null;
   boat_length_ft: number | null;
+  /** Boat snapshot from the listing when it was picked. Undefined until 20261112_billing_boat_details. */
+  boat_make?: string | null;
+  boat_model?: string | null;
+  boat_year?: number | null;
   issue_date: string;
   due_date: string | null;
   terms_days: number | null;
@@ -329,6 +333,26 @@ export function addDays(date: string, n: number): string {
 /** Sent or part-paid with a due date before today. Computed, never stored. */
 export function isOverdue(inv: { status: InvoiceStatus; due_date: string | null }, today: string = todayET()): boolean {
   return (inv.status === "sent" || inv.status === "partial") && !!inv.due_date && inv.due_date < today;
+}
+
+/**
+ * The boat's second line on an invoice (PDF, /inv, editor, email):
+ * "[year] [make] [model]" (missing parts skipped) then " · {length} ft" when
+ * the length is known — e.g. "2019 Marquis 650 · 65 ft". "" when nothing is known.
+ */
+export function boatSpecLine(inv: { boat_year?: number | null; boat_make?: string | null; boat_model?: string | null; boat_length_ft?: number | null }): string {
+  const ymm = [inv.boat_year ? String(inv.boat_year) : "", (inv.boat_make ?? "").trim(), (inv.boat_model ?? "").trim()].filter(Boolean).join(" ");
+  const ft = Number(inv.boat_length_ft) || 0;
+  const len = ft > 0 ? `${Math.round(ft * 10) / 10} ft` : "";
+  return [ymm, len].filter(Boolean).join(" · ");
+}
+
+/** The boat in one phrase for an email: "Sylvia (2019 Marquis 650 · 65 ft)", or just the name. "" with no name. */
+export function boatOneLine(inv: { boat_name: string | null; boat_year?: number | null; boat_make?: string | null; boat_model?: string | null; boat_length_ft?: number | null }): string {
+  const name = (inv.boat_name ?? "").trim();
+  if (!name) return "";
+  const spec = boatSpecLine(inv);
+  return spec ? `${name} (${spec})` : name;
 }
 
 /** "Nov 7, 2026" from a YYYY-MM-DD date column (no timezone shift). */

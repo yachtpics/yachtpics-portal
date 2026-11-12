@@ -8,7 +8,7 @@ import { isBotUa } from "@/lib/emailTracking";
 import { CARD_FEE_NOTE } from "@/lib/books/invoicePdf";
 import { onlinePayState, payViaLabel } from "@/lib/books/onlinePayments";
 import { stripe } from "@/lib/stripe";
-import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "@/lib/books/types";
+import { boatSpecLine, dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "@/lib/books/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -156,7 +156,7 @@ export default async function PublicInvoicePage({ params, searchParams }: { para
               <div>
                 <p className="label-caps mb-1">Boat</p>
                 <p className="font-medium text-ink-900">{inv.boat_name}</p>
-                {inv.boat_length_ft ? <p className="text-ink-600">{Math.round(inv.boat_length_ft * 10) / 10} ft</p> : null}
+                {boatSpecLine(inv) ? <p className="text-ink-600">{boatSpecLine(inv)}</p> : null}
               </div>
             )}
           </div>

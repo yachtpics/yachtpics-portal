@@ -3,11 +3,11 @@ import { requireBillingStaff } from "@/lib/books/staff";
 import { bad, dbError } from "@/lib/books/api";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { loadInvoice, recalcInvoice } from "@/lib/books/invoices";
-import { lineRows } from "@/lib/books/invoiceInput";
+import { prepareInvoiceLines } from "@/lib/books/invoiceLines";
 import { editEnvelopeOf, linesChangeSummary, probeEdit, recordEdit, type EditEnvelope } from "@/lib/books/invoiceEdits";
 import { cancelOpenCheckouts } from "@/lib/books/onlinePayments";
 import { calcInvoice } from "@/lib/books/totals";
-import { EDITS_NOT_READY, LOCKED_MESSAGE, canEditWithReason, fmtMoney, fmtPct, isLockedInvoice, type InvoiceLine } from "@/lib/books/types";
+import { EDITS_NOT_READY, LOCKED_MESSAGE, canEditWithReason, fmtMoney, isLockedInvoice, type InvoiceLine } from "@/lib/books/types";
 
 export const runtime = "nodejs";
 
@@ -50,25 +50,10 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
     edit = { env, existing: probe.existing };
   }
 
-  const parsed = lineRows(body?.lines);
-  if (parsed.error) return bad(parsed.error);
-  // "Offer Pay online" off (20261109): no card fee on a check / Zelle / Venmo-only invoice.
-  const lines = inv.online_pay === false ? parsed.lines.filter((l) => l.kind !== "card_fee") : parsed.lines;
-  lines.forEach((l, i) => { l.position = i; });
-
-  if (!staff.isOwner) {
-    const ids: string[] = [];
-    lines.forEach((l) => { if (l.item_id && ids.indexOf(l.item_id) === -1) ids.push(l.item_id); });
-    const tax: Record<string, boolean> = {};
-    if (ids.length) {
-      const { data } = await admin.from("billing_items").select("id, taxable").in("id", ids);
-      (data ?? []).forEach((i: { id: string; taxable: boolean }) => { tax[i.id] = !!i.taxable; });
-    }
-    lines.forEach((l) => { l.taxable = l.item_id ? !!tax[l.item_id] : false; });
-  }
-  lines.forEach((l) => {
-    if (l.kind === "card_fee") { l.name = `Credit card fee ${fmtPct(inv.card_fee_rate)}`; l.description = null; }
-  });
+  // Validation, Pay-online-off, owner-only tax and card-fee naming: src/lib/books/invoiceLines.ts.
+  const prepared = await prepareInvoiceLines(admin, staff, inv, body?.lines);
+  if (prepared.error) return bad(prepared.error);
+  const lines = prepared.lines;
 
   // Part-paid guard: the total can't go below what's already been paid. Checked before writing.
   const paid = Math.round(r.bundle.payments.reduce((sum, p) => sum + Number(p.amount || 0), 0) * 100) / 100;

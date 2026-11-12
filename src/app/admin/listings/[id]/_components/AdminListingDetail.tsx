@@ -16,6 +16,7 @@ import { uploadListingVideo } from "@/lib/uploadListingVideo";
 import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
+import BillForBoatButton from "./BillForBoatButton";
 import ListingEngagement from "@/components/ListingEngagement";
 import SortableVideoList from "@/components/SortableVideoList";
 import { arrayMove } from "@dnd-kit/sortable";
@@ -111,7 +112,7 @@ const EMAIL_TYPE_LABELS: Record<string, string> = {
 
 type Lead = { id: string; name: string | null; email: string | null; phone: string | null; message: string | null; status: string; created_at: string };
 
-export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false, pocketSetBy = null }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean; pocketSetBy?: string | null }) {
+export default function AdminListingDetail({ listing, photos: initialPhotos, videos: initialVideos = [], globalCustomCategories = [], downloads = [], sentEmails = [], canShare = false, brokerOptions = [], sitePages = [], coBrokers = [], leads = [], fromBroker = false, pocketSetBy = null, canBill = false }: { listing: Listing; photos: Photo[]; videos?: Video[]; globalCustomCategories?: string[]; downloads?: DownloadRecord[]; sentEmails?: SentEmail[]; canShare?: boolean; brokerOptions?: { id: string; name: string }[]; sitePages?: { label: string; filename: string }[]; coBrokers?: { id: string; name: string }[]; leads?: Lead[]; fromBroker?: boolean; pocketSetBy?: string | null; canBill?: boolean }) {
   const supabase = createClient();
   const [status, setStatus] = useState(listing.status);
   const [isShared, setIsShared] = useState(listing.is_shared === true);
@@ -754,6 +755,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
           >
             Seller Report ↗
           </a>
+          {/* Billing staff who bill under YachtPics: start (or reopen) this boat's draft invoice. */}
+          {canBill && <BillForBoatButton listingId={listing.id} />}
           {/* Straight through to the broker. Reading a listing and wanting the
               person behind it is constant — their other boats, their contact
               details, whether they are subscribed — and the old route was

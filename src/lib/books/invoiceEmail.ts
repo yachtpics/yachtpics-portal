@@ -13,7 +13,7 @@
 import { logEmail } from "@/lib/logEmail";
 import { newEmailLogId, trackEmailHtml } from "@/lib/emailTracking";
 import { invoiceSubjectLine, pdfFileName, publicInvoiceUrl, PORTAL_ORIGIN, type InvoiceBundle } from "./invoices";
-import { fmtDate, fmtMoney, invoiceFooter, splitPaymentLines } from "./types";
+import { boatOneLine, fmtDate, fmtMoney, invoiceFooter, splitPaymentLines } from "./types";
 
 export const SENDER = "hello@yachtpics.com";
 
@@ -107,7 +107,7 @@ export function invoiceEmailHtml(b: InvoiceBundle, greet?: string): string {
   const { invoice: inv, client, brand, settings } = b;
   const first = greet !== undefined ? greet : (client?.first_name || client?.display_name || "").split(" ")[0];
   const url = publicInvoiceUrl(inv.public_token);
-  const what = inv.boat_name ? `for ${esc(inv.boat_name)}` : client?.company_name ? `for ${esc(client.company_name)}` : "";
+  const what = inv.boat_name ? `for ${esc(boatOneLine(inv))}` : client?.company_name ? `for ${esc(client.company_name)}` : "";
   const pay = emailPayBlockHtml(b);
   const footer = emailFooterBlockHtml(b);
   const dueLine = inv.due_date_manual && inv.due_date ? `Due ${esc(fmtDate(inv.due_date))}` : "Due on receipt";

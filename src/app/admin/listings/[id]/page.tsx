@@ -6,6 +6,7 @@ import AdminListingDetail from "./_components/AdminListingDetail";
 import { PHOTO_CATEGORIES } from "@/lib/photoCategories";
 import { withVideoUrls } from "@/lib/videoUrls";
 import { signOriginalPaths } from "@/lib/photoStore";
+import { booksServiceClient, lookupBillingStaff } from "@/lib/books/staff";
 
 type DownloadProfile = { first_name: string | null; last_name: string | null; display_email: string | null };
 type DownloadRecord = {
@@ -27,7 +28,9 @@ type SentEmail = {
 
 export default async function AdminListingPage({ params, searchParams }: { params: { id: string }; searchParams: { from?: string } }) {
   // Role check lives in the page, not only the layout — see requireAdminPage.
-  await requireAdminPage();
+  const { userId } = await requireAdminPage();
+  // Started now so it runs alongside the reads below ("Bill for this boat" — billing staff only).
+  const billingLookup = lookupBillingStaff(booksServiceClient(), userId).catch(() => null);
   const supabase = await createClient();
   const serviceSupabase = createServiceClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -237,6 +240,10 @@ export default async function AdminListingPage({ params, searchParams }: { param
 
   const sentEmails = (sentEmailRows ?? []) as SentEmail[];
 
+  // "Bill for this boat": billing staff who bill under YachtPics (same lookup AdminNav's Billing item uses).
+  const billing = await billingLookup;
+  const canBill = !!billing && billing.state === "ok" && billing.staff.brands.indexOf("yachtpics") !== -1;
+
   return (
     <AdminListingDetail
       listing={listing as any}
@@ -252,6 +259,7 @@ export default async function AdminListingPage({ params, searchParams }: { param
       leads={leads}
       fromBroker={searchParams?.from === "broker"}
       pocketSetBy={pocketSetBy}
+      canBill={canBill}
     />
   );
 }

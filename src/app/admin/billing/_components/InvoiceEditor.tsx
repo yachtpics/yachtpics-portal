@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Badge, Button, Card, CardBody, CardHeader } from "@/components/ui";
 import {
   BRAND_LABEL,
+  boatSpecLine,
   EDIT_REASON_MAX,
   EDIT_REASON_MIN,
   METHOD_LABEL,
@@ -89,6 +90,10 @@ type Header = {
   listing_id: string | null;
   boat_name: string;
   boat_length_ft: string;
+  /** Snapshot from the picked listing (not typed by hand); cleared on unlink. */
+  boat_make: string | null;
+  boat_model: string | null;
+  boat_year: number | null;
   issue_date: string;
   due_date: string;
   due_manual: boolean;
@@ -97,7 +102,7 @@ type Header = {
   is_test: boolean;
   online_pay: boolean;
 };
-type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; broker: string | null; vesselType: string | null; suggestedClient: { id: string; display_name: string } | null; shootDate: string | null };
+type ListingHit = { id: string; name: string; lengthFt: number | null; detail: string; make: string | null; model: string | null; year: number | null; broker: string | null; vesselType: string | null; suggestedClient: { id: string; display_name: string } | null; shootDate: string | null };
 
 let seq = 0;
 const k = () => `l${Date.now()}${seq++}`;
@@ -146,6 +151,9 @@ export default function InvoiceEditor({
     listing_id: inv.listing_id,
     boat_name: inv.boat_name ?? "",
     boat_length_ft: inv.boat_length_ft == null ? "" : String(inv.boat_length_ft),
+    boat_make: inv.boat_make ?? null,
+    boat_model: inv.boat_model ?? null,
+    boat_year: inv.boat_year ?? null,
     issue_date: inv.issue_date,
     due_date: inv.due_date ?? "",
     due_manual: !!inv.due_date_manual,
@@ -314,6 +322,12 @@ export default function InvoiceEditor({
     if (!numbered && inv.status === "draft" && h.brand !== inv.brand) head.brand = h.brand;
     if (!numbered && inv.status === "draft" && h.is_test !== !!inv.is_test) head.is_test = h.is_test;
     if (payTouched) head.online_pay = h.online_pay;
+    // Boat make / model / year (20261112): only sent when they changed here.
+    if ((h.boat_make ?? null) !== (inv.boat_make ?? null) || (h.boat_model ?? null) !== (inv.boat_model ?? null) || (h.boat_year ?? null) !== (inv.boat_year ?? null)) {
+      head.boat_make = h.boat_make;
+      head.boat_model = h.boat_model;
+      head.boat_year = h.boat_year;
+    }
     // Editing a sent invoice: the same reason + edit id on both calls = one history row.
     // The id is kept until the save succeeds, so a retry extends the same row.
     const envelope = editReason !== null ? { edit_reason: editReason, edit_id: editIdRef.current } : {};
@@ -425,6 +439,8 @@ export default function InvoiceEditor({
   const client = clients.filter((c) => c.id === h.client_id)[0] ?? null;
   const catalog = items.filter((i) => i.active && (i.brand === "both" || i.brand === h.brand));
   const overdue = isOverdue(inv);
+  // "2019 Marquis 650 · 65 ft" under the boat name (same line as the PDF and /inv).
+  const boatSpec = boatSpecLine({ boat_year: h.boat_year, boat_make: h.boat_make, boat_model: h.boat_model, boat_length_ft: Number(h.boat_length_ft) || null });
 
   return (
     <div className="space-y-6">
@@ -438,6 +454,15 @@ export default function InvoiceEditor({
             {inv.is_test && <Badge>Test</Badge>}
             {brands.length > 1 && <Badge>{BRAND_LABEL[inv.brand]}</Badge>}
           </div>
+          {h.boat_name.trim() && (
+            <div className="mt-1">
+              <p className="text-sm font-medium text-ink-900">{h.boat_name}</p>
+              {boatSpec && <p className="text-small text-ink-600">{boatSpec}</p>}
+            </div>
+          )}
+          {inv.listing_id && (
+            <Link href={`/admin/listings/${inv.listing_id}`} className="text-small text-ink-500 hover:text-ink-900">View listing →</Link>
+          )}
           <p className="text-small text-ink-500 mt-1">
             {inv.sent_at ? `Sent ${fmtDate(inv.sent_at.slice(0, 10))}${invoiceRecipients(inv).length ? ` to ${invoiceRecipients(inv).join(", ")}` : ""}` : "Not sent yet"}
             {inv.view_count ? ` · Viewed ${inv.view_count}× · last ${fmtDate((inv.last_viewed_at ?? "").slice(0, 10))}` : inv.sent_at ? " · Not viewed yet" : ""}
@@ -567,7 +592,7 @@ export default function InvoiceEditor({
               boatLength={h.boat_length_ft}
               onManual={(patch) => setHeader(patch)}
               onPick={(hit) => {
-                const patch: Partial<Header> = { listing_id: hit.id, boat_name: hit.name, boat_length_ft: hit.lengthFt == null ? h.boat_length_ft : String(hit.lengthFt) };
+                const patch: Partial<Header> = { listing_id: hit.id, boat_name: hit.name, boat_length_ft: hit.lengthFt == null ? h.boat_length_ft : String(hit.lengthFt), boat_make: hit.make, boat_model: hit.model, boat_year: hit.year };
                 // A draft's invoice date follows the boat's shoot date (ET), when there is one.
                 if (hit.shootDate && inv.status === "draft") { patch.issue_date = hit.shootDate; setIssueFromShoot(true); }
                 if (!h.client_id && hit.suggestedClient) {
@@ -591,7 +616,7 @@ export default function InvoiceEditor({
                 if (nextLines !== lines) setLines(nextLines);
                 setHeader(patch);
               }}
-              onClear={() => setHeader({ listing_id: null })}
+              onClear={() => setHeader({ listing_id: null, boat_make: null, boat_model: null, boat_year: null })}
               linked={!!h.listing_id}
             />
           )}

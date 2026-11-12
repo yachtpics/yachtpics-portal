@@ -16,7 +16,7 @@
 import { PDFArray, PDFDocument, PDFName, PDFString, StandardFonts, rgb, type PDFFont, type PDFImage, type PDFPage, type RGB } from "pdf-lib";
 import { PORTAL_ORIGIN, publicInvoiceUrl, type InvoiceBundle } from "./invoices";
 import { onlinePayState, payViaLabel } from "./processor";
-import { dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "./types";
+import { boatSpecLine, dateET, fmtDate, fmtMoney, fmtPct, invoiceFooter, invoiceLabel, isOverdue, splitPaymentLines } from "./types";
 
 const W = 612;
 const H = 792;
@@ -203,7 +203,8 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
   if (inv.boat_name) {
     boatY = block(M + 2 * (colW + 12), "Boat", [
       inv.boat_name,
-      inv.boat_length_ft ? `${Math.round(inv.boat_length_ft * 10) / 10} ft` : null,
+      // "2019 Marquis 650 · 65 ft" (missing parts skipped).
+      boatSpecLine(inv) || null,
     ]);
   }
   y = Math.min(fromY, billY, boatY) - 18;

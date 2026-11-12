@@ -101,7 +101,7 @@ export function headerChangeSummary(fields: Record<string, unknown>, inv: Billin
   const out: string[] = [];
   const diff = (k: keyof BillingInvoice) => k in fields && (fields[k as string] ?? null) !== (inv[k] ?? null);
   if (diff("client_id")) out.push("client changed");
-  if (diff("listing_id") || diff("boat_name") || ("boat_length_ft" in fields && Number(fields.boat_length_ft ?? -1) !== Number(inv.boat_length_ft ?? -1))) out.push("boat changed");
+  if (diff("listing_id") || diff("boat_name") || diff("boat_make") || diff("boat_model") || diff("boat_year") || ("boat_length_ft" in fields && Number(fields.boat_length_ft ?? -1) !== Number(inv.boat_length_ft ?? -1))) out.push("boat changed");
   if (diff("issue_date")) out.push(`invoice date ${shortDate(inv.issue_date)} → ${shortDate(fields.issue_date)}`);
   if (diff("due_date")) out.push(`due date ${shortDate(inv.due_date)} → ${shortDate(fields.due_date)}`);
   if (diff("note")) out.push("note changed");

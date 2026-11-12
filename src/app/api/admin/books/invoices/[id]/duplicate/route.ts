@@ -36,6 +36,10 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
       listing_id: src.listing_id,
       boat_name: src.boat_name,
       boat_length_ft: src.boat_length_ft,
+      // Only written when the source has them (so a DB before 20261112_billing_boat_details still inserts).
+      ...(src.boat_make != null || src.boat_model != null || src.boat_year != null
+        ? { boat_make: src.boat_make ?? null, boat_model: src.boat_model ?? null, boat_year: src.boat_year ?? null }
+        : {}),
       issue_date: issue,
       terms_days: 0,
       due_date: null,

@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isMissingBillingTable, type BillingStaff } from "./staff";
 import { loadProcessor, type ProcessorRow } from "./processor";
-import { type BillingBrand, type BillingClient, type BillingInvoice, type BillingPayment, type BrandKey, type InvoiceLine } from "./types";
+import { boatOneLine, type BillingBrand, type BillingClient, type BillingInvoice, type BillingPayment, type BrandKey, type InvoiceLine } from "./types";
 
 export const INVOICE_COLS = "*";
 
@@ -40,6 +40,9 @@ export function normInvoice(r: Record<string, unknown>): BillingInvoice {
   return {
     ...i,
     boat_length_ft: r.boat_length_ft == null ? null : Number(r.boat_length_ft),
+    boat_make: typeof r.boat_make === "string" ? r.boat_make : null,
+    boat_model: typeof r.boat_model === "string" ? r.boat_model : null,
+    boat_year: r.boat_year == null || !isFinite(Number(r.boat_year)) ? null : Number(r.boat_year),
     subtotal: num(r.subtotal),
     discount_total: num(r.discount_total),
     tax_rate: num(r.tax_rate),
@@ -67,6 +70,8 @@ export const REMINDERS_MIGRATION_COLS = ["reminders_paused"];
 export const CONTACTS_MIGRATION_COLS = ["sent_to_all"];
 /** Columns added by 20261109 (online payment switch). */
 export const ONLINE_PAY_MIGRATION_COLS = ["online_pay"];
+/** Columns added by 20261112_billing_boat_details (boat make / model / year). */
+export const BOAT_DETAILS_MIGRATION_COLS = ["boat_make", "boat_model", "boat_year"];
 
 /** Unknown column (PostgREST schema cache or Postgres): the migration isn't applied yet. */
 export function isMissingColumn(err: { code?: string; message?: string } | null | undefined): boolean {
@@ -76,9 +81,10 @@ export function isMissingColumn(err: { code?: string; message?: string } | null 
 }
 
 /**
- * Update one invoice row. If 20261107b / 20261108 / 20261108c / 20261109
- * aren't applied yet, their columns (due_date_manual / is_test /
- * reminders_paused / sent_to_all / online_pay) are dropped and the
+ * Update one invoice row. If 20261107b / 20261108 / 20261108c / 20261109 /
+ * 20261112_billing_boat_details aren't applied yet, their columns
+ * (due_date_manual / is_test / reminders_paused / sent_to_all / online_pay /
+ * boat_make / boat_model / boat_year) are dropped and the
  * rest is saved, so the editor keeps working. Returns the error, if any, and whether columns were dropped.
  */
 export async function updateInvoiceRow(
@@ -92,7 +98,7 @@ export async function updateInvoiceRow(
   const rest: Record<string, unknown> = {};
   const dropped: string[] = [];
   Object.keys(fields).forEach((k) => {
-    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1 || REMINDERS_MIGRATION_COLS.indexOf(k) !== -1 || CONTACTS_MIGRATION_COLS.indexOf(k) !== -1 || ONLINE_PAY_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
+    if (TERMS_MIGRATION_COLS.indexOf(k) !== -1 || REMINDERS_MIGRATION_COLS.indexOf(k) !== -1 || CONTACTS_MIGRATION_COLS.indexOf(k) !== -1 || ONLINE_PAY_MIGRATION_COLS.indexOf(k) !== -1 || BOAT_DETAILS_MIGRATION_COLS.indexOf(k) !== -1) dropped.push(k);
     else rest[k] = fields[k];
   });
   if (!dropped.length) return { error: first.error, dropped };
@@ -210,5 +216,5 @@ export function pdfFileName(inv: BillingInvoice, brand: BillingBrand): string {
 
 /** Who the invoice is for, in one short phrase (boat first, else client). */
 export function invoiceSubjectLine(b: InvoiceBundle): string {
-  return b.invoice.boat_name || b.client?.company_name || b.client?.display_name || "";
+  return boatOneLine(b.invoice) || b.client?.company_name || b.client?.display_name || "";
 }
