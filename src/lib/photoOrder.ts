@@ -61,6 +61,7 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "Day Head",
   "Galley",
   "Dinette",
+  "Dinette/Guest Berth",
   "Dining",
   "Pantry",
   "Foyer",
@@ -109,6 +110,9 @@ export const CANONICAL_PHOTO_ORDER: string[] = [
   "On Deck Master Stateroom Head",
   "Master Stateroom",
   "Master Stateroom Head",
+  // The plain names the AI labels use (src/lib/aiPhotoLabels.ts) — a photo
+  // can't show which cabin or bathroom it is, so they follow the named ones.
+  "Stateroom",
   "Head",
 
   // Crew + service

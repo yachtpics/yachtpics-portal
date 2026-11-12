@@ -84,6 +84,18 @@ function matchesCategory(name: string, cat: string): CategoryMatch | null {
   // straight onto the word still matches — cameras produce "Profiles01.jpg" and
   // "AftDeck12.jpg" constantly, and a trailing \b rejected every one of them.
   // Letters are still refused, so "head" won't match "header".
+  // The plain "Stateroom" (what the AI labels use) is special twice over:
+  //  - its only word is the optional one, so the loose pass would match an
+  //    empty string in almost any name ("img 4101" → Stateroom). It only ever
+  //    matches the word itself, written out.
+  //  - "stateroom head" is a head, not a stateroom, so a "head" straight after
+  //    it hands the photo to Head.
+  //  Named staterooms ("master stateroom", "port guest stateroom") start
+  //  earlier in the name, so they still win over the plain one.
+  if (words.length === 1 && words[0] === "stateroom") {
+    const m = /\bstateroom(?![a-z])(?!\s*heads?(?![a-z]))/.exec(name);
+    return m ? { index: m.index, exact: true } : null;
+  }
   const exact = build(false).exec(name);
   if (exact) return { index: exact.index, exact: true };
   if (!words.includes("stateroom")) return null;

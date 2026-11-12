@@ -15,9 +15,11 @@ export const maxDuration = 60;
  *      → { configured, updated: [{ id, category }], considered, unsure }
  *
  * Labels photographs with a vision model so a broker's own uploads land in
- * the standard walk-through order without typing. Only touches photos whose
- * category was guessed (from the filename) or is still "Other" — a category a
- * person chose by hand is never overwritten unless `force` is set.
+ * the standard walk-through order without typing. The model uses a short
+ * plain vocabulary ("Stateroom", "Head" — src/lib/aiPhotoLabels.ts). Only
+ * touches photos still "Other"; `force` also re-labels the model's own
+ * earlier labels. A category a person chose by hand, or a specific area from
+ * the file name, is never overwritten.
  */
 
 export async function GET() {

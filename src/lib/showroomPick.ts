@@ -7,7 +7,7 @@
  *    2. Profiles Running        3. Aerial        4. Profiles
  *    5. Bow / Stern / Flybridge / Tower / Hard Top / Cockpit / Aft Deck / Swim Platform
  *    6. Salon      7. Galley      8. Master Stateroom
- *    9. Helm / Pilothouse / Skylounge      10. VIP / Guest Stateroom
+ *    9. Helm / Pilothouse / Skylounge      10. VIP / Guest / plain Stateroom
  *   (11. anything else that isn't excluded — only when the boat is still short)
  * Never: heads, engine / mechanical / electrical rooms, lazarette, crew areas,
  * "Other" or uncategorised photos (the hero excepted — the broker chose it).
@@ -58,7 +58,7 @@ const TIERS: ((c: string) => boolean)[] = [
   (c) => c.includes("galley"),                                      // 7 Galley
   (c) => c.includes("master"),                                      // 8 Master Stateroom
   (c) => /helm|pilothouse|sky ?lounge|wheelhouse/.test(c),          // 9 Helm / Pilothouse / Skylounge
-  (c) => /\bvip\b|guest/.test(c),                                   // 10 VIP / Guest Stateroom
+  (c) => /\bvip\b|guest/.test(c) || c === "stateroom",             // 10 VIP / Guest / plain Stateroom (AI label)
 ];
 const FALLBACK_TIER = TIERS.length;
 

@@ -1070,7 +1070,7 @@ export default function BrokerListingPage() {
                   <button
                     onClick={() => photoActions.labelWithAi(undefined, photos.every((p) => p.category && p.category !== "Other"))}
                     disabled={photoActions.labeling}
-                    title={photos.some((p) => !p.category || p.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo you haven't set by hand"}
+                    title={photos.some((p) => !p.category || p.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label the photos the portal labelled (never ones you set or that were named in the file)"}
                     className="text-xs font-medium px-3 py-1.5 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 transition-colors duration-fast ease-quiet disabled:opacity-50"
                   >
                     {photoActions.labeling ? "Labelling…" : photos.some((p) => !p.category || p.category === "Other") ? "Label photos" : "Re-label photos"}

@@ -7,13 +7,14 @@
  *   ANTHROPIC_MODEL     optional; defaults to a fast, inexpensive vision model
  *
  * Two jobs today:
- *   1. Label photographs with the portal's own category names (so a broker's
- *      phone upload lands in the walk-through order without any typing).
+ *   1. Label photographs with plain category names (so a broker's phone
+ *      upload lands in the walk-through order without any typing).
  *   2. Draft a listing description from the specs and a few photographs, in
  *      the portal's understated register.
  */
 
 import { NEWS_CATEGORIES, isNewsCategory, type NewsCategory } from "@/lib/newsSources";
+import { AI_PHOTO_LABELS, normalizeAiPhotoLabel } from "@/lib/aiPhotoLabels";
 
 const API = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-haiku-4-5";
@@ -63,23 +64,24 @@ function extractJson<T>(text: string): T | null {
 
 /**
  * Label a batch of photographs. Returns one category per input (in order), or
- * null where the model wasn't sure. Categories MUST come from `categories`;
+ * null where the model wasn't sure. The model may only use the short plain
+ * vocabulary in src/lib/aiPhotoLabels.ts ("Stateroom", not "Master
+ * Stateroom") — a photograph can't show which cabin or bathroom it is. A more
+ * specific answer is mapped down to its plain label (normalizeAiPhotoLabel);
  * anything else is discarded rather than invented.
  */
-export async function categorizePhotos(
-  images: { url: string }[],
-  categories: readonly string[]
-): Promise<(string | null)[]> {
+export async function categorizePhotos(images: { url: string }[]): Promise<(string | null)[]> {
   if (images.length === 0) return [];
   const system = [
     "You label photographs of yachts and boats for a broker's listing gallery.",
-    "For each image, choose exactly one label from the allowed list. Use the most specific label that clearly applies;",
-    "when unsure between a specific and a general one (e.g. 'Master Stateroom' vs 'Guest Stateroom', or 'Aft Deck' vs 'Cockpit'), prefer the general one.",
-    "Exterior shots of the whole boat from the side are 'Profiles'; the boat moving through water is 'Profiles Running'; drone shots are 'Aerial'.",
-    "If nothing fits, answer null.",
-    "Reply with a JSON array only, one entry per image in order: [{\"i\":0,\"label\":\"Salon\"},{\"i\":1,\"label\":null}]",
-    "Allowed labels: " + categories.join(" | "),
-  ].join(" ");
+    "For each image, choose exactly one label from the list below. The broker can rename any photo afterwards, so a plain label that is right is far better than a specific one that might be wrong.",
+    "Choose the most general label that is certainly true. Never guess which stateroom or head it is, which side of the boat, or which deck level unless it is unmistakable. If two labels fit, choose the more general one.",
+    "If you are unsure, answer \"Other\".",
+    "Labels:",
+    ...AI_PHOTO_LABELS.map((l) => `- ${l.name}: ${l.means}.`),
+    "- Other: none of the above, or you are not sure.",
+    "Reply with a JSON array only, one entry per image in order: [{\"i\":0,\"label\":\"Salon\"},{\"i\":1,\"label\":\"Other\"}]",
+  ].join("\n");
 
   const blocks: Block[] = [];
   images.forEach((img, i) => {
@@ -90,12 +92,10 @@ export async function categorizePhotos(
 
   const reply = await ask(blocks, { system, maxTokens: 60 + images.length * 24 });
   const parsed = extractJson<{ i: number; label: string | null }[]>(reply) ?? [];
-  const allowed = new Set(categories);
   const out: (string | null)[] = images.map(() => null);
   for (const row of parsed) {
     if (typeof row?.i !== "number" || row.i < 0 || row.i >= images.length) continue;
-    const label = typeof row.label === "string" ? row.label.trim() : null;
-    out[row.i] = label && allowed.has(label) ? label : null;
+    out[row.i] = normalizeAiPhotoLabel(row.label);
   }
   return out;
 }

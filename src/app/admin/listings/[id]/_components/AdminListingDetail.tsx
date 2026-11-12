@@ -1245,7 +1245,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                 onClick={() => photoActions.labelWithAi(undefined, photos.every((ph) => ph.category && ph.category !== "Other"))}
                 disabled={photoActions.labeling}
                 className="text-sm font-medium px-3 py-2 rounded-ctl border border-hairline-strong bg-white text-ink-600 hover:border-accent-500 hover:text-ink-900 disabled:opacity-50 transition-colors duration-fast ease-quiet"
-                title={photos.some((ph) => !ph.category || ph.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label every photo not set by hand"}
+                title={photos.some((ph) => !ph.category || ph.category === "Other") ? "Let the model label the photos still marked Other" : "Re-label the photos the model labelled (never hand-set or filename-named ones)"}
               >
                 {photoActions.labeling ? "Labelling…" : photos.some((ph) => !ph.category || ph.category === "Other") ? "Label photos" : "Re-label photos"}
               </button>

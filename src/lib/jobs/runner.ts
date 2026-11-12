@@ -18,7 +18,7 @@ import { buildListingFiles, markSitePhotosBackend } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
 import { runDerivativeBackfill } from "@/lib/photoDerivatives";
 import { isAiConfigured } from "@/lib/ai";
-import { labelCategories, labelListingPhotos } from "@/lib/labelPhotos";
+import { labelListingPhotos } from "@/lib/labelPhotos";
 import { isMissingTable, jobsServiceClient } from "./queue";
 import { writeWeeklyBackup } from "@/lib/books/backup";
 import { RemindersNotReadyError, runBillingReminders } from "@/lib/books/reminders";
@@ -173,7 +173,6 @@ const relabelPhotos: JobHandler = async (job, { svc, deadlineMs }) => {
   let failed = 0;
   const log: string[] = [];
   const total = job.total == null ? ids.length : undefined;
-  const categories = await labelCategories(svc);
 
   while (i < ids.length) {
     if (Date.now() + 10_000 > deadlineMs) break;
@@ -186,7 +185,7 @@ const relabelPhotos: JobHandler = async (job, { svc, deadlineMs }) => {
       i++; pos = 0; labelled = 0;
       continue;
     }
-    const r = await labelListingPhotos(svc, id, { force, startPos: pos, deadlineMs, categories });
+    const r = await labelListingPhotos(svc, id, { force, startPos: pos, deadlineMs });
     labelled += r.updated.length;
     if (r.error) {
       // A model error (rate limit, outage): stop this batch and let the step

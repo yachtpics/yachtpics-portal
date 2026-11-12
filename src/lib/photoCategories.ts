@@ -82,6 +82,7 @@ export const PHOTO_CATEGORIES = [
   "Starboard Guest Stateroom",
   "Starboard Guest Stateroom Head",
   "Starboard Passageway",
+  "Stateroom",
   "Stern",
   "Sun Deck",
   "Sunbed",
