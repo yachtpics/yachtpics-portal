@@ -2,6 +2,13 @@
 
 
 
+## Billing — settled totals + receipt on manual payments (Nov 12, 2026) — NOT PUSHED · typecheck clean · no migration · NOT BROWSER-TESTED
+
+- **Settled totals** — the Billing dashboard ("invoiced" per bar and in totals), the CSV export and the invoice list's money totals now count `total − card_fee_waived` (helper `settledTotal` in `src/lib/books/types.ts`), so a $618 invoice paid $600 by Zelle counts $600. Outstanding/overdue still use balance_due (unchanged). CSV gets a new "Card fee waived" column before "Total" (Total = settled). A paid invoice with a waived fee shows "$600.00 · $18.00 card fee waived" in the list row and the editor's Payments card; the editor totals, the PDF and `/inv/[token]` show a "Card fee waived −$18.00" row (was "Card fee not charged").
+- **Receipt on manual payments** — Record payment has an "Email receipt" checkbox (on by default). When ticked and the payment leaves the invoice paid in full, the existing receipt email (paid PDF attached, logged as `billing_receipt`, sentBy `billing_manual`) goes to `invoiceRecipients(invoice)`. Part payments and test invoices never send one. An email failure never fails the payment — the dialog's result shows as the editor message after the refresh.
+- **Help**: no change — Billing is admin-only.
+
+
 ## Filming account — a private WRITABLE demo for the "add your own listing" clip (Nov 12, 2026) — MIGRATION `20261112_demo_rw_filming_account.sql` NOT APPLIED (after 20261110) · NOT PUSHED · typecheck + lint clean · migration smoke-tested on a throwaway local Postgres with stub auth/storage (not against live data) · NOT BROWSER-TESTED · no new dependency, no new env var
 
 Owner decision: a second, private sample account ("Sam Carter", Carter Yacht Sales, `filming@yachtpics.com`) that CAN create a listing and upload photos, so we can film create listing → upload → AI room labels → reel / slideshow / spec sheet / social on that listing. Reached like the demo: a short-lived link only an admin can mint.

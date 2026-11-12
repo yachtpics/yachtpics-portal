@@ -6,7 +6,8 @@
  * invoice is paid in full); if the PDF can't be built the receipt still goes.
  * Logged in email_log as `billing_receipt`.
  *
- * There was no receipt email before phase 3 — manual payments still send none.
+ * Manual payments send it too when "Email receipt" is ticked and the payment
+ * leaves the invoice paid in full (payments route, sentBy billing_manual).
  */
 import { logEmail } from "@/lib/logEmail";
 import { newEmailLogId, trackEmailHtml } from "@/lib/emailTracking";

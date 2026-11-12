@@ -188,7 +188,7 @@ export default async function PublicInvoicePage({ params, searchParams }: { para
             {inv.card_fee_total ? <Row k={`Card fee ${fmtPct(inv.card_fee_rate)}`} v={fmtMoney(inv.card_fee_total)} /> : null}
             <Row k="Total" v={fmtMoney(inv.total)} strong />
             {inv.amount_paid ? <Row k="Paid" v={"-" + fmtMoney(inv.amount_paid)} /> : null}
-            {inv.card_fee_waived ? <Row k="Card fee not charged" v={"-" + fmtMoney(inv.card_fee_waived)} /> : null}
+            {inv.card_fee_waived ? <Row k="Card fee waived" v={"-" + fmtMoney(inv.card_fee_waived)} /> : null}
             <Row k="Balance due" v={fmtMoney(inv.status === "void" ? 0 : inv.balance_due)} strong />
           </dl>
 

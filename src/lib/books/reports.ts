@@ -5,7 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { BillingStaff } from "./staff";
 import { normInvoice } from "./invoices";
-import { isOverdue, todayET, type BillingInvoice, type BrandKey, type InvoiceStatus, type PaymentMethod } from "./types";
+import { isOverdue, settledTotal, todayET, type BillingInvoice, type BrandKey, type InvoiceStatus, type PaymentMethod } from "./types";
 
 export type ListFilters = {
   brand?: BrandKey | "";
@@ -206,8 +206,10 @@ export async function buildDashboard(
   invs.forEach((i) => {
     if (i.issue_date >= range.from && i.issue_date <= range.to) {
       const b = bIndex[bucketKey(i.issue_date, range.group)];
-      if (b) { b.invoiced = r2(b.invoiced + i.total); b.outstanding = r2(b.outstanding + i.balance_due); }
-      totals.invoiced = r2(totals.invoiced + i.total);
+      // Settled amount: a card fee the client didn't pay (paid another way) isn't revenue.
+      const settled = settledTotal(i);
+      if (b) { b.invoiced = r2(b.invoiced + settled); b.outstanding = r2(b.outstanding + i.balance_due); }
+      totals.invoiced = r2(totals.invoiced + settled);
     }
     // "Now" tables: every open invoice, whatever its date.
     if ((i.status === "sent" || i.status === "partial") && i.balance_due > 0) {

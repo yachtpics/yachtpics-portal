@@ -343,6 +343,16 @@ export function fmtMoney(n: number | null | undefined): string {
   return (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+/**
+ * What the invoice actually settles for: the billed total less a card fee
+ * the client didn't pay (card_fee_waived — set by billing_recalc_invoice when
+ * the client paid total minus the fee another way). Reports, the CSV and the
+ * invoice list count this, not the billed total.
+ */
+export function settledTotal(inv: { total: number; card_fee_waived?: number | null }): number {
+  return Math.round((Number(inv.total ?? 0) - Number(inv.card_fee_waived ?? 0)) * 100) / 100;
+}
+
 export function fmtPct(rate: number): string {
   return `${Math.round(Number(rate) * 10000) / 100}%`;
 }

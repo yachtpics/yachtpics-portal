@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Badge, Card, CardBody, CardHeader } from "@/components/ui";
-import { BRAND_LABEL, dateET, fmtDate, fmtMoney, invoiceLabel, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
+import { BRAND_LABEL, dateET, fmtDate, fmtMoney, invoiceLabel, settledTotal, type BrandKey, type InvoiceStatus, type StaffView } from "@/lib/books/types";
 import type { InvoiceRow } from "@/lib/books/reports";
 import { fieldClass } from "./booksApi";
 import NewInvoiceButton from "./NewInvoiceButton";
@@ -75,7 +75,7 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
     filtered.forEach((r) => {
       // Test invoices never count toward money totals, even when shown.
       if (r.status === "void" || r.status === "draft" || r.is_test) return;
-      invoiced += r.total;
+      invoiced += settledTotal(r); // a waived card fee isn't revenue
       paid += r.amount_paid;
       due += r.balance_due;
     });
@@ -159,7 +159,10 @@ export default function InvoicesPanel({ rows, staff, defaultBrand }: { rows: Inv
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <p className="text-sm tabular-nums text-ink-900">{fmtMoney(r.total)}</p>
+                    <p className="text-sm tabular-nums text-ink-900">{fmtMoney(r.status === "paid" && r.card_fee_waived > 0 ? settledTotal(r) : r.total)}</p>
+                    {r.status === "paid" && r.card_fee_waived > 0 && (
+                      <p className="text-small tabular-nums text-ink-500">{fmtMoney(r.card_fee_waived)} card fee waived</p>
+                    )}
                     {r.status !== "paid" && r.status !== "void" && r.status !== "draft" && r.balance_due !== r.total && (
                       <p className="text-small tabular-nums text-ink-500">{fmtMoney(r.balance_due)} due</p>
                     )}

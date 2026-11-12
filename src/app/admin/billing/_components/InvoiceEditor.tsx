@@ -15,6 +15,7 @@ import {
   fmtDate,
   fmtMoney,
   fmtPct,
+  settledTotal,
   isLockedInvoice,
   canEditWithReason,
   isOverdue,
@@ -176,6 +177,17 @@ export default function InvoiceEditor({
       if (window.sessionStorage.getItem(promptKey)) { window.sessionStorage.removeItem(promptKey); setResendPrompt(true); }
     } catch { /* storage blocked: no prompt after refresh */ }
   }, [promptKey]);
+  // Same for the result of "Email receipt" after Record payment (the page refreshes).
+  const payMsgKey = `yp_inv_paymsg:${inv.id}`;
+  useEffect(() => {
+    try {
+      const raw = window.sessionStorage.getItem(payMsgKey);
+      if (!raw) return;
+      window.sessionStorage.removeItem(payMsgKey);
+      const m = JSON.parse(raw) as { ok: boolean; text: string };
+      if (m.ok) setNotice(m.text); else setError(m.text);
+    } catch { /* storage blocked: no message after refresh */ }
+  }, [payMsgKey]);
 
   const startEdit = (reason: string) => {
     editIdRef.current = newEditId();
@@ -482,9 +494,9 @@ export default function InvoiceEditor({
       {inv.status !== "draft" && (
         <Card>
           <CardHeader
-            title={inv.status === "paid" ? "Paid" : `Balance due ${fmtMoney(inv.balance_due)}`}
+            title={inv.status === "paid" ? (inv.card_fee_waived > 0 ? `Paid ${fmtMoney(settledTotal(inv))}` : "Paid") : `Balance due ${fmtMoney(inv.balance_due)}`}
             kicker="Payments"
-            description={inv.due_date && inv.status !== "paid" && inv.status !== "void" ? `Due ${fmtDate(inv.due_date)}` : inv.card_fee_waived ? `Card fee of ${fmtMoney(inv.card_fee_waived)} not charged (paid another way)` : undefined}
+            description={inv.due_date && inv.status !== "paid" && inv.status !== "void" ? `Due ${fmtDate(inv.due_date)}` : inv.card_fee_waived ? `${fmtMoney(settledTotal(inv))} · ${fmtMoney(inv.card_fee_waived)} card fee waived (paid another way)` : undefined}
             action={!isVoid && <Button size="sm" onClick={() => setPayOpen(true)}>Record payment</Button>}
           />
           <CardBody className="space-y-3">
@@ -666,6 +678,7 @@ export default function InvoiceEditor({
             {totals.cardFeeTotal ? <TRow k={`Card fee ${fmtPct(inv.card_fee_rate)}`} v={fmtMoney(totals.cardFeeTotal)} /> : null}
             <TRow k="Total" v={fmtMoney(totals.total)} strong />
             {inv.amount_paid ? <TRow k="Paid" v={"-" + fmtMoney(inv.amount_paid)} /> : null}
+            {inv.card_fee_waived > 0 ? <TRow k="Card fee waived" v={"-" + fmtMoney(inv.card_fee_waived)} /> : null}
           </dl>
         </CardBody>
       </Card>
@@ -757,6 +770,12 @@ export default function InvoiceEditor({
             const r = await booksCall(`/api/admin/books/invoices/${inv.id}/payments`, "POST", body);
             if (r.error) return r.error;
             setPayOpen(false);
+            // Receipt result: shown after the refresh (the editor remounts).
+            const d = (r.data ?? {}) as { receipt_failed?: boolean; receipt_message?: string | null };
+            const msg = { ok: !d.receipt_failed, text: d.receipt_message || "Payment recorded." };
+            setNotice(msg.ok ? msg.text : null);
+            setError(msg.ok ? null : msg.text);
+            try { window.sessionStorage.setItem(payMsgKey, JSON.stringify(msg)); } catch { /* ignore */ }
             router.refresh();
             return null;
           }}
@@ -1207,6 +1226,7 @@ function PaymentSheet({ balance, feeIncluded, onClose, onSave }: {
   const [date, setDate] = useState(todayET());
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
+  const [emailReceipt, setEmailReceipt] = useState(true);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const pick = (m: PaymentMethod) => {
@@ -1246,11 +1266,18 @@ function PaymentSheet({ balance, feeIncluded, onClose, onSave }: {
         </label>
       </div>
       {noFee && feeIncluded > 0 && <p className="text-small text-ink-500 mt-2">Paid by {METHOD_LABEL[method]}, so the {fmtMoney(feeIncluded)} card fee is left off — the invoice still shows as paid in full.</p>}
+      <label className="flex items-start gap-3 mt-4 cursor-pointer">
+        <input type="checkbox" className="h-4 w-4 mt-0.5 accent-[#c39e4e]" checked={emailReceipt} onChange={(e) => setEmailReceipt(e.target.checked)} />
+        <span>
+          <span className="block text-sm font-medium text-ink-900">Email receipt</span>
+          <span className="block text-small text-ink-500">Sends the paid invoice to the same people the invoice went to.</span>
+        </span>
+      </label>
       {err && <p className="text-sm text-danger-700 mt-2">{err}</p>}
       <div className="flex gap-2 mt-5">
         <Button className="flex-1 sm:flex-none" disabled={busy} onClick={async () => {
           setBusy(true); setErr(null);
-          const e = await onSave({ method, amount, paid_on: date, reference, note });
+          const e = await onSave({ method, amount, paid_on: date, reference, note, email_receipt: emailReceipt });
           setBusy(false);
           if (e) setErr(e);
         }}>{busy ? "Saving…" : "Save payment"}</Button>

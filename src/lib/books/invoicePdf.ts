@@ -264,7 +264,7 @@ export async function buildInvoicePdf(b: InvoiceBundle): Promise<Uint8Array> {
   if (inv.card_fee_total) rows.push([`Card fee ${fmtPct(inv.card_fee_rate)}`, fmtMoney(inv.card_fee_total)]);
   rows.push(["Total", fmtMoney(inv.total), true]);
   if (inv.amount_paid) rows.push(["Paid", "-" + fmtMoney(inv.amount_paid)]);
-  if (inv.card_fee_waived) rows.push(["Card fee not charged", "-" + fmtMoney(inv.card_fee_waived)]);
+  if (inv.card_fee_waived) rows.push(["Card fee waived", "-" + fmtMoney(inv.card_fee_waived)]);
   rows.push(["Balance due", fmtMoney(inv.status === "void" ? 0 : inv.balance_due), true]);
 
   const tl = xr - 200;
