@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import DockCardButton from "@/components/DockCardButton";
-import { BILLING_PATH } from "@/lib/planValue";
+import { BILLING_PATH, type AssistantPlanCopy } from "@/lib/planValue";
 
 /**
  * "Ready for this boat" (Nov 3) — the strip under the listing title on the
@@ -62,6 +62,8 @@ export function reelNudgeApplies(a: ReelAllowance | null): boolean {
 const BTN_PRIMARY = "inline-flex items-center bg-accent-500 hover:bg-accent-400 text-ink-950 text-xs font-semibold px-3 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet";
 const BTN_SECONDARY = "inline-flex items-center bg-white border border-hairline-strong hover:border-ink-400 text-ink-700 hover:text-ink-900 text-xs font-semibold px-2.5 py-1.5 rounded-ctl transition-colors duration-fast ease-quiet";
 const LINK = "text-xs font-medium text-accent-700 hover:text-accent-600 transition-colors duration-fast";
+/** Plain text where a broker would get a Billing link (assistants, Nov 11). */
+const GATE_TEXT = "text-xs text-ink-500";
 
 function Mark({ done }: { done: boolean }) {
   return done ? (
@@ -90,6 +92,11 @@ export default function ListingReadyStrip(props: {
   listingId: string;
   /** The listing owner's plan (hasAccess of the effective status). */
   hasPlan: boolean;
+  /**
+   * Set when the viewer is the broker's assistant and the broker has no plan:
+   * the "with a plan" links become plain text naming the broker (no Billing).
+   */
+  assistantGate?: AssistantPlanCopy | null;
   slideshowPublished: boolean;
   slideshowSlug: string | null;
   youtubeUrl: string | null;
@@ -104,6 +111,10 @@ export default function ListingReadyStrip(props: {
   const [copied, setCopied] = useState<"yt" | "line" | null>(null);
   const reelHref = `/dashboard/listings/${listingId}/reel`;
   const live = slideshowPublished && !!slideshowSlug;
+  const gate = props.assistantGate ?? null;
+  /** A broker's "… with a plan" link to Billing, or for an assistant the plain gate text. */
+  const planLink = (label: string) =>
+    gate ? <span className={GATE_TEXT}>{gate.needs}</span> : <Link href={BILLING_PATH} className={LINK}>{label}</Link>;
 
   async function copy(text: string, which: "yt" | "line") {
     try {
@@ -138,7 +149,7 @@ export default function ListingReadyStrip(props: {
       <ul className="grid grid-cols-1 lg:grid-cols-5 gap-px bg-hairline">
         <Tile title="Reels" done={reelDone} status={reelStatus}>
           <Link href={reelHref} className={BTN_PRIMARY}>Make a reel</Link>
-          {reelsMore && <Link href={BILLING_PATH} className={LINK}>More with a plan</Link>}
+          {reelsMore && planLink("More with a plan")}
         </Tile>
 
         <Tile
@@ -158,7 +169,7 @@ export default function ListingReadyStrip(props: {
               {live
                 ? <a href={`/s/${slideshowSlug}`} target="_blank" rel="noopener noreferrer" className={BTN_SECONDARY}>Preview ↗</a>
                 : <a href="#slideshow" className={BTN_SECONDARY}>Preview</a>}
-              <Link href={BILLING_PATH} className={LINK}>Send with a plan</Link>
+              {planLink("Send with a plan")}
             </>
           )}
         </Tile>
@@ -174,7 +185,7 @@ export default function ListingReadyStrip(props: {
         >
           {hasPlan && live && <DockCardButton listingId={listingId} compact />}
           {hasPlan && !live && <a href="#slideshow" className={BTN_SECONDARY}>Publish</a>}
-          {!hasPlan && <Link href={BILLING_PATH} className={LINK}>With a plan</Link>}
+          {!hasPlan && planLink("With a plan")}
         </Tile>
 
         <Tile title="For your listing" done={!!youtubeUrl} status={youtubeUrl ? "YouTube link ready" : "No YouTube link yet"}>

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK } from "@/lib/planValue";
+import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK, assistantPlanCopy, type AssistantPlanCopy } from "@/lib/planValue";
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { hasAccess } from "@/lib/subscriptionAccess";
@@ -140,6 +140,8 @@ export default function SocialGraphicPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
+  // Assistant viewer (Nov 11): the gate names the broker, no Billing link.
+  const [assistantGate, setAssistantGate] = useState<AssistantPlanCopy | null>(null);
   const [rendering, setRendering] = useState(false);
   const [badge, setBadge] = useState(NO_BADGE);
   const [caption, setCaption] = useState("");
@@ -161,9 +163,11 @@ export default function SocialGraphicPage() {
       // profile row, read fresh rather than trusted from anywhere else.
       const { data: { user: me } } = await supabase.auth.getUser();
       let admin = false;
+      let assistant = false;
       if (me) {
         const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
         admin = meProf?.role === "admin";
+        assistant = meProf?.role === "assistant";
         setIsAdmin(admin);
       }
       // Paid tool: if the owner's plan lapsed, still show the generator + live
@@ -183,6 +187,7 @@ export default function SocialGraphicPage() {
           if (subRes.ok) {
             const subData = await subRes.json();
             setLocked(!hasAccess(subData?.status));
+            setAssistantGate(assistant ? assistantPlanCopy(subData?.brokerName ?? null) : null);
           }
         } catch { /* stay unlocked on a status hiccup */ }
       }
@@ -458,8 +463,10 @@ export default function SocialGraphicPage() {
       {locked && (
         <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700">
           <span className="font-semibold">This is a preview.</span>{" "}
-          Branded social posts with your logo, ready to download without the preview mark. {PLAN_GATE_LINE}{" "}
-          <Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link>
+          Branded social posts with {assistantGate ? "the broker\u2019s" : "your"} logo, ready to download without the preview mark.{" "}
+          {assistantGate
+            ? <span className="font-semibold">{assistantGate.needs}.</span>
+            : <>{PLAN_GATE_LINE}{" "}<Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link></>}
         </div>
       )}
 
@@ -517,7 +524,9 @@ export default function SocialGraphicPage() {
       </div>
 
       <div className="flex justify-center mb-6">
-        {locked ? (
+        {locked && assistantGate ? (
+          <p className="text-sm text-ink-500 text-center">{assistantGate.needs} to download.</p>
+        ) : locked ? (
           <Link href="/dashboard/billing"
             className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">
             {PLAN_GATE_LINK} to download

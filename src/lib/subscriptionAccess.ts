@@ -137,6 +137,16 @@ export function trialDaysRemaining(trialEndsAt: string | null): number {
   );
 }
 
+/**
+ * The headline a broker sees when they have no plan (Nov 11). A trial is
+ * seeded on every broker's first sign-in (dashboard layout), so a trial or
+ * plan that actually ran out reads 'trial_expired'; 'no_access' means there
+ * was never one (no subscription row, or no trial ever started).
+ */
+export function noPlanHeadline(status: AccessStatus): string {
+  return status === "trial_expired" ? "Your plan has ended." : "You don’t have a plan yet.";
+}
+
 /** Returns true if the broker can use upload/publish features */
 export function hasAccess(status: AccessStatus): boolean {
   return (

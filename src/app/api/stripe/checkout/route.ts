@@ -5,6 +5,7 @@ import { stripe } from "@/lib/stripe";
 import { PLANS, planIncludesWebsite } from "@/lib/plans";
 import { ensureWebsitePrice } from "@/lib/websiteAddon";
 import { demoGuard } from "@/lib/demoServer";
+import { refuseAssistantBilling } from "@/lib/assistantBilling";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,6 +14,8 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     // Read-only demo (layer 3 — src/lib/demo.ts).
     { const demo = demoGuard(user); if (demo) return demo; }
+    // Plans belong to the broker — never an assistant (src/lib/assistantBilling.ts).
+    { const refused = await refuseAssistantBilling(supabase, user.id); if (refused) return refused; }
 
     const { priceId, withWebsite } = await req.json();
 

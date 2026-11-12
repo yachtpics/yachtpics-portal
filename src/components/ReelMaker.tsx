@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK } from "@/lib/planValue";
+import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK, type AssistantPlanCopy } from "@/lib/planValue";
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { uploadListingVideo, uploadSocialCoverToPrivateBucket, uploadVideoToPrivateBucket } from "@/lib/uploadListingVideo";
@@ -322,6 +322,12 @@ export type ReelSource = {
    * out by the page before ReelMaker mounts. Left out: not a subscriber.
    */
   isSubscriber?: boolean;
+  /**
+   * Set when the viewer is the listing broker's assistant (Nov 11). Wherever a
+   * no-plan prompt would link to Billing, the assistant sees this wording,
+   * naming the broker, as plain text instead. Left out: the broker's own copy.
+   */
+  assistantGate?: AssistantPlanCopy | null;
   isOwner: boolean;
   locked: boolean;
   /** The broker's remembered colours, where the source has them. */
@@ -449,6 +455,7 @@ export default function ReelMaker({
   const supabase = createClient();
   const { listing, photos, broker, listingId, isAdmin, isOwner, locked, budget } = source;
   const isSubscriber = source.isSubscriber === true;
+  const assistantGate = source.assistantGate ?? null;
   /** Studio only: this reel is of something that isn't a boat. */
   const freeSubject = listing.subject === "free";
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -3523,8 +3530,10 @@ export default function ReelMaker({
       {locked && (
         <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700">
           <span className="font-semibold">This is a preview.</span>{" "}
-          Unlimited reels in a dozen looks, with original music you can post anywhere, downloaded without the preview mark. {PLAN_GATE_LINE}{" "}
-          <Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link>
+          Unlimited reels in a dozen looks, with original music you can post anywhere, downloaded without the preview mark.{" "}
+          {assistantGate
+            ? <span className="font-semibold">{assistantGate.needs}.</span>
+            : <>{PLAN_GATE_LINE}{" "}<Link href={BILLING_PATH} className="font-semibold underline">{PLAN_GATE_LINK} →</Link></>}
         </div>
       )}
 
@@ -4219,8 +4228,14 @@ export default function ReelMaker({
                 onContextMenu={metered ? (e) => e.preventDefault() : undefined} />
             </div>
             <div className="mt-5 flex flex-wrap justify-center gap-2">
-              {locked ? (
+              {locked && assistantGate ? (
+                <p className="text-sm text-ink-500 text-center max-w-md">{assistantGate.needs} to download.</p>
+              ) : locked ? (
                 <Link href={BILLING_PATH} className="bg-accent-500 hover:bg-accent-400 text-ink-950 text-sm font-semibold px-6 py-2.5 rounded-ctl transition-colors">{PLAN_GATE_LINK} to download</Link>
+              ) : allowanceSpent && assistantGate ? (
+                <p className="text-sm text-ink-500 text-center max-w-md">
+                  The two reels included with this listing have been used. More reels are off {assistantGate.untilPlan}.
+                </p>
               ) : allowanceSpent ? (
                 <p className="text-sm text-ink-500 text-center max-w-md">
                   The two reels included with this listing have been used. Unlimited reels, with original music you can post anywhere: {PLAN_GATE_LINE.charAt(0).toLowerCase() + PLAN_GATE_LINE.slice(1)}{" "}

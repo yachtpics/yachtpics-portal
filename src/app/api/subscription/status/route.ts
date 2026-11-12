@@ -16,6 +16,9 @@ export async function GET(req: NextRequest) {
   const requestedBrokerId = url.searchParams.get("brokerId");
 
   let brokerId = user.id;
+  // Assistants only: the broker's name, so plan gates can say whose plan it is
+  // ("Needs Jim Nobel's plan") — src/lib/planValue.ts assistantPlanCopy.
+  let brokerName: { first: string | null; last: string | null } | null = null;
 
   if (requestedBrokerId && requestedBrokerId !== user.id) {
     // Caller is asking about a different broker — verify they are linked
@@ -32,6 +35,12 @@ export async function GET(req: NextRequest) {
 
     if (!link) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     brokerId = requestedBrokerId;
+    const { data: bp } = await supabaseAdmin
+      .from("profiles")
+      .select("first_name, last_name")
+      .eq("id", brokerId)
+      .maybeSingle();
+    brokerName = { first: bp?.first_name ?? null, last: bp?.last_name ?? null };
   }
 
   // Use service role so RLS on subscriptions table never blocks the read
@@ -46,5 +55,5 @@ export async function GET(req: NextRequest) {
 
   // trialDays: this broker's trial length (14, or 30 for accounts opened
   // before Oct 24 2026) — see trialDaysFor in subscriptionAccess.ts.
-  return NextResponse.json({ status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered });
+  return NextResponse.json({ status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered, brokerName });
 }

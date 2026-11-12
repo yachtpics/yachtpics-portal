@@ -106,6 +106,7 @@ const sections = [
       "To add an assistant, open Team in the sidebar, click Invite Assistant, enter their email and send. (My Profile → Assistants works too.)",
       "New assistants will receive an invite email and be linked to your account automatically.",
       "Assistants see all your listings but cannot access billing or change your account settings.",
+      "If you don't have a plan, your assistants can still view listings and download photos, but sending and sharing stay off until you choose one.",
       "Assistants get their own My Brokers page listing every broker they work for, so they can jump straight into the right boat.",
       "To remove an assistant, open Team (or My Profile → Assistants) and click Remove next to their name.",
     ],

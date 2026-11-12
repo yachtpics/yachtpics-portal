@@ -9,13 +9,25 @@
   they now get their own version: names the broker(s) they work for, four short
   steps, and "Nothing for you to subscribe to." Brokers' email is unchanged.
 - Help: no change (email only).
-- **Open, waiting on Charlie's yes:** on a listing whose broker has no plan, an
-  assistant sees the broker's wording ("Your plan has ended", "See plans",
-  "Send with a plan") with links to `/dashboard/billing` — a page that is not in
-  their menu but is not blocked either, so an assistant could start a
-  subscription of their own that covers nothing. Proposed: assistant wording
-  ("[Broker] doesn't have a plan…", no Billing links) and block Billing for
-  assistants.
+- **Assistants and a broker with no plan (built Nov 11):** an assistant on a
+  listing whose broker has no plan now sees the broker named ("Jim Nobel
+  doesn't have a plan.", "Needs Jim Nobel's plan") with no Billing links or
+  prices — listing page, Ready strip, reel maker, social page, spec sheet,
+  Seller Report and the slideshow preview bar. All wording comes from
+  `assistantPlanCopy` in `src/lib/planValue.ts`; the broker's name comes from
+  `/api/subscription/status` (linked assistants only).
+- `/dashboard/billing` shows assistants a "Plans belong to the broker" panel,
+  and the Stripe checkout / portal / change-plan routes return 403 for them
+  (`src/lib/assistantBilling.ts`).
+- Brokers: the no-plan notice says "You don't have a plan yet." unless a
+  trial/plan actually ran out (`noPlanHeadline` in `subscriptionAccess.ts`).
+- Help: one line added to "Working with Assistants". **PDF rebuild pending**
+  until done on Charlie's computer.
+- Left alone, worth a look later: a brokerage admin opening a managed broker's
+  listing gets 403 from the status call and so sees no-plan wording even when
+  that broker has a plan; co-brokers still see "See plans" on an owner's locked
+  report/spec sheet; `dashboard/layout.tsx` may start a fresh trial for a
+  broker whose paid plan was cancelled and who has no `trial_ends_at`.
 
 ## New photo area "Dinette/Guest Berth" (Nov 11, 2026) — PUSHED · no migration · no new dependency
 

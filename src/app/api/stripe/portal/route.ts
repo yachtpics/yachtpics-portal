@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe";
 import { safeNextPath } from "@/lib/safeNext";
 import { demoGuard } from "@/lib/demoServer";
+import { refuseAssistantBilling } from "@/lib/assistantBilling";
 
 export async function POST(req: NextRequest) {
   const supabase = await createClient();
@@ -10,6 +11,8 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
   { const demo = demoGuard(user); if (demo) return demo; }
+  // Plans belong to the broker — never an assistant (src/lib/assistantBilling.ts).
+  { const refused = await refuseAssistantBilling(supabase, user.id); if (refused) return refused; }
 
   const { data: sub } = await supabase
     .from("subscriptions")

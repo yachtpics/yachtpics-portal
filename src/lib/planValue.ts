@@ -33,6 +33,39 @@ export const PLAN_GATE_LINE = `Included with every plan, from $${PLAN_FROM_PRICE
 export const PLAN_GATE_LINK = "See plans";
 export const BILLING_PATH = "/dashboard/billing";
 
+/**
+ * Assistant wording for a plan gate (Nov 11). An assistant works inside a
+ * broker's listings, and every gate there follows THAT broker's plan — so an
+ * assistant never sees "See plans", a price or a Billing link (Billing isn't
+ * theirs; /dashboard/billing tells them so). Every assistant-facing no-plan
+ * line comes from here. The broker is named, or "this broker" / "they" if the
+ * name couldn't be loaded — never a gendered pronoun.
+ */
+export type AssistantPlanCopy = {
+  /** "Jim Nobel doesn't have a plan." */
+  headline: string;
+  /** "Needs Jim Nobel's plan" — short, for tiles, tooltips and disabled buttons. */
+  needs: string;
+  /** "Off until Jim Nobel has a plan." — a whole sentence. */
+  offUntil: string;
+  /** "until Jim Nobel has a plan" — to end a sentence of your own. */
+  untilPlan: string;
+  /** "Jim chooses one" / "they choose one" — ends the slideshow notice. */
+  choosesOne: string;
+};
+
+export function assistantPlanCopy(broker: { first?: string | null; last?: string | null } | null | undefined): AssistantPlanCopy {
+  const first = (broker?.first ?? "").trim();
+  const full = [first, (broker?.last ?? "").trim()].filter(Boolean).join(" ");
+  return {
+    headline: `${full || "This broker"} doesn’t have a plan.`,
+    needs: `Needs ${full ? `${full}’s` : "the broker’s"} plan`,
+    offUntil: `Off until ${full || "this broker"} has a plan.`,
+    untilPlan: `until ${full || "this broker"} has a plan`,
+    choosesOne: first ? `${first} chooses one` : "they choose one",
+  };
+}
+
 /** "buyer slideshows, Seller Reports, unlimited reels, boat-show dock cards and your own listings" */
 export const PLAN_BENEFITS_SENTENCE = (() => {
   const l = PLAN_BENEFITS.map((b) => (b.key === "reports" ? b.label : b.label.charAt(0).toLowerCase() + b.label.slice(1)));

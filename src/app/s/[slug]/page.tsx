@@ -4,6 +4,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { headers } from "next/headers";
 import SlideshowViewer from "./SlideshowViewer";
 import { isDemoBroker } from "@/lib/demoServer";
+import { assistantPlanCopy } from "@/lib/planValue";
 import {
   canViewSlideshow,
   getPublishedSlideshow,
@@ -85,6 +86,22 @@ export default async function PublicSlideshowPage({
   // show the quiet "this is what your buyer sees" bar and don't count it as a
   // buyer view.
   const ownerPreview = canView && !ownerLive;
+  // An assistant previewing (Nov 11): name the broker, no "Choose a plan".
+  let ownerPreviewNote: string | null = null;
+  if (ownerPreview) {
+    try {
+      const { data: { user } } = await (await createServerClient()).auth.getUser();
+      if (user) {
+        const svc = serviceClient();
+        const { data: me } = await svc.from("profiles").select("role").eq("id", user.id).maybeSingle();
+        if (me?.role === "assistant") {
+          const { data: bp } = await svc.from("profiles").select("first_name, last_name").eq("id", listing.broker_id).maybeSingle();
+          const copy = assistantPlanCopy({ first: bp?.first_name, last: bp?.last_name });
+          ownerPreviewNote = `This is what buyers will see. Sending it and the share link are off ${copy.untilPlan}.`;
+        }
+      }
+    } catch { /* fall back to the broker wording */ }
+  }
 
   if (!canView) {
     return (
@@ -123,6 +140,7 @@ export default async function PublicSlideshowPage({
       tourUrl={listing.tour_url ?? null}
       deckPlanUrl={deckPlanUrl}
       ownerPreview={ownerPreview}
+      ownerPreviewNote={ownerPreviewNote}
     />
   );
 }

@@ -7,6 +7,7 @@ import { derivativePath, hasDerivatives } from "@/lib/photoDerivativePaths";
 import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components/ReelMaker";
 import type { BrokerCard } from "@/lib/yachtpicsBrand";
 import { photoDrawUrls } from "@/lib/photoStoreClient";
+import { assistantPlanCopy, type AssistantPlanCopy } from "@/lib/planValue";
 
 /**
  * Assemble a listing's half of a reel — the boat, the broker's card and
@@ -53,9 +54,11 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
   const listing = l as ListingData;
   const { data: { user: me } } = await supabase.auth.getUser();
   let admin = false;
+  let assistant = false;
   if (me) {
     const { data: meProf } = await supabase.from("profiles").select("role").eq("id", me.id).maybeSingle();
     admin = meProf?.role === "admin";
+    assistant = meProf?.role === "assistant";
   }
 
   // No plan lock on the listing reel any more (Sept 29). During the open
@@ -74,14 +77,19 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
   // refusal (e.g. a viewer who isn't the broker or their assistant) is
   // simply "not a subscriber" — they still get the looks on Oct 9.
   // Admins don't need it (they always have the looks).
-  const subscriberCheck: Promise<boolean> = admin
-    ? Promise.resolve(false)
+  // For an assistant the same answer carries the broker's name, for the
+  // plan-gate wording (assistantPlanCopy in src/lib/planValue.ts).
+  const subscriberCheck: Promise<{ isSubscriber: boolean; assistantGate: AssistantPlanCopy | null }> = admin
+    ? Promise.resolve({ isSubscriber: false, assistantGate: null })
     : fetch(`/api/subscription/status?brokerId=${l.broker_id}`)
         .then((r) => (r.ok ? r.json() : null))
-        .then((d) => isDepthLooksSubscriber(d?.status))
-        .catch(() => false);
+        .then((d) => ({
+          isSubscriber: isDepthLooksSubscriber(d?.status),
+          assistantGate: assistant ? assistantPlanCopy(d?.brokerName ?? null) : null,
+        }))
+        .catch(() => ({ isSubscriber: false, assistantGate: assistant ? assistantPlanCopy(null) : null }));
 
-  const [credit, { data: ph }, { count }, { data: vids }, isSubscriber] = await Promise.all([
+  const [credit, { data: ph }, { count }, { data: vids }, { isSubscriber, assistantGate }] = await Promise.all([
     fetchReelCredit(id, opts.creditBrokerId),
     supabase.from("photos").select("id, storage_path, category, filename, display_order, derivatives_at, storage_backend").eq("listing_id", id).eq("is_visible", true).order("display_order"),
     supabase.from("videos").select("id", { count: "exact", head: true }).eq("listing_id", id),
@@ -201,6 +209,7 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
     listingId: id,
     isAdmin: admin,
     isSubscriber,
+    assistantGate,
     isOwner,
     locked,
     brand,

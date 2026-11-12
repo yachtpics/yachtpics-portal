@@ -89,6 +89,11 @@ interface Props {
    * and nothing is recorded as a buyer view or event.
    */
   ownerPreview?: boolean;
+  /**
+   * With ownerPreview, when the viewer is the broker's assistant (Nov 11):
+   * the line to show instead of the "Choose a plan" pitch (no Billing link).
+   */
+  ownerPreviewNote?: string | null;
 }
 
 type EventKind = "dwell" | "favorite" | "unfavorite" | "video_play" | "tour_click" | "deck_plan_view" | "details_view";
@@ -192,7 +197,7 @@ function FadePhoto({
   );
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null, ownerPreview = false }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null, ownerPreview = false, ownerPreviewNote = null }: Props) {
   // The page signs only the opening photo + first dozen tiles. The rest of
   // the display links arrive in chunks from /api/s/[slug]/urls as they're
   // about to be needed, and everything is re-signed when a tab returns after
@@ -564,10 +569,14 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     <div className={embedded ? "bg-ink-50 flex flex-col" : "min-h-screen bg-ink-50 flex flex-col"}>
       {ownerPreview && !previewBarHidden && (
         <div role="status" className="bg-ink-950 text-white/85 text-xs sm:text-[0.8125rem] px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
-          <p className="min-w-0 leading-snug">
-            This is what your buyer sees. Sending it and the share link come with a Portal plan.{" "}
-            <Link href="/dashboard/billing" className="text-accent-300 hover:text-accent-200 font-medium whitespace-nowrap">Choose a plan &rarr;</Link>
-          </p>
+          {ownerPreviewNote ? (
+            <p className="min-w-0 leading-snug">{ownerPreviewNote}</p>
+          ) : (
+            <p className="min-w-0 leading-snug">
+              This is what your buyer sees. Sending it and the share link come with a Portal plan.{" "}
+              <Link href="/dashboard/billing" className="text-accent-300 hover:text-accent-200 font-medium whitespace-nowrap">Choose a plan &rarr;</Link>
+            </p>
+          )}
           <button type="button" onClick={hidePreviewBar} aria-label="Dismiss" className="shrink-0 w-8 h-8 inline-flex items-center justify-center text-white/50 hover:text-white text-lg leading-none">&times;</button>
         </div>
       )}

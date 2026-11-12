@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { PLANS, REEL_SERVICE_PRICE, REEL_SERVICE_REELS_PER_BOAT, WEBSITE_PRICE, WEBSITE_INCLUDED_PLANS, planIncludesWebsite, planPriceWithWebsite } from "@/lib/plans";
 import HelpTip from "@/components/HelpTip";
@@ -38,6 +39,10 @@ export default function BillingPage() {
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [portalLoading, setPortalLoading] = useState(false);
   const [actionError, setActionError] = useState("");
+  // Assistants have nothing to subscribe to (Nov 11): plans follow each
+  // broker. They get a short panel instead of plans and checkout buttons; the
+  // Stripe routes refuse them too (src/lib/assistantBilling.ts).
+  const [isAssistant, setIsAssistant] = useState(false);
 
   const searchParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
   const success = searchParams?.get("success") === "1";
@@ -53,6 +58,8 @@ export default function BillingPage() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
+      const { data: me } = await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle();
+      if (me?.role === "assistant") { setIsAssistant(true); setLoading(false); return; }
       const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at, created_at").eq("broker_id", user.id).single();
       setSub(data ?? null);
       setLoading(false);
@@ -202,6 +209,25 @@ export default function BillingPage() {
         <div className="animate-pulse space-y-4">
           <div className="h-8 bg-ink-100 rounded-ctl w-48" />
           <div className="h-4 bg-ink-100 rounded-ctl w-72" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isAssistant) {
+    return (
+      <div className="px-6 py-8 max-w-4xl mx-auto">
+        <div className="mb-8 pb-6 border-b border-hairline">
+          <h1 className="text-display text-ink-900">Billing</h1>
+        </div>
+        <div className="bg-white border border-hairline rounded-card shadow-elev-1 px-6 py-5">
+          <h2 className="text-lg font-semibold text-ink-900">Plans belong to the broker</h2>
+          <p className="text-sm text-ink-500 mt-1 max-w-prose">
+            As an assistant there&rsquo;s nothing for you to subscribe to. Slideshows, sending and the other plan features follow each broker&rsquo;s own plan. If a broker you work for needs one, they can choose it from their own Billing page.
+          </p>
+          <Link href="/dashboard/listings" className="inline-block mt-4 text-sm font-semibold text-accent-700 hover:text-accent-600 transition-colors">
+            &larr; Back to Listings
+          </Link>
         </div>
       </div>
     );
