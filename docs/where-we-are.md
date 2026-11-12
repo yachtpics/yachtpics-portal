@@ -21,6 +21,16 @@
 - Charlie's export preset bug: 11 boats uploaded since Oct 28 are 1500 px, not
   hi-res (list given to him Nov 12); he is re-uploading, Breezy Day first.
 
+## AI photo labels — big uploads no longer time out (Nov 12, 2026) — NOT PUSHED · typecheck + lint clean · no migration · NOT TESTED live
+
+Found while re-filming at **48 photos**: after the upload the page sent ONE label request for the whole batch; the server ran 6 model calls (8 photos each) one after another and hit the 60 s limit → **504**. The labels were in fact saved, but the browser got an error, so every photo still showed "Other" until a reload (the same call took 47 s earlier — right on the edge; 100+ photos could never finish).
+
+- **Server** (`src/lib/labelPhotos.ts`, `src/app/api/photos/categorize/route.ts`): model calls now run **3 at a time** (8 photos each). One request takes on at most **48 photos** and **~40 s of work** (no new model call starts after 40 s; one still running at 52 s is stopped), then answers JSON with `remaining` and `next` (where to carry on). Every answer is JSON, even on an unexpected error. A failed batch doesn't lose the others' labels.
+- **Page** (`src/components/listing-photos/usePhotoActions.ts`, shared by the broker and admin listing pages — upload auto-label, Label photos, Re-label photos): calls again from `next` until nothing remains, showing each round's labels as they arrive; the "N photos labelled" note counts every round. `next` must move forward each round (and at most 30 rounds), so it always ends — Re-label too. If a call fails with no usable answer (e.g. a 504), the page reads the saved labels back from the database and says how many are still Other.
+- **Background "Label photos" job**: same code, now also 3 calls at a time; otherwise unchanged (no per-call cap or hard stop).
+- **Help**: no change — brokers see the same thing, it just finishes reliably (labels now appear in waves on big uploads).
+- **To check (Charlie)** — filming account: reset, upload the 48 "Beautiful M" photos → labels should appear in a wave or two without reloading and the note should read "48 photos labelled…"; then press Re-label photos → it finishes and doesn't loop.
+
 ## AI photo labels — plain names only (Nov 12, 2026) — NOT PUSHED · typecheck + lint clean · no migration · NOT TESTED against the live model
 
 Owner decision: "names more generic so it gets it correct, and the broker can adjust from there." In a real test on a 95' Azimut (48 phone-named photos, filming account, "Beautiful M") every photo got a label but only **20 of 48** matched the photographer's own areas — the model was more specific than a photo can show: every cabin "Master Stateroom" (or Captain's / Crew / Cabin), every bathroom "Master Stateroom Head", flybridge shots "Aft Deck" / "Sun Deck" / "Cockpit", bow shots "Foredeck" / "Cockpit", a pilothouse "Salon", dining "Salon".

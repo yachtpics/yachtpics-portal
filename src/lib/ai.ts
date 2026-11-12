@@ -27,11 +27,27 @@ type Block =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "url"; url: string } };
 
-async function ask(blocks: Block[], opts: { system: string; maxTokens: number }): Promise<string> {
+async function ask(blocks: Block[], opts: { system: string; maxTokens: number; timeoutMs?: number }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("AI is not configured (ANTHROPIC_API_KEY is missing).");
+  // Optional cap on the whole call, so a caller with a time budget (the photo
+  // labelling route) can still answer before the platform cuts it off.
+  const ctrl = opts.timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), opts.timeoutMs) : null;
+  try {
+    return await askOnce(key, blocks, opts, ctrl?.signal);
+  } catch (err) {
+    if (ctrl?.signal.aborted) throw new Error("AI request took too long and was stopped.");
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function askOnce(key: string, blocks: Block[], opts: { system: string; maxTokens: number }, signal?: AbortSignal): Promise<string> {
   const res = await fetch(API, {
     method: "POST",
+    signal,
     headers: {
       "x-api-key": key,
       "anthropic-version": "2023-06-01",
@@ -70,7 +86,7 @@ function extractJson<T>(text: string): T | null {
  * specific answer is mapped down to its plain label (normalizeAiPhotoLabel);
  * anything else is discarded rather than invented.
  */
-export async function categorizePhotos(images: { url: string }[]): Promise<(string | null)[]> {
+export async function categorizePhotos(images: { url: string }[], opts: { timeoutMs?: number } = {}): Promise<(string | null)[]> {
   if (images.length === 0) return [];
   const system = [
     "You label photographs of yachts and boats for a broker's listing gallery.",
@@ -90,7 +106,7 @@ export async function categorizePhotos(images: { url: string }[]): Promise<(stri
   });
   blocks.push({ type: "text", text: `Label all ${images.length} images. JSON array only.` });
 
-  const reply = await ask(blocks, { system, maxTokens: 60 + images.length * 24 });
+  const reply = await ask(blocks, { system, maxTokens: 60 + images.length * 24, timeoutMs: opts.timeoutMs });
   const parsed = extractJson<{ i: number; label: string | null }[]>(reply) ?? [];
   const out: (string | null)[] = images.map(() => null);
   for (const row of parsed) {

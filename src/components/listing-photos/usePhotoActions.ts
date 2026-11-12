@@ -73,33 +73,98 @@ export function usePhotoActions(opts: {
 
   /**
    * Ask the vision model to label photos that are still "Other" (or, with
-   * `force`, everything a person hasn't set by hand). Updates the grid in
-   * place. Quiet on failure — labelling is a convenience, never a blocker.
+   * `force`, the ones it labelled before). Updates the grid in place.
+   *
+   * The route takes up to 48 photos (about 40 s) per call and answers with
+   * `remaining` / `next`, so this pages: call, show that round's labels at
+   * once, call again from `next` while photos remain. `next` must move
+   * forward every round (and rounds are capped), so it always ends — with
+   * `force` too. If a call fails without a usable answer (e.g. the platform's
+   * 504), the labels saved so far are read back from the database so the grid
+   * still shows them. Quiet otherwise — labelling is a convenience, never a
+   * blocker.
    */
   async function labelWithAi(photoIds?: string[], force = false): Promise<number> {
     if (!state.aiConfigured) return 0;
     setLabeling(true);
     setLabelNote(null);
+    const MAX_ROUNDS = 30;
+    // The route reads at most 200 photo ids per call; send longer lists in chunks.
+    const chunks: (string[] | undefined)[] = [];
+    if (photoIds) { for (let i = 0; i < photoIds.length; i += 200) chunks.push(photoIds.slice(i, i + 200)); }
+    else chunks.push(undefined);
+
+    let total = 0;
+    let unsure = 0;
+    let considered = 0;
+    let leftOver = 0;
+    let stopError: string | null = null;
+    let lost = false; // a call failed with no usable answer
+    const apply = (updated: { id: string; category: string }[]) => {
+      if (!updated.length) return;
+      const map = new Map(updated.map((u) => [u.id, u.category]));
+      setPhotos((prev) => prev.map((p) => (map.has(p.id) ? { ...p, category: map.get(p.id)! } : p)));
+    };
+
     try {
-      const res = await fetch("/api/photos/categorize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(photoIds ? { listingId, photoIds, force } : { listingId, force }),
-      });
-      const data = await res.json().catch(() => ({}));
-      const updated: { id: string; category: string }[] = data?.updated ?? [];
-      if (updated.length) {
-        const map = new Map(updated.map((u) => [u.id, u.category]));
-        setPhotos((prev) => prev.map((p) => (map.has(p.id) ? { ...p, category: map.get(p.id)! } : p)));
+      for (let c = 0; c < chunks.length && !stopError && !lost; c++) {
+        const ids = chunks[c];
+        let cursor = 0;
+        for (let round = 0; round < MAX_ROUNDS; round++) {
+          let data: {
+            updated?: { id: string; category: string }[]; considered?: number; unsure?: number;
+            remaining?: number; next?: number | null; error?: string;
+          } | null = null;
+          let ok = false;
+          try {
+            const res = await fetch("/api/photos/categorize", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ listingId, force, cursor, ...(ids ? { photoIds: ids } : {}) }),
+            });
+            ok = res.ok;
+            data = await res.json().catch(() => null);
+          } catch {
+            data = null;
+          }
+          if (!data) { lost = true; break; }
+
+          const updated = data.updated ?? [];
+          apply(updated);
+          total += updated.length;
+          unsure += data.unsure ?? 0;
+          if (round === 0) considered += data.considered ?? 0;
+          if (!ok || data.error) { stopError = data.error ?? "Labelling failed."; break; }
+
+          const remaining = data.remaining ?? 0;
+          const next = typeof data.next === "number" ? data.next : null;
+          // Done, or no forward progress (cursor must move on every round).
+          if (remaining <= 0 || next === null || next <= cursor) { leftOver += Math.max(0, remaining); break; }
+          cursor = next;
+          if (round === MAX_ROUNDS - 1) leftOver += remaining;
+        }
       }
-      const noun = isAdmin ? "" : ` photo${updated.length === 1 ? "" : "s"}`;
-      if (!res.ok && data?.error) setLabelNote(`Labelling stopped: ${data.error}`);
-      else if (data?.considered === 0) setLabelNote("Nothing left to label.");
-      else setLabelNote(`${updated.length}${noun} labelled${data?.unsure ? ` · ${data.unsure} left as Other` : ""}.`);
+
+      if (lost) {
+        // e.g. a 504 after the server had already saved labels: read them back.
+        const { data: rows } = await supabase.from("photos").select("id, category").eq("listing_id", listingId);
+        const scope = photoIds ? new Set(photoIds) : null;
+        let stillOther = 0;
+        if (rows) {
+          apply(rows.map((r) => ({ id: r.id as string, category: (r.category as string | null) ?? "Other" })));
+          stillOther = rows.filter((r) => (!scope || scope.has(r.id as string)) && (!r.category || r.category === "Other")).length;
+        }
+        setLabelNote(`Labelling stopped early — the labels saved so far are shown${stillOther ? ` · ${stillOther} still Other, press Label photos to finish` : ""}.`);
+      } else {
+        const noun = isAdmin ? "" : ` photo${total === 1 ? "" : "s"}`;
+        if (stopError) setLabelNote(`Labelling stopped: ${stopError}${total ? ` (${total}${noun} labelled first)` : ""}`);
+        else if (considered === 0) setLabelNote("Nothing left to label.");
+        else setLabelNote(`${total}${noun} labelled${unsure ? ` · ${unsure} left as Other` : ""}${leftOver ? ` · ${leftOver} not reached — press Label photos again` : ""}.`);
+      }
       setTimeout(() => setLabelNote(null), 5000);
-      return updated.length;
+      return total;
     } catch {
-      return 0;
+      return total;
     } finally {
       setLabeling(false);
     }
