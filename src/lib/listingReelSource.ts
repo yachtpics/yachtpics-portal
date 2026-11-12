@@ -85,7 +85,7 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => ({
           isSubscriber: isDepthLooksSubscriber(d?.status),
-          assistantGate: assistant ? assistantPlanCopy(d?.brokerName ?? null) : null,
+          assistantGate: assistant || d?.brokerName ? assistantPlanCopy(d?.brokerName ?? null) : null,
         }))
         .catch(() => ({ isSubscriber: false, assistantGate: assistant ? assistantPlanCopy(null) : null }));
 

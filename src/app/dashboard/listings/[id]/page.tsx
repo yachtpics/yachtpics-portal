@@ -754,7 +754,9 @@ export default function BrokerListingPage() {
   // Send to Client is a paid feature and needs something to deliver
   // (a published slideshow, a document, or a video).
   // Assistant wording for every no-plan gate on this page (null for brokers).
-  const assistantGate = isAssistant && !hasAccess(accessStatus) ? assistantPlanCopy(brokerName) : null;
+  // brokerName only comes back when the viewer isn't this listing's broker, so
+  // a brokerage admin or portal admin gets the same named wording.
+  const assistantGate = (isAssistant || brokerName != null) && !hasAccess(accessStatus) ? assistantPlanCopy(brokerName) : null;
   const canSendToClient = !!listing && hasAccess(accessStatus) && (listing.slideshow_published || documents.length > 0 || videos.length > 0);
 
   // This — not loading.tsx — is what people actually see after clicking a boat.

@@ -23,9 +23,14 @@
   trial/plan actually ran out (`noPlanHeadline` in `subscriptionAccess.ts`).
 - Help: one line added to "Working with Assistants". PDF rebuilt and pushed
   (da08937).
-- Left alone, worth a look later: a brokerage admin opening a managed broker's
-  listing gets 403 from the status call and so sees no-plan wording even when
-  that broker has a plan; co-brokers still see "See plans" on an owner's locked
+- **Brokerage admins (fixed Nov 11):** `/api/subscription/status?brokerId=`
+  used to answer only the broker or a linked assistant, so a brokerage admin
+  (or portal admin) opening a managed broker's listing got a 403 and the page
+  showed everything as locked even when that broker was paid up. It now also
+  answers a portal admin and a brokerage admin of the broker's own brokerage
+  (same test as `assertListingAccess`), read-only. If that broker really has no
+  plan they get the named wording too. Help: no change (bug fix).
+- Left alone, worth a look later: co-brokers still see "See plans" on an owner's locked
   report/spec sheet; `dashboard/layout.tsx` may start a fresh trial for a
   broker whose paid plan was cancelled and who has no `trial_ends_at`.
 

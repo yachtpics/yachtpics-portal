@@ -187,7 +187,7 @@ export default function SocialGraphicPage() {
           if (subRes.ok) {
             const subData = await subRes.json();
             setLocked(!hasAccess(subData?.status));
-            setAssistantGate(assistant ? assistantPlanCopy(subData?.brokerName ?? null) : null);
+            setAssistantGate(assistant || subData?.brokerName ? assistantPlanCopy(subData?.brokerName ?? null) : null);
           }
         } catch { /* stay unlocked on a status hiccup */ }
       }
