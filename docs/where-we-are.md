@@ -3,6 +3,24 @@
 
 
 
+
+## AI labels re-test + filming account live (Nov 12, evening)
+
+- Live re-test of the plain AI labels on the filming account's "Beautiful M"
+  (48 phone-named photos, Re-label photos): **38 of 48** right against the
+  plain targets, none left as Other (was 20 of 48). The 10 misses: flybridge
+  helm called Helm (2), drone shots of the bow/flybridge/profile called Aerial
+  (3), dining called Salon (2), a pilothouse called Salon, a flybridge and a
+  bow shot called Aft Deck. Re-test script: `portal-video/scripts/f_relabel.py`.
+- Help PDF rebuilt for the label wording.
+- Filming account: migration `20261112_demo_rw_filming_account.sql` is APPLIED
+  (0 gaps, 15 exemption policies, 4 guard triggers), `demo_rw_seed` ran (Sam
+  Carter, filming@yachtpics.com), a 48 h link "Filming - capture browser" is
+  minted (expires Nov 14 18:39 UTC). First real use worked: listing created
+  (forced private - checked), 48 photos uploaded in 7 s, labelled in 47 s.
+- Charlie's export preset bug: 11 boats uploaded since Oct 28 are 1500 px, not
+  hi-res (list given to him Nov 12); he is re-uploading, Breezy Day first.
+
 ## AI photo labels — plain names only (Nov 12, 2026) — NOT PUSHED · typecheck + lint clean · no migration · NOT TESTED against the live model
 
 Owner decision: "names more generic so it gets it correct, and the broker can adjust from there." In a real test on a 95' Azimut (48 phone-named photos, filming account, "Beautiful M") every photo got a label but only **20 of 48** matched the photographer's own areas — the model was more specific than a photo can show: every cabin "Master Stateroom" (or Captain's / Crew / Cabin), every bathroom "Master Stateroom Head", flybridge shots "Aft Deck" / "Sun Deck" / "Cockpit", bow shots "Foredeck" / "Cockpit", a pilothouse "Salon", dining "Salon".
