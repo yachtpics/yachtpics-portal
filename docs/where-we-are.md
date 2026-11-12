@@ -21,8 +21,8 @@
   (`src/lib/assistantBilling.ts`).
 - Brokers: the no-plan notice says "You don't have a plan yet." unless a
   trial/plan actually ran out (`noPlanHeadline` in `subscriptionAccess.ts`).
-- Help: one line added to "Working with Assistants". **PDF rebuild pending**
-  until done on Charlie's computer.
+- Help: one line added to "Working with Assistants". PDF rebuilt and pushed
+  (da08937).
 - Left alone, worth a look later: a brokerage admin opening a managed broker's
   listing gets 403 from the status call and so sees no-plan wording even when
   that broker has a plan; co-brokers still see "See plans" on an owner's locked
