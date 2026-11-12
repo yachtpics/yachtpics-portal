@@ -3,7 +3,8 @@
 export const dynamic = "force-dynamic";
 
 import { useState, useEffect } from "react";
-import { Button, Input, Label } from "@/components/ui";
+import { Button } from "@/components/ui";
+import LinkExpiredPanel from "@/components/auth/LinkExpiredPanel";
 import { safeNextPath } from "@/lib/safeNext";
 
 /** Login-page wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
@@ -29,11 +30,6 @@ export default function ConfirmSignInPage() {
   // Where the sign-in link was meant to take them (validated, same-site only).
   const [next, setNext] = useState<string | null>(null);
 
-  // Inline resend from the expired screen.
-  const [resendEmail, setResendEmail] = useState("");
-  const [resending, setResending] = useState(false);
-  const [resent, setResent] = useState(false);
-
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setTokenHash(params.get("token_hash"));
@@ -44,7 +40,8 @@ export default function ConfirmSignInPage() {
     if (!params.get("token_hash")) setExpired(true);
   }, []);
 
-  // The token is consumed only here, on an explicit click — not on page load —
+  // Older magic-link emails (before Nov 11, 2026) land here; new ones open
+  // /auth/continue. The token is consumed only here, on an explicit click — not on page load —
   // so a mail scanner's silent pre-fetch can't burn the link before the user.
   async function handleSignIn() {
     if (!tokenHash || signingIn) return;
@@ -79,19 +76,6 @@ export default function ConfirmSignInPage() {
     window.location.assign(next ?? destination);
   }
 
-  async function resendLink(e: React.FormEvent) {
-    e.preventDefault();
-    if (!resendEmail.trim() || resending) return;
-    setResending(true);
-    await fetch("/api/auth/magic-link", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: resendEmail.trim(), next }),
-    });
-    setResending(false);
-    setResent(true);
-  }
-
   return (
     <div className="relative min-h-screen bg-ink-950 flex items-center justify-center px-4 py-16 overflow-hidden">
       <div aria-hidden className="pointer-events-none absolute inset-0">
@@ -107,44 +91,7 @@ export default function ConfirmSignInPage() {
 
         <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm text-left">
           {expired ? (
-            resent ? (
-              <>
-                <p className="text-accent-300 text-3xl font-light text-center mb-3">✓</p>
-                <h1 className="text-h2 text-white mb-2 text-center">Check your email</h1>
-                <p className="text-sm text-ink-400 leading-relaxed text-center">
-                  We sent a fresh sign-in link to <span className="text-white">{resendEmail}</span>.
-                  Open it and press the button to sign in.
-                </p>
-              </>
-            ) : (
-              <>
-                <div className="w-10 h-10 rounded-full bg-warn-300/10 border border-warn-300/30 flex items-center justify-center mx-auto mb-4">
-                  <span className="text-warn-300 text-lg">!</span>
-                </div>
-                <h1 className="text-h2 text-white mb-2 text-center">Link expired</h1>
-                <p className="text-sm text-ink-400 leading-relaxed mb-5 text-center">
-                  This sign-in link has expired or was already used. Enter your email and we&apos;ll
-                  send a fresh one.
-                </p>
-                <form onSubmit={resendLink} className="space-y-3">
-                  <div>
-                    <Label tone="dark" className="mb-2">Email</Label>
-                    <Input
-                      tone="dark"
-                      type="email"
-                      required
-                      autoFocus
-                      value={resendEmail}
-                      onChange={(e) => setResendEmail(e.target.value)}
-                      placeholder="you@brokerage.com"
-                    />
-                  </div>
-                  <Button type="submit" disabled={resending} className="w-full focus-visible:ring-offset-ink-950">
-                    {resending ? "Sending…" : "Send me a new link"}
-                  </Button>
-                </form>
-              </>
-            )
+            <LinkExpiredPanel next={next} />
           ) : (
             <>
               <h1 className="text-h2 text-white mb-2 text-center">Sign in to YachtPics</h1>
@@ -162,12 +109,12 @@ export default function ConfirmSignInPage() {
             </>
           )}
 
-          <a
+          {!expired && <a
             href="/auth/login"
             className="mt-6 block text-center text-sm text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast"
           >
             Back to sign in
-          </a>
+          </a>}
         </div>
       </div>
     </div>

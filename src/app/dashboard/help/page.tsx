@@ -13,11 +13,11 @@ const sections = [
     num: "01",
     title: "Creating Your Account",
     steps: [
-      "You'll receive an invite email from YachtPics — click 'Set Up Your Account' and create a password.",
+      "You'll receive an invite email from YachtPics. If it has a temporary password, log in with it; if it has a 'Set Up Your Account' button, click it, press Continue, and create a password.",
       "Your profile is pre-filled with your name and email. Complete the rest under My Profile.",
       "If you have an assistant, they may already be linked and ready to help before you even log in.",
       "Signing in later: use your email and password, or click 'Email me a sign-in link' on the login page and we'll send a one-click link — no password to remember.",
-      "If a reset or sign-in link says it's expired, use the Resend button right on that screen to get a fresh one.",
+      "If a sign-in link says it's already been used or has expired (work email can open links before you do), click 'Email me a new link' right on that screen. For a password reset link, use the Resend button on that screen.",
       "After signing in you land on My Listings, with your newest boat spotlighted at the top.",
       "On a phone, the tabs along the bottom take you to Home, Listings, Recently Photographed and your Profile. Everything else, such as Help, Tips, News and Billing, is under More.",
       "Install the portal like an app: on an iPhone, open it in Safari, tap Share, then Add to Home Screen. On Android or a computer, use the Install prompt the portal shows. You get an icon that opens straight to your listings.",

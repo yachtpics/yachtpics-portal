@@ -2,6 +2,7 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { safeNextPath } from '@/lib/safeNext'
 import { accessTokenHasDemoClaim, demoPostAllowed, DEMO_BLOCK_HEADER, DEMO_READ_ONLY_MESSAGE } from '@/lib/demo'
+import { CONTINUE_NONCE_COOKIE, CONTINUE_NONCE_MAX_AGE, newContinueNonce, parseContinueNonce } from '@/lib/authLinks'
 
 /**
  * Send a signed-out visitor to the login page, remembering where they were
@@ -132,7 +133,67 @@ async function demoReadOnlyGate(
   return { block: null, refreshed: wrote ? response : null };
 }
 
+/**
+ * /auth/continue (the page an emailed sign-in link opens; Nov 11 review M1 + L1).
+ *
+ * 1. Login-CSRF nonce: on GET, if the browser didn't send a valid yp_continue
+ *    cookie, mint one and write it BOTH onto the forwarded request (so the
+ *    page's cookies() already sees it on this first render and puts it in the
+ *    hidden field) AND onto the response as Set-Cookie (so the browser sends
+ *    it with the Continue POST). A valid existing cookie is reused, so two
+ *    tabs / the back button keep working. A mail scanner's GET just gets its
+ *    own nonce.
+ * 2. Session refresh: getSession() refreshes an expired access token and the
+ *    new cookies are persisted here (a Server Component can't write cookies).
+ *    No redirects of any kind: signed-out visitors stay, signed-in visitors
+ *    are not bounced (the page itself explains "already signed in"), and the
+ *    demo read-only gate is not applied (the page has no server actions; GET
+ *    is all it serves). Nothing here verifies the link.
+ * /auth/continue/verify is deliberately NOT in the matcher.
+ */
+async function continuePage(request: NextRequest): Promise<NextResponse> {
+  let nonce: string | null = null
+  if (request.method.toUpperCase() === 'GET' && !parseContinueNonce(request.cookies.get(CONTINUE_NONCE_COOKIE)?.value)) {
+    nonce = newContinueNonce()
+    request.cookies.set(CONTINUE_NONCE_COOKIE, nonce)
+  }
+  let response = NextResponse.next({ request })
+  try {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (supabaseUrl && supabaseKey) {
+      const supabase = createServerClient(supabaseUrl, supabaseKey, {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+            response = NextResponse.next({ request })
+            cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options))
+          },
+        },
+      })
+      await supabase.auth.getSession()
+    }
+  } catch (error) {
+    console.error('Middleware error (continue):', error)
+    response = NextResponse.next({ request })
+  }
+  if (nonce) {
+    response.cookies.set(CONTINUE_NONCE_COOKIE, nonce, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'strict',
+      path: '/auth/continue',
+      maxAge: CONTINUE_NONCE_MAX_AGE,
+    })
+  }
+  return response
+}
+
 export async function middleware(request: NextRequest) {
+  if (request.nextUrl.pathname === '/auth/continue') return continuePage(request)
   try {
     // /api is matched ONLY for the demo read-only gate; nothing else here
     // applies to it.
@@ -252,5 +313,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   // /api/:path* is here only for the demo read-only gate (non-GET requests
   // with a Supabase session; everything else passes straight through).
-  matcher: ['/dashboard/:path*', '/admin/:path*', '/client/:path*', '/auth/login', '/auth/signup', '/api/:path*'],
+  // /auth/continue (exact path, NOT /auth/continue/verify) only for its
+  // CSRF nonce cookie and session refresh — see continuePage().
+  matcher: ['/dashboard/:path*', '/admin/:path*', '/client/:path*', '/auth/login', '/auth/signup', '/auth/continue', '/api/:path*'],
 }

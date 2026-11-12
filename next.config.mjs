@@ -42,6 +42,37 @@ const nextConfig = {
         source: "/dashboard/:path*",
         headers: [{ key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" }],
       },
+      // Emailed sign-in links land here (Nov 11, 2026): the URL carries a
+      // one-time token hash, so never cache it, never send it on as a
+      // Referer, never index it.
+      {
+        source: "/auth/continue/:path*",
+        headers: [
+          { key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+      {
+        source: "/auth/:page(continue|confirm)",
+        headers: [
+          { key: "Cache-Control", value: "private, no-store, max-age=0, must-revalidate" },
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+        ],
+      },
+      // No auth page may be framed (clickjacking the Continue / Sign in
+      // buttons). Auth pages only — slideshows (/s/…) are meant to be
+      // embeddable. Next applies EVERY matching rule (later ones win only on
+      // the same header key), so this adds to the /auth/continue and
+      // /auth/confirm rules above instead of replacing them.
+      {
+        source: "/auth/:path*",
+        headers: [
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "X-Frame-Options", value: "DENY" },
+        ],
+      },
       // The Walkthrough look's depth model and runtime (~41 MB). The folder is
       // versioned (/depth/v1/), so a file never changes in place — a new model
       // or runtime goes in /depth/v2/ — and the browser can keep these for a

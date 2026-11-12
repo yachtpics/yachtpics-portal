@@ -27,7 +27,7 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     setNext(safeNextPath(params.get("next")));
     if (params.get("error") === "auth_error") {
-      setError("That sign-in link has expired or was already used. Sign in below, or request a new link.");
+      setError("This sign-in link has already been used or has expired. Sign in below, or choose \u201cEmail me a sign-in link instead\u201d for a new one.");
     }
   }, []);
 

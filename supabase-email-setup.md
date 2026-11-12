@@ -31,6 +31,14 @@
 
 Go to **Authentication** → **Email Templates** and paste each template below.
 
+> **Nov 11, 2026 — work-email scanners.** Reset Password and Confirm Signup now
+> link to `https://portal.yachtpics.com/auth/continue?token_hash={{ .TokenHash }}&type=…`
+> instead of `{{ .ConfirmationURL }}`. The old link was used up by Microsoft
+> Safe Links-type scanners the moment the email arrived; the Continue page only
+> spends the token when the person presses **Continue**. Change Email Address
+> still uses `{{ .ConfirmationURL }}` (not converted). The Portal never uses
+> Supabase's Invite or Magic Link templates (it sends those itself).
+
 ---
 
 ### Reset Password
@@ -51,8 +59,8 @@ Go to **Authentication** → **Email Templates** and paste each template below.
       <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">
         We received a request to reset the password for your YachtPics Portal account. Click the button below to choose a new one.
       </p>
-      <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:28px;">Reset Password &rarr;</a>
-      <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;line-height:1.6;">This link expires in 24 hours. If you didn't request a password reset, you can safely ignore this email — your account remains secure.</p>
+      <a href="https://portal.yachtpics.com/auth/continue?token_hash={{ .TokenHash }}&type=recovery" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:28px;">Reset Password &rarr;</a>
+      <p style="margin:0 0 8px;font-size:13px;color:#9ca3af;line-height:1.6;">This link works once. If you didn't request a password reset, you can safely ignore this email — your account remains secure.</p>
     </div>
     <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">
       <p style="margin:0;font-size:12px;color:#c4c9d4;">Powered by <a href="https://yachtpics.com" style="color:#c4c9d4;text-decoration:none;">YachtPics</a> &middot; <a href="mailto:hello@yachtpics.com" style="color:#c4c9d4;text-decoration:none;">hello@yachtpics.com</a></p>
@@ -82,7 +90,7 @@ Go to **Authentication** → **Email Templates** and paste each template below.
       <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">
         Click below to confirm your email address and activate your YachtPics Portal account.
       </p>
-      <a href="{{ .ConfirmationURL }}" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:28px;">Confirm Email &rarr;</a>
+      <a href="https://portal.yachtpics.com/auth/continue?token_hash={{ .TokenHash }}&type=email" style="display:inline-block;background:#d4a843;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:28px;">Confirm Email &rarr;</a>
       <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">If you didn't create a YachtPics Portal account, you can safely ignore this email.</p>
     </div>
     <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">

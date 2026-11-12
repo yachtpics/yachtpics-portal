@@ -4,6 +4,8 @@ import { logEmail } from "@/lib/logEmail";
 import { findExistingUser } from "@/lib/findExistingUser";
 import { safeNextPath } from "@/lib/safeNext";
 import { demoUserIds } from "@/lib/demoServer";
+import { continueUrl } from "@/lib/authLinks";
+import { rateLimited } from "@/lib/simpleRateLimit";
 
 /**
  * Passwordless sign-in. The broker types their email, we generate a one-time
@@ -11,14 +13,23 @@ import { demoUserIds } from "@/lib/demoServer";
  * branded template — so delivery rides our existing, reliable pipeline instead
  * of Supabase's rate-limited default mailer.
  *
- * The link lands on /auth/confirm, which is CLICK-GATED: the token is only
- * consumed when the person presses a button. That's deliberate — corporate
- * mail scanners (HMY, etc.) pre-fetch links with a bare GET, which would burn a
- * normal one-time link before the user ever clicks. A button press is something
- * a scanner won't do, so the real user's link survives.
+ * The link lands on /auth/continue (Nov 11, 2026; was /auth/confirm, which
+ * still works for older emails), which is CLICK-GATED: the token is only
+ * consumed when the person presses Continue (a form POST, verified server-side).
+ * That's deliberate — corporate mail scanners (HMY, etc.) pre-fetch links with
+ * a bare GET, which would burn a normal one-time link before the user ever
+ * clicks. A button press is something a scanner won't do.
  *
  * We never reveal whether an account exists — same response either way.
+ * Rate limited (per server instance): 10 requests / 10 min per IP → 429; 5 per
+ * email address → the normal success answer with nothing sent (a silent drop,
+ * so nobody can learn that an address is being targeted, or use the limit as
+ * an oracle). Same for known and unknown emails.
  */
+
+function clientIp(req: NextRequest): string {
+  return (req.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || req.headers.get("x-real-ip") || "unknown";
+}
 export async function POST(req: NextRequest) {
   try {
     const { email, next: rawNext } = await req.json();
@@ -29,6 +40,12 @@ export async function POST(req: NextRequest) {
     }
 
     const cleanEmail = email.trim();
+    if (rateLimited(`magic-link-ip:${clientIp(req)}`, 10, 10 * 60_000)) {
+      return NextResponse.json({ error: "Too many requests — wait a few minutes, then try again." }, { status: 429 });
+    }
+    if (rateLimited(`magic-link-email:${cleanEmail.toLowerCase()}`, 5, 10 * 60_000)) {
+      return NextResponse.json({ success: true });
+    }
     const origin = new URL(req.url).origin;
 
     const supabase = createClient(
@@ -61,7 +78,7 @@ export async function POST(req: NextRequest) {
     }
 
     const tokenHash = data.properties.hashed_token;
-    const confirmUrl = `${origin}/auth/confirm?token_hash=${encodeURIComponent(tokenHash)}&type=magiclink${next ? `&next=${encodeURIComponent(next)}` : ""}`;
+    const confirmUrl = continueUrl(origin, tokenHash, "magiclink", { email: cleanEmail, next });
 
     const html = [
       "<!DOCTYPE html>",
@@ -74,7 +91,7 @@ export async function POST(req: NextRequest) {
       "    </div>",
       "    <div style=\"padding:40px;\">",
       "      <h1 style=\"margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;\">Your sign-in link</h1>",
-      "      <p style=\"margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;\">Click the button below to sign in to your YachtPics Portal — no password needed. This link works once and expires in about an hour.</p>",
+      "      <p style=\"margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;\">Click the button below to sign in to your YachtPics Portal — no password needed. This link works once.</p>",
       `      <a href="${confirmUrl}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:24px;">Sign In to YachtPics &rarr;</a>`,
       "      <p style=\"margin:0;font-size:13px;color:#9ca3af;line-height:1.6;\">If you didn&apos;t request this, you can safely ignore this email — nobody can access your account without clicking the link above.</p>",
       "    </div>",

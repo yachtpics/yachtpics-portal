@@ -3,7 +3,7 @@ import { Manrope } from "next/font/google";
 import "./globals.css";
 import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 import InstallPrompt from "@/components/InstallPrompt";
-import { Analytics } from "@vercel/analytics/next";
+import ScrubbedAnalytics from "@/components/ScrubbedAnalytics";
 
 /*
  * One family, self-hosted via next/font (zero layout shift, no Google
@@ -43,7 +43,7 @@ export default function RootLayout({
         {children}
         <ServiceWorkerRegistration />
         <InstallPrompt />
-        <Analytics />
+        <ScrubbedAnalytics />
       </body>
     </html>
   );

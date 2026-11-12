@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient as createServerClient } from "@/lib/supabase/server";
-import { createClient } from "@supabase/supabase-js";
 import { findExistingUser } from "@/lib/findExistingUser";
+import { requireAdmin } from "@/lib/requireAdmin";
+import { continueUrl } from "@/lib/authLinks";
+import { esc } from "@/lib/siteTemplates";
 
 // POST /api/admin/assistants — invite a standalone assistant (admin only, no broker required)
 export async function POST(req: NextRequest) {
@@ -12,25 +13,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Email is required." }, { status: 400 });
     }
 
-    // Verify caller is admin
-    const serverSupabase = await createServerClient();
-    const { data: { user: caller } } = await serverSupabase.auth.getUser();
-    if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { data: callerProfile } = await serverSupabase
-      .from("profiles")
-      .select("role")
-      .eq("id", caller.id)
-      .single();
-
-    if (callerProfile?.role !== "admin") {
-      return NextResponse.json({ error: "Admin access required." }, { status: 403 });
-    }
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    // Admin only (CLAUDE.md: every /api/admin route calls requireAdmin()).
+    const auth = await requireAdmin();
+    if (auth.error) return auth.error;
+    const supabase = auth.admin;
 
     // Check if email already exists (reliable regardless of account count)
     const existing = await findExistingUser(supabase, email);
@@ -72,7 +58,14 @@ export async function POST(req: NextRequest) {
       }
 
       assistantId = linkData.user.id;
-      const inviteLink = linkData.properties?.action_link ?? "https://portal.yachtpics.com";
+      // Nov 11, 2026: NOT Supabase's action_link (…supabase.co/auth/v1/verify),
+      // which a corporate mail scanner's GET uses up seconds after delivery.
+      // The email opens /auth/continue (verifies nothing on GET); the token
+      // hash is spent only by its Continue button, then → /auth/set-password.
+      const tokenHash = linkData.properties?.hashed_token;
+      const inviteLink = tokenHash
+        ? continueUrl("https://portal.yachtpics.com", tokenHash, "invite", { email })
+        : "https://portal.yachtpics.com/auth/login";
 
       await supabase.from("profiles").upsert({
         id: assistantId,
@@ -82,7 +75,8 @@ export async function POST(req: NextRequest) {
         last_name: lastName ?? null,
       });
 
-      const displayName = firstName ? `${firstName}${lastName ? " " + lastName : ""}` : "there";
+      // Admin-typed names go into HTML: escape them (and the link, for its href).
+      const displayName = firstName ? esc(`${firstName}${lastName ? " " + lastName : ""}`) : "there";
 
       const html = `<!DOCTYPE html>
 <html>
@@ -97,7 +91,10 @@ export async function POST(req: NextRequest) {
       <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">
         Hi ${displayName}, you've been set up as an assistant on YachtPics Portal. Set up your account below to get started.
       </p>
-      <a href="${inviteLink}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:24px;">Set Up Your Account &rarr;</a>
+      <a href="${esc(inviteLink)}" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:16px;">Set Up Your Account &rarr;</a>
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;">
+        This link works once. If the button says the link has expired, open <a href="https://portal.yachtpics.com/auth/login" style="color:#84662a;">portal.yachtpics.com</a> and choose &lsquo;Email me a sign-in link instead&rsquo;.
+      </p>
       <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;">
         As an assistant, you'll have access to manage listings, upload photos and videos, and send slideshows to clients on behalf of the brokers you're linked to.
       </p>

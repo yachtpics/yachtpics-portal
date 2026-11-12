@@ -12,13 +12,24 @@ export type ExistingUser = { id: string; role: string | null; first_name: string
  * grows past 50 — which caused "email already registered" errors when re-adding
  * a known broker/assistant. Always use this helper instead.
  */
+/**
+ * `ilike` treats % and _ as wildcards (and \ as their escape), and PostgREST
+ * also turns * into %: escape \ % _, and put a one-character wildcard in for
+ * * (it can't be escaped through PostgREST). The caller then keeps only an
+ * exact case-insensitive match, so "a_b@x.com" never finds "axb@x.com".
+ */
+export function escapeLikePattern(s: string): string {
+  return s.replace(/[\\%_]/g, (c) => "\\" + c).replace(/\*/g, "_");
+}
+
 export async function findExistingUser(supabase: SupabaseClient, email: string): Promise<ExistingUser | null> {
-  const { data: prof } = await supabase
+  const { data: profs } = await supabase
     .from("profiles")
-    .select("id, role, first_name, last_name")
-    .ilike("display_email", email)
-    .limit(1)
-    .maybeSingle();
+    .select("id, role, first_name, last_name, display_email")
+    .ilike("display_email", escapeLikePattern(email))
+    .limit(5);
+  const want = email.toLowerCase();
+  const prof = (profs ?? []).find((p) => typeof p.display_email === "string" && p.display_email.toLowerCase() === want);
   if (prof) {
     return { id: prof.id, role: prof.role ?? null, first_name: prof.first_name ?? null, last_name: prof.last_name ?? null };
   }

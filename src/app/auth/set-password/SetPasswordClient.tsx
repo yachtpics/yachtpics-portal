@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button, Input, Label } from "@/components/ui";
 import { friendlyAuthError } from "@/lib/authErrors";
+import LinkExpiredPanel from "@/components/auth/LinkExpiredPanel";
 
 /** The login page's wordmark lockup — thin, wide-tracked, hairline rule, small caps. */
 function WordmarkLockup() {
@@ -81,8 +82,17 @@ export default function SetPasswordClient() {
 
       const params = new URLSearchParams(window.location.search);
 
-      // Error signalled in URL
-      if (params.get("error")) { fail(subscription); return; }
+      // Error signalled in URL. Supabase's verify endpoint puts it in the
+      // HASH for these links (#error=access_denied&error_code=otp_expired…),
+      // e.g. when a mail scanner already used the invite link — fail at once
+      // instead of waiting 5 s for a session that won't come.
+      const hashErr = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+      if (params.get("error") || hashErr.get("error") || hashErr.get("error_code")) {
+        const { data: { session: existing } } = await supabase.auth.getSession();
+        if (existing?.user) { settle(existing.user.id, supabase); return; }
+        fail(subscription);
+        return;
+      }
 
       // PKCE flow — code arrives as ?code=
       const code = params.get("code");
@@ -188,24 +198,12 @@ export default function SetPasswordClient() {
           <div className="mb-10">
             <WordmarkLockup />
           </div>
-          <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm">
-            <div className="w-10 h-10 rounded-full bg-warn-300/10 border border-warn-300/30 flex items-center justify-center mx-auto mb-4">
-              <span className="text-warn-300 text-lg">!</span>
-            </div>
-            <h1 className="text-h2 text-white mb-2">Link expired</h1>
-            <p className="text-sm text-ink-400 leading-relaxed mb-6">
-              This invite link has already been used or has expired. Contact your broker or{" "}
-              <a href="mailto:hello@yachtpics.com" className="text-accent-300 hover:text-accent-200 hover:underline transition-colors duration-fast">
-                hello@yachtpics.com
-              </a>{" "}
-              to request a new one.
-            </p>
-            <a
-              href="/auth/login"
-              className="flex w-full items-center justify-center bg-accent-500 hover:bg-accent-400 text-ink-950 font-semibold text-sm py-3 min-h-[44px] rounded-ctl transition-colors duration-base ease-quiet focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950"
-            >
-              Go to Login
-            </a>
+          {/* Nov 11, 2026: was "Link expired … Contact your broker". Older
+              invitation emails used Supabase's own link, which a work mail
+              scanner can use up before the person clicks; they land here.
+              A new sign-in link goes on to this page so they can set a password. */}
+          <div className="bg-white/[0.03] border border-hairline-inverse rounded-surface p-8 backdrop-blur-sm text-left">
+            <LinkExpiredPanel next="/auth/set-password" />
           </div>
         </div>
       </div>
