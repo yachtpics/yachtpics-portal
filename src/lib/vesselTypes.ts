@@ -25,6 +25,7 @@ export const VESSEL_TYPES: readonly string[] = [
   "Day Cruiser",
   "Dinghy",
   "Downeast",
+  "Downeast Cruiser",
   "Picnic",
   "Dual Console",
   "Enclosed Flybridge",
