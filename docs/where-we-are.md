@@ -1,6 +1,22 @@
 # Where we are — October 6, 2026
 
 
+
+## Assistant welcome email (Nov 11)
+
+- The first-login welcome email (`src/app/api/email/welcome/route.ts`) told
+  **assistants** they had a 14-day free trial. Assistants have no plan or trial;
+  they now get their own version: names the broker(s) they work for, four short
+  steps, and "Nothing for you to subscribe to." Brokers' email is unchanged.
+- Help: no change (email only).
+- **Open, waiting on Charlie's yes:** on a listing whose broker has no plan, an
+  assistant sees the broker's wording ("Your plan has ended", "See plans",
+  "Send with a plan") with links to `/dashboard/billing` — a page that is not in
+  their menu but is not blocked either, so an assistant could start a
+  subscription of their own that covers nothing. Proposed: assistant wording
+  ("[Broker] doesn't have a plan…", no Billing links) and block Billing for
+  assistants.
+
 ## New photo area "Dinette/Guest Berth" (Nov 11, 2026) — PUSHED · no migration · no new dependency
 
 - Added to `PHOTO_CATEGORIES` (after Dinette) and to the Reel Service's "inside" rooms. Upload auto-labelling: `guessCategory` now treats "/" in an area name as a word break, so `…_dinette_guest_berth_01.jpg` and `DinetteGuestBerth02.jpg` map to it (a bare `guest_berth` still maps to Guest Stateroom).

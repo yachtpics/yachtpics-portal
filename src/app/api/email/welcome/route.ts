@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     // Fetch profile + first listing (if any)
     const { data: profile } = await supabase
       .from("profiles")
-      .select("first_name, display_email")
+      .select("first_name, display_email, role")
       .eq("id", userId)
       .single();
 
@@ -63,7 +63,78 @@ export async function POST(req: NextRequest) {
       ? `https://portal.yachtpics.com/dashboard/listings/${listings[0].id}`
       : "https://portal.yachtpics.com/dashboard/listings";
 
-    const html = `<!DOCTYPE html>
+    // Assistants have no plan or trial of their own — they work inside their
+    // brokers' accounts — so they get their own welcome (no trial sentence).
+    const isAssistant = profile.role === "assistant";
+    let assistantBrokerId: string | null = null;
+    let brokersLine = "As soon as a broker adds you, their listings appear in your portal.";
+    if (isAssistant) {
+      const { data: links } = await supabase
+        .from("broker_assistants")
+        .select("broker_id")
+        .eq("assistant_id", userId);
+      const brokerIds = (links ?? []).map((l) => l.broker_id as string);
+      if (brokerIds.length > 0) {
+        assistantBrokerId = brokerIds[0];
+        const { data: brokers } = await supabase
+          .from("profiles")
+          .select("first_name, last_name")
+          .in("id", brokerIds);
+        const esc = (v: string) => v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        const names = (brokers ?? [])
+          .map((b) => esc([b.first_name, b.last_name].filter(Boolean).join(" ").trim()))
+          .filter(Boolean);
+        if (names.length > 0) {
+          const joined = names.length === 1
+            ? names[0]
+            : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+          brokersLine = `You&rsquo;re set up as an assistant for <strong style="color:#111827;">${joined}</strong>. Their listings are in your portal, ready to work on.`;
+        }
+      }
+    }
+    const step = (n: number, title: string, body: string, last = false) => `
+        <tr>
+          <td style="padding:14px 0;${last ? "" : "border-bottom:1px solid #f3f4f6;"}vertical-align:top;">
+            <span style="display:inline-block;background:#c39e4e;color:#050b14;font-size:12px;font-weight:700;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;margin-right:12px;">${n}</span>
+            <span style="font-size:14px;color:#374151;line-height:1.5;"><strong style="color:#111827;">${title}</strong> — ${body}</span>
+          </td>
+        </tr>`;
+    const assistantHtml = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
+  <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.1);">
+    <div style="background:#050b14;padding:32px 40px;">
+      <p style="margin:0;font-size:20px;font-weight:600;color:#ffffff;letter-spacing:0.5px;">YachtPics <span style="color:#c39e4e;">Portal</span></p>
+    </div>
+    <div style="padding:40px;">
+      <h1 style="margin:0 0 12px;font-size:22px;font-weight:700;color:#111827;">You&rsquo;re all set, ${firstName}</h1>
+      <p style="margin:0 0 28px;font-size:15px;color:#6b7280;line-height:1.6;">${brokersLine}</p>
+
+      <p style="margin:0 0 16px;font-size:14px;font-weight:600;color:#111827;text-transform:uppercase;">Quick Start</p>
+
+      <table style="width:100%;border-collapse:collapse;margin-bottom:32px;">${
+        step(1, "Find the boat", "open Listings, or My Brokers to see one broker&rsquo;s boats at a time.") +
+        step(2, "Download the photos", "one at a time or all at once from the listing page. Downloading delivered photos is always free.") +
+        step(3, "Share the listing", "create the slideshow and send it to a client on the broker&rsquo;s behalf, right from the listing page.") +
+        step(4, "Need a hand?", "the Help page in your menu walks through each step.", true)
+      }
+      </table>
+
+      <a href="https://portal.yachtpics.com/dashboard/listings" style="display:inline-block;background:#c39e4e;color:#050b14;text-decoration:none;font-weight:600;font-size:15px;padding:14px 28px;border-radius:8px;margin-bottom:32px;">Open My Portal &rarr;</a>
+
+      <p style="margin:0 0 16px;font-size:13px;color:#6b7280;line-height:1.6;"><strong style="color:#111827;">Nothing for you to subscribe to.</strong> Slideshows, sending and the other plan features follow each broker&rsquo;s own plan.</p>
+
+      <p style="margin:0;font-size:13px;color:#9ca3af;line-height:1.6;">Questions? Just reply to this email — we&rsquo;re here.</p>
+    </div>
+    <div style="padding:24px 40px;border-top:1px solid #f3f4f6;">
+      <p style="margin:0;font-size:12px;color:#c5cbd2;">Powered by <a href="https://yachtpics.com" style="color:#c5cbd2;text-decoration:none;">YachtPics</a></p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const brokerHtml = `<!DOCTYPE html>
 <html>
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f7f8f9;margin:0;padding:40px 20px;">
@@ -130,6 +201,7 @@ export async function POST(req: NextRequest) {
   </div>
 </body>
 </html>`;
+    const html = isAssistant ? assistantHtml : brokerHtml;
 
     const resendRes = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -150,9 +222,9 @@ export async function POST(req: NextRequest) {
     await logEmail({
       emailType: "welcome",
       recipientEmail: email,
-      recipientRole: "broker",
+      recipientRole: isAssistant ? "assistant" : "broker",
       recipientId: userId,
-      brokerId: userId,
+      brokerId: isAssistant ? assistantBrokerId : userId,
       listingId: hasListing ? listings[0].id : null,
       subject: "Welcome to YachtPics Portal — here's how to get started",
       status: resendRes.ok ? "sent" : "failed",
