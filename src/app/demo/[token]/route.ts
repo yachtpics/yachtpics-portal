@@ -2,7 +2,8 @@ import { createHash, randomBytes, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
-import { isDemoUser } from "@/lib/demo";
+import { FILMING_LINK_MAX_HOURS, isDemoUser, isWritableDemoUser } from "@/lib/demo";
+import { readDemoAccountRows } from "@/lib/demoServer";
 import { rateLimited } from "@/lib/simpleRateLimit";
 
 export const runtime = "nodejs";
@@ -32,6 +33,15 @@ export const revalidate = 0;
  *
  * The token is in the URL, so it IS in Vercel's request logs: keep link
  * expiries short (docs/where-we-are.md).
+ *
+ * Which account (Nov 12, 2026): `demo_links.account_user_id` names it; null
+ * (every link minted before the filming account existed) means the read-only
+ * demo — the oldest demo_accounts row that isn't `writable`. A link for the
+ * FILMING account (writable demo) must also: point at a row with
+ * writable = true whose user carries app_metadata.demo_rw, and live no longer
+ * than FILMING_LINK_MAX_HOURS from its creation (the demo_links trigger
+ * enforces that too). A read-only link never opens the filming account and
+ * vice versa.
  *
  * Every failure is the same 404 "This demo link isn't active." — whether the
  * token never existed, was revoked, expired, or the demo isn't set up (the
@@ -111,27 +121,45 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
 
     // ── the link ──────────────────────────────────────────────────────────
     const hash = sha256Hex(token);
-    const { data: link, error: linkErr } = await svc
+    let { data: link, error: linkErr } = await svc
       .from("demo_links")
-      .select("id, token_hash, expires_at, revoked_at")
+      .select("id, token_hash, expires_at, revoked_at, created_at, account_user_id")
       .eq("token_hash", hash)
       .maybeSingle();
+    if (linkErr && /account_user_id/i.test(linkErr.message ?? "")) {
+      // Before migration 20261112 (no account_user_id column): read-only links only.
+      ({ data: link, error: linkErr } = await svc
+        .from("demo_links")
+        .select("id, token_hash, expires_at, revoked_at, created_at")
+        .eq("token_hash", hash)
+        .maybeSingle());
+    }
     if (linkErr || !link) return inactive();
     if (!sameHex(String(link.token_hash), hash)) return inactive();
     if (link.revoked_at) return inactive();
     if (!link.expires_at || Date.parse(String(link.expires_at)) <= Date.now()) return inactive();
 
     // ── the demo user, by id ──────────────────────────────────────────────
-    const { data: accounts, error: accErr } = await svc
-      .from("demo_accounts")
-      .select("user_id, email, listing_id")
-      .order("created_at", { ascending: true })
-      .limit(1);
-    const account = !accErr && accounts && accounts[0] ? (accounts[0] as { user_id: string; email: string | null; listing_id: string | null }) : null;
-    if (!account?.user_id || !account.email || !account.listing_id) return inactive();
+    const rows = await readDemoAccountRows(svc).catch(() => null);
+    if (!rows) return inactive();
+    const linkAccount = (link as { account_user_id?: string | null }).account_user_id ?? null;
+    const account = linkAccount
+      ? rows.find((r) => r.user_id === linkAccount) ?? null
+      : rows.find((r) => !r.writable) ?? null;
+    if (!account?.user_id || !account.email) return inactive();
+    const filming = account.writable;
+    // The read-only demo needs its sample boat; the filming account starts empty.
+    if (!filming && !account.listing_id) return inactive();
+    if (filming) {
+      const created = Date.parse(String((link as { created_at?: string | null }).created_at ?? ""));
+      const expires = Date.parse(String(link.expires_at));
+      if (!Number.isFinite(created) || expires - created > FILMING_LINK_MAX_HOURS * 3600_000 + 60_000) return inactive();
+    }
     const { data: got, error: userErr } = await svc.auth.admin.getUserById(account.user_id);
     const demoUser = got?.user ?? null;
     if (userErr || !demoUser || !isDemoUser(demoUser)) return inactive();
+    // The claim must match the row: writable row ⇔ demo_rw claim.
+    if (filming !== isWritableDemoUser(demoUser)) return inactive();
     // The login email must still be the one demo_seed set: if it was changed
     // (Supabase Auth's own email change, outside our routes), refuse rather
     // than mint a session for an address someone else may now control.
@@ -184,7 +212,8 @@ export async function GET(req: NextRequest, { params }: { params: { token: strin
       const tokenHash = gen?.properties?.hashed_token;
       if (genErr || !tokenHash || gen?.user?.id !== account.user_id) return false;
       const { data: verified, error: verifyErr } = await ssr.auth.verifyOtp({ token_hash: tokenHash, type: "magiclink" });
-      return !verifyErr && !!verified?.session && verified.user?.id === account.user_id && isDemoUser(verified.user);
+      return !verifyErr && !!verified?.session && verified.user?.id === account.user_id && isDemoUser(verified.user)
+        && isWritableDemoUser(verified.user) === filming;
     };
     let minted = await mint();
     if (!minted) {

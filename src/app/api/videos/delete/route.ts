@@ -6,7 +6,7 @@ import { r2Configured, r2Delete, r2VideoDelete, r2VideoSize } from "@/lib/r2";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { buildListingFiles, markSitePhotosBackend } from "@/lib/sitePublish";
 import { ftpConfigured, uploadFiles } from "@/lib/siteFtp";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -25,7 +25,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     // Read-only demo (layer 3 — src/lib/demo.ts).
-    { const demo = demoGuard(user); if (demo) return demo; }
+    { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
     // Use service role for all permission checks — avoids RLS blocking the join read
     const supabaseAdmin = createClient(
@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     if (video.listing_id) {
       const access = await assertListingAccess(supabaseAdmin, video.listing_id, user.id);
       if (access instanceof NextResponse) return access;
+      { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
     } else {
       const { data: me } = await supabaseAdmin.from("profiles").select("role").eq("id", user.id).maybeSingle();
       if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });

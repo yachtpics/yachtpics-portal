@@ -1,5 +1,6 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { filmingUserIds } from "@/lib/demoServer";
 import ShowroomBuilder, { type ShowroomBroker, type ShowroomBrokerage } from "./ShowroomBuilder";
 
 export const dynamic = "force-dynamic";
@@ -13,11 +14,14 @@ export const dynamic = "force-dynamic";
 export default async function ShowroomPage() {
   await requireAdminPage();
   const admin = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const [{ data: bks }, { data: brs }, { data: dets }] = await Promise.all([
+  const [{ data: bks }, { data: brsAll }, { data: dets }, filmingIds] = await Promise.all([
     admin.from("brokerages").select("id, name").order("name"),
     admin.from("profiles").select("id, first_name, last_name, display_email, brokerage_id").eq("role", "broker"),
     admin.from("broker_details").select("id, brokerage_name, brokerage_logo_url, logo_url"),
+    filmingUserIds(admin),
   ]);
+  // The private filming account (writable demo) is left out.
+  const brs = (brsAll ?? []).filter((b) => filmingIds.indexOf((b as { id: string }).id) < 0);
   type Det = { id: string; brokerage_name: string | null; brokerage_logo_url: string | null; logo_url: string | null };
   const detBy: Record<string, Det> = {};
   ((dets ?? []) as Det[]).forEach((d) => { detBy[d.id] = d; });

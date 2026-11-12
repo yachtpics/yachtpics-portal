@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, isWritableDemoUser } from "@/lib/demoServer";
 
 export async function POST(req: NextRequest) {
   try {
@@ -23,8 +23,11 @@ export async function POST(req: NextRequest) {
     const serverSupabase = await createServerClient();
     const { data: { user: caller } } = await serverSupabase.auth.getUser();
     if (!caller) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    // Read-only demo (layer 3 — src/lib/demo.ts).
-    { const demo = demoGuard(caller); if (demo) return demo; }
+    // Read-only demo (layer 3 — src/lib/demo.ts). The filming account (writable
+    // demo) may create listings — always private, forced below and by the
+    // listings trigger in migration 20261112_demo_rw_filming_account.sql.
+    { const demo = demoGuard(caller, { allowWritableDemo: true }); if (demo) return demo; }
+    const filming = isWritableDemoUser(caller);
 
     const { data: callerProfile } = await serverSupabase
       .from("profiles")
@@ -35,6 +38,10 @@ export async function POST(req: NextRequest) {
     const role = callerProfile?.role;
 
     let effectiveBrokerId: string;
+
+    if (filming && role !== "broker") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     if (role === "broker") {
       // Broker always creates under their own account
@@ -80,6 +87,19 @@ export async function POST(req: NextRequest) {
         location: location || null,
         description: description || null,
         status: "active",
+        // Filming account: a pocket listing that can never reach the website,
+        // the showcase or Recently Photographed, whatever the client sent.
+        ...(filming
+          ? {
+              showcase_opt_out: true,
+              showcase_opt_out_by: caller.id,
+              showcase_opt_out_at: new Date().toISOString(),
+              in_showcase: false,
+              publish_to_site: false,
+              site_hidden: true,
+              is_shared: false,
+            }
+          : {}),
       })
       .select("id")
       .single();

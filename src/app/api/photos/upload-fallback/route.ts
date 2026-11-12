@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
   const b = await req.json().catch(() => ({}));
   const str = (v: unknown, n = 200) => (typeof v === "string" ? v.slice(0, n) : v == null ? null : String(v).slice(0, n));
   console.error(

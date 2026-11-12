@@ -1,6 +1,7 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import Link from "next/link";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { filmingUserIds } from "@/lib/demoServer";
 import {
   getAccessStatus,
   isStripePaid,
@@ -42,14 +43,17 @@ export default async function AdminTrialsPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const [{ data: profiles }, { data: subs }] = await Promise.all([
+  // The private filming account (writable demo) is left out of this list.
+  const [{ data: allProfiles }, { data: subs }, filmingIds] = await Promise.all([
     service.from("profiles").select("id, first_name, last_name, display_email, welcomed_at").eq("role", "broker"),
     service
       .from("subscriptions")
       .select(
         "broker_id, status, trial_ends_at, stripe_subscription_id, stripe_price_id, current_period_end"
       ),
+    filmingUserIds(service),
   ]);
+  const profiles = (allProfiles ?? []).filter((p) => filmingIds.indexOf(p.id as string) < 0);
 
   const subByBroker = new Map(
     (subs ?? []).map((s) => [s.broker_id as string, s])

@@ -5,7 +5,7 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 import { logMediaDeletion, listingDisplayName, profileDisplayName } from "@/lib/mediaDeletionLog";
 import { removeDerivatives } from "@/lib/photoDerivatives";
 import { deleteOriginals, headR2Original, noteR2PhotoExists, signOriginalUrl, signResizedPath } from "@/lib/photoStore";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -49,7 +49,7 @@ export async function POST(
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     // Read-only demo (layer 3 — src/lib/demo.ts).
-    { const demo = demoGuard(user); if (demo) return demo; }
+    { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
     const svc = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -58,6 +58,7 @@ export async function POST(
 
     const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
+    { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
     const { data: photo } = await svc
       .from("photos")

@@ -34,8 +34,8 @@ import { PHOTO_BUCKET, R2_PHOTO_BUCKET, r2PhotoKey, r2PhotosConfigured, noteR2Ph
 import { ensureDerivatives, removeDerivatives } from "@/lib/photoDerivatives";
 import { allDerivativePaths, downloadSizePath, downloadSizesErrorRecord, DOWNLOAD_SIZE_EDGES, type DownloadSizeName } from "@/lib/photoDerivativePaths";
 import { newSlideshowSlug } from "@/lib/slideshowPublish";
-import { DEMO_COMPANY, DEMO_EMAIL, DEMO_FIRST_NAME, DEMO_LAST_NAME, isDemoUser } from "@/lib/demo";
-import { forgetDemoAccounts } from "@/lib/demoServer";
+import { DEMO_COMPANY, DEMO_EMAIL, DEMO_FIRST_NAME, DEMO_LAST_NAME, isDemoUser, isWritableDemoUser } from "@/lib/demo";
+import { forgetDemoAccounts, readDemoAccountRows } from "@/lib/demoServer";
 import { JobFatalError, type JobHandler, type StepResult } from "./types";
 
 /** "Short Story" — the listing the demo copies. */
@@ -61,19 +61,15 @@ function sourceListingId(params: Record<string, unknown>): string {
   return isUuid(params.sourceListingId) ? params.sourceListingId : DEMO_SOURCE_LISTING_ID;
 }
 
+/**
+ * The READ-ONLY demo's row: the oldest demo_accounts row that isn't the
+ * writable filming account (Nov 12 — that one belongs to demoRwSeed.ts).
+ */
 async function readAccount(svc: SupabaseClient): Promise<AccountRow | null> {
-  const { data, error } = await svc
-    .from("demo_accounts")
-    .select("user_id, email, listing_id, source_listing_id")
-    .order("created_at", { ascending: true })
-    .limit(1);
-  if (error) {
-    if (/does not exist|could not find the table/i.test(error.message)) {
-      throw new JobFatalError("The demo tables aren't there yet — apply migration 20261110_demo_link.sql first.");
-    }
-    throw new Error(error.message);
-  }
-  return ((data ?? [])[0] as AccountRow | undefined) ?? null;
+  const rows = await readDemoAccountRows(svc);
+  if (rows === null) throw new JobFatalError("The demo tables aren't there yet — apply migration 20261110_demo_link.sql first.");
+  const row = rows.find((r) => !r.writable);
+  return row ? { user_id: row.user_id, email: row.email, listing_id: row.listing_id, source_listing_id: row.source_listing_id } : null;
 }
 
 /** The folder every demo file must live under. */
@@ -113,7 +109,7 @@ function pick(row: Record<string, unknown>, keys: string[]): Record<string, unkn
 
 // ─── identity ───────────────────────────────────────────────────────────────
 
-async function findUserByEmail(svc: SupabaseClient, email: string): Promise<User | null> {
+export async function findUserByEmail(svc: SupabaseClient, email: string): Promise<User | null> {
   for (let page = 1; page <= 50; page++) {
     const { data, error } = await svc.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw new Error(`listUsers: ${error.message}`);
@@ -137,8 +133,8 @@ async function ensureIdentity(svc: SupabaseClient, sourceId: string, log: string
   if (account) {
     const { data, error } = await svc.auth.admin.getUserById(account.user_id);
     if (!error && data?.user) user = data.user;
-    if (user && !isDemoUser(user)) {
-      throw new JobFatalError("demo_accounts points at a user without the demo claim — refusing. Check it by hand.");
+    if (user && (!isDemoUser(user) || isWritableDemoUser(user))) {
+      throw new JobFatalError("demo_accounts points at a user without the read-only demo claim — refusing. Check it by hand.");
     }
   }
 
@@ -160,8 +156,8 @@ async function ensureIdentity(svc: SupabaseClient, sourceId: string, log: string
     } else {
       const existing = await findUserByEmail(svc, DEMO_EMAIL);
       if (!existing) throw new Error(`createUser: ${error?.message ?? "no user returned"}`);
-      if (!isDemoUser(existing)) {
-        throw new JobFatalError(`${DEMO_EMAIL} already belongs to a login WITHOUT the demo claim — not touching it.`);
+      if (!isDemoUser(existing) || isWritableDemoUser(existing)) {
+        throw new JobFatalError(`${DEMO_EMAIL} already belongs to a login WITHOUT the read-only demo claim — not touching it.`);
       }
       user = existing;
       log.push("Found the existing demo login.");
@@ -174,7 +170,7 @@ async function ensureIdentity(svc: SupabaseClient, sourceId: string, log: string
     email: DEMO_EMAIL,
     email_confirm: true,
     password,
-    app_metadata: { ...(user.app_metadata ?? {}), demo: true },
+    app_metadata: { ...(user.app_metadata ?? {}), demo: true, demo_rw: false },
     user_metadata: { role: "broker", first_name: DEMO_FIRST_NAME, last_name: DEMO_LAST_NAME },
     ban_duration: "none",
   });
@@ -302,7 +298,7 @@ const PHOTO_COPY_KEYS = ["filename", "category", "category_source", "display_ord
 
 type SrcPhoto = Record<string, unknown> & { id: string; storage_path: string; storage_backend?: string | null };
 
-async function allRows<T>(q: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
+export async function allRows<T>(q: (from: number, to: number) => PromiseLike<{ data: unknown; error: { message: string } | null }>): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += 1000) {
     const { data, error } = await q(from, from + 999);
@@ -580,9 +576,17 @@ async function seedEngagement(svc: SupabaseClient, userId: string, listingId: st
  * with them). Access tokens already issued live on until they expire (≤ 1 h).
  * Logged, never fatal — a seed or reset is still worth finishing without it.
  */
-async function revokeDemoSessions(svc: SupabaseClient, log: string[]): Promise<void> {
+export async function revokeDemoSessions(svc: SupabaseClient, log: string[], userId?: string): Promise<void> {
   try {
-    const { data, error } = await svc.rpc("demo_revoke_sessions");
+    // One account only when we know which (Nov 12: re-seeding the read-only
+    // demo mustn't sign the filming account out mid-shoot). Falls back to
+    // every demo account before migration 20261112 adds the per-user function.
+    let { data, error } = userId
+      ? await svc.rpc("demo_revoke_sessions_for", { p_user_id: userId })
+      : await svc.rpc("demo_revoke_sessions");
+    if (error && userId && /demo_revoke_sessions_for|could not find the function|does not exist/i.test(error.message)) {
+      ({ data, error } = await svc.rpc("demo_revoke_sessions"));
+    }
     if (error) {
       log.push(`Demo sessions NOT signed out (${error.message.slice(0, 160)}) — run select public.demo_revoke_sessions(); by hand.`);
       return;
@@ -646,7 +650,7 @@ export const demoSeed: JobHandler = async (job, { svc, deadlineMs }) => {
     await seedEngagement(svc, userId, listingId, log);
     cur.phase = "done";
   }
-  await revokeDemoSessions(svc, log);
+  await revokeDemoSessions(svc, log, userId);
   log.push("Demo ready — mint a link (see docs/where-we-are.md) and open /demo/{token}.");
   return out(true);
 };
@@ -666,7 +670,7 @@ async function listSupabase(svc: SupabaseClient, bucket: string, folder: string)
   return out;
 }
 
-async function listR2(bucket: string, prefix: string): Promise<string[]> {
+export async function listR2(bucket: string, prefix: string): Promise<string[]> {
   const out: string[] = [];
   let token: string | undefined;
   do {
@@ -683,10 +687,10 @@ export const demoReset: JobHandler = async (_job, { svc, deadlineMs }) => {
   if (!account) return { cursor: null, done: 0, failed: 0, total: 0, log: ["No demo account — nothing to reset."], finished: true };
   const userId = account.user_id;
   const { data: u } = await svc.auth.admin.getUserById(userId);
-  if (!u?.user || !isDemoUser(u.user)) throw new JobFatalError("demo_accounts user has no demo claim — refusing to delete anything.");
+  if (!u?.user || !isDemoUser(u.user) || isWritableDemoUser(u.user)) throw new JobFatalError("demo_accounts user has no read-only demo claim — refusing to delete anything.");
   if (!account.listing_id) {
     log.push("The demo has no listing — nothing to reset.");
-    await revokeDemoSessions(svc, log);
+    await revokeDemoSessions(svc, log, userId);
     return { cursor: null, done: 0, failed: 0, total: 0, log, finished: true };
   }
   const listingId = account.listing_id;
@@ -774,7 +778,7 @@ export const demoReset: JobHandler = async (_job, { svc, deadlineMs }) => {
 
   await svc.from("demo_accounts").update({ listing_id: null, updated_at: new Date().toISOString() }).eq("user_id", userId);
   forgetDemoAccounts();
-  await revokeDemoSessions(svc, log);
+  await revokeDemoSessions(svc, log, userId);
   log.push("Reset done. The demo login is kept; run demo_seed to make a fresh copy.");
   return { cursor: null, done: 1, failed: 0, total: 1, log, finished: true };
 };

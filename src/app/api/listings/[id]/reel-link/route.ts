@@ -5,7 +5,7 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 import { r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
 import { REEL_SHARE_PREFIX } from "@/lib/videoUploadTarget";
 import { logEmail } from "@/lib/logEmail";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing, isWritableDemoUser } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
   if (!r2VideoConfigured()) return NextResponse.json({ error: "Video storage isn't configured." }, { status: 500 });
 
   const svc = createServiceClient(
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   );
   const access = await assertListingAccess(svc, params.id, user.id, { includeCoBroker: true });
   if (access instanceof NextResponse) return access;
+  { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
   const body = await req.json().catch(() => ({}));
   const path = typeof body?.path === "string" ? body.path : "";
@@ -63,7 +64,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   // screen is the intended path. Sent to the maker's own address, never to a
   // supplied one: this is a hand-off to yourself, not a send to a client.
   let emailedTo: string | null = null;
-  if (body?.email === true && process.env.RESEND_API_KEY) {
+  // Never for the filming account (writable demo): the QR code still works.
+  if (body?.email === true && process.env.RESEND_API_KEY && !isWritableDemoUser(user)) {
     const { data: me } = await svc
       .from("profiles").select("first_name, display_email").eq("id", user.id).maybeSingle();
     const to = me?.display_email as string | undefined;

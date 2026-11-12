@@ -4,7 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { validCreditBrokerId } from "@/lib/reelCredit";
 import { claimedRenders, reelsTakenCount, reelsUnlimited, remainingOf, REELS_PER_LISTING } from "@/lib/reelAllowance";
-import { demoForbidden, isDemoUser } from "@/lib/demoServer";
+import { demoForbidden, isDemoUser, isWritableDemoUser } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,7 +43,10 @@ async function authorise(listingId: string) {
   const svc = service();
   const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
   if (access instanceof NextResponse) return access;
-  return { svc, userId: user.id, brokerId: access.brokerId, demo: isDemoUser(user) };
+  // The filming account (writable demo) may claim on its OWN listings only.
+  const demoRw = isWritableDemoUser(user);
+  if (demoRw && access.brokerId !== user.id) return demoForbidden();
+  return { svc, userId: user.id, brokerId: access.brokerId, demo: isDemoUser(user) && !demoRw };
 }
 
 export async function GET(req: NextRequest) {

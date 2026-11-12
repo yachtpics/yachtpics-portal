@@ -17,7 +17,8 @@ import {
   presignR2OriginalPut,
 } from "@/lib/photoStore";
 import { originalContentType } from "@/lib/photoStoreShared";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
+import { demoRwUploadRefusal } from "@/lib/demoRwQuota";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -59,12 +60,15 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await userClient.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  // The filming account (writable demo) may upload to its OWN listings,
+  // within its caps (src/lib/demoRwQuota.ts); gallery uploads stay admin-only.
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   const svc = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   if (listingId) {
     const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
     if (access instanceof NextResponse) return access;
+    { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
   } else {
     const { data: me } = await svc.from("profiles").select("role").eq("id", user.id).maybeSingle();
     if (me?.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
@@ -121,6 +125,14 @@ export async function POST(req: NextRequest) {
     }
     noteR2PhotoExists();
     return NextResponse.json({ done: true });
+  }
+
+  // Filming account caps — checked before EITHER backend is chosen, so a
+  // Supabase-bound upload is refused too (403 stops the uploader's fallback).
+  {
+    const declared = Number(body?.size);
+    const over = await demoRwUploadRefusal(svc, user, "photo", Number.isFinite(declared) ? declared : 0);
+    if (over) return over;
   }
 
   if (newOriginalsBackend() !== "r2") return NextResponse.json({ backend: "supabase" });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, isWritableDemoUser } from "@/lib/demoServer";
 
 export async function POST(
   req: NextRequest,
@@ -19,7 +19,10 @@ export async function POST(
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     // Read-only demo (layer 3 — src/lib/demo.ts).
-    { const demo = demoGuard(user); if (demo) return demo; }
+    { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
+    // The filming account: answer as usual, record nothing (keeps download
+    // counts and engagement clean).
+    if (isWritableDemoUser(user)) return NextResponse.json({ success: true });
 
     // Use service role to bypass RLS for the insert
     const supabase = createClient(

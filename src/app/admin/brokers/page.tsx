@@ -1,5 +1,7 @@
 import { requireAdminPage } from "@/lib/requireAdminPage";
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createServiceClient } from "@supabase/supabase-js";
+import { filmingUserIds } from "@/lib/demoServer";
 import Link from "next/link";
 import AdminBrokersBrowser, { type BrokerRow } from "./_components/AdminBrokersBrowser";
 
@@ -11,7 +13,8 @@ export default async function AdminBrokersPage() {
   const supabase = await createClient();
 
   // The brokers and the admin names are independent reads — one wave, not two.
-  const [, { data: brokers }, { data: adminProfiles }] = await Promise.all([
+  // The private filming account (writable demo) is left out of this list.
+  const [, { data: allBrokers }, { data: adminProfiles }, filmingIds] = await Promise.all([
     requireAdminPage(),
     supabase
       .from("profiles")
@@ -27,7 +30,9 @@ export default async function AdminBrokersPage() {
       .from("profiles")
       .select("id, first_name, last_name")
       .eq("role", "admin"),
+    filmingUserIds(createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)),
   ]);
+  const brokers = (allBrokers ?? []).filter((b) => filmingIds.indexOf(b.id as string) < 0);
   const adminNameById = new Map(
     (adminProfiles ?? []).map((a) => [
       a.id as string,

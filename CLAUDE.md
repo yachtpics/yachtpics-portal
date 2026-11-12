@@ -38,7 +38,11 @@ one-line copy change, a grep), do it directly; otherwise delegate.
   table or enables RLS, run `select public.demo_apply_readonly_policies();`
   (check with `select * from public.demo_readonly_gaps();`). Any new
   service-role write route a signed-in broker can call needs `demoGuard`
-  (`src/lib/demoServer.ts`) right after its `getUser()`.
+  (`src/lib/demoServer.ts`) right after its `getUser()`. The private FILMING
+  account is a writable demo (`app_metadata.demo_rw`): only routes on
+  `DEMO_RW_ALLOW` (`src/lib/demo.ts`) pass `demoGuard(user, { allowWritableDemo: true })`
+  (plus `demoRwOwnListing`), and only `public.demo_rw_tables()` get its RLS
+  exemption — never widen either without a reason.
 - Listing photo management (grid, upload, replace, delete, reorder, categories,
   cover, show/hide, AI labels, lightbox, downloads) lives in ONE place:
   `src/components/listing-photos/`, used by both the broker listing page and

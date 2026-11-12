@@ -4,6 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { r2SignedPutUrl, r2SignedGetUrl, r2VideoConfigured } from "@/lib/r2";
 import { resolveVideoUploadTarget, sanitizeVideoContentType } from "@/lib/videoUploadTarget";
 import { demoGuard } from "@/lib/demoServer";
+import { demoRwListingOwnerRefusal, demoRwUploadRefusal } from "@/lib/demoRwQuota";
 
 export const runtime = "nodejs";
 
@@ -31,7 +32,9 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  // The filming account (writable demo) may add videos to its OWN listings,
+  // within its caps (src/lib/demoRwQuota.ts).
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   if (!r2VideoConfigured()) {
     return NextResponse.json({ error: "Video storage isn't configured." }, { status: 500 });
@@ -44,6 +47,13 @@ export async function POST(req: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
+
+  {
+    const notOwn = await demoRwListingOwnerRefusal(svc, user, body?.listingId);
+    if (notOwn) return notOwn;
+    const over = await demoRwUploadRefusal(svc, user, "video", Number(body?.totalBytes) || 0);
+    if (over) return over;
+  }
 
   // Who may upload where — the same function the multipart route uses, so the
   // two upload paths can never disagree about access or file layout.

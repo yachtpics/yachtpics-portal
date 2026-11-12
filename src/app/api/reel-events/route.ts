@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { logReelEvent, REEL_EVENT_KINDS, type ReelEventKind } from "@/lib/reelEvents";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, isWritableDemoUser } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -22,7 +22,10 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
+  // The filming account: answer as usual, record nothing (keeps the admin
+  // Reel metrics clean).
+  if (isWritableDemoUser(user)) return NextResponse.json({ success: true });
 
   const body = await req.json().catch(() => ({}));
   const kind = body?.kind as ReelEventKind;

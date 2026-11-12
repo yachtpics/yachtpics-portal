@@ -10,6 +10,7 @@ import {
 } from "@/lib/videoUploadTarget";
 import type { PartRef } from "@/lib/r2ChunkedCopy";
 import { demoGuard } from "@/lib/demoServer";
+import { demoRwListingOwnerRefusal, demoRwUploadRefusal } from "@/lib/demoRwQuota";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -52,7 +53,8 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  // The filming account (writable demo): its OWN listings, within its caps.
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   if (!r2VideoConfigured()) {
     return NextResponse.json({ error: "Video storage isn't configured." }, { status: 500 });
@@ -65,6 +67,10 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const action = body?.action;
+  {
+    const notOwn = await demoRwListingOwnerRefusal(svc, user, body?.listingId);
+    if (notOwn) return notOwn;
+  }
 
   // ── start ────────────────────────────────────────────────────────────────
   if (action === "start") {
@@ -79,6 +85,10 @@ export async function POST(req: NextRequest) {
     const totalBytes = Number(body?.totalBytes);
     if (!Number.isFinite(totalBytes) || totalBytes <= 0) {
       return NextResponse.json({ error: "Missing file size" }, { status: 400 });
+    }
+    {
+      const over = await demoRwUploadRefusal(svc, user, "video", totalBytes);
+      if (over) return over;
     }
     const partCount = Math.ceil(totalBytes / UPLOAD_PART_SIZE);
     if (partCount > MAX_PARTS) {

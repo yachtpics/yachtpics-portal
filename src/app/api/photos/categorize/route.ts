@@ -4,7 +4,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { isAiConfigured } from "@/lib/ai";
 import { labelListingPhotos } from "@/lib/labelPhotos";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   if (!isAiConfigured()) return NextResponse.json({ configured: false, updated: [], considered: 0, unsure: 0 });
 
@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
 
   const access = await assertListingAccess(service, body.listingId, user.id);
   if (access instanceof NextResponse) return access;
+  { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
   // Selection, cost guards and batching live in src/lib/labelPhotos.ts (shared
   // with the relabel_photos background job).

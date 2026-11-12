@@ -3,7 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { ensureDerivatives, ensureThumb600, serviceRoleClient, signDerivatives } from "@/lib/photoDerivatives";
 import { enqueueJob, jobsBaseUrl, kickWorker } from "@/lib/jobs/queue";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,11 +43,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const { data: { user } } = await supabaseUser.auth.getUser();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   const svc = serviceRoleClient();
   const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
   if (access instanceof NextResponse) return access;
+  { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
   const { data: rows } = await svc.from("photos").select("id").eq("listing_id", listingId).in("id", ids);
   const own = (rows ?? []).map((r) => r.id as string);

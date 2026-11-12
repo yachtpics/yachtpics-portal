@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
 
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   // Read-only demo (layer 3 — src/lib/demo.ts).
-  { const demo = demoGuard(user); if (demo) return demo; }
+  { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   const body = await req.json().catch(() => ({}));
   const videoId = body?.videoId;
@@ -43,6 +43,7 @@ export async function POST(req: NextRequest) {
 
   const access = await assertListingAccess(svc, video.listing_id, user.id, { includeCoBroker: true });
   if (access instanceof NextResponse) return access;
+  { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
   // Trimmed, and empty means "no label" rather than an empty heading on the
   // page. Capped so a pasted paragraph can't wreck the layout.

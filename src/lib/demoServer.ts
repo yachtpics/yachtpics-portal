@@ -10,10 +10,10 @@
  */
 import { NextResponse } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { DEMO_BLOCK_HEADER, DEMO_READ_ONLY_MESSAGE, isDemoUser } from "@/lib/demo";
+import { DEMO_BLOCK_HEADER, DEMO_READ_ONLY_MESSAGE, isDemoUser, isWritableDemoUser } from "@/lib/demo";
 import { createClient as createSessionClient } from "@/lib/supabase/server";
 
-export { isDemoUser };
+export { isDemoUser, isWritableDemoUser };
 
 /** The 403 every demo guard answers with (same body as the middleware's). */
 export function demoForbidden(): NextResponse {
@@ -23,9 +23,35 @@ export function demoForbidden(): NextResponse {
   );
 }
 
-/** Layer 3: a 403 for a demo user, else null. `user` must come from getUser(). */
-export function demoGuard(user: { app_metadata?: Record<string, unknown> | null } | null | undefined): NextResponse | null {
-  return isDemoUser(user) ? demoForbidden() : null;
+/**
+ * Layer 3: a 403 for a demo user, else null. `user` must come from getUser().
+ *
+ * `allowWritableDemo: true` lets the WRITABLE demo (the filming account,
+ * app_metadata.demo_rw) through — pass it ONLY on the routes listed in
+ * DEMO_RW_ALLOW (src/lib/demo.ts), and pair it with demoRwOwnListing() where
+ * the route acts on a listing. The default keeps refusing both kinds.
+ */
+export function demoGuard(
+  user: { app_metadata?: Record<string, unknown> | null } | null | undefined,
+  opts: { allowWritableDemo?: boolean } = {}
+): NextResponse | null {
+  if (!isDemoUser(user)) return null;
+  if (opts.allowWritableDemo && isWritableDemoUser(user)) return null;
+  return demoForbidden();
+}
+
+/**
+ * The filming account may only act on listings it OWNS (not as a co-broker,
+ * assistant or brokerage member, should anyone ever link it). A 403 for a
+ * writable-demo user whose listing broker isn't itself, else null. Call after
+ * assertListingAccess with the broker id it returned.
+ */
+export function demoRwOwnListing(
+  user: { id: string; app_metadata?: Record<string, unknown> | null } | null | undefined,
+  listingBrokerId: string | null | undefined
+): NextResponse | null {
+  if (!user || !isWritableDemoUser(user)) return null;
+  return listingBrokerId && listingBrokerId === user.id ? null : demoForbidden();
 }
 
 /**
@@ -48,7 +74,46 @@ export type DemoAccountRow = {
   email: string | null;
   listing_id: string | null;
   source_listing_id: string | null;
+  /** The filming account (migration 20261112_…; false before it's applied). */
+  writable: boolean;
 };
+
+const missingTable = (m: string | undefined) => /does not exist|could not find the table/i.test(m ?? "") && !/column/i.test(m ?? "");
+const missingWritable = (m: string | undefined) => /writable/i.test(m ?? "") && /column|does not exist|could not find/i.test(m ?? "");
+
+/**
+ * Every demo_accounts row, oldest first, with `writable` (false when the
+ * column isn't there yet). Throws on any other error; `null` when the table
+ * itself is missing. Used by the /demo route, the demo jobs and the cached
+ * helpers below.
+ */
+export async function readDemoAccountRows(svc: SupabaseClient): Promise<DemoAccountRow[] | null> {
+  const first = await svc
+    .from("demo_accounts")
+    .select("user_id, email, listing_id, source_listing_id, writable")
+    .order("created_at", { ascending: true });
+  let data: unknown[] | null = first.data;
+  let error = first.error;
+  if (error && missingWritable(error.message)) {
+    const again = await svc
+      .from("demo_accounts")
+      .select("user_id, email, listing_id, source_listing_id")
+      .order("created_at", { ascending: true });
+    data = again.data;
+    error = again.error;
+  }
+  if (error) {
+    if (missingTable(error.message)) return null;
+    throw new Error(error.message);
+  }
+  return ((data ?? []) as Partial<DemoAccountRow>[]).map((r) => ({
+    user_id: String(r.user_id),
+    email: r.email ?? null,
+    listing_id: r.listing_id ?? null,
+    source_listing_id: r.source_listing_id ?? null,
+    writable: r.writable === true,
+  }));
+}
 
 let cache: { at: number; rows: DemoAccountRow[] } | null = null;
 const CACHE_MS = 60_000;
@@ -57,19 +122,23 @@ const CACHE_MS = 60_000;
 export async function getDemoAccounts(svc: SupabaseClient, opts: { fresh?: boolean } = {}): Promise<DemoAccountRow[]> {
   if (!opts.fresh && cache && Date.now() - cache.at < CACHE_MS) return cache.rows;
   try {
-    const { data, error } = await svc.from("demo_accounts").select("user_id, email, listing_id, source_listing_id");
-    if (error) {
-      // Before the migration (table missing) remember "none" so public routes
-      // don't pay a failed query each; any other error isn't cached.
-      if (/does not exist|could not find the table/i.test(error.message ?? "")) cache = { at: Date.now(), rows: [] };
+    const rows = await readDemoAccountRows(svc);
+    // Before the migration (table missing) remember "none" so public routes
+    // don't pay a failed query each; any other error isn't cached.
+    if (rows === null) {
+      cache = { at: Date.now(), rows: [] };
       return [];
     }
-    const rows = (data ?? []) as DemoAccountRow[];
     cache = { at: Date.now(), rows };
     return rows;
   } catch {
     return [];
   }
+}
+
+/** The filming account's user id(s) — for leaving it out of admin broker lists. */
+export async function filmingUserIds(svc: SupabaseClient): Promise<string[]> {
+  return (await getDemoAccounts(svc)).filter((r) => r.writable).map((r) => r.user_id);
 }
 
 /** Demo user ids, for leaving the demo out of counts and audiences. */

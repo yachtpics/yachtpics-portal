@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { safeNextPath } from '@/lib/safeNext'
-import { accessTokenHasDemoClaim, demoPostAllowed, DEMO_BLOCK_HEADER, DEMO_READ_ONLY_MESSAGE } from '@/lib/demo'
+import { accessTokenDemoClaims, accessTokenHasDemoClaim, demoPostAllowed, demoRwAllowed, DEMO_BLOCK_HEADER, DEMO_READ_ONLY_MESSAGE } from '@/lib/demo'
 import { CONTINUE_NONCE_COOKIE, CONTINUE_NONCE_MAX_AGE, newContinueNonce, parseContinueNonce } from '@/lib/authLinks'
 
 /**
@@ -66,6 +66,13 @@ function demoBlocked(): NextResponse {
  * (docs/where-we-are.md has the table), and layer 2 (RLS) covers direct
  * Supabase writes. This gate is the fast, friendly refusal, not the wall.
  *
+ * Writable demo (the filming account, Nov 12): a session whose token also
+ * carries app_metadata.demo_rw passes for the method + path pairs on
+ * DEMO_RW_ALLOW (src/lib/demo.ts) — the listing workflow only. That is not a
+ * grant: those routes verify the user with getUser() and apply
+ * demoGuard(user, { allowWritableDemo: true }) (layer 3), and direct
+ * Supabase writes still meet layer 2. Everything else is refused as before.
+ *
  * Returns a response to send, or null to carry on.
  */
 async function demoReadOnlyGate(
@@ -80,8 +87,11 @@ async function demoReadOnlyGate(
 
   // A bearer token (no route reads one for a user today; cheap to cover).
   const auth = request.headers.get("authorization") ?? "";
-  if (/^bearer\s+/i.test(auth) && accessTokenHasDemoClaim(auth.replace(/^bearer\s+/i, "").trim())) {
-    return { block: demoBlocked(), refreshed: null };
+  if (/^bearer\s+/i.test(auth)) {
+    const claims = accessTokenDemoClaims(auth.replace(/^bearer\s+/i, "").trim());
+    if (claims.demo && !(claims.demoRw && path.startsWith("/api/") && demoRwAllowed(path, method))) {
+      return { block: demoBlocked(), refreshed: null };
+    }
   }
 
   // No Supabase auth cookie at all → nothing to decode (public routes, crons, webhooks).
@@ -122,7 +132,12 @@ async function demoReadOnlyGate(
       session = r.data.session;
     }
   }
-  if (session && accessTokenHasDemoClaim(session.access_token)) {
+  const claims = session ? accessTokenDemoClaims(session.access_token) : { demo: false, demoRw: false };
+  if (claims.demo && claims.demoRw && path.startsWith("/api/") && demoRwAllowed(path, method)) {
+    // The filming account on its listing-workflow allowlist: carry on.
+    return { block: null, refreshed: wrote ? response : null };
+  }
+  if (claims.demo) {
     const block = demoBlocked();
     // Keep a refreshed session (rotated refresh token) even on a refusal.
     if (wrote) response.cookies.getAll().forEach((c) => block.cookies.set(c));

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
 
 export async function POST(req: NextRequest) {
   try {
@@ -15,7 +15,7 @@ export async function POST(req: NextRequest) {
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     // Read-only demo (layer 3 — src/lib/demo.ts).
-    { const demo = demoGuard(user); if (demo) return demo; }
+    { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
     // Use service role for all permission checks — avoids RLS blocking the join read
     const supabaseAdmin = createClient(
@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     // Verify caller is the broker or a linked assistant
     const access = await assertListingAccess(supabaseAdmin, doc.listing_id, user.id);
     if (access instanceof NextResponse) return access;
+    { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
     await supabaseAdmin.storage.from("listing-documents").remove([storagePath]);
     const { error: dbError } = await supabaseAdmin

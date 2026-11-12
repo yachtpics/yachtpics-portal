@@ -24,6 +24,7 @@ import { writeWeeklyBackup } from "@/lib/books/backup";
 import { RemindersNotReadyError, runBillingReminders } from "@/lib/books/reminders";
 import { photoOriginalsCleanup, photoOriginalsCopy, r2PhotoFinish, sitePhotosCleanup } from "./photoMigration";
 import { demoReset, demoSeed } from "./demoSeed";
+import { demoRwReset, demoRwSeed } from "./demoRwSeed";
 import {
   JobFatalError,
   isJobFatal,
@@ -253,6 +254,8 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   billing_reminders: billingReminders,
   demo_seed: demoSeed,
   demo_reset: demoReset,
+  demo_rw_seed: demoRwSeed,
+  demo_rw_reset: demoRwReset,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

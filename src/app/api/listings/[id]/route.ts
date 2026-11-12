@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { demoGuard } from "@/lib/demoServer";
+import { demoGuard, demoRwOwnListing, isWritableDemoUser } from "@/lib/demoServer";
 
 // PATCH /api/listings/[id] — update listing details
 // Allowed for the listing's broker OR a linked assistant
@@ -17,7 +17,8 @@ export async function PATCH(
     const { data: { user } } = await supabaseUser.auth.getUser();
     if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     // Read-only demo (layer 3 — src/lib/demo.ts).
-    { const demo = demoGuard(user); if (demo) return demo; }
+    // The filming account (writable demo) may edit its OWN listings.
+    { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,6 +28,7 @@ export async function PATCH(
     // Verify caller has access to this listing
     const access = await assertListingAccess(supabaseAdmin, listingId, user.id);
     if (access instanceof NextResponse) return access;
+    { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 
     const body = await req.json();
 
@@ -84,6 +86,15 @@ export async function PATCH(
         return NextResponse.json({ error: "The YouTube link must be a youtube.com or youtu.be address." }, { status: 400 });
       }
       updates.youtube_url = ok ? withScheme.slice(0, 500) : null;
+    }
+
+    // Filming account: a deck plan must be its own file (path under its own
+    // folder) — never a pointer at another broker's file.
+    if (isWritableDemoUser(user) && "deck_plan_path" in updates && updates.deck_plan_path != null) {
+      const dp = typeof updates.deck_plan_path === "string" ? updates.deck_plan_path : "";
+      if (!dp.startsWith(`${user.id}/${listingId}/`) || dp.indexOf("..") >= 0) {
+        return NextResponse.json({ error: "That deck plan file isn't on this listing." }, { status: 400 });
+      }
     }
 
     if (Object.keys(updates).length === 0) {
