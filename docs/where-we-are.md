@@ -4,6 +4,15 @@
 
 
 
+## Admin can set a broker's logo (Nov 12, 2026) — NOT PUSHED · typecheck + lint clean · no migration · NOT BROWSER-TESTED
+
+- **Where**: Admin → Brokers → open a broker → **Logo** card (under Contact / Subscription / Activity, above Private notes). Preview on a white AND a dark (ink-950) swatch, "Upload logo" / "Replace logo", "Remove" with the page's inline Yes/Cancel confirm (no browser dialogs). Component: `src/app/admin/brokers/[id]/_components/BrokerLogoCard.tsx`.
+- **Server**: `POST` / `DELETE /api/admin/brokers/[id]/logo` (`requireAdmin()` first). Refuses non-broker roles, unknown ids, and any demo account (a `demo_accounts` row — demo and filming — or `app_metadata` demo flag).
+- **Same stored result as the broker's own upload**: shared helper `src/lib/brokerLogoUpload.ts` (PNG/JPG/WebP, 2 MB, stored as uploaded — no trim/resize) writes `broker-logos/{brokerId}/logo.{ext}` (public bucket, upsert) and the cache-busted public URL goes to `broker_details.logo_url` (upserted — the row may not exist yet). `/api/logo/upload` now uses the same helper; behaviour unchanged (still `update`). DELETE clears `logo_url` only and leaves the file, exactly like the broker's "Remove logo". `brokerage_logo_url` isn't written by anything (only the Showroom reads it as a brokerage-level fallback).
+- **No audit log** — the admin area has no audit helper, so none was added.
+- **Help: no change — admin only.**
+- **To check (Charlie)**: open a broker with no logo → Upload logo → it appears on both swatches; open one of their listings' spec sheet / make a reel → the logo is there. Press Remove → Yes, remove → both swatches say "No logo yet".
+
 ## AI labels re-test + filming account live (Nov 12, evening)
 
 - Live re-test of the plain AI labels on the filming account's "Beautiful M"

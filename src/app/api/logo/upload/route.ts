@@ -2,16 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { demoGuard } from "@/lib/demoServer";
+import { logoFileError, storeBrokerLogoFile } from "@/lib/brokerLogoUpload";
 
-// Only these image types are accepted; the stored file's extension comes from
-// the type, never from the uploaded filename.
-const ALLOWED_LOGO_TYPES: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-};
-const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MB
-
+// File type / size rules and the storage path live in src/lib/brokerLogoUpload.ts,
+// shared with the admin's upload (POST /api/admin/brokers/[id]/logo).
 export async function POST(req: NextRequest) {
   try {
     const supabaseUser = await createServerClient();
@@ -24,44 +18,25 @@ export async function POST(req: NextRequest) {
     const file = formData.get("file") as File | null;
     if (!file) return NextResponse.json({ error: "No file provided" }, { status: 400 });
 
-    const ext = ALLOWED_LOGO_TYPES[file.type];
-    if (!ext) {
-      return NextResponse.json({ error: "Logo must be a PNG, JPG or WebP image." }, { status: 400 });
-    }
-    if (file.size > MAX_LOGO_BYTES) {
-      return NextResponse.json({ error: "Logo is too large — please use an image under 2 MB." }, { status: 400 });
-    }
+    const invalid = logoFileError(file);
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 });
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const path = `${user.id}/logo.${ext}`;
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-
-    const { error: uploadError } = await supabaseAdmin.storage
-      .from("broker-logos")
-      .upload(path, buffer, {
-        contentType: file.type,
-        upsert: true,
-      });
-
-    if (uploadError) {
-      return NextResponse.json({ error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
+    const stored = await storeBrokerLogoFile(supabaseAdmin, user.id, file);
+    if (stored.error !== undefined) {
+      return NextResponse.json({ error: stored.error }, { status: 500 });
     }
-
-    const { data: urlData } = supabaseAdmin.storage
-      .from("broker-logos")
-      .getPublicUrl(path);
-
-    const publicUrl = `${urlData.publicUrl}?t=${Date.now()}`;
+    const publicUrl = stored.url;
 
     const { error: dbError } = await supabaseAdmin
       .from("broker_details")
-      .update({ logo_url: publicUrl })
-      .eq("id", user.id);
+      // Upsert: a broker who uploads a logo before ever saving their profile
+      // has no broker_details row yet, and a plain update saved nothing.
+      .upsert({ id: user.id, logo_url: publicUrl }, { onConflict: "id" });
 
     if (dbError) {
       return NextResponse.json({ error: `DB update failed: ${dbError.message}` }, { status: 500 });

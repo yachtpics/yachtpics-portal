@@ -13,6 +13,7 @@ import ReelServiceCard, { type ReelCardRow } from "./_components/ReelServiceCard
 import { planLabel } from "@/lib/subscriptionAccess";
 import WebsiteCompToggle from "./_components/WebsiteCompToggle";
 import AdminNotesEditor from "./_components/AdminNotesEditor";
+import BrokerLogoCard from "./_components/BrokerLogoCard";
 import { websiteEntitlement, type WebsiteEntitlement } from "@/lib/websiteAddon";
 import { listingAllowance } from "@/lib/listingAllowance";
 import { serviceClient } from "@/lib/brokerSiteServer";
@@ -279,6 +280,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           </p>
         </div>
       </div>
+
+      {/* Logo — set or remove it for the broker (same result as their own upload) */}
+      <BrokerLogoCard brokerId={params.id} initialUrl={(details?.logo_url as string | null | undefined) ?? null} />
 
       {/* Private notes — admins only */}
       <AdminNotesEditor brokerId={params.id} initialNotes={notesRow?.notes ?? ""} updatedAt={notesRow?.updated_at ?? null} updatedByName={notesBy} />
