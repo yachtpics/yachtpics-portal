@@ -7,6 +7,7 @@ import { Menu, Phone, X } from "lucide-react";
 export default function SiteHeader({
   name,
   logoUrl,
+  logoPlateStyle,
   phone,
   phoneDisplay,
   nav,
@@ -15,6 +16,8 @@ export default function SiteHeader({
 }: {
   name: string;
   logoUrl: string | null;
+  /** Set when the logo needs the light plate on this (dark) look — SiteShell. */
+  logoPlateStyle?: React.CSSProperties | null;
   phone: string | null;
   phoneDisplay: string | null;
   nav: { href: string; label: string }[];
@@ -46,7 +49,12 @@ export default function SiteHeader({
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-8 h-16 sm:h-[4.5rem] flex items-center justify-between gap-6">
         <a href={homeHref} className="min-h-[44px] inline-flex items-center min-w-0" aria-label={name}>
-          {logoUrl ? (
+          {logoUrl && logoPlateStyle ? (
+            <span style={logoPlateStyle}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={logoUrl} alt={name} className="h-9 sm:h-10 w-auto max-w-[180px] object-contain" />
+            </span>
+          ) : logoUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={logoUrl} alt={name} className="h-9 sm:h-10 w-auto max-w-[180px] object-contain" />
           ) : (

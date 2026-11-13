@@ -10,6 +10,7 @@ import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { signResizedPath } from "@/lib/photoStore";
 import { formatDateET, formatDayKey } from "@/lib/datetime";
+import { logoPlateInfo, logoPlateStyle } from "@/lib/logoPlateServer";
 
 export const dynamic = "force-dynamic";
 
@@ -70,6 +71,12 @@ export default async function SellerReportPage({ params }: { params: { id: strin
     buildEngagement(service, params.id),
   ]);
 
+  // Dark lettering on the dark top bar → plate (analysed here so the first
+  // paint and the printout are already right). Rendered height of the logo:
+  // maxHeight 44, maxWidth 200, contained.
+  const logoPlate = await logoPlateInfo(details?.logo_url ?? null, INK);
+  const logoPlateH = logoPlate.aspect ? Math.min(44, 200 / logoPlate.aspect) : 44;
+
   // Thumbnails for the photos buyers linger on.
   const topWithUrls = await Promise.all(eng.topPhotos.slice(0, 6).map(async (tp) => {
     const { data: p } = await service.from("photos").select("storage_path").eq("id", tp.photo_id).maybeSingle();
@@ -119,8 +126,16 @@ export default async function SellerReportPage({ params }: { params: { id: strin
           {/* Top bar */}
           <div style={{ background: INK, padding: "20px 32px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             {details?.logo_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={details.logo_url} alt="" style={{ maxHeight: 44, maxWidth: 200, objectFit: "contain" }} />
+              logoPlate.needsPlate ? (
+                // Dark lettering on the dark bar → light label plate (src/lib/logoContrast.ts).
+                <span style={logoPlateStyle(logoPlateH)}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={details.logo_url} alt="" style={{ maxHeight: 44, maxWidth: 200, objectFit: "contain", display: "block" }} />
+                </span>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={details.logo_url} alt="" style={{ maxHeight: 44, maxWidth: 200, objectFit: "contain" }} />
+              )
             ) : (
               <span style={{ color: "#fff", fontSize: 18, fontWeight: 600 }}>{details?.brokerage_name ?? brokerName}</span>
             )}

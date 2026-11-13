@@ -4,6 +4,16 @@
 
 
 
+## Dark-lettered logos get a light plate on dark backgrounds (Nov 12, 2026) — NOT PUSHED · typecheck + lint clean · no migration · tested offline only (headless Chrome renders)
+
+- **Rule**: a broker's logo drawn on a DARK background that wouldn't read there (e.g. Miles Yacht Group: black text + silver mark) sits on a soft off-white label plate (#f6f4ef, padding 18% of the logo height, radius 12% of the plate height, min 6 px). Logos that read on dark are drawn exactly as before; light surfaces are unchanged. A broker's logo is never recoloured.
+- **Detection** — one pure function, `src/lib/logoContrast.ts` (`analyseLogoContrast` / `logoNeedsPlate`): box-filters to ≤ 96 px, counts opaque pixels (alpha ≥ 40%) under 2.2:1 contrast against the background; ≥ 8% of the opaque area → plate. Never on a light background (luminance > 0.3); never on a logo that fills ≥ 90% of its box (carries its own background). Miles logo: 14% low on every dark ground. Checks: `npx tsx scripts/logo_contrast_check.ts [logo.png]`.
+- **Canvas helper** `src/lib/logoPlateCanvas.ts` (analysis cached per bitmap + background; draw the plate). **Server helper** `src/lib/logoPlateServer.ts` (sharp, own Supabase storage only, 2.5 s timeout, cache keyed by URL incl. `?t=` stamp, fails open to "no plate").
+- **Surfaces**: reel end card (`reelEndCard.ts`), logo-stack reel band (`reelLogoStack.ts` — on a dark band the old white-silhouette recolour is gone; the logo gets the label plate inside the band; the silhouette stays only for light bands), social post band, admin Showroom title card, spec sheet + seller report top bar (analysed server-side, so print and first paint are right), broker website header on the Midnight look (`SiteShell` is now async). Admin Logo card's dark swatch shows the plate exactly as dark surfaces will, with "Dark lettering — shown on a light plate on dark backgrounds."
+- **Help: CHANGED** — "Completing Your Profile" gets: "A logo with dark lettering is placed on a light plate wherever the background is dark (reels, spec sheets, social posts), so it always reads." **PDF not rebuilt** — run `python3 scripts/build_user_guide.py` and commit `public/YachtPics_Portal_User_Guide.pdf`.
+- **Left alone (report only)**: Showroom corner logo over photos; website About-section `brokerage_logo_url` (nothing writes that column); a WHITE logo on light surfaces (slideshow footer's white box, dock card, light website looks, Gallery end card, and a spec sheet printed without "background graphics", where the dark bar isn't printed).
+- **To check (Charlie)**: Miles Yacht Group → open a listing → Spec Sheet: the logo sits on a light label in the dark bar; make a reel (Editorial) → the end card shows the label; Admin → Brokers → Andy Miles → Logo card shows the plate on the dark swatch. A white logo broker's spec sheet should look exactly as before.
+
 ## Admin can set a broker's logo (Nov 12, 2026) — NOT PUSHED · typecheck + lint clean · no migration · NOT BROWSER-TESTED
 
 - **Where**: Admin → Brokers → open a broker → **Logo** card (under Contact / Subscription / Activity, above Private notes). Preview on a white AND a dark (ink-950) swatch, "Upload logo" / "Replace logo", "Remove" with the page's inline Yes/Cancel confirm (no browser dialogs). Component: `src/app/admin/brokers/[id]/_components/BrokerLogoCard.tsx`.

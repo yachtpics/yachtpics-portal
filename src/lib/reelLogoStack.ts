@@ -14,6 +14,8 @@
 
 import { fillTrackedCentered } from "./canvasText";
 import { luminance } from "./reelStyles";
+import { fitLogoOnPlate, isDarkBackground, logoPlateBox } from "./logoContrast";
+import { drawLogoPlate, logoNeedsPlateOn } from "./logoPlateCanvas";
 
 export type LogoStackOptions = {
   /** Height of the logo band. */
@@ -93,8 +95,14 @@ export function plateIsLight(plate: string): boolean {
  * wordmark on the white plate, a navy one on navy — is recoloured to a flat
  * silhouette in the plate's ink. A logo on its own opaque background (a JPEG
  * box) is never touched: recolouring it would draw a solid rectangle.
+ *
+ * Nov 12: on a DARK plate a logo is never recoloured any more — one that
+ * doesn't read there (dark lettering) is drawn on the light logo plate inside
+ * the band instead (drawLogoStackMiddle, src/lib/logoContrast.ts). The
+ * silhouette is kept only for light plates (a white wordmark on white).
  */
 export function prepareLogo(logo: Img, plate: string, makeCanvas: MakeCanvas): Img {
+  if (!plateIsLight(plate) && isDarkBackground(plate)) return logo;
   const size = 48;
   const probe = makeCanvas(size, size);
   const pctx = probe.getContext("2d", { willReadFrequently: true } as CanvasRenderingContext2DSettings) as CanvasRenderingContext2D | null;
@@ -145,13 +153,23 @@ export function drawLogoStackMiddle(ctx: CanvasRenderingContext2D, rect: Rect, o
     const maxLh = rect.h * (text ? 0.5 : 0.6);
     if (lh > maxLh) { lh = maxLh; lw = lh * aspect; }
   }
-  const blockH = lh + textH;
+  // Dark lettering on a dark band → the logo goes on the light label plate,
+  // inside the band; logo and label shrink together only if they'd overflow.
+  const plated = !!logo && !light && logoNeedsPlateOn(logo, plate);
+  if (plated) {
+    const fit = fitLogoOnPlate(lw, lh, rect.w * 0.9, rect.h * (text ? 0.68 : 0.82));
+    lw = fit.lw; lh = fit.lh;
+  }
+  const pad = plated ? logoPlateBox(lw, lh).pad : 0;
+  const blockH = lh + pad * 2 + textH;
   let y = rect.y + (rect.h - blockH) / 2;
   const cx = rect.x + rect.w / 2;
   if (logo) {
     ctx.imageSmoothingEnabled = true;
+    y += pad;
+    if (plated) drawLogoPlate(ctx, cx - lw / 2, y, lw, lh);
     ctx.drawImage(logo, cx - lw / 2, y, lw, lh);
-    y += lh;
+    y += lh + pad;
   }
   if (text) {
     ctx.fillStyle = light ? "rgba(20,26,33,0.86)" : "rgba(255,255,255,0.9)";

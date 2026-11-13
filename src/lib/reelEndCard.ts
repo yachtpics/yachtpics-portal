@@ -1,6 +1,8 @@
 import { fillTrackedCentered, wrapTracked } from "@/lib/canvasText";
 import type { ReelStyle } from "@/lib/reelStyles";
 import type { BrokerCard } from "@/lib/yachtpicsBrand";
+import { fitLogoOnPlate, logoPlateBox } from "@/lib/logoContrast";
+import { drawLogoPlate, logoNeedsPlateOn } from "@/lib/logoPlateCanvas";
 
 /**
  * The reel's end card — moved out of ReelMaker (Oct 31) unchanged, so the
@@ -100,7 +102,22 @@ export function drawReelEndCard(ctx: CanvasRenderingContext2D, o: ReelEndCardOpt
     let lw = (aspect > 3 ? W * 0.62 : 360 * sc), lh = lw / aspect;
     const maxLh = 150 * sc;
     if (lh > maxLh) { lh = maxLh; lw = lh * aspect; }
-    items.push({ h: lh + 44 * sc, draw: (y) => { ctx.globalAlpha = alpha * 0.96; ctx.drawImage(lg, cx - lw / 2, y, lw, lh); ctx.globalAlpha = alpha; } });
+    // Dark lettering on a dark ground (src/lib/logoContrast.ts): the logo sits
+    // on a light plate, same size unless the plate would overflow the frame.
+    // Analysed once per bitmap and ground (cached), not per frame.
+    if (logoNeedsPlateOn(lg, st.ground)) {
+      const fit = fitLogoOnPlate(lw, lh, W - 120 * sc, H);
+      lw = fit.lw; lh = fit.lh;
+      const pad = logoPlateBox(lw, lh).pad;
+      items.push({ h: lh + pad * 2 + 44 * sc, draw: (y) => {
+        ctx.globalAlpha = alpha * 0.96;
+        drawLogoPlate(ctx, cx - lw / 2, y + pad, lw, lh);
+        ctx.drawImage(lg, cx - lw / 2, y + pad, lw, lh);
+        ctx.globalAlpha = alpha;
+      } });
+    } else {
+      items.push({ h: lh + 44 * sc, draw: (y) => { ctx.globalAlpha = alpha * 0.96; ctx.drawImage(lg, cx - lw / 2, y, lw, lh); ctx.globalAlpha = alpha; } });
+    }
   }
   const nameSize = 48 * sc;
   const personLine = (text: string) => ({ h: nameSize + 16 * sc, draw: (y: number) => {

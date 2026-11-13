@@ -32,6 +32,8 @@
 import { composeReelMusic, MUSIC_SAMPLE_RATE, musicCanCompose, type MusicMood } from "@/lib/reelMusic";
 import { REEL_STYLES, rgba } from "@/lib/reelStyles";
 import { fillTrackedCentered, trackedWidth, wrapTracked } from "@/lib/canvasText";
+import { fitLogoOnPlate, logoPlateBox } from "@/lib/logoContrast";
+import { drawLogoPlate, logoNeedsPlateOn } from "@/lib/logoPlateCanvas";
 
 export type ShowroomResolution = "1080" | "4k";
 
@@ -244,10 +246,15 @@ export function drawShowroomCard(
   let bottom: number;
   if (o.logo) {
     const k = Math.min((W * 0.46) / o.logo.width, (H * 0.32) / o.logo.height);
-    const lw = o.logo.width * k, lh = o.logo.height * k;
+    let lw = o.logo.width * k, lh = o.logo.height * k;
+    // Dark lettering on the dark card → light label plate (src/lib/logoContrast.ts).
+    const plated = logoNeedsPlateOn(o.logo, ED.ground);
+    if (plated) { const fit = fitLogoOnPlate(lw, lh, W * 0.6, H * 0.44); lw = fit.lw; lh = fit.lh; }
+    const pad = plated ? logoPlateBox(lw, lh).pad : 0;
     const ly = H / 2 - lh / 2 - (o.tagline ? 36 * sc : 0);
+    if (plated) drawLogoPlate(ctx, (W - lw) / 2, ly, lw, lh);
     ctx.drawImage(o.logo, (W - lw) / 2, ly, lw, lh);
-    bottom = ly + lh;
+    bottom = ly + lh + pad;
   } else {
     ctx.fillStyle = ED.text;
     let size = 84 * sc;

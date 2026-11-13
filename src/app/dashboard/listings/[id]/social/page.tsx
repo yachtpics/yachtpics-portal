@@ -11,6 +11,8 @@ import {
   YACHTPICS_CARD, YACHTPICS_COLORS, YACHTPICS_PHONES, type YpPhone,
 } from "@/lib/yachtpicsBrand";
 import { signOriginalsInBrowser } from "@/lib/photoStoreClient";
+import { fitLogoOnPlate, logoPlateBox } from "@/lib/logoContrast";
+import { drawLogoPlate, logoNeedsPlateOn } from "@/lib/logoPlateCanvas";
 
 /**
  * Editorial serif for the vessel name. High-contrast garamond — the register
@@ -327,6 +329,14 @@ export default function SocialGraphicPage() {
         if (logoH > maxLogoH) { logoH = maxLogoH; logoW = logoH * aspect; }
       } catch { logo = null; }
     }
+    // Dark lettering on the dark band (src/lib/logoContrast.ts) → the broker's
+    // logo sits on a light plate; its size holds unless the plate won't fit.
+    const plated = !!logo && !yp && logoNeedsPlateOn(logo, BAND);
+    if (plated) {
+      const fit = fitLogoOnPlate(logoW, logoH, maxW, 108 * s * (1 + 2 * 0.18));
+      logoW = fit.lw; logoH = fit.lh;
+    }
+    const platePad = plated ? logoPlateBox(logoW, logoH).pad : 0;
     // If our own mark can't be fetched, set the name rather than leave the ad
     // unsigned. A broker's card stays as it was — theirs is theirs to supply.
     const wordmark = yp && !logo ? "YACHTPICS" : null;
@@ -350,7 +360,7 @@ export default function SocialGraphicPage() {
       (maker ? capSize + gapCapName : 0) +
       nameBlock +
       (spec ? gapNameSpec + capSize : 0) +
-      (logo ? gapSpecLogo + logoH : 0) +
+      (logo ? gapSpecLogo + logoH + platePad * 2 : 0) +
       (wordmark ? gapSpecLogo + wordSize : 0) +
       (contact ? gapMarkContact + contactSize : 0);
 
@@ -382,11 +392,12 @@ export default function SocialGraphicPage() {
     }
 
     if (logo) {
-      y += gapSpecLogo;
+      y += gapSpecLogo + platePad;
       ctx.globalAlpha = 0.95;
+      if (plated) drawLogoPlate(ctx, cx - logoW / 2, y, logoW, logoH);
       ctx.drawImage(logo, cx - logoW / 2, y, logoW, logoH);
       ctx.globalAlpha = 1;
-      y += logoH;
+      y += logoH + platePad;
     } else if (wordmark) {
       y += gapSpecLogo + wordSize * 0.8;
       ctx.fillStyle = BONE;

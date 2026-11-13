@@ -1,6 +1,7 @@
 import { MessageCircle, MessageSquare, Phone } from "lucide-react";
 import PresentedThrough from "@/components/PresentedThrough";
 import type { SiteBase } from "@/lib/brokerSiteServer";
+import { logoPlateInfo, logoPlateStyle } from "@/lib/logoPlateServer";
 import { dialable, whatsappDigits, type SectionKey } from "@/lib/brokerSite";
 import type { ResolvedSiteStyle } from "@/lib/siteStyle";
 import SiteHeader from "./SiteHeader";
@@ -35,7 +36,7 @@ export function sectionsShown(s: SiteBase, counts: { yachts: number; sold: numbe
   };
 }
 
-export default function SiteShell({
+export default async function SiteShell({
   s,
   shown,
   base,
@@ -55,6 +56,11 @@ export default function SiteShell({
   base: string;
   children: React.ReactNode;
 }) {
+  // Dark site look (Midnight) + a logo with dark lettering → the header logo
+  // sits on a light label plate (src/lib/logoContrast.ts). Light looks: never.
+  const plate = look.dark ? await logoPlateInfo(s.logoUrl, look.vars["--site-bg"]) : { needsPlate: false };
+  // The header logo is 36–40 px tall; the plate is sized for the middle.
+  const headerLogoPlate = plate.needsPlate ? logoPlateStyle(38) : null;
   const phone = dialable(s.phone);
   const phoneDisplay = s.phone ? prettyPhone(s.phone) : null;
   const wa = whatsappDigits(s.site.whatsapp);
@@ -85,6 +91,7 @@ export default function SiteShell({
       <SiteHeader
         name={s.name}
         logoUrl={s.logoUrl}
+        logoPlateStyle={headerLogoPlate}
         phone={phone}
         phoneDisplay={phoneDisplay}
         nav={nav}

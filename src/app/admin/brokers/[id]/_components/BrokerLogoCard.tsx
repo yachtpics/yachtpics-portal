@@ -1,7 +1,15 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { loadBitmap } from "@/lib/canvasText";
+import { LOGO_PLATE_COLOR, logoPlateBox } from "@/lib/logoContrast";
+import { logoNeedsPlateOn } from "@/lib/logoPlateCanvas";
+
+/** The dark swatch — ink-950, the spec sheet / report bar colour. */
+const DARK_SWATCH = "#050b14";
+/** Logo height in the dark swatch preview (px), for sizing the plate. */
+const PREVIEW_LOGO_H = 36;
 
 /**
  * Admin broker page → Logo. Lets the owner put a broker's logo on their
@@ -19,6 +27,22 @@ export default function BrokerLogoCard({ brokerId, initialUrl }: { brokerId: str
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // Will dark surfaces put this logo on the light plate? (Same test they use.)
+  const [plated, setPlated] = useState(false);
+
+  useEffect(() => {
+    let live = true;
+    setPlated(false);
+    if (!url) return;
+    loadBitmap(url)
+      .then((bmp) => {
+        const needs = logoNeedsPlateOn(bmp, DARK_SWATCH);
+        try { bmp.close(); } catch { /* closed */ }
+        if (live) setPlated(needs);
+      })
+      .catch(() => { /* can't read it — show it plain */ });
+    return () => { live = false; };
+  }, [url]);
 
   async function upload(file: File) {
     setBusy("upload");
@@ -78,7 +102,15 @@ export default function BrokerLogoCard({ brokerId, initialUrl }: { brokerId: str
           )}
         </div>
         <div className={`${swatch} bg-ink-950 border-ink-950`}>
-          {url ? (
+          {url && plated ? (
+            <span
+              className="inline-flex items-center justify-center max-w-full"
+              style={{ background: LOGO_PLATE_COLOR, padding: Math.round(logoPlateBox(1, PREVIEW_LOGO_H).pad), borderRadius: Math.round(logoPlateBox(1, PREVIEW_LOGO_H).radius) }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={url} alt="Logo on a dark background, on its light plate" className="max-w-full object-contain" style={{ maxHeight: PREVIEW_LOGO_H }} />
+            </span>
+          ) : url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={url} alt="Logo on a dark background" className="max-h-full max-w-full object-contain" />
           ) : (
@@ -86,8 +118,11 @@ export default function BrokerLogoCard({ brokerId, initialUrl }: { brokerId: str
           )}
         </div>
       </div>
+      {url && plated && (
+        <p className="text-[11px] text-ink-600 mb-1">Dark lettering — shown on a light plate on dark backgrounds.</p>
+      )}
       {url && (
-        <p className="text-[11px] text-ink-500 mb-3">Left: light cards (slideshow footer, dock card). Right: dark cards (reel end card, spec sheet, social post) — if the lettering disappears on the right, ask for a white-lettered version.</p>
+        <p className="text-[11px] text-ink-500 mb-3">Left: light backgrounds (slideshow footer, dock card). Right: dark backgrounds (reel end card, spec sheet, social post), exactly as they&rsquo;ll show it.</p>
       )}
 
       <div className="flex flex-wrap items-center gap-3">

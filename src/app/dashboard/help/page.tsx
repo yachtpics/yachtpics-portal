@@ -29,6 +29,7 @@ const sections = [
     steps: [
       "Go to My Profile and confirm your name, brokerage, phone, and website.",
       "Upload your company logo — it appears in the footer of every client slideshow.",
+      "A logo with dark lettering is placed on a light plate wherever the background is dark (reels, spec sheets, social posts), so it always reads.",
       "Complete this before sharing your first listing so clients see your branding.",
       "To change your password, go to My Profile and scroll to the Change Password section — enter your new password, confirm it, and save.",
     ],
