@@ -6,6 +6,9 @@ import { getSeeShowcase, getSeeStats, type SeeReel } from "@/lib/seeShowcase";
 import { SEE_QUOTES } from "@/content/seeQuotes";
 import { PLANS } from "@/lib/plans";
 import ShowcaseReelVideo from "./_components/ShowcaseReelVideo";
+import TourVideo from "./_components/TourVideo";
+import ToolClips from "./_components/ToolClips";
+import { SEE_TOOLS, SEE_TOUR, posterSrc, videoSrc } from "./_components/seeVideos";
 
 /**
  * /see — the Portal's public showcase. One real listing (Short Story) shown
@@ -126,9 +129,40 @@ export default async function SeePage() {
             Your photographs, reels and client galleries, delivered in your brand and ready to send.
           </p>
           <div className="mt-8 flex flex-wrap gap-x-8 gap-y-1">
+            <a href="#tour" className={quietLink}>Watch the two-minute tour →</a>
             <a href={slideshowHref} target="_blank" rel="noopener noreferrer" className={quietLink}>See one as your buyer sees it →</a>
             <Link href="/auth/signup" className={quietLink}>Request access →</Link>
           </div>
+        </div>
+      </section>
+
+      {/* The tour — the two-minute overview video */}
+      <section id="tour" aria-labelledby="tour-title" className="relative scroll-mt-4 px-4 sm:px-8 py-16 sm:py-20 border-t border-hairline-inverse-soft">
+        <div className="max-w-5xl mx-auto grid gap-8 md:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] md:gap-12 md:items-center">
+          <div>
+            <p className="label-caps-inverse mb-3">The tour</p>
+            <h2 id="tour-title" className="text-display text-white mb-4">Two minutes, start to finish.</h2>
+            <p className="text-ink-400 text-[0.9375rem] leading-relaxed max-w-md">Every tool in the Portal, on real listings.</p>
+            <Link href="/auth/signup" className={`${quietLink} mt-4 hidden md:inline-flex`}>Request access →</Link>
+          </div>
+          <div className="min-w-0">
+            <div className="mx-auto w-full max-w-[calc(85vh*0.5625)] md:max-w-[calc(78vh*0.5625)] supports-[height:100dvh]:max-w-[calc(85dvh*0.5625)] md:supports-[height:100dvh]:max-w-[calc(78dvh*0.5625)]">
+              <TourVideo src={videoSrc(SEE_TOUR.file)} poster={posterSrc(SEE_TOUR.file)} duration={SEE_TOUR.duration} label="the two-minute Portal tour" />
+            </div>
+            <div className="mt-4 text-center md:hidden">
+              <Link href="/auth/signup" className={quietLink}>Request access →</Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Tool by tool — a quick look at each, then its walkthrough */}
+      <section aria-labelledby="tools-title" className="relative px-4 sm:px-8 py-16 sm:py-20 border-t border-hairline-inverse-soft">
+        <div className="max-w-5xl mx-auto">
+          <p className="label-caps-inverse mb-3">Tool by tool</p>
+          <h2 id="tools-title" className="text-display text-white mb-4">See each one in fifteen seconds.</h2>
+          <p className="text-ink-400 text-[0.9375rem] leading-relaxed max-w-md mb-10">Tap any tool for a quick look, then the full walkthrough.</p>
+          <ToolClips tools={SEE_TOOLS} />
         </div>
       </section>
 
