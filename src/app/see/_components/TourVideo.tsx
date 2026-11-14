@@ -1,16 +1,26 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { POSTER_HEIGHT, POSTER_WIDTH } from "./seeVideos";
+import { attachVideoTracking } from "./trackVideo";
 
 /**
  * The two-minute tour: a poster with a play button. Nothing of the video
  * loads until it is pressed (preload="none"); then it plays with sound and
  * the browser's own controls.
+ *
+ * `trackKey` (the file name without .mp4) turns on the anonymous play
+ * metrics (trackVideo.ts): play, 25 / 50 / 75 %, complete.
  */
-export default function TourVideo({ src, poster, duration, label }: { src: string; poster: string; duration: string; label: string }) {
+export default function TourVideo({ src, poster, duration, label, trackKey }: { src: string; poster: string; duration: string; label: string; trackKey?: string }) {
   const ref = useRef<HTMLVideoElement>(null);
   const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    const v = ref.current;
+    if (!v || !trackKey) return;
+    return attachVideoTracking(v, () => trackKey);
+  }, [trackKey]);
 
   function start() {
     const v = ref.current;

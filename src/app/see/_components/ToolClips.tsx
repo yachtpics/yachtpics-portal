@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { POSTER_HEIGHT, POSTER_WIDTH, posterSrc, videoSrc, type SeeTool } from "./seeVideos";
+import { POSTER_HEIGHT, POSTER_WIDTH, posterSrc, videoKey, videoSrc, type SeeTool } from "./seeVideos";
+import { attachVideoTracking, sendSeeEvent } from "./trackVideo";
 
 type Mode = "tease" | "walk";
 
@@ -36,12 +37,22 @@ export default function ToolClips({ tools }: { tools: SeeTool[] }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const tileRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const returnTo = useRef<number | null>(null);
+  /** Metrics key of the file loaded in the lightbox ("reel-tease"); kept after close. */
+  const currentKey = useRef<string | null>(null);
+
+  // Anonymous play metrics (trackVideo.ts) for whichever file is loaded.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    return attachVideoTracking(v, () => currentKey.current);
+  }, []);
 
   const tool = open === null ? null : tools[open];
 
   function playFile(file: string) {
     const v = videoRef.current;
     if (!v) return;
+    currentKey.current = videoKey(file);
     v.poster = posterSrc(file);
     v.src = videoSrc(file);
     v.play().catch(() => { /* refused — the controls are showing, a tap plays */ });
@@ -58,6 +69,7 @@ export default function ToolClips({ tools }: { tools: SeeTool[] }) {
   function swap() {
     if (!tool) return;
     const next: Mode = mode === "tease" ? "walk" : "tease";
+    if (next === "walk") sendSeeEvent(videoKey(tool.walkFile), "walk_click");
     setMode(next);
     setEnded(false);
     playFile(next === "walk" ? tool.walkFile : tool.teaseFile);
@@ -214,6 +226,7 @@ export default function ToolClips({ tools }: { tools: SeeTool[] }) {
             </button>
             <Link
               href="/auth/signup"
+              onClick={() => sendSeeEvent(currentKey.current ?? (tool ? videoKey(tool.teaseFile) : "overview"), "access_click")}
               className={`min-h-[44px] inline-flex items-center justify-center text-sm transition-colors duration-fast rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 focus-visible:ring-offset-ink-950 ${ended ? "text-accent-200 hover:text-white" : "text-accent-300 hover:text-accent-200"}`}
             >
               Request access →

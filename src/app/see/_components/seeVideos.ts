@@ -56,3 +56,37 @@ export const SEE_TOOLS: SeeTool[] = [
   { key: "report", name: "Seller Report", line: "Show your seller the work.", teaseFile: "report-tease.mp4", walkFile: "report-walk.mp4", walkDuration: "0:52" },
   { key: "own", name: "Your own photos", line: "Already have photos? Bring them.", teaseFile: "own-tease.mp4", walkFile: "own-walk.mp4", walkDuration: "1:06" },
 ];
+
+/**
+ * Play-metrics key for a video file: the file name without ".mp4"
+ * ("overview", "reel-tease", "reel-walk"). Stored in
+ * marketing_video_events.video and checked by /api/see/event.
+ */
+export function videoKey(file: string): string {
+  return file.replace(/\.mp4$/i, "");
+}
+
+export type SeeVideoRow = {
+  key: string;
+  /** "Portal tour", "Listing reel — quick look", "Listing reel — full walkthrough". */
+  label: string;
+  kind: "tour" | "tease" | "walk";
+  /** For a quick look: the key of its walkthrough (whose button clicks are stored under it). */
+  walkKey?: string;
+};
+
+/** Every video in page order: the tour, then each tool's quick look and walkthrough. */
+export function seeVideoRows(): SeeVideoRow[] {
+  const rows: SeeVideoRow[] = [{ key: videoKey(SEE_TOUR.file), label: "Portal tour", kind: "tour" }];
+  SEE_TOOLS.forEach((t) => {
+    const walkKey = videoKey(t.walkFile);
+    rows.push({ key: videoKey(t.teaseFile), label: `${t.name} — quick look`, kind: "tease", walkKey });
+    rows.push({ key: walkKey, label: `${t.name} — full walkthrough`, kind: "walk" });
+  });
+  return rows;
+}
+
+/** The allow-list of video keys the event route accepts. */
+export function seeVideoKeys(): string[] {
+  return seeVideoRows().map((r) => r.key);
+}

@@ -8,7 +8,8 @@ import { PLANS } from "@/lib/plans";
 import ShowcaseReelVideo from "./_components/ShowcaseReelVideo";
 import TourVideo from "./_components/TourVideo";
 import ToolClips from "./_components/ToolClips";
-import { SEE_TOOLS, SEE_TOUR, posterSrc, videoSrc } from "./_components/seeVideos";
+import TrackedAccessLink from "./_components/TrackedAccessLink";
+import { SEE_TOOLS, SEE_TOUR, posterSrc, videoKey, videoSrc } from "./_components/seeVideos";
 
 /**
  * /see — the Portal's public showcase. One real listing (Short Story) shown
@@ -143,14 +144,14 @@ export default async function SeePage() {
             <p className="label-caps-inverse mb-3">The tour</p>
             <h2 id="tour-title" className="text-display text-white mb-4">Two minutes, start to finish.</h2>
             <p className="text-ink-400 text-[0.9375rem] leading-relaxed max-w-md">Every tool in the Portal, on real listings.</p>
-            <Link href="/auth/signup" className={`${quietLink} mt-4 hidden md:inline-flex`}>Request access →</Link>
+            <TrackedAccessLink href="/auth/signup" video={videoKey(SEE_TOUR.file)} className={`${quietLink} mt-4 hidden md:inline-flex`}>Request access →</TrackedAccessLink>
           </div>
           <div className="min-w-0">
             <div className="mx-auto w-full max-w-[calc(85vh*0.5625)] md:max-w-[calc(78vh*0.5625)] supports-[height:100dvh]:max-w-[calc(85dvh*0.5625)] md:supports-[height:100dvh]:max-w-[calc(78dvh*0.5625)]">
-              <TourVideo src={videoSrc(SEE_TOUR.file)} poster={posterSrc(SEE_TOUR.file)} duration={SEE_TOUR.duration} label="the two-minute Portal tour" />
+              <TourVideo src={videoSrc(SEE_TOUR.file)} poster={posterSrc(SEE_TOUR.file)} duration={SEE_TOUR.duration} label="the two-minute Portal tour" trackKey={videoKey(SEE_TOUR.file)} />
             </div>
             <div className="mt-4 text-center md:hidden">
-              <Link href="/auth/signup" className={quietLink}>Request access →</Link>
+              <TrackedAccessLink href="/auth/signup" video={videoKey(SEE_TOUR.file)} className={quietLink}>Request access →</TrackedAccessLink>
             </div>
           </div>
         </div>

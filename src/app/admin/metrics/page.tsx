@@ -170,7 +170,10 @@ export default async function MetricsPage() {
     <div className="px-6 py-8 max-w-6xl mx-auto">
       <div className="mb-8">
         <h1 className="text-display text-ink-900">Metrics</h1>
-        <p className="text-ink-500 mt-1 text-sm">Platform activity across brokers and assistants.</p>
+        <p className="text-ink-500 mt-1 text-sm">
+          Platform activity across brokers and assistants.{" "}
+          <a href="/admin/video-metrics" className="text-accent-700 hover:text-accent-800 transition-colors duration-fast ease-quiet">Marketing video plays →</a>
+        </p>
       </div>
 
       {/* Platform totals */}

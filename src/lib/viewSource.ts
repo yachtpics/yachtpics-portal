@@ -144,3 +144,17 @@ export function describeLocation(h: { city?: string | null; region?: string | nu
   // City-states: "Monaco", not "Monaco, Monaco".
   return city ? (countryName && countryName !== city ? `${city}, ${countryName}` : city) : countryName || null;
 }
+
+/**
+ * "phone" / "tablet" / "desktop" from a User-Agent header, for coarse
+ * counts (marketing video metrics). Null when there is no User-Agent.
+ * iPads on iPadOS 13+ say "Macintosh" and count as desktop.
+ */
+export function deviceClass(userAgent: string | null | undefined): "phone" | "tablet" | "desktop" | null {
+  const ua = userAgent ?? "";
+  if (!ua) return null;
+  if (/iPad|Tablet|PlayBook|Silk|Kindle/i.test(ua)) return "tablet";
+  if (/Android/i.test(ua)) return /Mobile/i.test(ua) ? "phone" : "tablet";
+  if (/iPhone|iPod|Mobi|Windows Phone/i.test(ua)) return "phone";
+  return "desktop";
+}

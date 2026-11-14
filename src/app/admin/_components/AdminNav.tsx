@@ -30,6 +30,7 @@ import {
   ListChecks,
   HardDrive,
   CalendarRange,
+  Film,
   type LucideIcon,
 } from "lucide-react";
 
@@ -62,6 +63,7 @@ const navItems: NavItem[] = [
   // old shoots and invoices tables were never used).
   { label: "Billing", href: "/admin/billing", icon: Receipt, billingOnly: true },
   { label: "Metrics", href: "/admin/metrics", icon: BarChart3 },
+  { label: "Video metrics", href: "/admin/video-metrics", icon: Film, short: "Videos" },
   { label: "Jobs", href: "/admin/jobs", icon: ListChecks },
   { label: "Storage", href: "/admin/storage", icon: HardDrive },
   { label: "Reels", href: "/admin/reels", icon: Clapperboard },
@@ -96,6 +98,7 @@ const NAV_PRIORITY = [
   "/admin/photo-categories",
   "/admin/shows",
   "/admin/metrics",
+  "/admin/video-metrics",
   "/admin/reels",
   "/admin/reel-studio",
   "/admin/reels/review",
