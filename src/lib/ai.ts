@@ -19,7 +19,7 @@ import { AI_PHOTO_LABELS, normalizeAiPhotoLabel } from "@/lib/aiPhotoLabels";
 const API = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-haiku-4-5";
 /** Website text drafts (draftSiteDescription). Override with SITE_TEXT_MODEL. */
-const SITE_TEXT_DEFAULT_MODEL = "claude-sonnet-5-5";
+const SITE_TEXT_DEFAULT_MODEL = "claude-sonnet-4-5";
 
 export function isAiConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -255,14 +255,15 @@ export async function draftSiteDescription(listing: SiteDescribable, imageUrls: 
   // it follows the "facts only, no judgements" rules far more reliably. If the
   // override is refused (unknown model on this account), fall back quietly.
   const model = process.env.SITE_TEXT_MODEL || SITE_TEXT_DEFAULT_MODEL;
-  let reply: string;
+  let reply = "";
   try {
-    reply = await ask(blocks, { system, maxTokens: 300, model });
+    reply = await ask(blocks, { system, maxTokens: 400, model });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "";
     if (!/model/i.test(msg)) throw err;
-    reply = await ask(blocks, { system, maxTokens: 300 });
   }
+  // Refused model, or a reply with no text in it: use the Portal's everyday model.
+  if (!reply.trim()) reply = await ask(blocks, { system, maxTokens: 400 });
   return cleanSiteDescription(reply);
 }
 
