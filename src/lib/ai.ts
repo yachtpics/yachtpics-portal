@@ -18,6 +18,8 @@ import { AI_PHOTO_LABELS, normalizeAiPhotoLabel } from "@/lib/aiPhotoLabels";
 
 const API = "https://api.anthropic.com/v1/messages";
 const DEFAULT_MODEL = "claude-haiku-4-5";
+/** Website text drafts (draftSiteDescription). Override with SITE_TEXT_MODEL. */
+const SITE_TEXT_DEFAULT_MODEL = "claude-sonnet-5-5";
 
 export function isAiConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -27,7 +29,7 @@ export type Block =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "url"; url: string } };
 
-async function ask(blocks: Block[], opts: { system: string; maxTokens: number; timeoutMs?: number }): Promise<string> {
+async function ask(blocks: Block[], opts: { system: string; maxTokens: number; timeoutMs?: number; model?: string }): Promise<string> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("AI is not configured (ANTHROPIC_API_KEY is missing).");
   // Optional cap on the whole call, so a caller with a time budget (the photo
@@ -44,7 +46,7 @@ async function ask(blocks: Block[], opts: { system: string; maxTokens: number; t
   }
 }
 
-async function askOnce(key: string, blocks: Block[], opts: { system: string; maxTokens: number }, signal?: AbortSignal): Promise<string> {
+async function askOnce(key: string, blocks: Block[], opts: { system: string; maxTokens: number; model?: string }, signal?: AbortSignal): Promise<string> {
   const res = await fetch(API, {
     method: "POST",
     signal,
@@ -54,7 +56,7 @@ async function askOnce(key: string, blocks: Block[], opts: { system: string; max
       "content-type": "application/json",
     },
     body: JSON.stringify({
-      model: process.env.ANTHROPIC_MODEL || DEFAULT_MODEL,
+      model: opts.model || process.env.ANTHROPIC_MODEL || DEFAULT_MODEL,
       max_tokens: opts.maxTokens,
       system: opts.system,
       messages: [{ role: "user", content: blocks }],
@@ -170,11 +172,13 @@ export async function draftDescription(listing: DescribableListing, imageUrls: s
 export type SiteDescribable = {
   vessel_name: string | null; vessel_type: string | null; year: number | null; make: string | null; model: string | null;
   length_ft: number | string | null; engines: string | null; staterooms: number | null; location: string | null;
+  /** Distinct photo areas in gallery order (the Portal's own labels), and how many photos — grounds the text in the shoot. */
+  areas?: string[]; photoCount?: number;
 };
 
 /** Website text length the prompt asks for (characters). */
-export const SITE_TEXT_MIN = 250;
-export const SITE_TEXT_MAX = 420;
+export const SITE_TEXT_MIN = 220;
+export const SITE_TEXT_MAX = 380;
 /** The first sentence becomes the Google description on its own. */
 export const SITE_TEXT_FIRST_SENTENCE_MAX = 150;
 /** Post-processing: hard cap, and anything shorter than this is a failure. */
@@ -190,15 +194,20 @@ export function buildSiteDescriptionPrompt(listing: SiteDescribable, imageUrls: 
   const facts = Object.entries({
     Name: listing.vessel_name, Type: listing.vessel_type, Year: listing.year, Builder: listing.make, Model: listing.model,
     "Length (ft)": listing.length_ft, Engines: listing.engines, Staterooms: listing.staterooms, Location: listing.location,
+    "Photographs in the gallery": listing.photoCount && listing.photoCount > 0 ? listing.photoCount : null,
+    "Areas photographed (gallery order)": listing.areas && listing.areas.length ? listing.areas.join(", ") : null,
   }).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "").map(([k, v]) => `${k}: ${String(v).trim()}`).join("\n");
 
   const system = [
-    "You write the short introduction for a yacht's page on yachtpics.com, the website of YachtPics, a yacht photography studio. The page shows YachtPics' photographs of the boat; your text introduces the boat as seen in that photo shoot.",
-    `Length and form: 2 or 3 sentences, ${SITE_TEXT_MIN}–${SITE_TEXT_MAX} characters in total. Plain prose only: no headings, no lists, no emojis, no hashtags, and no quotation marks around the text.`,
-    `The first sentence must stand on its own and be no longer than ${SITE_TEXT_FIRST_SENTENCE_MAX} characters. It names the year, builder, model and the boat's name, using whichever of these are given. It is used on its own as the Google description.`,
-    "Facts: the year, builder, model, length, engines, staterooms and location come only from the listing facts provided. Never guess or add specifications, equipment, awards, refits, upgrades, history, condition claims (such as 'immaculate', 'turnkey', 'like new'), performance figures, prices, availability or broker contact details. Do not use any word about price, value or cost.",
-    "Photographs: use them only for what is plainly visible — the layout and spaces (for example flybridge, cockpit, salon, galley, staterooms, helm), finishes and colours in general terms, and the setting. If you are not sure something is shown, leave it out.",
-    "Voice: premium, understated, specific and calm; third person. Describe the boat as photographed. This is not a sales pitch: no calls to action, no 'for sale', 'don't miss', 'must see', and no exclamation marks. Do not use the word 'walkthrough'. Refer to the boat by name, or as 'she' sparingly, or stay neutral.",
+    "You write the short introduction for a yacht's page on yachtpics.com, the website of YachtPics, a yacht photography studio. The page is a gallery of YachtPics' photographs of that boat. Your text says what the boat is and what the photographs show. It is a caption for a photo shoot, not a sales listing.",
+    `Length and form: 2 or 3 sentences, ${SITE_TEXT_MIN}–${SITE_TEXT_MAX} characters in total. Plain prose only: no headings, lists, emojis, hashtags or exclamation marks, and no quotation marks around the text.`,
+    `First sentence: say what the boat is, using ONLY the listing facts — her name if she has one, year, builder, model, length, and the location if one is given (as where she was photographed). It must stand on its own, be no longer than ${SITE_TEXT_FIRST_SENTENCE_MAX} characters, and say she was photographed by YachtPics. It is used alone as the Google description. If a fact is missing, leave it out; never fill it in.`,
+    "Remaining sentences: describe what the photographs show, moving through the boat in the order of the areas listed. Name the actual spaces and give concrete, visible details: hull and deck colours, materials (teak, oak, stainless), how a cockpit, helm, salon or stateroom is laid out, what the seating or bunks look like. Prefer two or three specific observations to a list of every area.",
+    "Strict limits on facts. Everything about what the boat IS comes only from the listing facts: do not state or guess a model name, boat type, engine count or type, number of staterooms, range, speed, year or builder that is not in the facts — even if you think you recognise the boat or can count engines in a photo. No history, refits, upgrades, awards, condition claims, prices, availability or broker details. No word about price, value or cost.",
+    "No judgements and no purpose claims. Do not say what the boat is built for, designed for, ideal for or capable of, and do not describe performance, comfort, efficiency, seaworthiness or how she would be used. Do not use evaluative words such as spacious, generous, ample, commanding, excellent, thoughtful, well-appointed, comfortable, luxurious, stunning, impressive, powerful, serious, practical, purposeful, elegant or beautiful. Do not praise the view, the light or the weather. Say what is there; let the photographs do the persuading.",
+    "If you are not sure something is shown, leave it out. A shorter, plainer text is better than a guess.",
+    "Voice: calm, exact, understated; third person; present tense. Refer to the boat by name, or as 'she' sparingly. Do not use the word 'walkthrough'. Vary the sentence openings; do not begin a sentence with 'The boat features' or 'Below deck,'.",
+    "For tone only (an invented boat — do not reuse its wording): Sea Lark is a 2019 Example 52, photographed by YachtPics in Stuart, Florida. The gallery runs from her navy hull and teak cockpit up to a flybridge helm with twin chairs, then inside to a salon in light oak with the galley aft and three staterooms forward.",
     "Reply with the text only.",
   ].join("\n");
 
@@ -242,7 +251,18 @@ export function cleanSiteDescription(raw: string | null | undefined): string {
  */
 export async function draftSiteDescription(listing: SiteDescribable, imageUrls: string[]): Promise<string> {
   const { system, blocks } = buildSiteDescriptionPrompt(listing, imageUrls);
-  const reply = await ask(blocks, { system, maxTokens: 300 });
+  // Public website copy is worth a stronger writer than the labelling model:
+  // it follows the "facts only, no judgements" rules far more reliably. If the
+  // override is refused (unknown model on this account), fall back quietly.
+  const model = process.env.SITE_TEXT_MODEL || SITE_TEXT_DEFAULT_MODEL;
+  let reply: string;
+  try {
+    reply = await ask(blocks, { system, maxTokens: 300, model });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "";
+    if (!/model/i.test(msg)) throw err;
+    reply = await ask(blocks, { system, maxTokens: 300 });
+  }
   return cleanSiteDescription(reply);
 }
 

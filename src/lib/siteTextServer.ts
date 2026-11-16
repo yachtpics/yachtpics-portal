@@ -81,6 +81,13 @@ export async function draftSiteTextForListing(svc: SupabaseClient, listingId: st
   const l = data as unknown as ListingFacts;
   const urls = await pickDescribePhotoUrls(svc, l.id, l);
   if (urls.length === 0) throw new Error("No visible photos to draft from.");
+  // The gallery's own areas, in show order, so the text follows the shoot.
+  const all = await orderedVisiblePhotos(svc, l.id, l);
+  const areas: string[] = [];
+  for (let i = 0; i < all.length; i++) {
+    const c = (all[i].category ?? "").trim();
+    if (c && c.toLowerCase() !== "other" && areas.indexOf(c) < 0) areas.push(c);
+  }
   return draftSiteDescription(
     {
       vessel_name: l.vessel_name,
@@ -92,6 +99,8 @@ export async function draftSiteTextForListing(svc: SupabaseClient, listingId: st
       engines: l.engines,
       staterooms: l.staterooms,
       location: l.location,
+      areas: areas.slice(0, 24),
+      photoCount: all.length,
     },
     urls
   );
