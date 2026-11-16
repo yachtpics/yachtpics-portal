@@ -8,6 +8,7 @@ import { r2Configured, r2Exists, r2Put, r2PublicUrl, r2Delete, R2_BUCKET } from 
 import { copyR2OriginalTo, readOriginal } from "@/lib/photoStore";
 import { ftpConfigured, uploadFiles, deleteFiles } from "@/lib/siteFtp";
 import type { SiteVideo } from "@/lib/siteTemplates";
+import { sitemapXml, type SitemapRow } from "@/lib/siteSitemap";
 
 /**
  * Is the media host that serves public video configured yet?
@@ -182,6 +183,7 @@ type ListingRow = {
   length_ft: string | null;
   vessel_type: string | null;
   location: string | null;
+  description: string | null;
   status: string | null;
   showcase_opt_out: boolean | null;
   publish_to_site: boolean | null;
@@ -192,17 +194,20 @@ type ListingRow = {
   broker_id: string;
 };
 
-/** Copy a listing's visible photos into the public bucket; returns public URLs. */
+/** One photo on a boat page: its public URL plus what its alt text is written from. */
+type SitePhoto = { url: string; category: string | null; filename: string | null };
+
+/** Copy a listing's visible photos into the public bucket; returns them in page order. */
 async function syncPhotos(
   listing: ListingRow,
   sitePage: string,
   slug: string,
   backend: SitePhotosBackend
-): Promise<string[] | { error: string }> {
+): Promise<SitePhoto[] | { error: string }> {
   const svc = service();
   const { data: photoRows } = await svc
     .from("photos")
-    .select("id, storage_path, category, display_order, storage_backend")
+    .select("id, storage_path, filename, category, display_order, storage_backend")
     .eq("listing_id", listing.id)
     .eq("is_visible", true)
     .order("display_order", { ascending: true });
@@ -224,12 +229,16 @@ async function syncPhotos(
   // existing object, so a re-order used to leave the old image frozen at each
   // slot. ID names are immutable content, which also keeps CDN/browser caching
   // correct.
-  const urls: string[] = [];
+  const urls: SitePhoto[] = [];
   const jobs = rows.map((r) => {
     const src = r.storage_path as string;
     const ext = (src.split(".").pop() || "jpg").toLowerCase();
     const dest = `${sitePage}/${slug}/${r.id}.${ext}`;
-    urls.push(backend === "r2" ? r2PublicUrl(dest) : publicPhotoUrl(dest));
+    urls.push({
+      url: backend === "r2" ? r2PublicUrl(dest) : publicPhotoUrl(dest),
+      category: (r.category as string | null) ?? null,
+      filename: ((r as { filename?: string | null }).filename as string | null) ?? null,
+    });
     return { src, dest, onR2: (r as { storage_backend?: string | null }).storage_backend === "r2" };
   });
 
@@ -278,7 +287,7 @@ async function syncPhotos(
       };
     }
     if (failedDest.size === 0) return urls;
-    const keep = jobs.map((j, k) => (failedDest.has(j.dest) ? null : urls[k])).filter((u): u is string => !!u);
+    const keep = jobs.map((j, k) => (failedDest.has(j.dest) ? null : urls[k])).filter((u): u is SitePhoto => !!u);
     return keep;
   }
 
@@ -345,8 +354,66 @@ export async function renderBoatsIndex(): Promise<SiteFile | null> {
 
 const SITEMAP_SITE = "https://www.yachtpics.com";
 
-function xmlEsc(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/**
+ * Public photo URLs of every live boat page, by listing id — the same URLs the
+ * pages use (same order, same backend), for the image sitemap. Best effort:
+ * on any read error the sitemap simply goes out without images.
+ */
+async function sitemapBoatImages(
+  boats: { id: string; site_page: string; site_slug: string; hero_photo_id: string | null; photo_order_manual: boolean | null; site_photos_backend: string | null; site_media: string | null }[],
+  justPublished?: { listingId: string; photosBackend: SitePhotosBackend }
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  // Boats whose page carries photos (a video-only boat's page has none).
+  const withPhotos = boats.filter((b) => {
+    const media: SiteMedia = isSiteMedia(b.site_media) ? b.site_media : "photos";
+    return includesPhotos(media) || !videoPublishReady();
+  });
+  if (withPhotos.length === 0) return out;
+
+  type Row = { id: string; listing_id: string; storage_path: string; category: string | null; display_order: number | null };
+  const byListing = new Map<string, Row[]>();
+  try {
+    const svc = service();
+    const ids = withPhotos.map((b) => b.id);
+    const PAGE = 1000;
+    for (let i = 0; i < ids.length; i += 100) {
+      const chunk = ids.slice(i, i + 100);
+      for (let from = 0; from < 100_000; from += PAGE) {
+        const { data, error } = await svc
+          .from("photos")
+          .select("id, listing_id, storage_path, category, display_order")
+          .in("listing_id", chunk)
+          .eq("is_visible", true)
+          .order("id", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (error) return out;
+        for (const r of (data ?? []) as Row[]) {
+          const list = byListing.get(r.listing_id);
+          if (list) list.push(r);
+          else byListing.set(r.listing_id, [r]);
+        }
+        if ((data ?? []).length < PAGE) break;
+      }
+    }
+  } catch {
+    return out;
+  }
+
+  for (const b of withPhotos) {
+    const rows = orderPhotos(byListing.get(b.id) ?? [], { manual: b.photo_order_manual === true, heroId: b.hero_photo_id });
+    const backend: SitePhotosBackend =
+      justPublished?.listingId === b.id ? justPublished.photosBackend : b.site_photos_backend === "r2" ? "r2" : "supabase";
+    out.set(
+      b.id,
+      rows.map((r) => {
+        const ext = (r.storage_path.split(".").pop() || "jpg").toLowerCase();
+        const dest = `${b.site_page}/${b.site_slug}/${r.id}.${ext}`;
+        return backend === "r2" ? r2PublicUrl(dest) : publicPhotoUrl(dest);
+      })
+    );
+  }
+  return out;
 }
 
 /**
@@ -356,8 +423,12 @@ function xmlEsc(s: string): string {
  * publish with today's date, so Google always sees the newest boats and drops
  * retired pages. Deactivated brokerages (is_active/has_page false) fall out
  * automatically.
+ *
+ * Boat pages also list their photos as <image:image> entries (Nov 16) so
+ * Google Images can find them. `justPublished` = the boat this publish is for
+ * (its page now uses this build's photo backend, as in the latest-boats feed).
  */
-export async function renderSitemap(): Promise<SiteFile> {
+export async function renderSitemap(justPublished?: { listingId: string; photosBackend: SitePhotosBackend }): Promise<SiteFile> {
   const svc = service();
   const today = new Date().toISOString().slice(0, 10);
 
@@ -385,28 +456,24 @@ export async function renderSitemap(): Promise<SiteFile> {
   // brokerage page when its site_page is set, so that's the accurate source.
   const { data: boats } = await svc
     .from("listings")
-    .select("site_page, site_slug")
+    .select("id, site_page, site_slug, hero_photo_id, photo_order_manual, site_photos_backend, site_media")
     .eq("publish_to_site", true)
     .eq("status", "active")
     .eq("showcase_opt_out", false)
     .not("site_page", "is", null)
     .not("site_slug", "is", null);
 
-  const rows: { loc: string; priority: string }[] = [];
-  for (const [path, pr] of core) rows.push({ loc: `${SITEMAP_SITE}/${path}`, priority: pr });
-  for (const p of pages ?? []) rows.push({ loc: `${SITEMAP_SITE}/${p.filename}.html`, priority: "0.7" });
-  for (const b of boats ?? []) {
-    rows.push({ loc: `${SITEMAP_SITE}/${b.site_page}/${b.site_slug}/index.html`, priority: "0.8" });
+  const boatRows = (boats ?? []) as { id: string; site_page: string; site_slug: string; hero_photo_id: string | null; photo_order_manual: boolean | null; site_photos_backend: string | null; site_media: string | null }[];
+  const images = await sitemapBoatImages(boatRows, justPublished);
+
+  const rows: SitemapRow[] = [];
+  for (const [path, pr] of core) rows.push({ loc: `${SITEMAP_SITE}/${path}`, lastmod: today, priority: pr });
+  for (const p of pages ?? []) rows.push({ loc: `${SITEMAP_SITE}/${p.filename}.html`, lastmod: today, priority: "0.7" });
+  for (const b of boatRows) {
+    rows.push({ loc: `${SITEMAP_SITE}/${b.site_page}/${b.site_slug}/index.html`, lastmod: today, priority: "0.8", images: images.get(b.id) ?? [] });
   }
 
-  const body = rows
-    .map((u) => `  <url><loc>${xmlEsc(u.loc)}</loc><lastmod>${today}</lastmod><priority>${u.priority}</priority></url>`)
-    .join("\n");
-
-  const xml =
-    `<?xml version="1.0" encoding="UTF-8"?>\n` +
-    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
-  return { path: "sitemap.xml", content: xml };
+  return { path: "sitemap.xml", content: sitemapXml(rows) };
 }
 
 /** robots.txt — allow everything, and point crawlers at the sitemap. */
@@ -745,7 +812,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   const { data: listing } = await svc
     .from("listings")
-    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, site_media, broker_id")
+    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, description, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, site_media, broker_id")
     .eq("id", listingId)
     .maybeSingle();
   if (!listing) return { error: "Listing not found" };
@@ -808,7 +875,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   const photosBackend = sitePhotosBackend();
   const synced = wantsPhotos ? await syncPhotos(l, brokerage.site_page, slug, photosBackend) : [];
   if (!Array.isArray(synced)) return { error: synced.error };
-  const photos = synced;
+  const photos = synced.map((p) => p.url);
   // syncPhotos returns the ordered list, so the first entry IS the cover photo
   // (the chosen hero, or the first in the walk-the-boat order). That's what the
   // video player uses as its poster.
@@ -871,10 +938,12 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     lengthFt: l.length_ft,
     vesselType: l.vessel_type,
     location: l.location,
+    description: l.description,
     brokerName: broker?.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : null,
     brokerEmail: broker?.display_email ?? null,
     brokerPhone: broker?.phone ?? null,
     photos,
+    photoInfo: synced.map((p) => ({ category: p.category, filename: p.filename })),
     videos,
     slideshowUrl,
   };
@@ -894,7 +963,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   // Keep the sitemap current — all brokerage + boat pages with today's date —
   // and refresh robots.txt, so Google discovers newly published boats.
-  files.push(await renderSitemap());
+  files.push(await renderSitemap({ listingId: l.id, photosBackend }));
   files.push(renderRobots());
 
   // The home page's "Just photographed" strip: card-size cover on the media

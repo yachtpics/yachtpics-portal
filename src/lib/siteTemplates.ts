@@ -6,8 +6,19 @@
 // no-crop-on-paper look and staggered crossfade — so new boats get the portal
 // slideshow while the old Juicebox galleries stay exactly where they are.
 
+import { photoAlt, oneLine, customMetaDescription, descriptionParagraphs } from "./siteAltText";
+
 const GA_ID = "G-5FZT6F7ES3";
 const SITE = "https://www.yachtpics.com";
+
+/**
+ * JSON for inside a <script> element. JSON.stringify alone lets a "</script>"
+ * in a description (or a vessel name) end the script early; "<" as < is
+ * the same string to JSON and to JavaScript.
+ */
+function scriptJson(v: unknown): string {
+  return JSON.stringify(v).replace(/</g, "\\u003c");
+}
 
 export function esc(s: string): string {
   return s
@@ -158,6 +169,16 @@ export type BoatPageData = {
   brokerEmail: string | null;
   brokerPhone: string | null;
   photos: string[];
+  /**
+   * Per photo, same order as `photos`: its Portal category and original file
+   * name — what the alt text is written from. Missing = "yacht photo".
+   */
+  photoInfo?: ({ category: string | null; filename: string | null } | null)[];
+  /**
+   * listings.description. When filled in it is the page's intro and its
+   * Google description; empty = the generated sentence, as before.
+   */
+  description?: string | null;
   /** Video published to the public site. Empty for photo-only boats. */
   videos: SiteVideo[];
   /**
@@ -244,19 +265,45 @@ export function boatPage(d: BoatPageData): string {
       `, listed for sale with ${d.brokerageName}. ${videoLine}`
     : bodyText;
 
+  // The owner's own description (listings.description), when there is one:
+  // the intro paragraph(s) and the Google description. The generated
+  // sentence above stays as the fallback.
+  const custom = (d.description ?? "").trim();
+  const customLine = custom ? oneLine(custom) : "";
+  const introHtml = custom
+    ? descriptionParagraphs(custom)
+        .map((p) => `<p>${esc(p).replace(/[ \t]*\n[ \t]*/g, "<br>")}</p>`)
+        .join("\n        ")
+    : `<p>${esc(bodyText)}</p>`;
+  const ldText = customLine || pageText;
+
   const title = `${d.label} — ${d.brokerageName} | YachtPics`;
-  const description = pageText.length > 155 ? pageText.slice(0, 152).trimEnd() + "…" : pageText;
+  const description = customLine
+    ? customMetaDescription(customLine, d.location)
+    : pageText.length > 155 ? pageText.slice(0, 152).trimEnd() + "…" : pageText;
 
   const pageUrl = `${SITE}/${d.sitePage}/${d.slug}/index.html`;
+
+  // Alt text per photo: "64′ Viking Reel Weapon — Cockpit" (src/lib/siteAltText.ts).
+  const altBoat = { lengthFt: d.lengthFt, make: d.make, displayMake: make, vesselName: d.vesselName };
+  const alts = d.photos.map((_, i) => photoAlt(altBoat, d.photoInfo?.[i] ?? null));
 
   const ld = {
     "@context": "https://schema.org",
     "@type": "ImageGallery",
     name: `${d.label} — ${d.brokerageName}`,
-    description: pageText,
+    description: ldText,
     url: pageUrl,
     provider: { "@type": "Organization", name: "YachtPics", url: SITE },
-    image: d.photos,
+    image: d.photos.map((url, i) => ({
+      "@type": "ImageObject",
+      contentUrl: url,
+      name: alts[i],
+      caption: alts[i],
+      creator: { "@type": "Organization", name: "YachtPics", url: SITE },
+      creditText: "YachtPics",
+      copyrightNotice: "© YachtPics",
+    })),
   };
 
   // A separate VideoObject per video. This is what lets Google show the page as
@@ -266,7 +313,7 @@ export function boatPage(d: BoatPageData): string {
     "@context": "https://schema.org",
     "@type": "VideoObject",
     name: v.title?.trim() ? `${d.label} — ${v.title.trim()}` : `${d.label} — video`,
-    description: v.description?.trim() || pageText,
+    description: v.description?.trim() || ldText,
     contentUrl: v.url,
     ...(v.poster ? { thumbnailUrl: [v.poster] } : {}),
     uploadDate: new Date().toISOString().slice(0, 10),
@@ -274,7 +321,7 @@ export function boatPage(d: BoatPageData): string {
   }));
 
   const ldScript = [ld, ...videoLd]
-    .map((o) => `<script type="application/ld+json">${JSON.stringify(o)}</script>`)
+    .map((o) => `<script type="application/ld+json">${scriptJson(o)}</script>`)
     .join("\n");
 
   // Video sits above the photographs: it's the thing a broker most wants seen,
@@ -307,7 +354,7 @@ export function boatPage(d: BoatPageData): string {
   const thumbs = d.photos
     .map(
       (p, i) =>
-        `<button class="yp-thumb" data-i="${i}" aria-label="Photo ${i + 1}"><img src="${p}" alt="${esc(d.vesselName)} yacht photo ${i + 1}" loading="lazy" decoding="async"></button>`
+        `<button class="yp-thumb" data-i="${i}" aria-label="Photo ${i + 1}"><img src="${p}" alt="${esc(alts[i])}" loading="lazy" decoding="async"></button>`
     )
     .join("");
 
@@ -329,7 +376,7 @@ ${nav(2)}
   ${hasPhotos ? `<section style="padding:40px 0 24px">
     <div class="wrap">
       <div class="yp-stage" id="ypStage">
-        <img class="yp-layer" id="ypA" alt="${esc(d.vesselName)} — yacht photography by YachtPics" decoding="sync">
+        <img class="yp-layer" id="ypA" alt="${esc(alts[0] ?? "")}" decoding="sync">
         <img class="yp-layer" id="ypB" alt="" decoding="sync">
         <button class="yp-arrow yp-prev" id="ypPrev" aria-label="Previous photo">&lsaquo;</button>
         <button class="yp-arrow yp-next" id="ypNext" aria-label="Next photo">&rsaquo;</button>
@@ -363,7 +410,7 @@ ${nav(2)}
         </div>
       </div>
       <div class="yp-about">
-        <p>${esc(bodyText)}</p>
+        ${introHtml}
         ${specPairs.length ? `<dl class="yp-specs">${specPairs.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : ""}
       </div>
       <p style="margin-top:40px">
@@ -418,7 +465,8 @@ ${nav(2)}
 
 <script>
 (function(){
-  var photos = ${JSON.stringify(d.photos)};
+  var photos = ${scriptJson(d.photos)};
+  var alts = ${scriptJson(alts)};
   if(!photos.length) return;
   var A = document.getElementById('ypA'), B = document.getElementById('ypB');
   var layers = [A, B], front = 0, cur = 0, busy = false;
@@ -449,6 +497,7 @@ ${nav(2)}
     var back = layers[1-front], fore = layers[front];
     busy = true;
     back.src = photos[i];
+    back.alt = alts[i] || '';
     var go = function(){
       back.style.zIndex = 2; fore.style.zIndex = 1;
       // A true cross-dissolve: both photos move together across the same window.
@@ -463,6 +512,7 @@ ${nav(2)}
       back.style.opacity = 1;
       fore.style.opacity = 0;
       setTimeout(function(){
+        fore.alt = '';
         front = 1 - front; cur = i; busy = false;
         label(); marks(); preload(i);
       }, instant ? 0 : FADE);

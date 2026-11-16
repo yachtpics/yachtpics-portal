@@ -4,6 +4,7 @@ import Link from "next/link";
 import { planForPriceId } from "@/lib/plans";
 import { getAccessStatus, isStripePaid, isComped } from "@/lib/subscriptionAccess";
 import RepublishLiveBoats from "./_components/RepublishLiveBoats";
+import BoatPageTextGaps from "./_components/BoatPageTextGaps";
 import RetiredPages from "./_components/RetiredPages";
 import GenerateThumbnails from "./_components/GenerateThumbnails";
 import { daysUntilBirthday } from "@/lib/brokerContact";
@@ -265,6 +266,7 @@ export default async function AdminPage() {
       <div className="mb-8 space-y-4">
         <GenerateThumbnails initialRemaining={photosWithoutDerivatives ?? 0} />
         <RepublishLiveBoats />
+        <BoatPageTextGaps />
         <RetiredPages pages={(retiredPages ?? []) as { label: string; filename: string }[]} />
       </div>
 

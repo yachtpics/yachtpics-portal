@@ -6,6 +6,7 @@ import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import { useState, useRef, useEffect } from "react";
 import CoBrokerManager from "./CoBrokerManager";
 import YpShareCard from "./YpShareCard";
+import WebsitePageCard from "./WebsitePageCard";
 import DockCardButton from "@/components/DockCardButton";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
@@ -1029,6 +1030,19 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             ×
           </button>
         </div>
+      )}
+
+      {/* Website page (Nov 16): the description + location that the yachtpics.com
+          page is written from, beside the publish controls above. Shown once a
+          website page is picked (or the boat is already live). */}
+      {(sitePage || onSite) && (
+        <WebsitePageCard
+          listingId={listing.id}
+          initialDescription={listing.description}
+          initialLocation={listing.location}
+          onSite={onSite}
+          onMessage={(text, kind) => setMessage(text, kind)}
+        />
       )}
 
       {/* Boat shows — the same card brokers see; admins can mark any listing. */}
