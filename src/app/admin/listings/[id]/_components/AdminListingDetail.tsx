@@ -51,6 +51,10 @@ interface Listing {
   asking_price: number | null;
   location: string | null;
   description: string | null;
+  /** yachtpics.com page text — YachtPics' own, separate from the broker's description. */
+  site_description?: string | null;
+  site_description_draft?: string | null;
+  site_location_suggestion?: string | null;
   status: string;
   broker_id: string;
   is_shared?: boolean | null;
@@ -1032,14 +1036,18 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         </div>
       )}
 
-      {/* Website page (Nov 16): the description + location that the yachtpics.com
-          page is written from, beside the publish controls above. Shown once a
+      {/* Website page (Nov 16): the website text (site_description — NOT the
+          broker's description) + location that the yachtpics.com page is
+          written from, beside the publish controls above. Shown once a
           website page is picked (or the boat is already live). */}
       {(sitePage || onSite) && (
         <WebsitePageCard
           listingId={listing.id}
-          initialDescription={listing.description}
+          initialSiteDescription={listing.site_description ?? null}
           initialLocation={listing.location}
+          initialDraft={listing.site_description_draft ?? null}
+          initialLocationSuggestion={listing.site_location_suggestion ?? null}
+          brokerDescription={listing.description}
           onSite={onSite}
           onMessage={(text, kind) => setMessage(text, kind)}
         />

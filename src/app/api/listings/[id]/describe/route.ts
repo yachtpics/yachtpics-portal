@@ -3,8 +3,7 @@ import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
 import { draftDescription, isAiConfigured, type DescribableListing } from "@/lib/ai";
-import { orderPhotos } from "@/lib/photoOrder";
-import { signResizedPath } from "@/lib/photoStore";
+import { pickDescribePhotoUrls } from "@/lib/siteTextServer";
 import { demoGuard } from "@/lib/demoServer";
 
 export const runtime = "nodejs";
@@ -37,24 +36,9 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
     .eq("id", params.id).single();
   if (!listing) return NextResponse.json({ error: "Listing not found" }, { status: 404 });
 
-  const { data: photos } = await service.from("photos")
-    .select("id, storage_path, category, display_order")
-    .eq("listing_id", params.id).eq("is_visible", true).order("display_order");
-  const ordered = orderPhotos(photos ?? [], { manual: listing.photo_order_manual === true, heroId: listing.hero_photo_id });
-
-  // Cover, then one of each distinct area, up to six — enough for the feel of
-  // the boat without paying for the whole gallery.
-  const picked: typeof ordered = [];
-  const seen = new Set<string>();
-  for (const p of ordered) {
-    const key = p.category ?? "Other";
-    if (picked.length === 0 || !seen.has(key)) { picked.push(p); seen.add(key); }
-    if (picked.length >= 6) break;
-  }
-  // Supabase resize, or the stored copy for an original on R2 (photoStore).
-  const urls = (await Promise.all(picked.map((p) =>
-    signResizedPath(service, p.storage_path, 600, { width: 800, height: 800, resize: "contain", quality: 70 }, { ensure: true })
-  ))).filter(Boolean) as string[];
+  // Cover, then one of each distinct area, up to six (shared with the
+  // website-text draft — src/lib/siteTextServer.ts).
+  const urls = await pickDescribePhotoUrls(service, params.id, listing);
 
   try {
     const description = await draftDescription(listing as DescribableListing, urls);

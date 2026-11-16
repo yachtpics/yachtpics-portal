@@ -190,7 +190,7 @@ export function cutAtWord(s: string, max: number = META_DESCRIPTION_MAX): { text
   // "…kept under cover. Upgrades…".
   const windowText = t.slice(0, max);
   const m = windowText.match(/^[\s\S]*[.!?](?=\s|$)/);
-  if (m && m[0].length >= 90) return { text: m[0], cut: true };
+  if (m && m[0].length >= 60) return { text: m[0], cut: true };
   let head = t.slice(0, max - 1); // leave room for the ellipsis
   // Only back up to a space if the cut landed mid-word.
   if (t.charAt(max - 1) !== " ") {

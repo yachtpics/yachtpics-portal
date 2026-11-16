@@ -175,10 +175,12 @@ export type BoatPageData = {
    */
   photoInfo?: ({ category: string | null; filename: string | null } | null)[];
   /**
-   * listings.description. When filled in it is the page's intro and its
-   * Google description; empty = the generated sentence, as before.
+   * listings.site_description — YachtPics' own text for this page, separate
+   * from the broker's listing description (which never reaches the website).
+   * When filled in it is the page's intro and its Google description; empty =
+   * the generated sentence, as before.
    */
-  description?: string | null;
+  siteDescription?: string | null;
   /** Video published to the public site. Empty for photo-only boats. */
   videos: SiteVideo[];
   /**
@@ -265,10 +267,10 @@ export function boatPage(d: BoatPageData): string {
       `, listed for sale with ${d.brokerageName}. ${videoLine}`
     : bodyText;
 
-  // The owner's own description (listings.description), when there is one:
-  // the intro paragraph(s) and the Google description. The generated
-  // sentence above stays as the fallback.
-  const custom = (d.description ?? "").trim();
+  // YachtPics' website text (listings.site_description — NOT the broker's
+  // listing description), when there is one: the intro paragraph(s) and the
+  // Google description. The generated sentence above stays as the fallback.
+  const custom = (d.siteDescription ?? "").trim();
   const customLine = custom ? oneLine(custom) : "";
   const introHtml = custom
     ? descriptionParagraphs(custom)

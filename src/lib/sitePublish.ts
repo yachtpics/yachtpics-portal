@@ -183,7 +183,8 @@ type ListingRow = {
   length_ft: string | null;
   vessel_type: string | null;
   location: string | null;
-  description: string | null;
+  /** YachtPics' website text. The broker's listings.description is deliberately not read here. */
+  site_description: string | null;
   status: string | null;
   showcase_opt_out: boolean | null;
   publish_to_site: boolean | null;
@@ -812,7 +813,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
 
   const { data: listing } = await svc
     .from("listings")
-    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, description, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, site_media, broker_id")
+    .select("id, vessel_name, year, make, model, length_ft, vessel_type, location, site_description, status, showcase_opt_out, publish_to_site, site_slug, hero_photo_id, photo_order_manual, site_media, broker_id")
     .eq("id", listingId)
     .maybeSingle();
   if (!listing) return { error: "Listing not found" };
@@ -938,7 +939,7 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
     lengthFt: l.length_ft,
     vesselType: l.vessel_type,
     location: l.location,
-    description: l.description,
+    siteDescription: l.site_description,
     brokerName: broker?.first_name ? `${broker.first_name} ${broker.last_name ?? ""}`.trim() : null,
     brokerEmail: broker?.display_email ?? null,
     brokerPhone: broker?.phone ?? null,
@@ -972,4 +973,41 @@ export async function buildListingFiles(listingId: string): Promise<{ files: Sit
   files.push(await renderLatestBoatsFeed({ listingId: l.id, photosBackend }));
 
   return { files, slug, label, photosBackend };
+}
+
+/**
+ * Re-publish ONE boat that is already live on yachtpics.com — the same steps
+ * as POST /api/admin/listings/[id]/publish-site with publish:true for a live
+ * boat (build, upload, record which photo host it uses). Used by the website
+ * text review ("Approve & publish"). A boat that isn't live is never put on
+ * the site from here.
+ *
+ *   { ok: true }                     uploaded
+ *   { ok: false, previewOnly: why }  built but nothing uploaded (FTP not set up)
+ *   { ok: false, error }             not live, or the build/upload failed
+ */
+export async function republishLiveListing(
+  listingId: string
+): Promise<{ ok: true } | { ok: false; previewOnly: string } | { ok: false; error: string }> {
+  const svc = service();
+  const { data: row } = await svc
+    .from("listings")
+    .select("publish_to_site, status, showcase_opt_out")
+    .eq("id", listingId)
+    .maybeSingle();
+  if (!row || row.publish_to_site !== true || row.status !== "active" || row.showcase_opt_out === true) {
+    return { ok: false, error: "This boat isn't live on yachtpics.com, so there was nothing to re-publish." };
+  }
+  const built = await buildListingFiles(listingId);
+  if ("error" in built) return { ok: false, error: built.error };
+  if (!ftpConfigured()) return { ok: false, previewOnly: "FTP is not configured — nothing was uploaded." };
+  if (built.photosBackend !== "r2") await markSitePhotosBackend(listingId, "supabase");
+  const res = await uploadFiles(built.files);
+  if (res.error) {
+    // Same rollback as the publish route: don't leave it reading as live.
+    await svc.from("listings").update({ publish_to_site: false, published_at: null }).eq("id", listingId);
+    return { ok: false, error: res.error };
+  }
+  if (built.photosBackend === "r2") await markSitePhotosBackend(listingId, "r2");
+  return { ok: true };
 }

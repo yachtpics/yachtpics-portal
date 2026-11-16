@@ -83,7 +83,7 @@ export default async function AdminListingPage({ params, searchParams }: { param
       .from("listings")
       .select(`
       id, vessel_name, vessel_type, year, length_ft, make, model,
-      asking_price, location, description, status, listing_pdf_url, is_shared, in_showcase, showcase_opt_out, showcase_opt_out_by, showcase_opt_out_at, publish_to_site, site_page, site_media,
+      asking_price, location, description, site_description, site_description_draft, site_location_suggestion, status, listing_pdf_url, is_shared, in_showcase, showcase_opt_out, showcase_opt_out_by, showcase_opt_out_at, publish_to_site, site_page, site_media,
       broker_id, slideshow_slug, slideshow_published, hero_photo_id, photo_order_manual,
       profiles:broker_id(first_name, last_name, display_email, brokerage_id)
     `)

@@ -23,7 +23,7 @@ export function isAiConfigured(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;
 }
 
-type Block =
+export type Block =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "url"; url: string } };
 
@@ -158,6 +158,92 @@ export async function draftDescription(listing: DescribableListing, imageUrls: s
   blocks.push({ type: "text", text: "Write the description." });
 
   return ask(blocks, { system, maxTokens: 400 });
+}
+
+/**
+ * What the website-text draft is allowed to know about a boat. Deliberately
+ * NO description field: the broker's own listing description must never be
+ * copied or paraphrased onto yachtpics.com, so it isn't sent at all. `make`
+ * is the builder as the website shows it (displayMake: Valhalla → Valhalla
+ * Boatworks).
+ */
+export type SiteDescribable = {
+  vessel_name: string | null; vessel_type: string | null; year: number | null; make: string | null; model: string | null;
+  length_ft: number | string | null; engines: string | null; staterooms: number | null; location: string | null;
+};
+
+/** Website text length the prompt asks for (characters). */
+export const SITE_TEXT_MIN = 250;
+export const SITE_TEXT_MAX = 420;
+/** The first sentence becomes the Google description on its own. */
+export const SITE_TEXT_FIRST_SENTENCE_MAX = 150;
+/** Post-processing: hard cap, and anything shorter than this is a failure. */
+export const SITE_TEXT_HARD_CAP = 500;
+export const SITE_TEXT_FLOOR = 80;
+
+/**
+ * The system and user text for a website-text draft — no model call, so it
+ * can be printed and checked (scripts/site_text_check.ts). Photos follow the
+ * facts as image blocks.
+ */
+export function buildSiteDescriptionPrompt(listing: SiteDescribable, imageUrls: string[]): { system: string; facts: string; blocks: Block[] } {
+  const facts = Object.entries({
+    Name: listing.vessel_name, Type: listing.vessel_type, Year: listing.year, Builder: listing.make, Model: listing.model,
+    "Length (ft)": listing.length_ft, Engines: listing.engines, Staterooms: listing.staterooms, Location: listing.location,
+  }).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "").map(([k, v]) => `${k}: ${String(v).trim()}`).join("\n");
+
+  const system = [
+    "You write the short introduction for a yacht's page on yachtpics.com, the website of YachtPics, a yacht photography studio. The page shows YachtPics' photographs of the boat; your text introduces the boat as seen in that photo shoot.",
+    `Length and form: 2 or 3 sentences, ${SITE_TEXT_MIN}–${SITE_TEXT_MAX} characters in total. Plain prose only: no headings, no lists, no emojis, no hashtags, and no quotation marks around the text.`,
+    `The first sentence must stand on its own and be no longer than ${SITE_TEXT_FIRST_SENTENCE_MAX} characters. It names the year, builder, model and the boat's name, using whichever of these are given. It is used on its own as the Google description.`,
+    "Facts: the year, builder, model, length, engines, staterooms and location come only from the listing facts provided. Never guess or add specifications, equipment, awards, refits, upgrades, history, condition claims (such as 'immaculate', 'turnkey', 'like new'), performance figures, prices, availability or broker contact details. Do not use any word about price, value or cost.",
+    "Photographs: use them only for what is plainly visible — the layout and spaces (for example flybridge, cockpit, salon, galley, staterooms, helm), finishes and colours in general terms, and the setting. If you are not sure something is shown, leave it out.",
+    "Voice: premium, understated, specific and calm; third person. Describe the boat as photographed. This is not a sales pitch: no calls to action, no 'for sale', 'don't miss', 'must see', and no exclamation marks. Do not use the word 'walkthrough'. Refer to the boat by name, or as 'she' sparingly, or stay neutral.",
+    "Reply with the text only.",
+  ].join("\n");
+
+  const blocks: Block[] = [{ type: "text", text: `Listing facts:\n${facts || "(none provided)"}` }];
+  imageUrls.slice(0, 6).forEach((url, i) => {
+    blocks.push({ type: "text", text: `Photo ${i + 1}:` });
+    blocks.push({ type: "image", source: { type: "url", url } });
+  });
+  blocks.push({ type: "text", text: "Write the introduction." });
+  return { system, facts, blocks };
+}
+
+/**
+ * Tidy a model reply into website text: one paragraph, whitespace collapsed,
+ * wrapping quotes stripped, capped at ~500 characters at a sentence end.
+ * Throws when what's left is empty or too short to use (< 80 characters).
+ */
+export function cleanSiteDescription(raw: string | null | undefined): string {
+  let t = (raw ?? "").replace(/\s+/g, " ").trim();
+  // Wrapping quotes (straight or curly), possibly twice ("“…”").
+  for (let k = 0; k < 2; k++) {
+    const m = /^["'“‘«](.*)["'”’»]$/.exec(t);
+    if (!m) break;
+    t = m[1].trim();
+  }
+  if (t.length > SITE_TEXT_HARD_CAP) {
+    const head = t.slice(0, SITE_TEXT_HARD_CAP);
+    const m = head.match(/^[\s\S]*[.!?](?=\s|$)/);
+    t = m ? m[0].trim() : "";
+  }
+  if (t.length < SITE_TEXT_FLOOR) {
+    throw new Error(t ? "The AI draft came back too short to use — try again." : "The AI returned no usable text — try again.");
+  }
+  return t;
+}
+
+/**
+ * Draft the yachtpics.com boat-page text (listings.site_description) from the
+ * listing's facts and up to six photographs. Same client, model and settings
+ * as draftDescription. Returns cleaned text; throws on failure.
+ */
+export async function draftSiteDescription(listing: SiteDescribable, imageUrls: string[]): Promise<string> {
+  const { system, blocks } = buildSiteDescriptionPrompt(listing, imageUrls);
+  const reply = await ask(blocks, { system, maxTokens: 300 });
+  return cleanSiteDescription(reply);
 }
 
 export type ReelCopy = {

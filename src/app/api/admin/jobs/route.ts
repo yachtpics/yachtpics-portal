@@ -5,6 +5,7 @@ import { cancelJob, enqueueJob, getJob, jobsBaseUrl, kickWorker, listJobs, retry
 import { isLabelCandidate } from "@/lib/labelPhotos";
 import { isJobKind, type JobKind } from "@/lib/jobs/types";
 import { CLEANUP_CONFIRM_PHRASE } from "@/lib/jobs/photoMigration";
+import { SITE_TEXT_DRAFTS_MAX_IDS, SITE_TEXT_DRAFTS_MAX_LIMIT } from "@/lib/jobs/siteTextDrafts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -93,6 +94,25 @@ async function normaliseParams(
 ): Promise<{ params: Record<string, unknown> } | { error: string }> {
   const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   if (kind === "republish_site" || kind === "derivatives_backfill" || kind === "photo_originals_copy" || kind === "r2_photo_finish" || kind === "billing_backup" || kind === "billing_reminders" || kind === "demo_seed" || kind === "demo_reset" || kind === "demo_rw_seed" || kind === "demo_rw_reset") return { params: {} };
+  // Website text drafts: optional { limit, listingIds } for a small trial run.
+  if (kind === "site_text_drafts") {
+    const out: Record<string, unknown> = {};
+    if (p.limit !== undefined && p.limit !== null) {
+      const n = Number(p.limit);
+      if (!Number.isFinite(n) || n < 1 || Math.floor(n) !== n || n > SITE_TEXT_DRAFTS_MAX_LIMIT) {
+        return { error: `limit must be a whole number from 1 to ${SITE_TEXT_DRAFTS_MAX_LIMIT}.` };
+      }
+      out.limit = n;
+    }
+    if (p.listingIds !== undefined && p.listingIds !== null) {
+      if (!Array.isArray(p.listingIds)) return { error: "listingIds must be a list of listing ids." };
+      const ids = Array.from(new Set((p.listingIds as unknown[]).filter((x): x is string => typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x)))).sort();
+      if (ids.length === 0) return { error: "No valid listing ids given." };
+      if (ids.length > SITE_TEXT_DRAFTS_MAX_IDS) return { error: `That's ${ids.length} listings — the limit is ${SITE_TEXT_DRAFTS_MAX_IDS} per job.` };
+      out.listingIds = ids;
+    }
+    return { params: out };
+  }
   // Deleting files: only with the typed confirmation from /admin/storage.
   if (kind === "photo_originals_cleanup" || kind === "site_photos_cleanup") {
     if (p.confirm !== CLEANUP_CONFIRM_PHRASE) return { error: `Type "${CLEANUP_CONFIRM_PHRASE}" to confirm.` };
