@@ -5,7 +5,7 @@
 
 
 
-> **OPEN — SECURITY, needs Charlie's go-ahead (found Nov 16):** `protect_profile_privileges` (20261018c) never blocked anything: it tests `current_user` inside a SECURITY DEFINER function owned by postgres, so the test is always true and any signed-in user could change their own `profiles.role` (RLS "Users update own profile"). Checked live Nov 16: only the two owner admins exist, no sign of misuse. Fix written, NOT applied: `supabase/migrations/20261116c_fix_protect_profile_privileges.sql`. Also NOT applied yet: `20261116b_protect_site_text.sql` (guard on the four website-text columns). Apply both once Charlie says so. Same always-true pattern should be checked in any other SECURITY DEFINER guard that tests `current_user`.
+> **Security fix APPLIED Nov 16 (Charlie's go-ahead):** `20261116c_fix_protect_profile_privileges.sql` — the profile-privilege trigger tested `current_user` inside a SECURITY DEFINER function, so it never blocked a user changing their own `profiles.role`. Now it allows only the service role, a direct database session, or an admin. Live test as a broker: refused. Only the two owner admins existed before and after. `20261116b_protect_site_text.sql` (guard on the four website-text columns) is APPLIED too; live test as a broker: refused, other columns still writable. When writing guards: never test `current_user` inside SECURITY DEFINER.
 
 ## yachtpics.com boat pages get their OWN text — `site_description`, AI drafts for review (Nov 16, 2026, later) — MIGRATION `20261116_site_description.sql` APPLIED · guard migration `20261116b_protect_site_text.sql` NOT APPLIED (apply it) · code NOT PUSHED · typecheck + lint clean · `next build` passes · tested offline only (no AI call, no DB, nothing published)
 
