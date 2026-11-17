@@ -190,9 +190,35 @@ export const SITE_TEXT_FLOOR = 80;
  * can be printed and checked (scripts/site_text_check.ts). Photos follow the
  * facts as image blocks.
  */
+/**
+ * True when a boat's "name" is only her make / model / length / hull number
+ * ("32 Galeon", "34 Jupiter 2026", "Valhalla V46-075") rather than a real name
+ * ("Reel Weapon"). Such boats open with "This 32-foot Galeon…", not
+ * "32 Galeon is a 32-foot Galeon".
+ */
+export function isModelOnlyName(name: string | null | undefined, make?: string | null, model?: string | null): boolean {
+  const n = (name ?? "").trim();
+  if (!n) return true;
+  const known: Record<string, true> = {};
+  const words = ((make ?? "") + " " + (model ?? "")).toLowerCase().split(/[^a-z0-9]+/);
+  for (let i = 0; i < words.length; i++) if (words[i]) known[words[i]] = true;
+  const generic: Record<string, true> = { boatworks: true, yachts: true, yacht: true, boats: true, marine: true, the: true, ft: true, foot: true };
+  const tokens = n.toLowerCase().split(/[^a-z0-9]+/);
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    if (!t) continue;
+    if (/\d/.test(t)) continue;          // lengths, years, hull numbers, "44fa", "v46"
+    if (known[t] || generic[t]) continue; // the builder or model again
+    return false;                         // a real word: she has a name
+  }
+  return true;
+}
+
 export function buildSiteDescriptionPrompt(listing: SiteDescribable, imageUrls: string[]): { system: string; facts: string; blocks: Block[] } {
+  const unnamed = isModelOnlyName(listing.vessel_name, listing.make, listing.model);
   const facts = Object.entries({
-    Name: listing.vessel_name, Type: listing.vessel_type, Year: listing.year, Builder: listing.make, Model: listing.model,
+    Name: unnamed ? "(none — this boat has no name)" : listing.vessel_name,
+    Type: listing.vessel_type, Year: listing.year, Builder: listing.make, Model: listing.model,
     "Length (ft)": listing.length_ft, Engines: listing.engines, Staterooms: listing.staterooms, Location: listing.location,
     "Photographs in the gallery": listing.photoCount && listing.photoCount > 0 ? listing.photoCount : null,
     "Areas photographed (gallery order)": listing.areas && listing.areas.length ? listing.areas.join(", ") : null,
@@ -205,6 +231,7 @@ export function buildSiteDescriptionPrompt(listing: SiteDescribable, imageUrls: 
     "Second sentence: one plain line on what the gallery shows — the main spaces, in the order of the areas listed, with at most two simple visible details chosen from colours (hull, deck, upholstery) and layout (where the helm, seating, galley or berths sit). Keep it plain. Do NOT name materials or finishes (no wood species, teak, stone, marble, leather, stainless), brands, equipment, or numbers of anything.",
     "Strict limits on facts. Everything about what the boat IS comes only from the listing facts: do not state or guess a model name, boat type, engine count or type, number of staterooms, range, speed, year or builder that is not in the facts — even if you think you recognise the boat or can count engines in a photo. No history, refits, upgrades, awards, condition claims, prices, availability or broker details. No word about price, value or cost.",
     "No judgements and no purpose claims. Do not say what the boat is built for, designed for, ideal for or capable of, and do not describe performance, comfort, efficiency, seaworthiness or how she would be used. Do not use evaluative words such as spacious, generous, ample, commanding, excellent, thoughtful, well-appointed, comfortable, luxurious, stunning, impressive, powerful, serious, practical, purposeful, elegant or beautiful. Do not praise the view, the light or the weather. Say what is there; let the photographs do the persuading.",
+    "A boat with no name: when the Name fact says there is none, open with 'This' and the facts — for example 'This 32-foot Galeon was photographed by YachtPics in Palm Beach Gardens, Florida.' or 'This 2026 Jupiter 34 center console was photographed by YachtPics in Marco Island, Florida.' Never invent a name, never use the builder or model as if it were her name, and do not repeat the length or year twice.",
     "If you are not sure something is shown, leave it out. A shorter, plainer text is better than a guess.",
     "Voice: calm, exact, understated; third person; present tense. Refer to the boat by name, or as 'she' sparingly. Do not use the word 'walkthrough'. Vary the sentence openings; do not begin a sentence with 'The boat features' or 'Below deck,'.",
     "For tone only (an invented boat — do not reuse its wording): Sea Lark is a 2019 Example 52, photographed by YachtPics in Stuart, Florida. The gallery runs from her navy hull and open cockpit to the flybridge helm, then inside to a light salon with the galley aft and the staterooms forward.",
