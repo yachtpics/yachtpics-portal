@@ -1,8 +1,9 @@
 {
-  "crons": [
-    {
+  "schedules": {
+    "daily": {
+      "schedule": "0 13 * * *",
       "path": "/api/cron/daily",
-      "schedule": "0 13 * * *"
+      "requestMethod": "GET"
     }
-  ]
+  }
 }

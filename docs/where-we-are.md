@@ -1,5 +1,7 @@
 # Where we are — October 6, 2026
 
+> **Daily job moved from legacy Cron Jobs to Vercel Schedules (Nov 19, 2026).** The Marine Blog froze on Nov 6: Vercel had stopped dispatching the legacy cron (`/api/cron/daily` showed Active but nothing arrived in the runtime logs; Run in the dashboard did nothing). `vercel.json` now has `"schedules": { "daily": { "schedule": "0 13 * * *", "path": "/api/cron/daily", "requestMethod": "GET" } }` and NO `crons` array (both together would fire the dispatcher twice). `requestMethod` must stay `"GET"` — Schedules default to POST and the route only exports GET. Auth is unchanged (same `Authorization: Bearer CRON_SECRET` header). The dispatcher still fans out to every job listed in `src/app/api/cron/daily/route.ts` (news-fetch, trial and billing reminders, announce, etc.), so a manual Run sends whatever emails are due. Help: no change (nothing a broker sees).
+
 
 
 
