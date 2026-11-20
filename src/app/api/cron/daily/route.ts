@@ -138,5 +138,20 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
+  // One line per run in the Vercel runtime logs, so a run that "completed" but
+  // did nothing can be told apart from a real one: each job's HTTP status, plus
+  // its error / skipped text when it gave one. No secrets, no recipient data.
+  try {
+    const summary: Record<string, string> = {};
+    Object.keys(results).forEach((path) => {
+      const r = results[path] as { status?: number; error?: string; body?: { error?: unknown; skipped?: unknown } | null };
+      const note = r.error ?? r.body?.error ?? r.body?.skipped;
+      summary[path] = `${r.status ?? "fetch failed"}${note ? ` (${String(note).slice(0, 160)})` : ""}`;
+    });
+    console.log(`[cron-daily] ${JSON.stringify(summary)}`);
+  } catch {
+    // Logging must never fail the run.
+  }
+
   return NextResponse.json({ ok: true, dayOfWeek: dow, ran: jobs, results });
 }
