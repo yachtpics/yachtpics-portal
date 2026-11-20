@@ -210,3 +210,7 @@ async function checkPrivateBucket(): Promise<{ ok: boolean; bucket?: string; det
 
   return { ok: true, bucket: R2_VIDEO_BUCKET, ...(corsNote ? { corsNote } : {}) };
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

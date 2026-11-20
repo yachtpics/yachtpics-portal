@@ -175,3 +175,7 @@ export async function DELETE(req: NextRequest) {
   if (!count) revoked = await revokePermissions(conn.fb_user_id);
   return NextResponse.json({ ok: true, revoked, cancelled: list.length });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

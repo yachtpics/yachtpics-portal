@@ -102,3 +102,7 @@ async function restoreLines(admin: SupabaseClient, invoiceId: string, saved: Inv
     console.error(`[billing-edits] restoring lines on ${invoiceId} failed: ${e instanceof Error ? e.message : String(e)}`);
   }
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

@@ -48,6 +48,7 @@ async function ask(blocks: Block[], opts: { system: string; maxTokens: number; t
 
 async function askOnce(key: string, blocks: Block[], opts: { system: string; maxTokens: number; model?: string }, signal?: AbortSignal): Promise<string> {
   const res = await fetch(API, {
+    cache: "no-store",
     method: "POST",
     signal,
     headers: {

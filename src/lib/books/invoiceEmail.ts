@@ -73,6 +73,7 @@ export async function postBillingEmail(
   const fromName = (b.settings.fromName || b.brand.display_name).replace(/["<>]/g, "");
   try {
     const res = await fetch("https://api.resend.com/emails", {
+      cache: "no-store",
       method: "POST",
       headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
       body: JSON.stringify({

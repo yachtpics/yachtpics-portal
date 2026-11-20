@@ -160,3 +160,7 @@ export async function POST(req: NextRequest) {
   if (lineError || rc) console.warn(`[billing] from-listing ${id}: ${lineError ?? rc}`);
   return NextResponse.json({ ok: true, id, existing: false, ...(lineError ? { lineError } : {}) });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

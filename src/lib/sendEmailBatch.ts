@@ -42,6 +42,7 @@ export async function sendResendBatch(messages: BatchEmail[]): Promise<BatchResu
     const chunkIdx = validIdx.slice(c, c + CHUNK);
     try {
       const res = await fetch(RESEND_BATCH_URL, {
+        cache: "no-store",
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.RESEND_API_KEY}`,

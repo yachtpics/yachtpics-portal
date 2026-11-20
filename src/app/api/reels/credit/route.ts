@@ -22,3 +22,7 @@ export async function GET(req: Request) {
   if (!credit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   return NextResponse.json(credit, { headers: { "Cache-Control": "no-store" } });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

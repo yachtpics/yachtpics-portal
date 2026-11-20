@@ -112,3 +112,7 @@ export async function DELETE(req: NextRequest, { params }: Ctx) {
   if (rc) return bad(rc, 500);
   return NextResponse.json({ ok: true });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

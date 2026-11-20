@@ -78,3 +78,7 @@ export async function GET(req: NextRequest) {
   // before Oct 24 2026) — see trialDaysFor in subscriptionAccess.ts.
   return NextResponse.json({ status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered, brokerName });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

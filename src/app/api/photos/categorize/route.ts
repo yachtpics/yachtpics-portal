@@ -88,3 +88,7 @@ async function label(req: NextRequest, t0: number) {
   if (r.error) return NextResponse.json({ ...out, error: r.error }, { status: 502 });
   return NextResponse.json(out);
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

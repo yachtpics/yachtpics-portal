@@ -65,3 +65,7 @@ export async function GET(req: NextRequest) {
     ...(delivered ? { delivered } : {}),
   }, { headers: { "Cache-Control": "no-store" } });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

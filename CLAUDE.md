@@ -28,6 +28,9 @@ one-line copy change, a grep), do it directly; otherwise delegate.
 - Every admin page calls `requireAdminPage()`; every `/api/admin` route calls
   `requireAdmin()`.
 - Never create scratch files inside `src/`.
+- Every `route.ts` ends with `export const fetchCache = "force-no-store";` and
+  any server-side `fetch()` passes `cache: "no-store"`. Next.js otherwise answers
+  repeat calls from its fetch cache — that froze every daily job Nov 8–20 2026.
 - Listing photos have stored resized copies (600 / 2000 px WebP) under
   `{broker}/{listing}/_d/` in the same `listing-photos` bucket, flagged by
   `photos.derivatives_at`. Name and sign them only through

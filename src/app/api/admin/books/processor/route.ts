@@ -92,3 +92,7 @@ export async function PATCH(req: NextRequest) {
   const again = await loadProcessor(admin, staff.profileId);
   return NextResponse.json({ ok: true, processor: processorView(again.state === "ok" ? again.row : null, kind) });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

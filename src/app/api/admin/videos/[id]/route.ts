@@ -55,3 +55,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!data) return NextResponse.json({ error: "Video not found" }, { status: 404 });
   return NextResponse.json({ ok: true, video: data });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

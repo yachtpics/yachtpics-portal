@@ -18,3 +18,7 @@ export async function POST(req: NextRequest, { params }: { params: { token: stri
   if (!token) return NextResponse.json({ error: "Not found" }, { status: 404 });
   return handleSlideshowUrls(req, `yp-urls:${token}`, async () => (await getYpSharedSlideshow(token))?.listing ?? null);
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

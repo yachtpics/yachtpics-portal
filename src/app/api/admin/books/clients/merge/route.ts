@@ -92,3 +92,7 @@ export async function POST(req: NextRequest) {
   await admin.rpc("billing_relink_brokers", { only_client: survivorId });
   return NextResponse.json({ ok: true, merged: others.length });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

@@ -34,3 +34,7 @@ export async function GET(req: NextRequest) {
   const photos: ReviewPhotoOption[] = ordered.map((p) => ({ id: p.id, category: p.category, thumb: thumbs[p.id] ?? null }));
   return NextResponse.json({ photos });
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";

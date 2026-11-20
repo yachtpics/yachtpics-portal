@@ -34,3 +34,7 @@ export async function POST(_req: NextRequest, { params }: { params: { token: str
   if ("url" in res) return NextResponse.redirect(res.url, 303);
   return back(res.error === "processing" ? "?payfail=processing" : "?payfail=1");
 }
+
+// No fetch made while answering this route is ever served from the Next.js
+// fetch cache (Nov 2026: cached internal calls froze the daily jobs for two weeks).
+export const fetchCache = "force-no-store";
