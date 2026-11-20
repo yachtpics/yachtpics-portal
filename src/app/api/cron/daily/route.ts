@@ -8,6 +8,8 @@ export const dynamic = "force-dynamic";
 // never got triggered. 60s was the Hobby max; on Pro (Nov 2026) the dispatcher
 // gets 300 s so it can wait for the monthly report send on the 1st.
 export const maxDuration = 300;
+// Belt and braces with cache: "no-store" on each fetch below.
+export const fetchCache = "force-no-store";
 
 // Single daily dispatcher. Vercel's Hobby plan caps a project at 2 cron jobs, so
 // instead of one cron per task we run ONE cron daily (13:00 UTC) and fan out to
@@ -118,7 +120,7 @@ export async function GET(req: NextRequest) {
   // worker answers at once and chains itself while there's work.
   const wakeJobsWorker = async () => {
     try {
-      const res = await fetch(`${PROD}/api/jobs/work`, { method: "POST", headers: { "x-jobs-secret": secret } });
+      const res = await fetch(`${PROD}/api/jobs/work`, { method: "POST", headers: { "x-jobs-secret": secret }, cache: "no-store" });
       results["/api/jobs/work"] = { status: res.status, body: await res.json().catch(() => null) };
     } catch (e) {
       results["/api/jobs/work"] = { error: e instanceof Error ? e.message : String(e) };
@@ -130,6 +132,10 @@ export async function GET(req: NextRequest) {
       try {
         const res = await fetch(`${PROD}${path}${secret ? `?secret=${encodeURIComponent(secret)}` : ""}`, {
           headers: secret ? { Authorization: `Bearer ${secret}` } : {},
+          // NEVER cached. Next.js was answering these from its fetch cache: from
+          // Nov 7 to Nov 20 2026 every job "ran" in half a second and returned
+          // the Nov 7 answer (same job id, same 21 stories) while nothing ran.
+          cache: "no-store",
         });
         results[path] = { status: res.status, body: await res.json().catch(() => null) };
       } catch (e) {
