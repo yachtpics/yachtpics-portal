@@ -443,16 +443,22 @@ export async function summarizeNews(items: NewsInput[]): Promise<NewsSummary[]> 
     { type: "text", text: `Rewrite all ${items.length} items. JSON array only.` },
   ];
 
+  // A failed call still skips the batch, but it says why in the runtime logs:
+  // for two weeks in Nov 2026 every batch was skipped and nothing recorded it.
   let reply: string;
   try {
     reply = await ask(blocks, { system, maxTokens: 200 + items.length * 140 });
-  } catch {
+  } catch (e) {
+    console.warn(`[news-fetch] AI call failed for a batch of ${items.length}: ${e instanceof Error ? e.message : String(e)}`.slice(0, 600));
     return out;
   }
 
   type NewsRow = { i?: number; title?: string; summary?: string; category?: string; skip?: boolean };
   const parsed = extractJson<(NewsRow | null)[]>(reply);
-  if (!Array.isArray(parsed)) return out;
+  if (!Array.isArray(parsed)) {
+    console.warn(`[news-fetch] AI reply was not a JSON array (batch of ${items.length}, ${reply.length} chars). Starts: ${reply.slice(0, 200)} … ends: ${reply.slice(-120)}`);
+    return out;
+  }
 
   for (let n = 0; n < parsed.length; n++) {
     const row = parsed[n];

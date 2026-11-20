@@ -144,9 +144,17 @@ export async function GET(req: NextRequest) {
   try {
     const summary: Record<string, string> = {};
     Object.keys(results).forEach((path) => {
-      const r = results[path] as { status?: number; error?: string; body?: { error?: unknown; skipped?: unknown } | null };
-      const note = r.error ?? r.body?.error ?? r.body?.skipped;
-      summary[path] = `${r.status ?? "fetch failed"}${note ? ` (${String(note).slice(0, 160)})` : ""}`;
+      const r = results[path] as { status?: number; error?: string; body?: Record<string, unknown> | null };
+      // Only these plain fields — never a whole body (some list recipients).
+      const keys = ["ok", "error", "skipped", "fetched", "new", "failedSources", "job", "existing"];
+      const parts: string[] = [];
+      if (r.error) parts.push(`error=${String(r.error).slice(0, 160)}`);
+      if (r.body === null) parts.push("no JSON body");
+      keys.forEach((k) => {
+        const v = r.body ? r.body[k] : undefined;
+        if (v !== undefined && v !== null) parts.push(`${k}=${String(Array.isArray(v) ? v.join("|") : v).slice(0, 160)}`);
+      });
+      summary[path] = `${r.status ?? "fetch failed"}${parts.length ? ` (${parts.join(", ")})` : ""}`;
     });
     console.log(`[cron-daily] ${JSON.stringify(summary)}`);
   } catch {
