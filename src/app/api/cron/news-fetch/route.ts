@@ -32,7 +32,15 @@ type Candidate = {
 };
 
 /** Fetch one feed. Returns null for anything that isn't a 200 with a body. */
-async function fetchFeed(url: string): Promise<string | null> {
+/**
+ * The plain, honest name. Megayacht News (Cloudflare) answers 403 "Just a
+ * moment…" to USER_AGENT above — a bot name dressed in browser tokens — and
+ * 200 to this one (checked 20 Nov 2026). Used only as a second try, so the
+ * feeds that are happy with the first keep it.
+ */
+const PLAIN_USER_AGENT = "YachtPicsPortal/1.0 (+https://portal.yachtpics.com)";
+
+async function fetchFeedAs(url: string, userAgent: string): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FEED_TIMEOUT_MS);
   try {
@@ -41,7 +49,7 @@ async function fetchFeed(url: string): Promise<string | null> {
       redirect: "follow",
       cache: "no-store",
       headers: {
-        "user-agent": USER_AGENT,
+        "user-agent": userAgent,
         accept: "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.8",
       },
     });
@@ -52,6 +60,10 @@ async function fetchFeed(url: string): Promise<string | null> {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchFeed(url: string): Promise<string | null> {
+  return (await fetchFeedAs(url, USER_AGENT)) ?? (await fetchFeedAs(url, PLAIN_USER_AGENT));
 }
 
 /**

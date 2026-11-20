@@ -115,18 +115,11 @@ export const NEWS_SOURCES: NewsSource[] = [
     homepage: "https://www.yatco.com",
     hint: "brokerage",
   },
-  {
-    // Seen returning XML from a browser, but 403s from at least one data-centre
-    // network (Cloudflare edge rule — even /robots.txt is refused, so it is the
-    // caller's address being judged, not the path). Left in: if Vercel's egress
-    // is blocked too it will simply appear in `failedSources` every morning and
-    // can be retired then. The address itself is correct — the site-wide /feed/
-    // is switched off and redirects to the homepage.
-    name: "Boats Group",
-    url: "https://www.boatsgroup.com/category/news/feed/",
-    homepage: "https://www.boatsgroup.com",
-    hint: "brokerage",
-  },
+  // Boats Group (https://www.boatsgroup.com/category/news/feed/) RETIRED 20 Nov
+  // 2026: their Cloudflare rule refuses every automated reader — 403 "Access
+  // Denied" from Vercel each morning and from other data-centre networks, under
+  // any user agent, even for /robots.txt. That is the site saying no; we don't
+  // work around it. Put it back only if they open the feed.
   {
     // Seen returning XML, daily. Trade press proper — dealers, builders, marinas,
     // finance and the brokerage business. British-based but it covers the American
