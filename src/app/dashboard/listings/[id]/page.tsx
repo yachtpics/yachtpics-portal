@@ -15,6 +15,7 @@ import DownloadLicenseModal from "@/components/DownloadLicenseModal";
 import ListingSkeleton from "./_components/ListingSkeleton";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import { uploadListingVideo } from "@/lib/uploadListingVideo";
+import VideoCodecNotice, { addCodecNotice, type VideoCodecNoticeItem } from "@/components/VideoCodecNotice";
 import { reelPromoActive } from "@/lib/reelPromo";
 import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import ListingEngagement from "@/components/ListingEngagement";
@@ -199,6 +200,8 @@ export default function BrokerListingPage() {
   const [docError, setDocError] = useState<string | null>(null);
   const [videoDeleteError, setVideoDeleteError] = useState<string | null>(null);
   const [videoUploadError, setVideoUploadError] = useState<string | null>(null);
+  // H.265 / ProRes uploads: a notice per file, kept until dismissed.
+  const [videoCodecNotices, setVideoCodecNotices] = useState<VideoCodecNoticeItem[]>([]);
   const [videoOrderError, setVideoOrderError] = useState<string | null>(null);
   // Who owns this listing — video files are stored under their folder rather
   // than the uploader's, so an assistant's uploads stay with the broker's media.
@@ -511,6 +514,10 @@ export default function BrokerListingPage() {
         onProgress: (pct) => {
           const base = (i / fileArr.length) * 100;
           setVideoUploadProgress(Math.round(base + (pct / fileArr.length)));
+        },
+        onCodecWarning: (message) => {
+          const f = fileArr[i];
+          setVideoCodecNotices(prev => addCodecNotice(prev, { key: `${f.name}:${f.size}:${f.lastModified}`, filename: f.name, message }));
         },
       });
 
@@ -1389,6 +1396,8 @@ export default function BrokerListingPage() {
             <button onClick={() => setVideoDeleteError(null)} className="shrink-0 font-bold text-danger-600 hover:text-danger-700" aria-label="Dismiss">×</button>
           </div>
         )}
+
+        <VideoCodecNotice items={videoCodecNotices} onDismiss={(key) => setVideoCodecNotices(prev => prev.filter(n => n.key !== key))} />
 
         {videoUploadError && (
           <div className="mb-4 bg-danger-50 border border-danger-200 text-danger-700 text-sm px-4 py-3 rounded-ctl flex items-start justify-between gap-3">

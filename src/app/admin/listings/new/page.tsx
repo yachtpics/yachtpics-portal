@@ -9,6 +9,9 @@ import { guessCategory } from "@/lib/guessCategory";
 import { expandPickedFiles } from "@/lib/pickedImages";
 import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { uploadListingVideo, isSupportedVideo, VIDEO_ACCEPT, formatFileSize } from "@/lib/uploadListingVideo";
+import { checkVideoFileCodec } from "@/lib/videoCodecFile";
+import { codecWarning } from "@/lib/videoCodec";
+import VideoCodecNotice, { addCodecNotice, type VideoCodecNoticeItem } from "@/components/VideoCodecNotice";
 import { runPool, uploadListingPhoto, photoUploadConcurrency } from "@/lib/uploadListingPhoto";
 
 interface Broker {
@@ -17,6 +20,11 @@ interface Broker {
   last_name: string | null;
   display_email: string | null;
   broker_details: { brokerage_name: string | null }[] | null;
+}
+
+/** Identifies one picked file for its format notice. */
+function videoKey(f: File): string {
+  return `${f.name}:${f.size}:${f.lastModified}`;
 }
 
 export default function NewListingPage() {
@@ -63,6 +71,8 @@ export default function NewListingPage() {
   const [videoProgress, setVideoProgress] = useState(0);
   const [videoIndex, setVideoIndex] = useState(0);
   const [videoRejected, setVideoRejected] = useState("");
+  // H.265 / ProRes files picked: a notice per file, kept until dismissed.
+  const [videoCodecNotices, setVideoCodecNotices] = useState<VideoCodecNoticeItem[]>([]);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   // Leaving mid-batch abandons the rest of the uploads — warn first.
@@ -83,10 +93,22 @@ export default function NewListingPage() {
         : ""
     );
     setVideoFiles((prev) => [...prev, ...ok]);
+    // Read each file's format from two small slices, right away, so an H.265
+    // or ProRes file is flagged before anything uploads. Never blocks.
+    ok.forEach((f) => {
+      checkVideoFileCodec(f)
+        .then((info) => {
+          const message = info ? codecWarning(info.codec) : null;
+          if (message) setVideoCodecNotices((prev) => addCodecNotice(prev, { key: videoKey(f), filename: f.name, message }));
+        })
+        .catch(() => {});
+    });
   }
 
   function removeVideo(index: number) {
+    const gone = videoFiles[index];
     setVideoFiles((prev) => prev.filter((_, i) => i !== index));
+    if (gone) setVideoCodecNotices((prev) => prev.filter((n) => n.key !== videoKey(gone)));
   }
 
   useEffect(() => {
@@ -594,6 +616,12 @@ export default function NewListingPage() {
               ))}
             </ul>
           )}
+
+          <VideoCodecNotice
+            className="mt-3"
+            items={videoCodecNotices}
+            onDismiss={(key) => setVideoCodecNotices((prev) => prev.filter((n) => n.key !== key))}
+          />
 
           {uploadingVideo && (
             <div className="mt-4">

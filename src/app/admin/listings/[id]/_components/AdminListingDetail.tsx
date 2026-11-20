@@ -14,6 +14,7 @@ import ConfirmDeleteDialog from "@/components/ConfirmDeleteDialog";
 import VideoDetailsEditor from "@/components/VideoDetailsEditor";
 import PrepareVideoForSite from "@/components/PrepareVideoForSite";
 import { uploadListingVideo } from "@/lib/uploadListingVideo";
+import VideoCodecNotice, { addCodecNotice, type VideoCodecNoticeItem } from "@/components/VideoCodecNotice";
 import { SITE_MEDIA_OPTIONS, type SiteMedia } from "@/lib/siteMedia";
 import DeleteListingButton from "./DeleteListingButton";
 import DownloadLinkManager from "./DownloadLinkManager";
@@ -240,6 +241,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   const [videoUploadProgress, setVideoUploadProgress] = useState(0);
   const [deletingVideoIds, setDeletingVideoIds] = useState<Set<string>>(new Set());
   const [videoError, setVideoError] = useState<string | null>(null);
+  // H.265 / ProRes uploads: a notice per file, kept until dismissed.
+  const [videoCodecNotices, setVideoCodecNotices] = useState<VideoCodecNoticeItem[]>([]);
   const videoInputRef = useRef<HTMLInputElement>(null);
 
   // Slideshow toggle and reorder go through /api/admin/videos/[id] (service
@@ -653,6 +656,10 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
         onProgress: (pct) => {
           const base = (i / fileArr.length) * 100;
           setVideoUploadProgress(Math.round(base + (pct / fileArr.length)));
+        },
+        onCodecWarning: (message) => {
+          const f = fileArr[i];
+          setVideoCodecNotices(prev => addCodecNotice(prev, { key: `${f.name}:${f.size}:${f.lastModified}`, filename: f.name, message }));
         },
       });
       if (result.ok) {
@@ -1378,6 +1385,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
             <p className="text-xs text-ink-400 mt-1">Uploading large files may take a moment…</p>
           </div>
         )}
+
+        <VideoCodecNotice items={videoCodecNotices} onDismiss={(key) => setVideoCodecNotices(prev => prev.filter(n => n.key !== key))} />
 
         {videoError && (
           <div className="mb-4 rounded-ctl border border-danger-200 bg-danger-50 px-3 py-2 text-sm text-danger-700">

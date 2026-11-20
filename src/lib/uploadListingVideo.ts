@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { captureVideoPoster } from "./captureVideoPoster";
+import { VIDEO_CODEC_PATTERN, codecWarning, type VideoCodecInfo } from "./videoCodec";
+import { checkVideoFileCodec } from "./videoCodecFile";
 
 /**
  * Upload one video to a listing, with a still frame captured for its cover.
@@ -271,6 +273,12 @@ export interface UploadListingVideoArgs {
   displayOrder: number;
   /** 0-100 for this single file. */
   onProgress?: (percent: number) => void;
+  /**
+   * Called (at most once, while the upload runs) when the file is H.265 or
+   * ProRes — formats some or all browsers can't show. Never blocks the upload.
+   * Callers that already checked the file when it was picked leave this out.
+   */
+  onCodecWarning?: (message: string, info: VideoCodecInfo) => void;
 }
 
 export interface UploadedVideo {
@@ -283,8 +291,35 @@ export interface UploadedVideo {
 }
 
 export type UploadListingVideoResult =
-  | { ok: true; video: UploadedVideo; playbackUrl: string | null }
+  | { ok: true; video: UploadedVideo; playbackUrl: string | null; codec: VideoCodecInfo | null }
   | { ok: false; error: string };
+
+/**
+ * Store the codec the browser read (a hint; the database CHECK limits its
+ * shape). Fire-and-forget: if the columns aren't there yet (migration
+ * 20261120_video_codec.sql not applied) the update just fails quietly.
+ */
+function recordCodec(supabase: SupabaseClient, videoId: string, info: VideoCodecInfo | null): void {
+  if (!info || !VIDEO_CODEC_PATTERN.test(info.codec)) return;
+  const dim = (n: number | undefined) => (typeof n === "number" && n >= 1 && n <= 20000 ? Math.round(n) : null);
+  try {
+    void supabase
+      .from("videos")
+      .update({
+        video_codec: info.codec,
+        video_width: dim(info.width),
+        video_height: dim(info.height),
+        codec_checked_at: new Date().toISOString(),
+      })
+      .eq("id", videoId)
+      .then(
+        () => {},
+        () => {}
+      );
+  } catch {
+    /* a hint only */
+  }
+}
 
 export async function uploadListingVideo({
   supabase,
@@ -293,7 +328,24 @@ export async function uploadListingVideo({
   uploadedBy,
   displayOrder,
   onProgress,
+  onCodecWarning,
 }: UploadListingVideoArgs): Promise<UploadListingVideoResult> {
+  // Read the format from two small slices of the file, alongside the upload
+  // (never in front of it). A risky format is reported, never refused.
+  const codecCheck = checkVideoFileCodec(file)
+    .then((info) => {
+      const msg = info ? codecWarning(info.codec) : null;
+      if (msg && info && onCodecWarning) {
+        try {
+          onCodecWarning(msg, info);
+        } catch {
+          /* a caller's notice must not break the upload */
+        }
+      }
+      return info;
+    })
+    .catch(() => null);
+
   const uploaded = await uploadVideoToPrivateBucket({ file, target: { listingId }, onProgress });
   if (!uploaded.ok) return uploaded;
   const path = uploaded.path;
@@ -319,6 +371,8 @@ export async function uploadListingVideo({
   }
 
   const video = row as UploadedVideo;
+  const codec = await codecCheck;
+  recordCodec(supabase, video.id, codec);
 
   // Still frame, best-effort and strictly after the fact. A missing cover is
   // cosmetic; it must never fail the upload or hold up the progress bar.
@@ -347,5 +401,5 @@ export async function uploadListingVideo({
     /* no poster; the listing falls back to whatever else it has */
   }
 
-  return { ok: true, video, playbackUrl: uploaded.playbackUrl };
+  return { ok: true, video, playbackUrl: uploaded.playbackUrl, codec };
 }

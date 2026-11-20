@@ -6,6 +6,7 @@ import { isLabelCandidate } from "@/lib/labelPhotos";
 import { isJobKind, type JobKind } from "@/lib/jobs/types";
 import { CLEANUP_CONFIRM_PHRASE } from "@/lib/jobs/photoMigration";
 import { SITE_TEXT_DRAFTS_MAX_IDS, SITE_TEXT_DRAFTS_MAX_LIMIT } from "@/lib/jobs/siteTextDrafts";
+import { VIDEO_CODEC_SCAN_MAX_LIMIT } from "@/lib/jobs/videoCodecScan";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -110,6 +111,19 @@ async function normaliseParams(
       if (ids.length === 0) return { error: "No valid listing ids given." };
       if (ids.length > SITE_TEXT_DRAFTS_MAX_IDS) return { error: `That's ${ids.length} listings — the limit is ${SITE_TEXT_DRAFTS_MAX_IDS} per job.` };
       out.listingIds = ids;
+    }
+    return { params: out };
+  }
+  // Video format check (reads only): optional { recheckUnknown, limit }.
+  if (kind === "video_codec_scan") {
+    const out: Record<string, unknown> = {};
+    if (p.recheckUnknown === true) out.recheckUnknown = true;
+    if (p.limit !== undefined && p.limit !== null) {
+      const n = Number(p.limit);
+      if (!Number.isFinite(n) || n < 1 || Math.floor(n) !== n || n > VIDEO_CODEC_SCAN_MAX_LIMIT) {
+        return { error: `limit must be a whole number from 1 to ${VIDEO_CODEC_SCAN_MAX_LIMIT}.` };
+      }
+      out.limit = n;
     }
     return { params: out };
   }

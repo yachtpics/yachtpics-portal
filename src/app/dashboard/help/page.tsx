@@ -65,6 +65,7 @@ const sections = [
       "By default a video appears on the Video tab of the client slideshow — the slideshow itself shows photos only. Use 'Hide from slideshow' on the video to keep it on the listing but off the client's page. To send a link that opens straight on the video, add #video to the end of the slideshow link.",
       "You can also send a video on its own — in Send to Client, tick the video to email the client a direct link, separate from the slideshow.",
       "For smooth playback on phones, export videos at 1080p (not 4K). To remove a video, click Delete on its card. There's no limit on video count.",
+      "Export videos as H.264. If you upload an H.265 (HEVC) or ProRes file, the portal still uploads it but shows a note: H.265 can play as sound with a black picture on some Windows laptops, and ProRes won't play in a browser. Export it again as H.264, delete the old one and upload the new one.",
     ],
   },
   {
@@ -278,6 +279,7 @@ const quickRef = [
   ["Sign in without a password", "Login page → Email me a sign-in link"],
   ["Change your password", "My Profile → Change Password"],
   ["Upload a video", "My Listings → listing → Listing Videos → Upload MP4"],
+  ["Fix a video that plays with a black picture", "Export it as H.264, then delete it and Upload MP4 again"],
   ["Upload a brochure or PDF", "My Listings → listing → Listing Documents → Upload PDF"],
   ["Set the cover photo", "My Listings → listing → ★ on a photo"],
   ["Change how the cover fits the spec sheet", "My Listings → listing → Flyer cover → Fit / Fill"],

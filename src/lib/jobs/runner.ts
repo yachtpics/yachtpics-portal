@@ -26,6 +26,7 @@ import { photoOriginalsCleanup, photoOriginalsCopy, r2PhotoFinish, sitePhotosCle
 import { demoReset, demoSeed } from "./demoSeed";
 import { demoRwReset, demoRwSeed } from "./demoRwSeed";
 import { siteTextDrafts } from "./siteTextDrafts";
+import { videoCodecScan } from "./videoCodecScan";
 import {
   JobFatalError,
   isJobFatal,
@@ -257,6 +258,7 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   demo_rw_seed: demoRwSeed,
   demo_rw_reset: demoRwReset,
   site_text_drafts: siteTextDrafts,
+  video_codec_scan: videoCodecScan,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

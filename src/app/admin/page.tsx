@@ -5,6 +5,7 @@ import { planForPriceId } from "@/lib/plans";
 import { getAccessStatus, isStripePaid, isComped } from "@/lib/subscriptionAccess";
 import RepublishLiveBoats from "./_components/RepublishLiveBoats";
 import BoatPageTextGaps from "./_components/BoatPageTextGaps";
+import VideoFormats from "./_components/VideoFormats";
 import RetiredPages from "./_components/RetiredPages";
 import GenerateThumbnails from "./_components/GenerateThumbnails";
 import { daysUntilBirthday } from "@/lib/brokerContact";
@@ -267,6 +268,7 @@ export default async function AdminPage() {
         <GenerateThumbnails initialRemaining={photosWithoutDerivatives ?? 0} />
         <RepublishLiveBoats />
         <BoatPageTextGaps />
+        <VideoFormats />
         <RetiredPages pages={(retiredPages ?? []) as { label: string; filename: string }[]} />
       </div>
 
