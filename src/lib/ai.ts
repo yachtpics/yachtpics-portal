@@ -178,8 +178,8 @@ export type SiteDescribable = {
 };
 
 /** Website text length the prompt asks for (characters). */
-export const SITE_TEXT_MIN = 160;
-export const SITE_TEXT_MAX = 280;
+export const SITE_TEXT_MIN = 120;
+export const SITE_TEXT_MAX = 230;
 /** The first sentence becomes the Google description on its own. */
 export const SITE_TEXT_FIRST_SENTENCE_MAX = 150;
 /** Post-processing: hard cap, and anything shorter than this is a failure. */
@@ -220,7 +220,7 @@ export function buildSiteDescriptionPrompt(listing: SiteDescribable, imageUrls: 
   const facts = Object.entries({
     Name: unnamed ? "(none — this boat has no name)" : listing.vessel_name,
     Type: listing.vessel_type, Year: listing.year, Builder: listing.make, Model: listing.model,
-    "Length (ft)": listing.length_ft, Engines: listing.engines, Staterooms: listing.staterooms, Location: listing.location,
+    "Length (ft)": listing.length_ft, Engines: listing.engines, Staterooms: listing.staterooms,
     "Photographs in the gallery": listing.photoCount && listing.photoCount > 0 ? listing.photoCount : null,
     "Areas photographed (gallery order)": listing.areas && listing.areas.length ? listing.areas.join(", ") : null,
   }).filter(([, v]) => v !== null && v !== undefined && String(v).trim() !== "").map(([k, v]) => `${k}: ${String(v).trim()}`).join("\n");
@@ -228,14 +228,14 @@ export function buildSiteDescriptionPrompt(listing: SiteDescribable, imageUrls: 
   const system = [
     "You write the short introduction for a yacht's page on yachtpics.com, the website of YachtPics, a yacht photography studio. The page is a gallery of YachtPics' photographs of that boat. Your text says what the boat is and what the photographs show. It is a caption for a photo shoot, not a sales listing.",
     `Length and form: exactly 2 sentences, ${SITE_TEXT_MIN}–${SITE_TEXT_MAX} characters in total. Plain prose only: no headings, lists, emojis, hashtags or exclamation marks, and no quotation marks around the text.`,
-    `First sentence: say what the boat is, using ONLY the listing facts — her name if she has one, year, builder, model, length, and the location if one is given (as where she was photographed). It must stand on its own, be no longer than ${SITE_TEXT_FIRST_SENTENCE_MAX} characters, and say she was photographed by YachtPics. It is used alone as the Google description. If a fact is missing, leave it out; never fill it in.`,
-    "Second sentence: one plain line on what the gallery shows — the main spaces, in the order of the areas listed, with at most two simple visible details chosen from colours (hull, deck, upholstery) and layout (where the helm, seating, galley or berths sit). Keep it plain. Do NOT name materials or finishes (no wood species, teak, stone, marble, leather, stainless), brands, equipment, or numbers of anything.",
+    `First sentence: say what the boat is, using ONLY the listing facts — her name if she has one, year, builder, model, length. It must stand on its own, be no longer than ${SITE_TEXT_FIRST_SENTENCE_MAX} characters, and end by saying she was photographed by YachtPics. It is used alone as the Google description. If a fact is missing, leave it out; never fill it in. NEVER name a place: where a boat was photographed is not where she lives, and her location is the broker's to give (owner's rule, Nov 22 2026).`,
+    "Second sentence: a walk through the gallery, nothing more — begin 'The gallery moves from' and name the main areas in the order listed (her profile, bow, cockpit, helm, engines or engine room, salon, galley, staterooms, and so on), using 'then' once to turn inside or below. No colours at all (not the hull, deck or upholstery), no layout claims (what sits to port, forward of or opposite what), no materials or finishes, no brands, no equipment, and no numbers of anything. Name an area only if it is in the areas list or plainly shown.",
     "Strict limits on facts. Everything about what the boat IS comes only from the listing facts: do not state or guess a model name, boat type, engine count or type, number of staterooms, range, speed, year or builder that is not in the facts — even if you think you recognise the boat or can count engines in a photo. No history, refits, upgrades, awards, condition claims, prices, availability or broker details. No word about price, value or cost.",
     "No judgements and no purpose claims. Do not say what the boat is built for, designed for, ideal for or capable of, and do not describe performance, comfort, efficiency, seaworthiness or how she would be used. Do not use evaluative words such as spacious, generous, ample, commanding, excellent, thoughtful, well-appointed, comfortable, luxurious, stunning, impressive, powerful, serious, practical, purposeful, elegant or beautiful. Do not praise the view, the light or the weather. Say what is there; let the photographs do the persuading.",
-    "A boat with no name: when the Name fact says there is none, open with 'This' and the facts — for example 'This 32-foot Galeon was photographed by YachtPics in Palm Beach Gardens, Florida.' or 'This 2026 Jupiter 34 center console was photographed by YachtPics in Marco Island, Florida.' Never invent a name, never use the builder or model as if it were her name, and do not repeat the length or year twice.",
+    "A boat with no name: when the Name fact says there is none, open with 'This' and the facts — for example 'This 32-foot Galeon was photographed by YachtPics.' or 'This 2026 Jupiter 34 center console was photographed by YachtPics.' Never invent a name, never use the builder or model as if it were her name, and do not repeat the length or year twice.",
     "If you are not sure something is shown, leave it out. A shorter, plainer text is better than a guess.",
-    "Voice: calm, exact, understated; third person; present tense. Refer to the boat by name, or as 'she' sparingly. Do not use the word 'walkthrough'. Vary the sentence openings; do not begin a sentence with 'The boat features' or 'Below deck,'.",
-    "For tone only (an invented boat — do not reuse its wording): Sea Lark is a 2019 Example 52, photographed by YachtPics in Stuart, Florida. The gallery runs from her navy hull and open cockpit to the flybridge helm, then inside to a light salon with the galley aft and the staterooms forward.",
+    "Voice: calm, exact, understated; third person; present tense. Refer to the boat by name in the first sentence and as 'her' in the second. Do not use the word 'walkthrough'.",
+    "The approved pattern (invented boats — follow the shape, not the words): Sea Lark is a 2019 Example 52 sportfish, photographed by YachtPics. The gallery moves from her profile and tower through the flybridge, cockpit and engine room, then inside to the salon, galley and staterooms. — and for a small open boat: Tern is a 2024 Example 37 center console, photographed by YachtPics. The gallery moves from her profile and bow to the helm and forward seating, then aft across the open deck.",
     "Reply with the text only.",
   ].join("\n");
 

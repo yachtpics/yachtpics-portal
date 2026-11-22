@@ -21,6 +21,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isAiConfigured } from "@/lib/ai";
 import { draftSiteTextForListing, suggestLocationFromPhotos } from "@/lib/siteTextServer";
+
+const SUGGEST_LOCATION_FROM_PHOTOS: boolean = false;
 import { JobFatalError, type JobHandler } from "./types";
 
 const PAGE = 10;
@@ -136,7 +138,10 @@ export const siteTextDrafts: JobHandler = async (job, { svc, deadlineMs }) => {
       log.push(`${name} — skipped (has text)`);
     }
 
-    if (empty(boat.location) && empty(boat.site_location_suggestion)) {
+    // Location suggestions are OFF (owner's rule, Nov 22 2026): the photos'
+    // embedded city is where the boat was SHOT, not where she lives, and the
+    // location is the broker's to give. Flip the flag to bring them back.
+    if (SUGGEST_LOCATION_FROM_PHOTOS && empty(boat.location) && empty(boat.site_location_suggestion)) {
       try {
         const loc = await suggestLocationFromPhotos(svc, boat);
         if (loc) {
