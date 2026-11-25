@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import HelpTip from "@/components/HelpTip";
 import EnableNotifications from "@/components/EnableNotifications";
 import SocialAccounts from "@/components/SocialAccounts";
+import LogoBookendsCard from "@/components/LogoBookendsCard";
 import { DEMO_READ_ONLY_MESSAGE, isDemoUser } from "@/lib/demo";
 
 interface ProfileData {
@@ -345,6 +346,12 @@ export default function ProfilePage() {
             </div>
           </div>
         </section>
+      )}
+
+      {/* Open and close with my logo (Nov 25) — brokers only; hidden until the
+          migration is applied. The office's own set, when on, replaces it with a line. */}
+      {role === "broker" && (
+        <LogoBookendsCard endpoint="/api/logo-bookends" title="Open and close with my logo" ours={false} lockWhenOffice />
       )}
 
       {/* Brokerage Info — brokers show full form, assistants show bio only */}

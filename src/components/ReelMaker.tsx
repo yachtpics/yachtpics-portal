@@ -33,7 +33,8 @@ import {
 } from "@/lib/yachtpicsBrand";
 import { reelPromoActive, reelPromoCountdown, reelPromoEndsOn } from "@/lib/reelPromo";
 import { depthLooksOpenFor, msUntilDepthLooksOpenFor } from "@/lib/depthLooksRelease";
-import { planStack, planSingles, planMarquee, planLogoStack, planBlurScroll, splitMarquee, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, SWAP_DUR, whipEase, flashAlpha, type StackEvent, type PlacedPhoto } from "@/lib/reelStack";
+import { planStack, planSingles, planMarquee, planLogoStack, planBlurScroll, splitMarquee, addBookends, MARQUEE_HERO_MAX, MARQUEE_BOTTOM_XF, type MarqueeMove, rowState, SWAP_DUR, whipEase, flashAlpha, type StackEvent, type PlacedPhoto, type Timeline } from "@/lib/reelStack";
+import { BOOKEND_CLOSE_SEC, BOOKEND_OPEN_SEC, bookendLogoRect, type LogoBookends } from "@/lib/logoBookends";
 import { drawTransition, type Transition } from "@/lib/reelTransitions";
 import { drawReelEndCard } from "@/lib/reelEndCard";
 import RetryImg from "@/components/RetryImg";
@@ -346,6 +347,13 @@ export type ReelSource = {
   /** Videos already on the listing — the display order a new one takes. */
   videoCount?: number;
   /**
+   * Logo bookends (Nov 25, src/lib/logoBookends.ts): the credited broker's
+   * opening / closing logo frames (their office's when it has them on).
+   * Absent or null: none, exactly as before. Never used on a reel branded as
+   * YachtPics.
+   */
+  bookends?: LogoBookends | null;
+  /**
    * Whether the reel starts branded as YachtPics. The Studio sets it from its
    * own branding picker — ours by default, the broker's once one is chosen.
    * Left out (the listing), the admin chip starts off, exactly as before.
@@ -576,7 +584,9 @@ export default function ReelMaker({
   // (still phase "loading" — the status line just says what it is doing).
   const [depthReading, setDepthReading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
-  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; duration?: number; renderId: string; music?: string | null } | null>(null);
+  // posterSec (Nov 25): where a still for the saved video should be taken —
+  // past the opening logo frame when the reel has bookends. Absent: the default.
+  const [result, setResult] = useState<{ url: string; blob: Blob; format: Format; seconds: number; duration?: number; renderId: string; music?: string | null; posterSec?: number } | null>(null);
   /**
    * Admin: "Post to Facebook / Instagram" from the listing. Shown once the
    * portal says Meta is configured and a Page is connected. The upload is
@@ -1096,89 +1106,103 @@ export default function ReelMaker({
     setPhase("idle");
   }
 
-  const timeline = useMemo(() => {
-    const look = REEL_STYLES[styleKey];
-    const scale = look.holdScale;
-    const n = selectedPhotos.length;
-    // Same boat, same photos → the same deal of transitions every time.
-    // Stack Underway is Stack with depth on top: it deals exactly Stack's
-    // timeline and joins for the same photographs.
-    const seed = n * 131 + (look.layout === "stack" ? "stack" : styleKey).length * 17;
-    // Our own ad's card carries more (the broker credit, the portal, us) —
-    // it holds a beat and a half longer so it can be read.
-    const endHold = s.endHold + (ypBrand && isAdmin ? 1.5 : 0);
+  // Logo bookends (Nov 25): the credited broker's (or office's) opening and
+  // closing logo frames — never on a reel branded as YachtPics.
+  const bookends = source.bookends ?? null;
+  const bookendsOn = !!bookends && !(ypBrand && isAdmin);
+  const timeline = useMemo((): Timeline => {
+    const base = ((): Timeline => {
+      const look = REEL_STYLES[styleKey];
+      const scale = look.holdScale;
+      const n = selectedPhotos.length;
+      // Same boat, same photos → the same deal of transitions every time.
+      // Stack Underway is Stack with depth on top: it deals exactly Stack's
+      // timeline and joins for the same photographs.
+      const seed = n * 131 + (look.layout === "stack" ? "stack" : styleKey).length * 17;
+      // Our own ad's card carries more (the broker credit, the portal, us) —
+      // it holds a beat and a half longer so it can be read.
+      const endHold = s.endHold + (ypBrand && isAdmin ? 1.5 : 0);
 
-    // The Stack look has its own clock — hero, then movements on the beat,
-    // every photo once. Only on a 9:16 reel; a film has no vertical to stack into.
-    if (look.layout === "stack" && format === "reel") {
-      return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold, seed });
-    }
-    // Logo stack: Stack's beat, two photo bands taking turns around the logo.
-    if (look.layout === "logo_stack" && format === "reel") {
-      return planLogoStack(n, { beat: s.hold * scale, endHold, seed });
-    }
-    // Blur scroll: one scrolling unit as long as the quiet single-photo reel.
-    if (look.layout === "blur_scroll" && format === "reel") {
-      return planBlurScroll(n, { titleHold: s.titleHold * scale, hold: s.hold * scale, endHold, seed, bgEvery: blurScrollOpts.bgEvery });
-    }
-    // The Marquee never cuts until the end card, but it runs exactly as long
-    // as the quiet single-photo reel of the same photographs would — the
-    // planner takes that length from planSingles and animates across it.
-    if (look.layout === "marquee" && format === "reel") {
-      return planMarquee(marqueeCategories, {
+      // The Stack look has its own clock — hero, then movements on the beat,
+      // every photo once. Only on a 9:16 reel; a film has no vertical to stack into.
+      if (look.layout === "stack" && format === "reel") {
+        return planStack(n, { heroHold: s.titleHold * scale, beat: s.hold * scale, endHold, seed });
+      }
+      // Logo stack: Stack's beat, two photo bands taking turns around the logo.
+      if (look.layout === "logo_stack" && format === "reel") {
+        return planLogoStack(n, { beat: s.hold * scale, endHold, seed });
+      }
+      // Blur scroll: one scrolling unit as long as the quiet single-photo reel.
+      if (look.layout === "blur_scroll" && format === "reel") {
+        return planBlurScroll(n, { titleHold: s.titleHold * scale, hold: s.hold * scale, endHold, seed, bgEvery: blurScrollOpts.bgEvery });
+      }
+      // The Marquee never cuts until the end card, but it runs exactly as long
+      // as the quiet single-photo reel of the same photographs would — the
+      // planner takes that length from planSingles and animates across it.
+      if (look.layout === "marquee" && format === "reel") {
+        return planMarquee(marqueeCategories, {
+          titleHold: s.titleHold * scale,
+          hold: s.hold * scale,
+          endHold,
+          dissolve: fadeFor(format, styleKey),
+          seed,
+          still: marqueeStill,
+          topIndices: marqueeTopIndices,
+          clipLens,
+        });
+      }
+      // Every other look: one photograph at a time. Every photo after the
+      // title holds for exactly the same beat — varying it per photo is the
+      // thing that makes a slideshow feel restless. The quiet looks dissolve;
+      // a look with a vocabulary deals its cuts.
+      // A Stack look on a film has no vertical to stack into, so it runs as a
+      // single-photo film — but it keeps Stack's manners. Charlie took the
+      // strobe out of the Stack deliberately ("we are delivering photos to be
+      // seen"), so the film version gets neither the flash burst nor the flash
+      // cuts that Energy deals: same punch, no strobe.
+      const isStack = look.layout === "stack";
+      const single = planSingles(n, {
         titleHold: s.titleHold * scale,
-        hold: s.hold * scale,
+        hold: auto?.photoHold ?? s.hold * scale,
         endHold,
         dissolve: fadeFor(format, styleKey),
+        burst: look.hook === "burst" && !isStack,
+        vocab: look.cut === "punch" ? (isStack ? "stack" : "energy") : null,
+        // Reels only: three horizontal bands need the vertical a 9:16 frame has.
+        thirds: format === "reel" ? look.thirds ?? null : null,
         seed,
-        still: marqueeStill,
-        topIndices: marqueeTopIndices,
-        clipLens,
+        fixedHolds: clipLens,
       });
-    }
-    // Every other look: one photograph at a time. Every photo after the
-    // title holds for exactly the same beat — varying it per photo is the
-    // thing that makes a slideshow feel restless. The quiet looks dissolve;
-    // a look with a vocabulary deals its cuts.
-    // A Stack look on a film has no vertical to stack into, so it runs as a
-    // single-photo film — but it keeps Stack's manners. Charlie took the
-    // strobe out of the Stack deliberately ("we are delivering photos to be
-    // seen"), so the film version gets neither the flash burst nor the flash
-    // cuts that Energy deals: same punch, no strobe.
-    const isStack = look.layout === "stack";
-    const single = planSingles(n, {
-      titleHold: s.titleHold * scale,
-      hold: auto?.photoHold ?? s.hold * scale,
-      endHold,
-      dissolve: fadeFor(format, styleKey),
-      burst: look.hook === "burst" && !isStack,
-      vocab: look.cut === "punch" ? (isStack ? "stack" : "energy") : null,
-      // Reels only: three horizontal bands need the vertical a 9:16 frame has.
-      thirds: format === "reel" ? look.thirds ?? null : null,
-      seed,
-      fixedHolds: clipLens,
-    });
-    // Reel Service video-led renders (auto.clipJoin): EVERY join — into and
-    // out of video, between photo beats, into the end card — is a smooth
-    // crossfade of clipJoin seconds. A crossfade plays at the start of the
-    // incoming unit, so a photo beat or the end card would lose that much of
-    // its hold to the fade: their slots are lengthened by the join, so they
-    // stay fully on screen for their whole planned hold (photo beat 2–2.5 s)
-    // and then fade out over the next unit's first clipJoin seconds. Clips
-    // keep their own length (they keep moving through their fade out — see
-    // tailSec).
-    const clipJoin = auto?.clipJoin;
-    if (!clipJoin) return single;
-    const isClipUnit = (u: (typeof single.units)[number]) => u.kind === "photo" && !!selectedPhotos[u.index]?.clip;
-    const transitions = single.transitions.map((tr) => ({ type: "dissolve" as const, dur: clipJoin, dir: tr.dir, timing: "smooth" as const }));
-    const units = single.units.map((u, k) => (k > 0 && !isClipUnit(u) ? { ...u, hold: u.hold + clipJoin } : u));
-    const starts: number[] = [];
-    let tt = 0;
-    units.forEach((u) => { starts.push(tt); tt += u.hold; });
-    return { units, starts, transitions, total: tt, flashes: [] as number[] };
-    // `s` carries the reel's hold — derived from the length's time budget and
-    // the photo count — so the total redraws when Length or the selection changes.
-  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin, blurScrollOpts.bgEvery]);
+      // Reel Service video-led renders (auto.clipJoin): EVERY join — into and
+      // out of video, between photo beats, into the end card — is a smooth
+      // crossfade of clipJoin seconds. A crossfade plays at the start of the
+      // incoming unit, so a photo beat or the end card would lose that much of
+      // its hold to the fade: their slots are lengthened by the join, so they
+      // stay fully on screen for their whole planned hold (photo beat 2–2.5 s)
+      // and then fade out over the next unit's first clipJoin seconds. Clips
+      // keep their own length (they keep moving through their fade out — see
+      // tailSec).
+      const clipJoin = auto?.clipJoin;
+      if (!clipJoin) return single;
+      const isClipUnit = (u: (typeof single.units)[number]) => u.kind === "photo" && !!selectedPhotos[u.index]?.clip;
+      const transitions = single.transitions.map((tr) => ({ type: "dissolve" as const, dur: clipJoin, dir: tr.dir, timing: "smooth" as const }));
+      const units = single.units.map((u, k) => (k > 0 && !isClipUnit(u) ? { ...u, hold: u.hold + clipJoin } : u));
+      const starts: number[] = [];
+      let tt = 0;
+      units.forEach((u) => { starts.push(tt); tt += u.hold; });
+      return { units, starts, transitions, total: tt, flashes: [] as number[] };
+      // `s` carries the reel's hold — derived from the length's time budget and
+      // the photo count — so the total redraws when Length or the selection changes.
+    })();
+    // The bookends go round whatever the look planned (after the Reel
+    // Service's clipJoin rebuild too): photo caps, holds and budgets are
+    // untouched; the reel runs open + close longer. Always a real dissolve,
+    // even on punch-cut looks. The closing frame holds BOOKEND_CLOSE_SEC
+    // solid after its dissolve in.
+    if (!bookendsOn) return base;
+    const F = SPEC[format].fade;
+    return addBookends(base, { open: BOOKEND_OPEN_SEC, close: BOOKEND_CLOSE_SEC + F, fade: F });
+  }, [selectedPhotos, s, format, styleKey, ypBrand, isAdmin, marqueeCategories, marqueeStill, marqueeTopIndices, clipLens, auto?.photoHold, auto?.clipJoin, blurScrollOpts.bgEvery, bookendsOn]);
 
   // ── Music ──────────────────────────────────────────────────────────────
   /**
@@ -1463,6 +1487,10 @@ export default function ReelMaker({
     // walkthrough. Released segment by segment, and wholesale in the finally.
     const clipPool = createClipInputPool();
     let logo: ImageBitmap | null = null;
+    // Logo bookends (Nov 25): the opening and closing logo images (null when
+    // off, or when one couldn't be loaded — that frame then draws its colour).
+    let bookendOpenBmp: ImageBitmap | null = null;
+    let bookendCloseBmp: ImageBitmap | null = null;
     // Logo stack (Nov 7): YachtPics' mark when the band uses ours, and the
     // recoloured copy of a mark that would vanish on its plate.
     let lsYpLogo: ImageBitmap | null = null;
@@ -1676,6 +1704,11 @@ export default function ReelMaker({
       const isClipAt = (i: number) => !!selectedPhotos[i]?.clip;
 
       if (card.logoUrl) { try { logo = await loadBitmap(card.logoUrl); } catch { logo = null; } }
+      if (bookendsOn && bookends) {
+        try { bookendOpenBmp = await loadBitmap(bookends.openUrl); } catch { bookendOpenBmp = null; }
+        if (bookends.closeUrl === bookends.openUrl) bookendCloseBmp = null; // drawn from the opening bitmap
+        else { try { bookendCloseBmp = await loadBitmap(bookends.closeUrl); } catch { bookendCloseBmp = null; } }
+      }
 
       // The timeline: units (photos, stack runs, the end card) and the
       // transitions that join them.
@@ -2903,6 +2936,29 @@ export default function ReelMaker({
       };
 
       /**
+       * Logo bookends (Nov 25): the logo centred on its own colour, nothing
+       * else. If its image couldn't be loaded the frame is the colour alone.
+       */
+      const bookendGround = bookends?.ground ?? st.ground;
+      const drawBookend = (side: "open" | "close", alpha: number) => {
+        const img = side === "open" || (bookends && bookends.closeUrl === bookends.openUrl) ? bookendOpenBmp : bookendCloseBmp;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = bookendGround;
+        ctx.fillRect(0, 0, W, H);
+        if (img && img.width > 0 && img.height > 0) {
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          const r = bookendLogoRect(W, H, img.width, img.height);
+          ctx.drawImage(img, r.x, r.y, r.w, r.h);
+        }
+        ctx.restore();
+      };
+      // The first CONTENT unit — where the title lives. Unit 0 is the opening
+      // bookend when bookends are on.
+      const titleK = units[0]?.kind === "bookend" ? 1 : 0;
+
+      /**
        * One unit of the film, whole-frame, at the opacity it's given. Every
        * transition is built from two of these — the outgoing and the incoming
        * — so a stack run, a photograph and the end card all cut the same way.
@@ -2910,6 +2966,10 @@ export default function ReelMaker({
       const drawUnit = (k: number, alpha: number, t: number) => {
         const u = units[k];
         const local = t - starts[k];
+        if (u.kind === "bookend") {
+          drawBookend(u.side, alpha);
+          return;
+        }
         if (u.kind === "photo") {
           // In a Stack, every full-frame photograph — hero included — is
           // shown whole: a horizontal floats complete on a soft plate, a
@@ -2935,7 +2995,7 @@ export default function ReelMaker({
           // It used to be reels only, which left a Gallery film showing its name
           // on frame one and then a third of the page empty for the rest.
           const persistent = backdrop === "inset" || backdrop === "letterbox";
-          if (k === 0) {
+          if (k === titleK) {
             const a = persistent ? ease((local - 0.3) / 0.6) : titleAlpha(local, u.hold);
             drawTitle(a * alpha);
           } else if (persistent) {
@@ -3014,9 +3074,12 @@ export default function ReelMaker({
       const joinFor = (k: number, tr: Transition): Transition => {
         // Reel Service video-led: every join is the planned smooth crossfade —
         // no dips or soft wipes from Underway's varied joins.
+        const ua = units[k - 1], ub = units[k];
+        // Logo bookends: always the plain dissolve they were planned with,
+        // whatever the look (like a join into the end card).
+        if (ua.kind === "bookend" || ub.kind === "bookend") return { ...tr, type: "dissolve", timing: undefined };
         if (auto?.clipJoin) return tr;
         if (st.joins !== "varied") return tr;
-        const ua = units[k - 1], ub = units[k];
         if (st.stackDepth === "main") {
           if (ua.kind === "end" || ub.kind === "end") return { ...tr, type: "dissolve", timing: undefined };
           const from = mainOf(ua, "out"), to = mainOf(ub, "in");
@@ -3060,7 +3123,10 @@ export default function ReelMaker({
             if (u.placed && u.placed.length > 0) return true;
             return u.slot !== null && u.slot !== undefined;
           };
-          const disjoint = placedAt(k) || placedAt(k - 1);
+          // A logo bookend fades against the ground too: the frame next to it
+          // may not cover every pixel (a whole photo on a plain ground, an
+          // inset page), and its own colour must not linger round the edges.
+          const disjoint = placedAt(k) || placedAt(k - 1) || units[k].kind === "bookend" || units[k - 1].kind === "bookend";
           const join = joinFor(k, tr);
           if (join.type === "softwipe" && !joinScratch) joinScratch = document.createElement("canvas");
           drawTransition(ctx, W, H, join, p, st.ground, (a) => drawUnit(k - 1, a, t), (a) => drawUnit(k, a, t), disjoint, joinScratch);
@@ -3088,7 +3154,10 @@ export default function ReelMaker({
       if (!buffer) throw new Error("The video came back empty.");
       const blob = new Blob([buffer], { type: "video/mp4" });
       const url = URL.createObjectURL(blob);
-      setResult({ url, blob, format, seconds: Math.round(total), duration: total, renderId, music: musicLabel });
+      // With bookends, the saved video's still is taken a second into the
+      // first photograph, not on the logo.
+      const posterSec = units[0]?.kind === "bookend" ? BOOKEND_OPEN_SEC + SPEC[format].fade + 1.0 : undefined;
+      setResult({ url, blob, format, seconds: Math.round(total), duration: total, renderId, music: musicLabel, posterSec });
       setProgress(100);
       setPhase("done");
       // What was made, not what was selected: the look, the shape and the
@@ -3125,6 +3194,10 @@ export default function ReelMaker({
       }
       bitmaps.length = 0;
       if (logo) { try { logo.close(); } catch { /* already released */ } logo = null; }
+      const bko = bookendOpenBmp as ImageBitmap | null;
+      if (bko) { try { bko.close(); } catch { /* already released */ } bookendOpenBmp = null; }
+      const bkc = bookendCloseBmp as ImageBitmap | null;
+      if (bkc) { try { bkc.close(); } catch { /* already released */ } bookendCloseBmp = null; }
       const ypl = lsYpLogo as ImageBitmap | null;
       if (ypl) { try { ypl.close(); } catch { /* already released */ } lsYpLogo = null; }
       const lmc = lsMarkCanvas as HTMLCanvasElement | null;
@@ -3391,7 +3464,7 @@ export default function ReelMaker({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not signed in.");
       const file = new File([result.blob], `${safeName(listing.vessel_name)}-film.mp4`, { type: "video/mp4" });
-      const res = await uploadListingVideo({ supabase, file, listingId, uploadedBy: user.id, displayOrder: videoCount });
+      const res = await uploadListingVideo({ supabase, file, listingId, uploadedBy: user.id, displayOrder: videoCount, posterSeekSec: result.posterSec });
       if (!res.ok) throw new Error(res.error);
       await supabase.from("videos").update({ title: `${listing.vessel_name ?? "Listing"} — The Film` }).eq("id", res.video.id);
       setVideoCount((n) => n + 1);
@@ -3785,7 +3858,11 @@ export default function ReelMaker({
               <button onClick={() => chooseLength("short")} disabled={busy} className={chip(length === "short")}>Short — about 20s, up to 12 photos</button>
             </div>
             <p className="text-xs text-ink-400 mt-1.5">Reels between 30 and 60 seconds reach the furthest. Short suits a quick teaser.</p>
+            {bookendsOn && <p className="text-xs text-ink-400 mt-1">Opens and closes with your logo.</p>}
           </div>
+        )}
+        {format !== "reel" && bookendsOn && (
+          <p className="text-xs text-ink-400 sm:col-span-2">Opens and closes with your logo.</p>
         )}
         {/* Music — original YachtPics music, or Off to add a trending sound in Instagram. */}
         <div>

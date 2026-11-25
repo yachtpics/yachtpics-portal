@@ -97,6 +97,17 @@ const sections = [
       "Office covers up to 8 brokers per location. If you go over, the page says so — reach out to YachtPics to add seats.",
     ],
   },
+  {
+    num: "10",
+    title: "Your Office Logo on Reels and Slideshows",
+    steps: [
+      "Set it once for the whole office: on the Brokerage page, under Open and close with our logo, upload an opening logo and a closing logo, pick the background colour, and turn it on.",
+      "Every reel made for a broker in your office then starts and ends on your logo, including reels made by their assistants or by YachtPics for them. The photos keep their time; a reel runs about three seconds longer.",
+      "Their client slideshows open on your logo for a moment (the buyer can tap to skip) and end on it after the last photo.",
+      "While it's on, your office's logo is used instead of any a broker has set for themselves. Reels already made don't change.",
+      "A transparent PNG works best. A white logo suits a dark colour.",
+    ],
+  },
 ];
 
 const quickRef = [
@@ -112,6 +123,7 @@ const quickRef = [
   ["Retire an old boat", "Open the boat → Edit → Status: Sold or Archived"],
   ["Change your password", "My Profile → Change Password"],
   ["Start or manage the Team or Office plan", "Brokerage → Billing"],
+  ["Open and close every broker's reels and slideshows with your logo", "Brokerage → Open and close with our logo"],
   ["Cover your brokers' boats with your own plan", "Billing → choose a plan (the Portal counts the boats in use; over the range is a note only). For the whole office, Team or Office under Brokerage → Billing"],
 ];
 

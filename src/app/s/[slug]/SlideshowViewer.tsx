@@ -7,6 +7,8 @@ import { useProgressivePhotoUrls, type ClientPhotoUrls } from "@/lib/useSelfRefr
 import { photoAlt } from "@/lib/photoAlt";
 import PresentedThrough from "@/components/PresentedThrough";
 import VideoStack, { videoLabel } from "@/components/VideoStack";
+import { BookendFrame, BookendOpener } from "@/components/SlideshowBookends";
+import type { LogoBookends } from "@/lib/logoBookends";
 
 interface Photo {
   id: string;
@@ -94,6 +96,13 @@ interface Props {
    * the line to show instead of the "Choose a plan" pitch (no Billing link).
    */
   ownerPreviewNote?: string | null;
+  /**
+   * Logo bookends (Nov 25, src/lib/logoBookends.ts): the broker's (or their
+   * office's) opening logo shown over the page as it loads, and the closing
+   * logo as a final slide after the last photo. Never on a broker website
+   * (`embedded`). Absent or null: none, exactly as before.
+   */
+  bookends?: LogoBookends | null;
 }
 
 type EventKind = "dwell" | "favorite" | "unfavorite" | "video_play" | "tour_click" | "deck_plan_view" | "details_view";
@@ -197,7 +206,7 @@ function FadePhoto({
   );
 }
 
-export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null, ownerPreview = false, ownerPreviewNote = null }: Props) {
+export default function SlideshowViewer({ listingId, slug, listing, broker: initialBroker, photos: initialPhotos, videos: initialVideos = [], brokerId, source = "link", sendToken = null, tourUrl = null, deckPlanUrl: initialDeckPlanUrl = null, urlsEndpoint, embedded = false, site = null, ownerPreview = false, ownerPreviewNote = null, bookends = null }: Props) {
   // The page signs only the opening photo + first dozen tiles. The rest of
   // the display links arrive in chunks from /api/s/[slug]/urls as they're
   // about to be needed, and everything is re-signed when a tab returns after
@@ -246,6 +255,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
     initialPhotos.length === 0 && initialVideos.some((v) => v.url) ? "video" : "slideshow"
   );
   const [current, setCurrent] = useState(0);
+  // Logo bookends: the opener is up from the very first paint (SSR included)
+  // while the stage loads the first photo underneath; the closing frame is a
+  // final slide at index slides.length — never a photo, never counted.
+  const [openerUp, setOpenerUp] = useState(!!bookends && !embedded && initialPhotos.length > 0);
+  const closeOn = !!bookends && !embedded && slides.length > 0;
+  const lastIndex = closeOn ? slides.length : slides.length - 1;
   const [outgoing, setOutgoing] = useState<number | null>(null);
   const [incomingReady, setIncomingReady] = useState(true);
   // Filmstrip: null = not chosen yet, which means open on a phone held
@@ -280,6 +295,12 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   const startedAtRef = useRef<number>(0);
   const seenRef = useRef<Set<string>>(new Set());
   const slideEnteredAtRef = useRef<number>(0);
+  // The opener is gone: the first photo's dwell starts now, so the logo's
+  // time is never counted as time on a photo.
+  const dismissOpener = useCallback(() => {
+    setOpenerUp(false);
+    slideEnteredAtRef.current = Date.now();
+  }, []);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [favPulse, setFavPulse] = useState<string | null>(null);
 
@@ -391,7 +412,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   // "…/s/slug#video" opens straight on the Video tab — for "watch the video" links.
   useEffect(() => {
-    if (window.location.hash.toLowerCase() === "#video" && hasVideo) setView("video");
+    if (window.location.hash.toLowerCase() === "#video" && hasVideo) { setView("video"); setOpenerUp(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -429,7 +450,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   }, [brokerId]);
 
   const goTo = useCallback((idx: number) => {
-    if (idx === current || idx < 0 || idx >= slides.length) return;
+    if (idx === current || idx < 0 || idx > lastIndex) return;
     // How long did they sit on the slide they're leaving? Under 1.5s is a
     // flick-past, not a look — don't count it.
     const leaving = slides[current];
@@ -450,7 +471,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
       });
     });
     fadeTimerRef.current = setTimeout(() => setOutgoing(null), 1300);
-  }, [current, slides, track]);
+  }, [current, slides, track, lastIndex]);
 
   const prev = useCallback(() => goTo(current - 1), [goTo, current]);
   const next = useCallback(() => goTo(current + 1), [goTo, current]);
@@ -544,6 +565,8 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
   }
 
   const currentSlide = slides[current] as Photo | undefined;
+  // The closing logo frame (a slide after the last photo, not a photo).
+  const atClose = closeOn && current === slides.length;
   const outgoingSlide = outgoing !== null ? slides[outgoing] : null;
   const caption = currentSlide?.category ?? "";
 
@@ -567,6 +590,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
 
   return (
     <div className={embedded ? "bg-ink-50 flex flex-col" : "min-h-screen bg-ink-50 flex flex-col"}>
+      {openerUp && bookends && <BookendOpener ground={bookends.ground} src={bookends.openUrl} onDone={dismissOpener} />}
       {ownerPreview && !previewBarHidden && (
         <div role="status" className="bg-ink-950 text-white/85 text-xs sm:text-[0.8125rem] px-4 sm:px-6 py-2 flex items-center justify-between gap-3">
           {ownerPreviewNote ? (
@@ -645,7 +669,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           onPlay={(id) => track({ kind: "video_play", videoId: id })}
           onError={onMediaError}
         />
-      ) : view === "slideshow" && currentSlide ? (
+      ) : view === "slideshow" && (currentSlide || atClose) ? (
         <>
           {/* Main slide — a print on paper: the photograph claims the stage, lifted by its shadow */}
           {/* Phone: the stage sits right under the header, full width less the
@@ -653,7 +677,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               shot) so there are no empty bands. sm and up: unchanged. */}
           <div
             className={`relative select-none overflow-visible mx-4 mt-3 ${
-              verticalIds.has(currentSlide.id) ? "h-[max(35vh,min(62vh,calc(100vh-360px)))]" : "aspect-[3/2] max-h-[62vh]"
+              currentSlide && verticalIds.has(currentSlide.id) ? "h-[max(35vh,min(62vh,calc(100vh-360px)))]" : "aspect-[3/2] max-h-[62vh]"
             } sm:mx-0 sm:mt-0 sm:flex-1 sm:overflow-hidden sm:h-auto sm:aspect-auto sm:max-h-none sm:min-h-[calc(100vh-240px)]`}
             onTouchStart={(e) => setTouchStart(e.touches[0].clientX)}
             onTouchEnd={(e) => {
@@ -666,6 +690,17 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {/* Outgoing photo. It fades OUT as the incoming fades in — a true crossfade — so a
                 wider outgoing shot doesn't leave its edges hanging when the
                 incoming is a different shape (e.g. horizontal → vertical). */}
+            {closeOn && bookends && outgoing === slides.length && (
+              <div
+                key={`out-${outgoing}`}
+                className="absolute inset-0 sm:p-5"
+                style={{ zIndex: 0, opacity: incomingReady ? 0 : 1, transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)" }}
+              >
+                <div className="relative w-full h-full shadow-print">
+                  <BookendFrame ground={bookends.ground} src={bookends.closeUrl} />
+                </div>
+              </div>
+            )}
             {outgoingSlide && (outgoingSlide.url ?? outgoingSlide.thumbUrl) && (
               <div
                 key={`out-${outgoing}`}
@@ -696,7 +731,18 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             {/* Current slide */}
             {/* A photo whose slide-size link is still on its way shows its tile
                 copy meanwhile (when we have one); FadePhoto swaps in place. */}
-            {(currentSlide.url ?? currentSlide.thumbUrl) && (
+            {atClose && bookends && (
+              <div
+                key={`in-${current}`}
+                className="absolute inset-0 sm:p-5"
+                style={{ zIndex: 1, opacity: incomingReady ? 1 : 0, transition: "opacity 1200ms cubic-bezier(0.25, 0, 0.15, 1)" }}
+              >
+                <div className="relative w-full h-full shadow-print">
+                  <BookendFrame ground={bookends.ground} src={bookends.closeUrl} />
+                </div>
+              </div>
+            )}
+            {currentSlide && (currentSlide.url ?? currentSlide.thumbUrl) && (
               <div
                 key={`in-${current}`}
                 className="absolute inset-0 flex items-start justify-center sm:items-center sm:p-5"
@@ -716,7 +762,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
 
             {/* Save this photo — a quiet heart, bottom-right of the stage */}
-            <button
+            {currentSlide && <button
               onClick={() => toggleFavorite(currentSlide.id)}
               aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
               aria-pressed={favorites.has(currentSlide.id)}
@@ -727,7 +773,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill={favorites.has(currentSlide.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
               </svg>
-            </button>
+            </button>}
 
             {/* Prev */}
             {current > 0 && (
@@ -737,7 +783,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
             )}
 
             {/* Next */}
-            {current < slides.length - 1 && (
+            {current < lastIndex && (
               <button onClick={next} aria-label="Next photo" className={`${arrowClass} right-3`}>
                 ›
               </button>
@@ -747,7 +793,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
           {/* Caption + counter, with a filmstrip toggle. On a phone this is the
               controls row: heart · ‹ counter › · filmstrip — nothing sits on the photo. */}
           <div className="flex items-center justify-between gap-0 pt-1 px-2 sm:justify-center sm:gap-3 sm:pt-2 sm:pb-1.5 sm:px-4">
-            <button
+            {currentSlide ? <button
               onClick={() => toggleFavorite(currentSlide.id)}
               aria-label={favorites.has(currentSlide.id) ? "Remove from saved photos" : "Save this photo"}
               aria-pressed={favorites.has(currentSlide.id)}
@@ -758,7 +804,7 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               <svg className="w-5 h-5" viewBox="0 0 24 24" fill={favorites.has(currentSlide.id) ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.8} aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 21s-7.5-4.6-9.5-9.2C1.2 8.6 3.4 5 7 5c2 0 3.4 1.1 5 3 1.6-1.9 3-3 5-3 3.6 0 5.8 3.6 4.5 6.8C19.5 16.4 12 21 12 21z" />
               </svg>
-            </button>
+            </button> : <span className="flex sm:hidden h-11 w-11 shrink-0" aria-hidden="true" />}
             <button
               onClick={prev}
               disabled={current === 0}
@@ -770,13 +816,20 @@ export default function SlideshowViewer({ listingId, slug, listing, broker: init
               </svg>
             </button>
             <p className="label-caps text-ink-600 flex-1 min-w-0 text-center sm:flex-none">
-              {caption ? `${caption} · ` : ""}
-              <span className="whitespace-nowrap">{current + 1} / {slides.length}</span>
-              {favorites.size > 0 && <span className="text-accent-700 whitespace-nowrap"> · {favorites.size} saved</span>}
+              {atClose ? (
+                // The closing frame isn't a photo: no caption, no counter.
+                <span aria-hidden="true">&nbsp;</span>
+              ) : (
+                <>
+                  {caption ? `${caption} · ` : ""}
+                  <span className="whitespace-nowrap">{current + 1} / {slides.length}</span>
+                  {favorites.size > 0 && <span className="text-accent-700 whitespace-nowrap"> · {favorites.size} saved</span>}
+                </>
+              )}
             </p>
             <button
               onClick={next}
-              disabled={current >= slides.length - 1}
+              disabled={current >= lastIndex}
               aria-label="Next photo"
               className={phoneArrowClass}
             >

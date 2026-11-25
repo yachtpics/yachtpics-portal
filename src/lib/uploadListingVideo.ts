@@ -279,6 +279,12 @@ export interface UploadListingVideoArgs {
    * Callers that already checked the file when it was picked leave this out.
    */
   onCodecWarning?: (message: string, info: VideoCodecInfo) => void;
+  /**
+   * Where the cover still is taken, in seconds (Nov 25). A reel with logo
+   * bookends passes a point past its opening logo frame; left out, the
+   * default (1 s in).
+   */
+  posterSeekSec?: number;
 }
 
 export interface UploadedVideo {
@@ -329,6 +335,7 @@ export async function uploadListingVideo({
   displayOrder,
   onProgress,
   onCodecWarning,
+  posterSeekSec,
 }: UploadListingVideoArgs): Promise<UploadListingVideoResult> {
   // Read the format from two small slices of the file, alongside the upload
   // (never in front of it). A risky format is reported, never refused.
@@ -377,7 +384,7 @@ export async function uploadListingVideo({
   // Still frame, best-effort and strictly after the fact. A missing cover is
   // cosmetic; it must never fail the upload or hold up the progress bar.
   try {
-    const poster = await captureVideoPoster(file);
+    const poster = await captureVideoPoster(file, posterSeekSec);
     if (poster) {
       // Derived from the video's own path so the still sits beside it in the
       // listing owner's folder.

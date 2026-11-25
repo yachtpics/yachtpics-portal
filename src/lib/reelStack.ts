@@ -151,7 +151,13 @@ export type Unit =
        */
       kind: "blurscroll"; hold: number; bgEvery: number;
     }
-  | { kind: "end"; hold: number };
+  | { kind: "end"; hold: number }
+  /**
+   * Logo bookends (Nov 25, src/lib/logoBookends.ts): the broker's or office's
+   * logo centred on its own colour, before the first unit and after the end
+   * card. Added by addBookends, outside every look's own plan.
+   */
+  | { kind: "bookend"; side: "open" | "close"; hold: number };
 
 export type Timeline = {
   units: Unit[];
@@ -781,4 +787,35 @@ export function rowState(events: StackEvent[], row: number, t: number) {
 /** Ease-out for the whip — fast off the line, settles hard. */
 export function whipEase(p: number) {
   return 1 - Math.pow(1 - p, 3);
+}
+
+/**
+ * Logo bookends (Nov 25): the opening frame before everything the look
+ * planned, the closing frame after the end card. Pure — the look's own units
+ * (and therefore every photo's hold, the photo cap and the time budget) are
+ * untouched; the reel simply runs `open + close` longer.
+ *
+ * Both joins are a plain dissolve of `fade` seconds, even on punch-cut looks.
+ * A transition plays at the start of the INCOMING unit, so:
+ *   - the opening frame is solid for `open` seconds, then dissolves into the
+ *     first unit over that unit's first `fade` seconds (the title's own timing
+ *     is relative to its unit, so it is unchanged);
+ *   - the closing frame dissolves in over its first `fade` seconds, after the
+ *     untouched end card, then holds — pass close = solid hold + fade.
+ * Every start moves by `open`, and so does every flash.
+ */
+export function addBookends(tl: Timeline, o: { open: number; close: number; fade: number }): Timeline {
+  const dissolve = (): Transition => ({ type: "dissolve", dur: o.fade, dir: "left" });
+  const units: Unit[] = [{ kind: "bookend", side: "open", hold: o.open } as Unit]
+    .concat(tl.units)
+    .concat([{ kind: "bookend", side: "close", hold: o.close } as Unit]);
+  const transitions: Transition[] = [dissolve()].concat(tl.transitions).concat([dissolve()]);
+  const starts = [0].concat(tl.starts.map((s) => s + o.open)).concat([tl.total + o.open]);
+  return {
+    units,
+    starts,
+    transitions,
+    total: tl.total + o.open + o.close,
+    flashes: tl.flashes.map((f) => f + o.open),
+  };
 }

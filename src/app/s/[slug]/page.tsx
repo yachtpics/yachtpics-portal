@@ -124,7 +124,7 @@ export default async function PublicSlideshowPage({
 
   // Broker card, photos/videos with first-paint links, deck plan — the same
   // helper /yp/[token] uses, so both render identically.
-  const { broker, photos: withUrls, videos, deckPlanUrl } = await slideshowViewerData(listing);
+  const { broker, photos: withUrls, videos, deckPlanUrl, bookends } = await slideshowViewerData(listing);
 
   return (
     <SlideshowViewer
@@ -139,6 +139,7 @@ export default async function PublicSlideshowPage({
       sendToken={sendToken}
       tourUrl={listing.tour_url ?? null}
       deckPlanUrl={deckPlanUrl}
+      bookends={bookends}
       ownerPreview={ownerPreview}
       ownerPreviewNote={ownerPreviewNote}
     />

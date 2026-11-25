@@ -21,7 +21,12 @@ const TIMEOUT_MS = 10_000;
 /** Cap on the stored still — plenty for a cover tile, tiny to fetch. */
 const MAX_EDGE = 1280;
 
-export async function captureVideoPoster(file: File): Promise<Blob | null> {
+/**
+ * `seekSec` (Nov 25): where to take the frame instead of SEEK_SECONDS — a reel
+ * that opens on a logo frame passes a point inside its first photograph. It is
+ * clamped the same way (never past the middle of a short video).
+ */
+export async function captureVideoPoster(file: File, seekSec?: number): Promise<Blob | null> {
   if (typeof document === "undefined") return null;
 
   const url = URL.createObjectURL(file);
@@ -51,7 +56,8 @@ export async function captureVideoPoster(file: File): Promise<Blob | null> {
 
       video.onloadedmetadata = () => {
         // Short clips: don't seek past the end, just take what's there.
-        const target = Math.min(SEEK_SECONDS, Math.max(0, (video.duration || 0) / 2));
+        const want = typeof seekSec === "number" && Number.isFinite(seekSec) && seekSec >= 0 ? seekSec : SEEK_SECONDS;
+        const target = Math.min(want, Math.max(0, (video.duration || 0) / 2));
         try {
           video.currentTime = Number.isFinite(target) ? target : 0;
         } catch {

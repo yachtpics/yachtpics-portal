@@ -8,6 +8,7 @@ import type { ListingData, ReelPhoto, ReelSource, ReelVideo } from "@/components
 import type { BrokerCard } from "@/lib/yachtpicsBrand";
 import { photoDrawUrls } from "@/lib/photoStoreClient";
 import { assistantPlanCopy, type AssistantPlanCopy } from "@/lib/planValue";
+import type { LogoBookends } from "@/lib/logoBookends";
 
 /**
  * Assemble a listing's half of a reel — the boat, the broker's card and
@@ -22,19 +23,30 @@ import { assistantPlanCopy, type AssistantPlanCopy } from "@/lib/planValue";
 type Photo = { id: string; storage_path: string; category: string | null; filename: string | null; display_order: number; derivatives_at?: string | null; storage_backend?: string | null };
 type VideoRow = { id: string; title: string | null; filename: string | null; thumbnail_path: string | null; display_order: number | null };
 
+/** A bookend set from the server, checked for shape; anything else is "off". */
+function cleanBookends(b: unknown): LogoBookends | null {
+  const o = b as Partial<LogoBookends> | null | undefined;
+  if (!o || typeof o.openUrl !== "string" || typeof o.closeUrl !== "string" || typeof o.ground !== "string") return null;
+  const ground = normalizeHex(o.ground);
+  return ground ? { openUrl: o.openUrl, closeUrl: o.closeUrl, ground } : null;
+}
+
 /** Who the reel credits, from /api/reels/credit (src/lib/reelCredit.ts). Null if the call fails. */
 export async function fetchReelCredit(listingId: string, brokerId?: string | null): Promise<{
   creditBrokerId: string;
   card: BrokerCard;
   brand: { accent: string | null; ground: string | null };
   options: { id: string; name: string; isOwner: boolean }[] | null;
+  /** Logo bookends (Nov 25) — null when off (or the server predates them). */
+  bookends: LogoBookends | null;
 } | null> {
   try {
     const q = `listingId=${encodeURIComponent(listingId)}${brokerId ? `&brokerId=${encodeURIComponent(brokerId)}` : ""}`;
     const res = await fetch(`/api/reels/credit?${q}`, { cache: "no-store" });
     if (!res.ok) return null;
     const d = await res.json();
-    return typeof d?.creditBrokerId === "string" && d.card ? d : null;
+    if (!(typeof d?.creditBrokerId === "string" && d.card)) return null;
+    return { ...d, bookends: cleanBookends(d.bookends) };
   } catch {
     return null;
   }
@@ -216,5 +228,7 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
     creditBrokerId,
     creditOptions: credit?.options ?? null,
     videoCount: count ?? 0,
+    // Logo bookends: only when the credit lookup worked (the fallback card has none).
+    bookends: credit?.bookends ?? null,
   };
 }

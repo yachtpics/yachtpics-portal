@@ -6,6 +6,7 @@ import { VESSEL_TYPES } from "@/lib/vesselTypes";
 import { normalizeHex } from "@/lib/reelStyles";
 import type { BrokerCard } from "@/lib/yachtpicsBrand";
 import ReelMaker, { type ListingData, type ReelPhoto, type ReelSource } from "@/components/ReelMaker";
+import type { LogoBookends } from "@/lib/logoBookends";
 import { detectPhone, CLIP_MAX, CLIP_MAX_PHONE } from "@/lib/reelClips";
 
 /**
@@ -273,6 +274,26 @@ export default function ReelStudioPage() {
     photo_order_manual: null,
   }), [draft, pickedBroker]);
 
+  // Logo bookends (Nov 25): the picked broker's (their office's when on),
+  // asked for whenever the broker changes. Only used when the branding is the
+  // broker's — ReelMaker never puts them on a reel branded as YachtPics.
+  const [bookends, setBookends] = useState<LogoBookends | null>(null);
+  useEffect(() => {
+    setBookends(null);
+    if (!pickedBroker) return;
+    let live = true;
+    fetch(`/api/admin/logo-bookends?resolveFor=${encodeURIComponent(pickedBroker.id)}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const b = d?.bookends;
+        if (live && b && typeof b.openUrl === "string" && typeof b.closeUrl === "string" && typeof b.ground === "string") {
+          setBookends({ openUrl: b.openUrl, closeUrl: b.closeUrl, ground: b.ground });
+        }
+      })
+      .catch(() => { /* none */ });
+    return () => { live = false; };
+  }, [pickedBroker?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const source: ReelSource = useMemo(() => ({
     listing,
     photos: reelPhotos,
@@ -288,7 +309,8 @@ export default function ReelStudioPage() {
     // Ours by default — the reason the Studio exists. Picking a broker hands
     // the end card back to them.
     defaultYpBrand: brokerId === "yachtpics",
-  }), [listing, reelPhotos, card, brand, budget, brokerId]);
+    bookends,
+  }), [listing, reelPhotos, card, brand, budget, brokerId, bookends]);
 
   const field = "w-full text-sm border border-hairline-strong rounded-ctl px-3 py-2 bg-white focus:outline-none focus:border-accent-500 focus:ring-1 focus:ring-accent-500";
   const chip = (active: boolean) =>

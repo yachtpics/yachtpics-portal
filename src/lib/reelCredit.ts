@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isOfficeAdminForBroker } from "@/lib/assertListingAccess";
+import { resolveLogoBookends } from "@/lib/logoBookendsServer";
+import type { LogoBookends } from "@/lib/logoBookends";
 
 /**
  * Whose name goes on a listing reel (Nov 1) — SERVER ONLY (service client).
@@ -33,6 +35,8 @@ export type ReelCredit = {
   brand: { accent: string | null; ground: string | null };
   /** Admins only: who the reel can be for (owner first), for the Credit chip. */
   options: { id: string; name: string; isOwner: boolean }[] | null;
+  /** The credited broker's logo bookends (their office's when on), or null. Nov 25. */
+  bookends: LogoBookends | null;
 };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -97,12 +101,14 @@ export async function resolveReelCredit(
   }
   if (!credit) return null;
 
-  const [{ data: prof }, { data: det }, names] = await Promise.all([
+  const [{ data: prof }, { data: det }, names, bookends] = await Promise.all([
     svc.from("profiles").select("first_name, last_name, phone, display_email").eq("id", credit).maybeSingle(),
     svc.from("broker_details").select("brokerage_name, brokerage_website, logo_url, brand_accent, brand_ground").eq("id", credit).maybeSingle(),
     isAdmin && coIds.length > 0
       ? svc.from("profiles").select("id, first_name, last_name").in("id", candidates).then((r) => r.data ?? [])
       : Promise.resolve(null),
+    // Logo bookends: their own query (missing columns = off); never fails the credit.
+    resolveLogoBookends(svc, credit).catch(() => null),
   ]);
 
   let options: ReelCredit["options"] = null;
@@ -124,5 +130,6 @@ export async function resolveReelCredit(
     },
     brand: { accent: (det?.brand_accent as string | null) ?? null, ground: (det?.brand_ground as string | null) ?? null },
     options,
+    bookends,
   };
 }

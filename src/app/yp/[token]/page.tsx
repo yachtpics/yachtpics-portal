@@ -69,7 +69,7 @@ export default async function YachtPicsSharePage({
 
   const { listing, slug } = hit;
   const source = ypSourceFromVia(searchParams.via);
-  const { broker, photos, videos, deckPlanUrl } = await slideshowViewerData(listing);
+  const { broker, photos, videos, deckPlanUrl, bookends } = await slideshowViewerData(listing);
 
   return (
     <SlideshowViewer
@@ -84,6 +84,7 @@ export default async function YachtPicsSharePage({
       sendToken={null}
       tourUrl={listing.tour_url ?? null}
       deckPlanUrl={deckPlanUrl}
+      bookends={bookends}
       urlsEndpoint={`/api/yp/${encodeURIComponent(params.token.trim().toLowerCase())}/urls`}
       ownerPreview={false}
     />

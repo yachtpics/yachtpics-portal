@@ -47,6 +47,8 @@ export default function ListingReelPage() {
       creditBrokerId: c.creditBrokerId,
       broker: c.card,
       brand: { accent: normalizeHex(c.brand.accent), ground: normalizeHex(c.brand.ground) },
+      // The picked broker's logo bookends (their office's when on), or none.
+      bookends: c.bookends,
     }));
   }
 

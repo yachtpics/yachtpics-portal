@@ -30,15 +30,23 @@ export function logoFileError(file: { type: string; size: number }): string | nu
 /**
  * Upload the (already validated) file to the broker's own folder with the
  * service-role client and return the public URL to store, or an error message.
+ *
+ * `where` (Nov 25, logo bookends) stores another image the same way: the
+ * folder inside the bucket (default the broker's id) and the file's base name
+ * (default "logo"), e.g. `{ folder: "office/{brokerageId}", name:
+ * "bookend-open" }`. Left out, exactly the logo path as before.
  */
 export async function storeBrokerLogoFile(
   svc: SupabaseClient,
   brokerId: string,
-  file: File
+  file: File,
+  where: { folder?: string; name?: string } = {}
 ): Promise<{ url: string; error?: undefined } | { error: string; url?: undefined }> {
   const ext = ALLOWED_LOGO_TYPES[file.type];
   if (!ext) return { error: "Logo must be a PNG, JPG or WebP image." };
-  const path = `${brokerId}/logo.${ext}`;
+  const folder = where.folder ?? brokerId;
+  const name = where.name ?? "logo";
+  const path = `${folder}/${name}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadError } = await svc.storage

@@ -2,6 +2,8 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import BrokerageTeam from "./_components/BrokerageTeam";
+import LogoBookendsCard from "@/components/LogoBookendsCard";
+import { readBookendSettings } from "@/lib/logoBookendsServer";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,11 @@ export default async function BrokerageTeamPage() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   );
 
-  const { data: brokerage } = await service.from("brokerages").select("name").eq("id", profile.brokerage_id).single();
+  const [{ data: brokerage }, bookends] = await Promise.all([
+    service.from("brokerages").select("name").eq("id", profile.brokerage_id).single(),
+    // Logo bookends (Nov 25): null until the migration is applied — card hidden.
+    readBookendSettings(service, { kind: "office", id: profile.brokerage_id }),
+  ]);
 
   const { data: membersRaw } = await service
     .from("profiles")
@@ -39,5 +45,18 @@ export default async function BrokerageTeamPage() {
     role: p.role as string,
   }));
 
-  return <BrokerageTeam brokerageName={brokerage?.name ?? "Your brokerage"} members={members} />;
+  return (
+    <>
+      <BrokerageTeam brokerageName={brokerage?.name ?? "Your brokerage"} members={members} />
+      {bookends && (
+        <div className="px-6 pb-8 max-w-3xl mx-auto">
+          <LogoBookendsCard
+            endpoint="/api/brokerage/logo-bookends"
+            initial={{ available: true, own: bookends }}
+            title="Open and close with our logo"
+          />
+        </div>
+      )}
+    </>
+  );
 }

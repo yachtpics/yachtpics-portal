@@ -8,6 +8,7 @@ import { withVideoUrls } from "@/lib/videoUrls";
 import { signPhotosAtSize, signOneTransformed, OG_TRANSFORM, type PhotoSize } from "@/lib/publicPhotoUrls";
 import { cleanYpToken, ypShareLive } from "@/lib/ypShare";
 import type { Metadata } from "next";
+import { resolveLogoBookends } from "@/lib/logoBookendsServer";
 
 /**
  * Shared by the buyer slideshow page (/s/[slug]), its link preview
@@ -351,9 +352,12 @@ export async function slideshowViewerData(listing: SlideshowListing) {
   const supabase = serviceClient();
   // Broker card + photo/video rows (cached — shared with generateMetadata),
   // then ONE light signing step.
-  const [{ profile, brokerDetails }, rows] = await Promise.all([
+  const [{ profile, brokerDetails }, rows, bookends] = await Promise.all([
     getBrokerCard(listing.broker_id),
     slideshowRows(listing),
+    // Logo bookends (Nov 25): the broker's (their office's when on), or null —
+    // always null before the migration is applied. Never holds up the page.
+    resolveLogoBookends(supabase, listing.broker_id).catch(() => null),
   ]);
   const [firstPaint, extras] = await Promise.all([
     signFirstPaint(supabase, rows.photos, SLIDESHOW_TTL),
@@ -387,5 +391,5 @@ export async function slideshowViewerData(listing: SlideshowListing) {
     logoUrl: brokerDetails?.logo_url ?? null,
   };
 
-  return { broker, photos, videos, deckPlanUrl: extras.deckPlanUrl };
+  return { broker, photos, videos, deckPlanUrl: extras.deckPlanUrl, bookends };
 }

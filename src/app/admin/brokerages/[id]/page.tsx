@@ -4,6 +4,8 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import BrokerageMembers from "./_components/BrokerageMembers";
 import RefreshOnMount from "../_components/RefreshOnMount";
+import LogoBookendsCard from "@/components/LogoBookendsCard";
+import { readBookendSettings } from "@/lib/logoBookendsServer";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,8 @@ export default async function BrokerageDetailPage({ params }: { params: { id: st
     .in("role", ["broker", "assistant"])
     .order("last_name");
   const all = (allRaw ?? []) as Row[];
+  // Logo bookends (Nov 25): null until the migration is applied — card hidden.
+  const bookends = await readBookendSettings(supabase, { kind: "office", id: brokerage.id });
 
   const fmtName = (p: Row) =>
     p.first_name ? `${p.first_name} ${p.last_name ?? ""}`.trim() : (p.display_email ?? "—");
@@ -57,6 +61,16 @@ export default async function BrokerageDetailPage({ params }: { params: { id: st
         initialMembers={members}
         available={available}
       />
+      {bookends && (
+        <div className="mt-6">
+          <LogoBookendsCard
+            endpoint="/api/admin/logo-bookends"
+            query={`?brokerageId=${brokerage.id}`}
+            initial={{ available: true, own: bookends }}
+            title="Open and close with the office logo"
+          />
+        </div>
+      )}
     </div>
   );
 }

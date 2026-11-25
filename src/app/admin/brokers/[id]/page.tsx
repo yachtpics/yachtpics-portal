@@ -14,6 +14,7 @@ import { planLabel } from "@/lib/subscriptionAccess";
 import WebsiteCompToggle from "./_components/WebsiteCompToggle";
 import AdminNotesEditor from "./_components/AdminNotesEditor";
 import BrokerLogoCard from "./_components/BrokerLogoCard";
+import LogoBookendsCard from "@/components/LogoBookendsCard";
 import { websiteEntitlement, type WebsiteEntitlement } from "@/lib/websiteAddon";
 import { listingAllowance } from "@/lib/listingAllowance";
 import { coverSlotsForAdmin } from "@/lib/officeCoverSlots";
@@ -300,6 +301,9 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
       {/* Logo — set or remove it for the broker (same result as their own upload) */}
       <BrokerLogoCard brokerId={params.id} initialUrl={(details?.logo_url as string | null | undefined) ?? null} />
+
+      {/* Open and close with their logo (Nov 25) — reads itself; hidden until the migration is applied */}
+      <LogoBookendsCard endpoint="/api/admin/logo-bookends" query={`?brokerId=${params.id}`} title="Open and close with their logo" ours={false} />
 
       {/* Private notes — admins only */}
       <AdminNotesEditor brokerId={params.id} initialNotes={notesRow?.notes ?? ""} updatedAt={notesRow?.updated_at ?? null} updatedByName={notesBy} />
