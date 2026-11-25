@@ -214,6 +214,7 @@ export default function InvoiceEditor({
     setDirty(false);
     setDueTouched(false);
     setPayTouched(false);
+    setFeeOff(false);
     setIssueFromShoot(false);
     setAutoPhotoHint(null);
     setError(null);
@@ -240,11 +241,21 @@ export default function InvoiceEditor({
   const totals = useMemo(() => calcInvoice(lines, inv.tax_rate, inv.card_fee_rate), [lines, inv.tax_rate, inv.card_fee_rate]);
   const boatFt = Number(h.boat_length_ft) || 0;
 
+  const feeLine = (position: number): EditLine => ({ key: k(), position, item_id: null, kind: "card_fee", name: `Credit card fee ${fmtPct(inv.card_fee_rate)}`, description: null, quantity: 1, unit: "each", unit_price: 0, discount_type: null, discount_value: null, taxable: false });
+  // The card fee is on whenever "Offer Pay online" is on, unless it was unticked
+  // here; switching Pay online back on ticks it again.
+  const [feeOff, setFeeOff] = useState(false);
   const toggleFee = () => {
-    if (hasFee) setLines(lines.filter((l) => l.kind !== "card_fee"));
-    else setLines(lines.concat([{ key: k(), position: lines.length, item_id: null, kind: "card_fee", name: `Credit card fee ${fmtPct(inv.card_fee_rate)}`, description: null, quantity: 1, unit: "each", unit_price: 0, discount_type: null, discount_value: null, taxable: false }]));
+    if (hasFee) { setLines(lines.filter((l) => l.kind !== "card_fee")); setFeeOff(true); }
+    else { setLines(lines.concat([feeLine(lines.length)])); setFeeOff(false); }
     setDirty(true);
   };
+  useEffect(() => {
+    if (locked || inv.status !== "draft" || !h.online_pay || feeOff || hasFee) return;
+    setLines((ls) => (ls.some((l) => l.kind === "card_fee") ? ls : ls.concat([feeLine(ls.length)])));
+    setDirty(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locked, inv.status, h.online_pay, feeOff, hasFee]);
 
   /** A catalog item as a new line on `base` (card fee kept last). Shared by a manual pick and the boat auto-add. */
   const withItemLine = (base: EditLine[], it: BillingItem, ft: number): EditLine[] => {
@@ -276,8 +287,10 @@ export default function InvoiceEditor({
   // Boat picked on an empty YachtPics draft → the default line for its type and length
   // (rules in src/lib/books/defaultLine.ts). Holds the added item's name for the hint.
   const [autoPhotoHint, setAutoPhotoHint] = useState<string | null>(null);
-  const linesAreEmpty = (ls: EditLine[]) =>
-    ls.length === 0 || (ls.length === 1 && ls[0].kind === "custom" && !ls[0].item_id && !ls[0].name.trim() && !Number(ls[0].unit_price));
+  const linesAreEmpty = (all: EditLine[]) => {
+    const ls = all.filter((l) => l.kind !== "card_fee");
+    return ls.length === 0 || (ls.length === 1 && ls[0].kind === "custom" && !ls[0].item_id && !ls[0].name.trim() && !Number(ls[0].unit_price));
+  };
   const addCustom = () => {
     const fee = lines.filter((l) => l.kind === "card_fee");
     setLines(lines.filter((l) => l.kind !== "card_fee").concat([{ key: k(), position: 0, item_id: null, kind: "custom", name: "", description: null, quantity: 1, unit: "each", unit_price: 0, discount_type: null, discount_value: null, taxable: false, saveToCatalog: false }], fee));
@@ -355,6 +368,7 @@ export default function InvoiceEditor({
   /** "Offer Pay online" picked here, or from a newly picked client: off drops the card-fee line. */
   const payPatch = (on: boolean, extra: Partial<Header> = {}) => {
     if (!on && hasFee) setLines(lines.filter((l) => l.kind !== "card_fee"));
+    if (on) setFeeOff(false);
     setHeader({ ...extra, online_pay: on });
   };
 
@@ -609,7 +623,7 @@ export default function InvoiceEditor({
                 const ft = Number(patch.boat_length_ft) || 0;
                 const photo = h.brand === "yachtpics" && !locked && inv.status === "draft" && linesAreEmpty(lines) ? pickDefaultItem(items, hit.vesselType, ft) : null;
                 if (photo) {
-                  nextLines = withItemLine([], photo, ft);
+                  nextLines = withItemLine(lines.filter((l) => l.kind === "card_fee"), photo, ft);
                   setAutoPhotoHint(photo.name);
                 }
                 if (patch.online_pay === false && nextLines.some((l) => l.kind === "card_fee")) nextLines = nextLines.filter((l) => l.kind !== "card_fee");
