@@ -49,7 +49,8 @@ const sections = [
     steps: [
       "You can change any boat in your brokerage exactly as that broker's assistant can — open it from My Listings.",
       "Edit its details (name, year, model, price, description, status), add, replace, hide or delete photos and videos, label photos and send it to clients.",
-      "The boat stays the broker's: it keeps their name, and sending uses their plan (or your Office plan).",
+      "The boat stays the broker's: it keeps their name, and sending uses their plan, your Office plan, or your own plan (see below).",
+      "Your own plan covers your brokers' boats: if you pay for a plan of your own, the Portal tools are on for the boats of every broker here with no plan of their own. Your plan's boat range then counts the office's active boats; over it, Billing and My Listings show you a reminder, and nothing is switched off.",
       "Their plan, billing and the Reel Service stay with the broker and their assistant.",
     ],
   },
@@ -109,6 +110,7 @@ const quickRef = [
   ["Retire an old boat", "Open the boat → Edit → Status: Sold or Archived"],
   ["Change your password", "My Profile → Change Password"],
   ["Start or manage the Office plan", "Brokerage → Billing"],
+  ["Cover your brokers' boats with your own plan", "Billing → choose a plan (it counts the office's active boats; over the range is a reminder only)"],
 ];
 
 export default async function BrokerageHelpPage() {

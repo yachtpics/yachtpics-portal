@@ -98,6 +98,7 @@ const sections = [
       "Your 14-day free trial starts the first time you sign in (accounts opened before October 24, 2026 keep their 30 days). Choose a plan any time during it and you won't be charged until the trial ends — the Billing page shows the date. In the last two days of the trial, choosing a plan starts billing straight away. Cancel anytime from the Billing page. During the trial we email you three times: a week in, with what your listings did (from their Seller Reports); two days before it ends; and once it has ended.",
       "Reels without a plan: each listing includes two reels. A reel counts once you take it off the page — download it, send it to your phone, save it to your camera roll, or add it to the listing. Making and previewing never count, and taking the same reel twice is still one. Subscribers make as many as they like.",
       "Office plan: a brokerage admin can cover the whole brokerage with one plan, under Brokerage → Billing. While it's active every broker there is covered automatically — no plan of their own needed — and their assistants are included.",
+      "Company admin's plan: if your brokerage admin pays for a plan of their own, it also covers the Portal tools on your boats while you have no plan — for you and your assistants; Billing says whose plan covers you. Their plan's boat range then counts the office's active boats; over it, they see a reminder, and nothing is switched off.",
     ],
   },
   {
@@ -314,6 +315,7 @@ const quickRef = [
   ["Add or remove an assistant", "Sidebar → Team (or My Profile → Assistants)"],
   ["Choose a plan", "Billing → choose a plan → Choose plan"],
   ["Cover your whole brokerage with one plan", "Sidebar → Brokerage → Billing (brokerage admins)"],
+  ["See whose plan covers your boats", "Billing (a company admin's own plan can cover their office)"],
   ["Change your login email", "My Profile → Change Login Email"],
   ["Manage billing & download receipts", "Billing → Manage billing & invoices"],
   ["See recently photographed boats", "Sidebar → Recently Photographed"],

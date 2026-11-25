@@ -376,7 +376,11 @@ export default async function DashboardPage() {
             <HelpTip text={`Your current plan. ${PLAN_ONE_LINER}`} detail={`Every plan includes ${PLAN_BENEFITS_SENTENCE}. Change or manage it under Billing.`} position="below" />
           </div>
           <p className="text-3xl font-light text-ink-900 capitalize">
-            {effectiveAccess.officeCovered ? "Office plan" : planLabel(subscription ?? null)}
+            {effectiveAccess.officeCovered
+              ? "Office plan"
+              : effectiveAccess.officeAdminCover
+                ? `${effectiveAccess.officeAdminCover.adminName}’s plan`
+                : planLabel(subscription ?? null)}
           </p>
         </div>
       </Card>

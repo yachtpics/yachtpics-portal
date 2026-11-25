@@ -2,6 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { PLANS, planIncludesWebsite, planPriceWithWebsite } from "@/lib/plans";
 import { brokerStripePlan, readSiteBilling } from "@/lib/websiteAddon";
 import { isMissingSchema } from "@/lib/brokerSite";
+import { getAccessStatus, type SubRow } from "@/lib/subscriptionAccess";
+import { OFFICE_ADMIN_PLAN_COVERS_OFFICE, isPayingPlan, officePlanActive } from "@/lib/brokerAccess";
 
 /**
  * Listing ranges per plan (Starter 1–5, Growth 6–10, Pro 11–20, Elite 21+;
@@ -15,6 +17,15 @@ import { isMissingSchema } from "@/lib/brokerSite";
  * meant to call listingAllowance() and refuse a new active listing when
  * `limit !== null && activeCount >= limit` — the same function, so the nudge
  * and the rule can never disagree.
+ *
+ * Office admins (Nov 25 2026, OFFICE_ADMIN_PLAN_COVERS_OFFICE in
+ * brokerAccess.ts): a paying office admin's plan also covers the brokers in
+ * their office who have no plan of their own and no Office plan. For that
+ * admin, the count compared with their plan's range is their own active
+ * unsold boats PLUS those covered brokers' active unsold boats. Brokers with
+ * their own plan (paid or comped) are not counted. If two admins in one
+ * office both pay, each sees the whole office count against their own plan.
+ * Still a reminder only.
  */
 export const ENFORCE_LISTING_LIMITS = false;
 
@@ -23,8 +34,19 @@ export type ListingAllowance = {
   plan: string | null;
   /** Upper end of that plan's range; null = nothing to nudge (Elite, Office, comped, trial, no Stripe plan). */
   limit: number | null;
-  /** Listings with status 'active' and not sold (pocket listings included). */
+  /**
+   * The count compared with the plan's range: listings with status 'active'
+   * and not sold (pocket listings included) — the broker's own, plus, for a
+   * paying office admin, the covered brokers' (see `office`).
+   */
   activeCount: number;
+  /** The broker's own active, unsold listings. */
+  ownCount: number;
+  /**
+   * Set when this broker is a paying office admin whose plan is covering
+   * brokers in their office (activeCount = ownCount + brokersCount).
+   */
+  office: { name: string | null; brokersCount: number; coveredBrokers: number } | null;
   over: boolean;
   /** The cheapest plan whose range covers activeCount. */
   suggestedPlan: { id: string; name: string; price: number; priceId: string; range: string } | null;
@@ -46,12 +68,59 @@ async function countActive(svc: SupabaseClient, brokerId: string): Promise<numbe
   return res.count ?? 0;
 }
 
+/** Active, unsold listings across several brokers (one query). */
+async function countActiveMany(svc: SupabaseClient, brokerIds: string[]): Promise<number> {
+  if (brokerIds.length === 0) return 0;
+  const base = () => svc.from("listings").select("id", { count: "exact", head: true }).in("broker_id", brokerIds).eq("status", "active");
+  let res = await base().is("sold_at", null);
+  if (res.error && isMissingSchema(res.error)) res = await base();
+  return res.count ?? 0;
+}
+
+/**
+ * For a paying office admin: the brokers in their office their plan is
+ * covering (no own plan, no Office plan) and those brokers' active unsold
+ * boats. Null when the broker isn't a paying office admin, the office has an
+ * Office plan, or the rule is off.
+ */
+export async function officeCoverageForAdmin(
+  svc: SupabaseClient,
+  adminId: string
+): Promise<{ name: string | null; brokersCount: number; coveredBrokerIds: string[] } | null> {
+  if (!OFFICE_ADMIN_PLAN_COVERS_OFFICE) return null;
+  const { data: me } = await svc.from("profiles").select("brokerage_id, is_brokerage_admin").eq("id", adminId).maybeSingle();
+  if (!me?.is_brokerage_admin || !me.brokerage_id) return null;
+  const [{ data: mySub }, { data: office }, { data: members }] = await Promise.all([
+    svc.from("subscriptions").select("status, stripe_subscription_id, trial_ends_at").eq("broker_id", adminId).maybeSingle(),
+    svc.from("brokerages").select("name, subscription_status").eq("id", me.brokerage_id).maybeSingle(),
+    svc.from("profiles").select("id").eq("brokerage_id", me.brokerage_id).eq("role", "broker"),
+  ]);
+  if (!isPayingPlan(mySub as SubRow | null)) return null;
+  if (officePlanActive((office as { subscription_status: string | null } | null) ?? null)) return null;
+  const otherIds = ((members ?? []) as { id: string }[]).map((m) => m.id).filter((id) => id !== adminId);
+  let coveredBrokerIds: string[] = [];
+  if (otherIds.length > 0) {
+    const { data: subs } = await svc.from("subscriptions").select("broker_id, status, stripe_subscription_id, trial_ends_at").in("broker_id", otherIds);
+    const ownPlan = new Set(
+      ((subs ?? []) as (SubRow & { broker_id: string })[]).filter((s) => getAccessStatus(s) === "active").map((s) => s.broker_id)
+    );
+    coveredBrokerIds = otherIds.filter((id) => !ownPlan.has(id));
+  }
+  const brokersCount = await countActiveMany(svc, coveredBrokerIds);
+  return { name: (office as { name?: string | null } | null)?.name ?? null, brokersCount, coveredBrokerIds };
+}
+
 export async function listingAllowance(svc: SupabaseClient, brokerId: string): Promise<ListingAllowance> {
-  const [stripePlan, activeCount, billing] = await Promise.all([
+  const [stripePlan, ownCount, billing, officeCover] = await Promise.all([
     brokerStripePlan(svc, brokerId),
     countActive(svc, brokerId),
     readSiteBilling(svc, brokerId),
+    officeCoverageForAdmin(svc, brokerId).catch(() => null),
   ]);
+  const office = officeCover && officeCover.coveredBrokerIds.length > 0
+    ? { name: officeCover.name, brokersCount: officeCover.brokersCount, coveredBrokers: officeCover.coveredBrokerIds.length }
+    : null;
+  const activeCount = ownCount + (office ? office.brokersCount : 0);
   const own = stripePlan ? PLANS.find((p) => p.priceId === stripePlan.priceId) ?? null : null;
   const hasWebsite = !!billing.row?.website_item_id && (billing.row.billing_status === "active" || billing.row.billing_status === "past_due");
   const limit = own ? own.maxListings : null;
@@ -61,11 +130,23 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
   const suggestedPlan = fit ? { id: fit.id, name: fit.name, price: fit.price, priceId: fit.priceId, range: rangeLabel(fit) } : null;
   const suggestedTotalMonthly = fit ? (hasWebsite || planIncludesWebsite(fit.name) ? planPriceWithWebsite(fit) : fit.price) : null;
 
-  return { plan: own?.name ?? null, limit, activeCount, over, suggestedPlan, suggestedTotalMonthly, hasWebsite };
+  return { plan: own?.name ?? null, limit, activeCount, ownCount, office, over, suggestedPlan, suggestedTotalMonthly, hasWebsite };
 }
 
-/** "You have 8 active boats. Starter covers up to 5. Growth covers 6–10 boats — $99/mo." */
+/**
+ * "You have 8 active boats. Starter covers up to 5. Growth covers 6–10 boats — $99/mo."
+ * A paying office admin covering their brokers:
+ * "Your plan is covering 13 active boats across SYC Yachts (0 yours, 13 your brokers'). Starter covers up to 5. Pro covers 11–20 boats — $79/mo."
+ */
 export function allowanceMessage(a: ListingAllowance, who?: string | null): string | null {
   if (!a.over || !a.plan || a.limit == null || !a.suggestedPlan || a.suggestedTotalMonthly == null) return null;
-  return `${who ? `${who} has` : "You have"} ${a.activeCount} active boats. ${a.plan} covers up to ${a.limit}. ${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
+  const tail = `${a.plan} covers up to ${a.limit}. ${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
+  if (a.office) {
+    const where = a.office.name ? a.office.name : who ? "their office" : "your office";
+    const split = who
+      ? `${a.ownCount} theirs, ${a.office.brokersCount} their brokers'`
+      : `${a.ownCount} yours, ${a.office.brokersCount} your brokers'`;
+    return `${who ? `${who}'s plan is` : "Your plan is"} covering ${a.activeCount} active boat${a.activeCount === 1 ? "" : "s"} across ${where} (${split}). ${tail}`;
+  }
+  return `${who ? `${who} has` : "You have"} ${a.activeCount} active boats. ${tail}`;
 }

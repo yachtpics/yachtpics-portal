@@ -6,7 +6,7 @@ import { periodET, planReelServiceMonth, REEL_SERVICE_PAID_STATUSES, reelService
 import { sendResendBatch } from "@/lib/sendEmailBatch";
 import { logEmail } from "@/lib/logEmail";
 import { getAccessStatus } from "@/lib/subscriptionAccess";
-import { officePlanActive } from "@/lib/brokerAccess";
+import { officeAdminCoverFor, officePlanActive } from "@/lib/brokerAccess";
 
 /**
  * Reel Service paid through the Portal (Oct 24, 2026)
@@ -547,7 +547,7 @@ export async function handleReelServicePaymentFailed(service: SupabaseClient, su
 }
 
 /** Does the broker still have Portal access from something other than this boat? */
-async function brokerPlanAfter(service: SupabaseClient, brokerId: string, endedListingId: string): Promise<{ kind: "own"; name: string; price: number } | { kind: "office" } | { kind: "reels" } | { kind: "none" }> {
+async function brokerPlanAfter(service: SupabaseClient, brokerId: string, endedListingId: string): Promise<{ kind: "own"; name: string; price: number } | { kind: "office" } | { kind: "officeAdmin"; adminName: string } | { kind: "reels" } | { kind: "none" }> {
   const { data: own } = await service.from("subscriptions").select("status, stripe_subscription_id, stripe_price_id, trial_ends_at").eq("broker_id", brokerId).maybeSingle();
   if (own && own.stripe_subscription_id && getAccessStatus(own) === "active") {
     const plan = PLANS.find((p) => p.priceId === own.stripe_price_id);
@@ -557,6 +557,9 @@ async function brokerPlanAfter(service: SupabaseClient, brokerId: string, endedL
   if (prof?.brokerage_id) {
     const { data: office } = await service.from("brokerages").select("subscription_status").eq("id", prof.brokerage_id).maybeSingle();
     if (officePlanActive(office ?? null)) return { kind: "office" };
+    // A paying office admin's own plan covers the office (Nov 25 2026, brokerAccess.ts).
+    const cover = await officeAdminCoverFor(service, brokerId, prof.brokerage_id);
+    if (cover) return { kind: "officeAdmin", adminName: cover.adminName };
   }
   const { count } = await service.from("reel_service_listings").select("listing_id", { count: "exact", head: true })
     .eq("broker_id", brokerId).neq("listing_id", endedListingId).is("ended_at", null).in("billing_status", REEL_SERVICE_PAID_STATUSES);
@@ -577,6 +580,8 @@ export async function handleReelServiceDeleted(service: SupabaseClient, subscrip
     body = `${first} Your Portal plan continues at $${plan.price}/mo.`;
   } else if (plan.kind === "office") {
     body = `${first} Your Portal access continues through your office plan.`;
+  } else if (plan.kind === "officeAdmin") {
+    body = `${first} Your Portal access continues through ${esc(plan.adminName)}&rsquo;s plan.`;
   } else if (plan.kind === "reels") {
     body = `${first} Your other Reel Service boats keep your Portal access.`;
   } else {

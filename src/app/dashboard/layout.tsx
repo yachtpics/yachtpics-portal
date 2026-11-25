@@ -8,7 +8,7 @@ import DemoBanner from "./_components/DemoBanner";
 import { isDemoUser, isWritableDemoUser } from "@/lib/demo";
 import { getAccessStatus, trialDaysFor } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
-import { paidReelServiceBrokerIds, reelServiceGivesAccess } from "@/lib/brokerAccess";
+import { officeAdminCoverFor, paidReelServiceBrokerIds, reelServiceGivesAccess } from "@/lib/brokerAccess";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient();
@@ -102,6 +102,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .eq("id", profile.brokerage_id)
       .single();
     if (office && (office.subscription_status === "active" || office.subscription_status === "trialing")) {
+      accessStatus = "active";
+    } else if (await officeAdminCoverFor(svc, user.id, profile.brokerage_id)) {
+      // A paying office admin's own plan covers the office (Nov 25 2026 —
+      // OFFICE_ADMIN_PLAN_COVERS_OFFICE, same rule as getEffectiveAccessStatus).
       accessStatus = "active";
     }
   }

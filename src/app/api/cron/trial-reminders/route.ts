@@ -12,7 +12,7 @@ import {
 } from "@/lib/trialEmails";
 import { unsubscribeHeaders } from "@/lib/unsubscribe";
 import { trialDaysFor } from "@/lib/subscriptionAccess";
-import { officePlanActive, paidReelServiceBrokerIds } from "@/lib/brokerAccess";
+import { officePlanActive, paidReelServiceBrokerIds, payingOfficeAdmins } from "@/lib/brokerAccess";
 import { listingPeriodTotals } from "@/lib/engagement";
 
 export const runtime = "nodejs";
@@ -160,6 +160,20 @@ export async function GET(req: NextRequest) {
     candidates = candidates.filter((s) => {
       const b = (s.profiles as unknown as ProfileLite).brokerage_id;
       return !(b && covered[b]);
+    });
+  }
+  // A paying office admin's own plan covers the office (Nov 25 2026 —
+  // OFFICE_ADMIN_PLAN_COVERS_OFFICE in brokerAccess.ts) → skip, like the Office plan.
+  const leftOffices = candidates
+    .map((s) => (s.profiles as unknown as ProfileLite).brokerage_id)
+    .filter((b): b is string => !!b)
+    .filter((b, i, a) => a.indexOf(b) === i);
+  if (leftOffices.length > 0) {
+    const admins = await payingOfficeAdmins(supabase, leftOffices);
+    candidates = candidates.filter((s) => {
+      const b = (s.profiles as unknown as ProfileLite).brokerage_id;
+      if (!b) return true;
+      return !(admins.get(b) ?? []).some((a) => a.id !== s.broker_id);
     });
   }
   // Paid Reel Service boat (includes Starter-level access) → skip.

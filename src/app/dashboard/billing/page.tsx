@@ -29,11 +29,22 @@ type WebsiteState = {
   canAddToPlan: boolean;
 } | null;
 
+/** The broker has a live plan of their own (paid, Stripe trial, or comped). */
+function hasPlanOwn(sub: Subscription | null): boolean {
+  return getAccessStatus(sub ?? null) === "active";
+}
+
 export default function BillingPage() {
   const [sub, setSub] = useState<Subscription | null>(null);
   const [website, setWebsite] = useState<WebsiteState>(null);
   /** Listing-range nudge (src/lib/listingAllowance.ts) — never blocks anything. */
   const [allowance, setAllowance] = useState<{ over: boolean; message: string | null; suggestedPlan: { id: string; name: string; price: number; priceId: string } | null } | null>(null);
+  /**
+   * Effective access from /api/subscription/status (own plan, Office plan, a
+   * paying office admin's plan, Reel Service). A covered broker isn't told
+   * their trial has ended (Nov 25 2026).
+   */
+  const [cover, setCover] = useState<{ status: string; officeAdminCovered?: boolean; officeAdminName?: string | null; officeName?: string | null } | null>(null);
   const [websiteBusy, setWebsiteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
@@ -63,6 +74,8 @@ export default function BillingPage() {
       const { data } = await supabase.from("subscriptions").select("status, stripe_price_id, stripe_subscription_id, current_period_end, trial_ends_at, created_at").eq("broker_id", user.id).single();
       setSub(data ?? null);
       setLoading(false);
+      const c = await fetch("/api/subscription/status", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+      setCover(c);
       // Website line state (Oct 26). Missing / not set up → the page just
       // offers "plan + website" checkouts.
       const w = await fetch("/api/website?summary=1", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).catch(() => null);
@@ -109,7 +122,9 @@ export default function BillingPage() {
   const currentPlan = PLANS.find((p) => p.priceId === sub?.stripe_price_id);
   const isActive = sub?.status === "active" || sub?.status === "trialing";
   const accessStatus = getAccessStatus(sub ?? null);
-  const trialExpired = accessStatus === "trial_expired";
+  // Covered some other way (Office plan, an office admin's plan, Reel Service) → no "trial ended" box.
+  const trialExpired = accessStatus === "trial_expired" && cover?.status !== "active";
+  const coveredByAdmin = !hasPlanOwn(sub) && !!cover?.officeAdminCovered && !!cover.officeAdminName;
   // A real Stripe plan is attached (as opposed to the in-app trial, which has
   // status "trialing" but no Stripe subscription).
   const hasPlan = !!sub?.stripe_subscription_id && isActive;
@@ -279,6 +294,14 @@ export default function BillingPage() {
               </button>
             );
           })()}
+        </div>
+      )}
+
+      {coveredByAdmin && (
+        <div className="mb-6 bg-white border border-hairline rounded-card px-5 py-4">
+          <p className="text-sm text-ink-700">
+            Your Portal tools are covered by {cover!.officeAdminName}&rsquo;s plan{cover!.officeName ? ` (${cover!.officeName})` : ""}.
+          </p>
         </div>
       )}
 

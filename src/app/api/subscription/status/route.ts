@@ -51,12 +51,20 @@ export async function GET(req: NextRequest) {
   );
 
   // Effective status accounts for the broker's own plan OR their office plan.
-  const { status, trialEndsAt, trialDays, officeCovered, reelServiceCovered } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
+  // Also a paying office admin's own plan (officeAdminCovered, Nov 25 2026 —
+  // OFFICE_ADMIN_PLAN_COVERS_OFFICE in brokerAccess.ts).
+  const { status, trialEndsAt, trialDays, officeCovered, reelServiceCovered, officeAdminCovered, officeAdminCover } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
   const daysLeft = trialDaysRemaining(trialEndsAt);
 
   // trialDays: this broker's trial length (14, or 30 for accounts opened
   // before Oct 24 2026) — see trialDaysFor in subscriptionAccess.ts.
-  return NextResponse.json({ status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered, brokerName });
+  return NextResponse.json({
+    status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered, brokerName,
+    officeAdminCovered: !!officeAdminCovered,
+    // "Your Portal tools are covered by Kelly Sprigg's plan (SYC Yachts)."
+    officeAdminName: officeAdminCover?.adminName ?? null,
+    officeName: officeAdminCover?.officeName ?? null,
+  });
 }
 
 // No fetch made while answering this route is ever served from the Next.js
