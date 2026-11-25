@@ -16,6 +16,8 @@ import AdminNotesEditor from "./_components/AdminNotesEditor";
 import BrokerLogoCard from "./_components/BrokerLogoCard";
 import { websiteEntitlement, type WebsiteEntitlement } from "@/lib/websiteAddon";
 import { listingAllowance } from "@/lib/listingAllowance";
+import { coverSlotsForAdmin } from "@/lib/officeCoverSlots";
+import CoverSlotsPanel from "./_components/CoverSlotsPanel";
 import { serviceClient } from "@/lib/brokerSiteServer";
 import { WEBSITE_PRICE } from "@/lib/plans";
 
@@ -68,6 +70,8 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
 
   // Over the plan's listing range? (nudge only — src/lib/listingAllowance.ts)
   const allowance = await listingAllowance(serviceClient(), params.id).catch(() => null);
+  // A paying company admin: the office boats holding her plan's slots (src/lib/officeCoverSlots.ts).
+  const coverSlots = await coverSlotsForAdmin(serviceClient(), params.id).catch(() => null);
   const ENT_LABEL: Record<WebsiteEntitlement["reason"], string> = {
     elite: "Included with Elite",
     website: `On their plan (+$${WEBSITE_PRICE}/mo)`,
@@ -262,8 +266,18 @@ export default async function AdminBrokerDetailPage({ params, searchParams }: { 
           {allowance?.over && (
             <span className="inline-block mt-2 text-xs font-medium px-2.5 py-1 rounded-full border bg-warn-50 text-warn-800 border-warn-200">
               Over plan: {allowance.activeCount} boats on {allowance.plan}
-              {allowance.office ? ` (office: ${allowance.ownCount} own + ${allowance.office.brokersCount} of ${allowance.office.coveredBrokers} covered broker${allowance.office.coveredBrokers === 1 ? "" : "s"})` : ""}
+              {allowance.office?.mode === "all" ? ` (office: ${allowance.ownCount} own + ${allowance.office.brokersCount} of ${allowance.office.coveredBrokers} covered broker${allowance.office.coveredBrokers === 1 ? "" : "s"})` : ""}
             </span>
+          )}
+          {coverSlots && (
+            <CoverSlotsPanel
+              planName={coverSlots.planName}
+              limit={coverSlots.limit}
+              used={coverSlots.used}
+              ownCount={coverSlots.ownBoats.length}
+              slots={coverSlots.slots}
+              waiting={coverSlots.waiting}
+            />
           )}
           {subscription?.current_period_end && (
             <p className="text-xs text-ink-500 mt-1 tabular-nums">

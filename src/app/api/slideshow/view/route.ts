@@ -4,7 +4,7 @@ import { logEmail } from "@/lib/logEmail";
 import { buyerViewEmailHtml, viewEmailSubject } from "@/lib/viewNotifyEmail";
 import { describeViewSource, describeDevice, describeLocation, referrerHost } from "@/lib/viewSource";
 import { formatDateTimeET } from "@/lib/datetime";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { getListingAccess } from "@/lib/officeCoverSlots";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { isDemoListing } from "@/lib/demoServer";
 
@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
               // The two newest rows: this view, and the one before it.
               supabase.from("slideshow_views").select("viewed_at").eq("listing_id", listingId).order("viewed_at", { ascending: false }).limit(2),
               supabase.from("boat_shows").select("key, short_name"),
-              getEffectiveAccessStatus(supabase, listing.broker_id).catch(() => null),
+              getListingAccess(supabase, listingId).catch(() => null),
             ]);
             const showNames: Record<string, string> = {};
             (shows.data ?? []).forEach((r: { key: string | null; short_name: string | null }) => {

@@ -1,7 +1,9 @@
 /**
  * Offline checks for "an office admin's own plan covers their office"
  * (OFFICE_ADMIN_PLAN_COVERS_OFFICE in src/lib/brokerAccess.ts, owner decision
- * Nov 25 2026) and the office count in src/lib/listingAllowance.ts.
+ * Nov 25 2026) and the office part of src/lib/listingAllowance.ts. Since the
+ * slots refinement the per-boat rule is checked in
+ * scripts/office_cover_slots_check.ts; this file keeps the broker-level rule.
  * No network, no database — a small in-memory fake of the Supabase client.
  *
  *   npx tsx scripts/office_admin_plan_check.ts
@@ -191,55 +193,40 @@ async function main() {
     const r = await eff("kelly");
     check("Kelly's own access → active via her own plan", r.status === "active" && !r.officeAdminCovered && !r.officeCovered);
   }
-  // A broker on their own running trial in the office: covered too (own trial isn't a plan).
+  // A broker on their own running trial: since the slots refinement their
+  // boats need no slot and they keep their own trial status (pre-68a46e1).
   {
     const r = await eff("tina");
-    check("Tina (own trial running) → active + officeAdminCovered", r.status === "active" && r.officeAdminCovered === true);
+    check("Tina (own trial running) → her own trial, not officeAdminCovered", r.status === "trial_active" && !r.officeAdminCovered, r.status);
   }
-  // 8. Constant off → old behaviour. The two modules are copied to scripts/
-  //    with the constant set to false, loaded, then deleted again.
+  // 8. Constant off → old behaviour (the switch flipped through the
+  //    tests-only setter; the constant itself is checked to be on).
   {
     check("OFFICE_ADMIN_PLAN_COVERS_OFFICE is on", access.OFFICE_ADMIN_PLAN_COVERS_OFFICE === true);
-    const fs = await import("fs");
-    const path = await import("path");
-    const dir = path.dirname(new URL(import.meta.url).pathname);
-    const accSrc = fs.readFileSync(path.join(dir, "../src/lib/brokerAccess.ts"), "utf8");
-    const offAcc = accSrc.replace("export const OFFICE_ADMIN_PLAN_COVERS_OFFICE = true;", "export const OFFICE_ADMIN_PLAN_COVERS_OFFICE = false;");
-    check("(constant found in source)", offAcc !== accSrc);
-    const allowSrc = fs.readFileSync(path.join(dir, "../src/lib/listingAllowance.ts"), "utf8").replace('from "@/lib/brokerAccess"', 'from "./.tmp_brokerAccess_off"');
-    const accFile = path.join(dir, ".tmp_brokerAccess_off.ts");
-    const allowFile = path.join(dir, ".tmp_listingAllowance_off.ts");
-    fs.writeFileSync(accFile, offAcc);
-    fs.writeFileSync(allowFile, allowSrc);
+    access.__setOfficeAdminRuleForTests(false);
     try {
-      // Loaded by path (not a literal) so the typecheck doesn't look for the temp files.
-      const off = (await import(accFile)) as typeof import("../src/lib/brokerAccess");
-      const offAllow = (await import(allowFile)) as typeof import("../src/lib/listingAllowance");
-      const steve = await off.getEffectiveAccessStatus(svc, "steve");
+      const steve = await access.getEffectiveAccessStatus(svc, "steve");
       check("constant off → Steve locked again (old behaviour)", steve.status === "trial_expired" && !steve.officeAdminCovered, steve.status);
-      const obi = await off.getEffectiveAccessStatus(svc, "obi");
+      const obi = await access.getEffectiveAccessStatus(svc, "obi");
       check("constant off → Office plan still covers", obi.status === "active" && obi.officeCovered);
-      const k = await offAllow.listingAllowance(svc, "kelly");
+      const k = await allowanceLib.listingAllowance(svc, "kelly");
       check("constant off → Kelly's allowance counts only her own boats", k.office === null && k.activeCount === 0 && !k.over);
-      check("constant off → payingOfficeAdmins empty", (await off.payingOfficeAdmins(svc, [SYC])).size === 0);
+      check("constant off → payingOfficeAdmins empty", (await access.payingOfficeAdmins(svc, [SYC])).size === 0);
     } finally {
-      fs.unlinkSync(accFile);
-      fs.unlinkSync(allowFile);
+      access.__setOfficeAdminRuleForTests(null);
     }
   }
 
-  // 9. Allowance for the admin: own + covered brokers' active unsold boats; excludes Paula (own plan)
+  // 9. Allowance for the admin (slots refinement — scripts/office_cover_slots_check.ts
+  //    covers taking slots): no slot in use yet → her own boats only, not over,
+  //    no reminder; 14 office boats waiting (Steve 13 + Tina 1 — Tina's trial
+  //    runs, but her boat would need a slot once it ends).
   {
     const a = await allowanceLib.listingAllowance(svc, "kelly");
     check("Kelly's allowance: plan Starter, limit 5", a.plan === "Starter" && a.limit === 5, `${a.plan}/${a.limit}`);
     check("Kelly's allowance: ownCount 0", a.ownCount === 0, String(a.ownCount));
-    check("Kelly's allowance: office counts Steve 13 + Tina 1 = 14 (Paula's 4 excluded, archived/sold excluded)",
-      a.office?.brokersCount === 14 && a.activeCount === 14 && a.office?.coveredBrokers === 2, JSON.stringify(a.office) + ` active=${a.activeCount}`);
-    check("Kelly's allowance: over, suggests Pro", a.over && a.suggestedPlan?.name === "Pro", a.suggestedPlan?.name);
-    const msg = allowanceLib.allowanceMessage(a);
-    check("Kelly's message", msg === "Your plan is covering 14 active boats across SYC Yachts (0 yours, 14 your brokers'). Starter covers up to 5. Pro covers 11–20 boats — $79/mo.", msg ?? "null");
-    const asst = allowanceLib.allowanceMessage(a, "Kelly");
-    check("Kelly's assistant's message", asst === "Kelly's plan is covering 14 active boats across SYC Yachts (0 theirs, 14 their brokers'). Starter covers up to 5. Pro covers 11–20 boats — $79/mo.", asst ?? "null");
+    check("Kelly's allowance: slots mode, 0 in use, not over", a.office?.mode === "slots" && a.office.slotsInUse === 0 && a.activeCount === 0 && !a.over, JSON.stringify(a.office) + ` active=${a.activeCount}`);
+    check("Kelly: no reminder while slots are free", allowanceLib.allowanceMessage(a) === null);
   }
   // 10. Allowance for an ordinary broker unchanged
   {
@@ -250,7 +237,7 @@ async function main() {
     const steve = await allowanceLib.listingAllowance(svc, "steve");
     check("covered broker Steve: no plan → no reminder", steve.plan === null && allowanceLib.allowanceMessage(steve) === null);
     const olga = await allowanceLib.listingAllowance(svc, "olga");
-    check("paying admin with nobody to cover: office null, own count only", olga.office === null && olga.activeCount === 2);
+    check("paying admin with nobody to cover: own count only, nothing waiting", olga.activeCount === 2 && (olga.office === null || (olga.office.waiting === 0 && !olga.office.full)));
     const cadmin = await allowanceLib.listingAllowance(svc, "cadmin");
     check("comped admin: no office count", cadmin.office === null);
   }

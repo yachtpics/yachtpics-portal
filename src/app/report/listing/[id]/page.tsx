@@ -6,8 +6,7 @@ import Link from "next/link";
 import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK, assistantPlanCopy } from "@/lib/planValue";
 import PrintButton from "@/app/print/listing/[id]/PrintButton";
 import { buildEngagement } from "@/lib/engagement";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
-import { hasAccess } from "@/lib/subscriptionAccess";
+import { claimListingTool } from "@/lib/officeCoverSlots";
 import { signResizedPath } from "@/lib/photoStore";
 import { formatDateET, formatDayKey } from "@/lib/datetime";
 import { logoPlateInfo, logoPlateStyle } from "@/lib/logoPlateServer";
@@ -57,8 +56,14 @@ export default async function SellerReportPage({ params }: { params: { id: strin
   const { data: listing } = await service.from("listings").select("*").eq("id", params.id).single();
   if (!listing) notFound();
 
-  const { status: ownerAccess } = await getEffectiveAccessStatus(service, listing.broker_id);
-  const locked = !hasAccess(ownerAccess);
+  // Seller Report: a paid tool, gated on THIS boat (owner's plan, Office plan, Reel
+  // Service, or a slot of a paying company admin's plan —
+  // src/lib/officeCoverSlots.ts). Opening it unwatermarked IS using it, so a
+  // boat waiting for a slot takes one here when the company admin (or her
+  // assistant) opens it; if her slots are full, the watermarked preview.
+  const tool = await claimListingTool(service, params.id, user.id);
+  const locked = !tool.allowed;
+  const slotNotice = tool.access?.notice && tool.access.notice.tone !== "subtle" ? tool.access.notice.text : null;
   // An assistant viewer (Nov 11) gets the broker-named gate, no Billing link.
   const { data: viewer } = locked
     ? await supabase.from("profiles").select("role").eq("id", user.id).maybeSingle()
@@ -291,6 +296,7 @@ export default async function SellerReportPage({ params }: { params: { id: strin
         <div className="no-print" style={{ maxWidth: "8.5in", margin: "16px auto 0", textAlign: "center" }}>
           <div style={{ background: "#fdf1f0", border: "1px solid #f5cfca", borderRadius: 10, padding: "16px 20px" }}>
             <p style={{ margin: "0 0 10px", fontSize: 14, color: "#992f26" }}><strong>This is a preview.</strong> The Seller Report shows what buyers look at on every listing, ready to send the owner. {viewerIsAssistant ? `${assistantPlanCopy({ first: profile?.first_name, last: profile?.last_name }).needs}.` : PLAN_GATE_LINE}</p>
+            {slotNotice && <p style={{ margin: "0 0 10px", fontSize: 14, color: "#992f26" }}>{slotNotice}</p>}
             {!viewerIsAssistant && <Link href={BILLING_PATH} style={{ display: "inline-block", background: BRASS, color: INK, fontWeight: 600, fontSize: 14, textDecoration: "none", padding: "10px 22px", borderRadius: 8 }}>{PLAN_GATE_LINK} &rarr;</Link>}
           </div>
         </div>

@@ -1,14 +1,15 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { REEL_PROMO_END, reelPromoActive } from "@/lib/reelPromo";
 import { hasAccess } from "@/lib/subscriptionAccess";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { getListingAccess } from "@/lib/officeCoverSlots";
 
 /**
  * The Reel allowance — two included reels per listing (from Oct 1 2026 ET).
  *
  * Policy (Charlie, Sept 29):
- *   - Subscribers (the listing broker's own plan or their office plan — the
- *     same answer /api/subscription/status gives) and admins: unlimited.
+ *   - Subscribers (this listing's access — the owner's plan, their office
+ *     plan, or a company admin's slot; the same answer
+ *     /api/subscription/status?listingId= gives) and admins: unlimited.
  *   - While the open house runs: unlimited for everyone.
  *   - Everyone else: two reels per listing, free and clean. A reel counts
  *     when it is TAKEN OFF THE PAGE — download, send to phone, save to camera
@@ -25,17 +26,24 @@ export const REELS_PER_LISTING = 2;
 
 export type Allowance = { unlimited: true } | { unlimited: false; used: number; remaining: number };
 
-/** True when this listing's reels are unmetered right now. */
+/**
+ * True when this listing's reels are unmetered right now. Gated on THIS
+ * listing (getListingAccess — the owner's plan, Office plan, Reel Service, or
+ * a slot of a paying company admin's plan, src/lib/officeCoverSlots.ts).
+ * `slotPending`: unmetered only because a company admin's plan has a free
+ * slot for this viewer — the claim route takes the slot when a reel past the
+ * free two is taken.
+ */
 export async function reelsUnlimited(
   service: SupabaseClient,
-  opts: { userId: string; brokerId: string }
-): Promise<{ unlimited: boolean; role: string | null }> {
+  opts: { userId: string; brokerId: string; listingId: string }
+): Promise<{ unlimited: boolean; role: string | null; slotPending: boolean }> {
   const { data: me } = await service.from("profiles").select("role").eq("id", opts.userId).maybeSingle();
   const role: string | null = me?.role ?? null;
-  if (role === "admin") return { unlimited: true, role };
-  if (reelPromoActive()) return { unlimited: true, role };
-  const { status } = await getEffectiveAccessStatus(service, opts.brokerId);
-  return { unlimited: hasAccess(status), role };
+  if (role === "admin") return { unlimited: true, role, slotPending: false };
+  if (reelPromoActive()) return { unlimited: true, role, slotPending: false };
+  const access = await getListingAccess(service, opts.listingId, opts.userId);
+  return { unlimited: hasAccess(access.status), role, slotPending: access.reason === "officeAdminAvailable" && access.canTakeSlot };
 }
 
 /**

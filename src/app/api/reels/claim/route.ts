@@ -5,6 +5,7 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 import { validCreditBrokerId } from "@/lib/reelCredit";
 import { claimedRenders, reelsTakenCount, reelsUnlimited, remainingOf, REELS_PER_LISTING } from "@/lib/reelAllowance";
 import { demoForbidden, isDemoUser, isWritableDemoUser } from "@/lib/demoServer";
+import { takeCoverSlot } from "@/lib/officeCoverSlots";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,7 +57,7 @@ export async function GET(req: NextRequest) {
   if (a instanceof NextResponse) return a;
 
   try {
-    const { unlimited } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId });
+    const { unlimited } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId, listingId });
     // `made` (Nov 3, the listing page's "Ready for this boat" strip): for an
     // unlimited listing nothing is claimed, so it counts reels taken instead.
     if (unlimited) {
@@ -83,14 +84,22 @@ export async function POST(req: NextRequest) {
   if (a.demo) return demoForbidden();
 
   try {
-    const { unlimited, role } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId });
-    if (unlimited) return NextResponse.json({ ok: true, unlimited: true });
+    const { unlimited, role, slotPending } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId, listingId });
+    if (unlimited && !slotPending) return NextResponse.json({ ok: true, unlimited: true });
 
     const claimed = await claimedRenders(a.svc, listingId);
     if (claimed.indexOf(renderId) !== -1) {
-      return NextResponse.json({ ok: true, unlimited: false, remaining: remainingOf(claimed.length) });
+      return NextResponse.json({ ok: true, unlimited: slotPending, remaining: remainingOf(claimed.length) });
     }
     if (claimed.length >= REELS_PER_LISTING) {
+      // Office cover slots: the boat is waiting for a company admin's slot and
+      // this is a reel past the two free ones — taking it is using a paid
+      // tool, so the slot is taken now (refused with her plan's sentence when full).
+      if (slotPending) {
+        const take = await takeCoverSlot(a.svc, listingId, a.userId);
+        if (take.ok) return NextResponse.json({ ok: true, unlimited: true });
+        return NextResponse.json({ ok: false, unlimited: false, remaining: 0, error: take.error }, { status: 402 });
+      }
       return NextResponse.json({ ok: false, unlimited: false, remaining: 0 }, { status: 402 });
     }
 
@@ -115,9 +124,14 @@ export async function POST(req: NextRequest) {
     if (after.slice(0, REELS_PER_LISTING).indexOf(renderId) === -1) {
       await a.svc.from("reel_events").delete()
         .eq("listing_id", listingId).eq("kind", "claim").eq("render_id", renderId);
+      if (slotPending) {
+        const take = await takeCoverSlot(a.svc, listingId, a.userId);
+        if (take.ok) return NextResponse.json({ ok: true, unlimited: true });
+        return NextResponse.json({ ok: false, unlimited: false, remaining: 0, error: take.error }, { status: 402 });
+      }
       return NextResponse.json({ ok: false, unlimited: false, remaining: 0 }, { status: 402 });
     }
-    return NextResponse.json({ ok: true, unlimited: false, remaining: remainingOf(after.length) });
+    return NextResponse.json({ ok: true, unlimited: slotPending, remaining: remainingOf(after.length) });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Couldn't record the reel." }, { status: 500 });
   }

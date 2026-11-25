@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { createClient as createServerClient } from "@/lib/supabase/server";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { getListingAccess } from "@/lib/officeCoverSlots";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { orderPhotos } from "@/lib/photoOrder";
 import { withVideoUrls } from "@/lib/videoUrls";
@@ -88,11 +88,22 @@ export const getYpSharedSlideshow = cache(async (rawToken: string): Promise<{ li
   return { listing: row, slug: row.slideshow_slug as string };
 });
 
-/** Is the owning broker's plan live (or office-covered)? Cached per request. */
-export const ownerHasAccess = cache(async (brokerId: string): Promise<boolean> => {
-  const { status } = await getEffectiveAccessStatus(serviceClient(), brokerId);
+/**
+ * Is this boat's buyer link live? The owner's plan, an Office plan, Reel
+ * Service — or, since the office cover slots (Nov 25 2026), the boat holding
+ * a slot of a paying company admin's plan (getListingAccess with no viewer:
+ * a boat merely AVAILABLE for the admin stays dark, as without a plan).
+ * Cached per request.
+ */
+export const listingLinkLive = cache(async (listingId: string): Promise<boolean> => {
+  const { status } = await getListingAccess(serviceClient(), listingId);
   return hasAccess(status);
 });
+
+/** Same answer, from a listing row (id + broker_id). */
+export async function ownerHasAccess(listing: { id: string; broker_id: string }): Promise<boolean> {
+  return listingLinkLive(listing.id);
+}
 
 /**
  * The live slideshow is a paid feature. If the owner's plan has lapsed the
@@ -100,7 +111,7 @@ export const ownerHasAccess = cache(async (brokerId: string): Promise<boolean> =
  * preview it (RLS lets exactly those people read the listing row).
  */
 export async function canViewSlideshow(listing: SlideshowListing): Promise<boolean> {
-  if (await ownerHasAccess(listing.broker_id)) return true;
+  if (await ownerHasAccess(listing)) return true;
   try {
     const supabaseUser = await createServerClient();
     const { data: { user } } = await supabaseUser.auth.getUser();

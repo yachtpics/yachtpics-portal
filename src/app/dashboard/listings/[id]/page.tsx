@@ -25,6 +25,8 @@ import BoatShowCard from "@/components/BoatShowCard";
 import DockCardButton from "@/components/DockCardButton";
 import ReelServiceListingCard from "@/components/ReelServiceListingCard";
 import SortableVideoList from "@/components/SortableVideoList";
+import CoverSlotNotice from "@/components/CoverSlotNotice";
+import { useCoverSlot } from "@/lib/useCoverSlot";
 // Photo management (grid, upload, replace, delete, order, categories, cover,
 // lightbox, downloads) is shared with the admin listing page.
 import {
@@ -85,6 +87,11 @@ export default function BrokerListingPage() {
   // Loading, thumbnails, upload, replace, delete, order, categories, cover,
   // show/hide and AI labels live there; this page supplies the broker's
   // capabilities, its banner, and the rights / licence gates.
+  // Office cover slots (Nov 25 2026, src/lib/officeCoverSlots.ts): on a boat a
+  // paying company admin's plan can cover, the first paid action takes one of
+  // her plan's slots — coverSlot.ensure() runs right before it.
+  const coverSlot = useCoverSlot(id, { onLocked: () => { void refreshAccess(); } });
+  const [qrRevealed, setQrRevealed] = useState(false);
   const photoState = useListingPhotos({ supabase, listingId: id, caps: BROKER_PHOTO_CAPABILITIES });
   const { photos, setPhotos, thumbs, heroPhotoId, setHeroPhotoId } = photoState;
   const onPhotoMessage = (m: PhotoMessage) => flash(m.text, m.kind, m.ms ?? 4000, m.action);
@@ -96,6 +103,7 @@ export default function BrokerListingPage() {
     onMessage: onPhotoMessage,
     // Files go under the signed-in uploader's folder, as they always have here.
     ownerFolder: (userId) => userId,
+    beforePaidAction: coverSlot.ensure,
   });
   // Reel allowance for the Ready strip and the post-download nudge (one read).
   const reelAllowance = useReelAllowance(id);
@@ -367,7 +375,7 @@ export default function BrokerListingPage() {
     // /api/thumbs, and the lightbox / downloads sign originals on demand.
     const posterPaths = (vids ?? []).map((v) => v.thumbnail_path).filter((p): p is string => !!p);
     const [subData, vidSigned, posterSigned] = await Promise.all([
-      fetch(`/api/subscription/status?brokerId=${brokerId}`)
+      fetch(`/api/subscription/status?brokerId=${brokerId}&listingId=${id}`)
         .then((r) => (r.ok ? r.json() : null))
         .catch(() => null),
       // Videos are signed by the server, not here: some now live on the
@@ -394,6 +402,7 @@ export default function BrokerListingPage() {
     setSubStatus(subData?.status ?? null);
     setAccessStatus((subData?.status as AccessStatus) ?? "no_access");
     setBrokerName(subData?.brokerName ?? null);
+    coverSlot.setInfo(subData?.listingAccess ?? null);
 
     setPhotos(photos_raw);
 
@@ -412,9 +421,22 @@ export default function BrokerListingPage() {
     setLoading(false);
   }
 
+  // After a refused slot (the plan's slots filled up meanwhile): read this
+  // boat's access again so the page locks the way it should.
+  async function refreshAccess() {
+    if (!listingBrokerId) return;
+    const d = await fetch(`/api/subscription/status?brokerId=${listingBrokerId}&listingId=${id}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null);
+    if (!d) return;
+    setAccessStatus((d.status as AccessStatus) ?? "no_access");
+    setBrokerName(d.brokerName ?? null);
+    coverSlot.setInfo(d.listingAccess ?? null);
+  }
+
   async function handleDocFiles(files: FileList | null) {
     if (!files) return;
     setDocError(null);
+    if (!(await coverSlot.ensure())) return;
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) { setDocError("Your session has expired. Please refresh the page and sign in again."); return; }
     const selected = Array.from(files);
@@ -498,6 +520,7 @@ export default function BrokerListingPage() {
       f.name.toLowerCase().endsWith(".mp4") || f.name.toLowerCase().endsWith(".mov")
     );
     if (fileArr.length === 0) { setUploadingVideo(false); return; }
+    if (!(await coverSlot.ensure())) { setUploadingVideo(false); return; }
 
     // Shared with both create forms (see uploadListingVideo), so a video added
     // here behaves identically to one added when the listing was made — same
@@ -742,8 +765,18 @@ export default function BrokerListingPage() {
     }
   }
 
+  // Text / Email share links: on a boat waiting for a company admin's slot,
+  // take it first, then open the link.
+  function slotGuardedLink(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (!coverSlot.pendingSlot) return;
+    e.preventDefault();
+    const href = e.currentTarget.href;
+    coverSlot.withSlot(() => { window.location.href = href; });
+  }
+
   async function copyLink() {
     if (!listing?.slideshow_slug) return;
+    if (!(await coverSlot.ensure())) return;
     const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
     try {
       await navigator.clipboard.writeText(url);
@@ -922,6 +955,9 @@ export default function BrokerListingPage() {
           <FolderDownloadHint show={!!downloads.saveToFolder} />
         </div>
       )}
+
+      {/* Office cover slots (Nov 25 2026): whose plan covers this boat, or why it's locked. */}
+      <CoverSlotNotice info={coverSlot.info} error={coverSlot.error} onDismissError={coverSlot.dismissError} />
 
       {/* Ready for this boat (Nov 3) — reels, slideshow, Seller Report, dock card, listing links */}
       <ListingReadyStrip
@@ -1567,7 +1603,8 @@ export default function BrokerListingPage() {
               </button>
               {"share" in navigator && (
                 <button
-                  onClick={() => {
+                  onClick={async () => {
+                    if (!(await coverSlot.ensure())) return;
                     const url = `${window.location.origin}/s/${listing.slideshow_slug}`;
                     navigator.share({
                       title: listing.vessel_name ?? "Yacht Listing",
@@ -1584,6 +1621,7 @@ export default function BrokerListingPage() {
                 </button>
               )}
               <a
+                onClick={slotGuardedLink}
                 href={`sms:?body=${encodeURIComponent(`${listing.vessel_name ?? "Yacht listing"} — view photos here: ${typeof window !== "undefined" ? window.location.origin : ""}/s/${listing.slideshow_slug}`)}`}
                 className="flex items-center gap-2 bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
@@ -1593,6 +1631,7 @@ export default function BrokerListingPage() {
                 Text
               </a>
               <a
+                onClick={slotGuardedLink}
                 href={`mailto:?subject=${encodeURIComponent(`${listing.vessel_name ?? "Yacht"} — Photo Gallery`)}&body=${encodeURIComponent(`Please find the photo gallery for ${listing.vessel_name ?? "this vessel"} at the link below:\n\n${typeof window !== "undefined" ? window.location.origin : ""}/s/${listing.slideshow_slug}`)}`}
                 className="flex items-center gap-2 bg-white border border-hairline-strong hover:border-accent-500 text-ink-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
               >
@@ -1641,10 +1680,22 @@ export default function BrokerListingPage() {
         )}
       </div>
 
-      {/* QR code — only when the slideshow is live and the plan is active */}
+      {/* QR code — only when the slideshow is live and the plan is active.
+          A boat still waiting for a company admin's slot shows a button first:
+          showing the code is using the tool. */}
       {listing.slideshow_published && listing.slideshow_slug && hasAccess(accessStatus) && (
         <div className="mt-8">
-          <ListingQRCode url={`https://portal.yachtpics.com/s/${listing.slideshow_slug}?src=qr`} vesselName={listing.vessel_name} />
+          {coverSlot.pendingSlot && !qrRevealed ? (
+            <button
+              type="button"
+              onClick={() => coverSlot.withSlot(() => setQrRevealed(true))}
+              className="text-sm font-medium text-ink-700 border border-hairline-strong hover:border-accent-500 bg-white px-4 py-2 rounded-lg transition-colors"
+            >
+              Show QR code
+            </button>
+          ) : (
+            <ListingQRCode url={`https://portal.yachtpics.com/s/${listing.slideshow_slug}?src=qr`} vesselName={listing.vessel_name} />
+          )}
         </div>
       )}
 

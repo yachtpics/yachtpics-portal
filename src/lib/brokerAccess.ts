@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { getAccessStatus, trialDaysFor, type AccessStatus, type SubRow } from "@/lib/subscriptionAccess";
+import { getAccessStatus, hasAccess, trialDaysFor, type AccessStatus, type SubRow } from "@/lib/subscriptionAccess";
 
 // Trial length by cohort lives in subscriptionAccess.ts (client-safe, used by
 // the billing page too); re-exported here so server code can find it with the
@@ -63,14 +63,29 @@ export async function paidReelServiceBrokerIds(service: SupabaseClient, brokerId
  * the admin can work on those boats without roadblocks (real case: Kelly
  * Sprigg, SYC Yachts, Starter, working on Steve Sprigg's 13 boats).
  *
- * The unlock is on the LISTING OWNER (like the Office plan): the owner, their
- * assistant, the office admin and the owner's public buyer links all agree.
- * It comes after the owner's own plan and the Office plan, before the Reel
- * Service check. The listing range is a reminder only (listingAllowance.ts).
+ * REFINED the same day (Charlie: "the first five she starts using the tools
+ * on"): the admin's plan covers only as many office boats as its range
+ * (Starter 5, Growth 10, Pro 20, Elite unlimited), per BOAT, claimed the
+ * first time the admin (or her assistant) uses a paid tool on it. Her own
+ * active boats use slots first. Rule, slots and copy:
+ * src/lib/officeCoverSlots.ts (table office_cover_slots, migration
+ * 20261125b). Until that migration is applied: every office boat unlocked.
  *
- * Switch the whole rule off here: false = exactly the old behaviour.
+ * Switch the whole rule off here: false = exactly the old (pre-68a46e1)
+ * behaviour.
  * ------------------------------------------------------------------ */
 export const OFFICE_ADMIN_PLAN_COVERS_OFFICE = true;
+
+// Tests only (scripts/office_cover_slots_check.ts): flip the rule without
+// editing the constant. Production code never calls the setter.
+let ruleOverrideForTests: boolean | null = null;
+/** The switch as code should read it: OFFICE_ADMIN_PLAN_COVERS_OFFICE. */
+export function officeAdminRuleOn(): boolean {
+  return ruleOverrideForTests ?? OFFICE_ADMIN_PLAN_COVERS_OFFICE;
+}
+export function __setOfficeAdminRuleForTests(on: boolean | null) {
+  ruleOverrideForTests = on;
+}
 
 /**
  * "A live paid plan" for the office-admin rule: a real Stripe subscription
@@ -103,7 +118,7 @@ function displayName(p: { first_name?: string | null; last_name?: string | null 
  */
 export async function payingOfficeAdmins(service: SupabaseClient, brokerageIds: string[]): Promise<Map<string, AdminLite[]>> {
   const out = new Map<string, AdminLite[]>();
-  if (!OFFICE_ADMIN_PLAN_COVERS_OFFICE || brokerageIds.length === 0) return out;
+  if (!officeAdminRuleOn() || brokerageIds.length === 0) return out;
   try {
     const { data: admins, error } = await service
       .from("profiles")
@@ -135,9 +150,13 @@ export async function payingOfficeAdmins(service: SupabaseClient, brokerageIds: 
 }
 
 /**
- * Is this broker's office covered by ANOTHER profile in the same brokerage
- * that is an office admin with a paying plan of their own? (The broker's own
- * plan and the Office plan are checked by the caller first.) Null when not.
+ * Is this broker covered by a paying office admin of their brokerage (the
+ * broker's own plan, the Office plan and Reel Service are checked by the
+ * caller first)? Since the slots refinement (Nov 25 2026, later —
+ * src/lib/officeCoverSlots.ts) that means: one of their boats holds a slot of
+ * that admin's plan, or the admin's plan has a free slot and the broker has
+ * an active boat. Before migration 20261125b is applied: any paying admin
+ * (68a46e1). Null when not covered.
  */
 export async function officeAdminCoverFor(
   service: SupabaseClient,
@@ -145,10 +164,11 @@ export async function officeAdminCoverFor(
   brokerageId: string | null | undefined,
   officeName: string | null = null
 ): Promise<OfficeAdminCover | null> {
-  if (!OFFICE_ADMIN_PLAN_COVERS_OFFICE || !brokerageId) return null;
-  const admins = (await payingOfficeAdmins(service, [brokerageId])).get(brokerageId) ?? [];
-  const admin = admins.find((a) => a.id !== brokerId);
-  return admin ? { adminId: admin.id, adminName: admin.name, officeName } : null;
+  if (!officeAdminRuleOn() || !brokerageId) return null;
+  // Loaded on demand: officeCoverSlots imports this module.
+  const { brokerSlotCover } = await import("@/lib/officeCoverSlots");
+  const cover = await brokerSlotCover(service, brokerId, brokerageId, officeName);
+  return cover ? { adminId: cover.adminId, adminName: cover.adminName, officeName: cover.officeName } : null;
 }
 
 export type EffectiveAccess = {
@@ -164,10 +184,14 @@ export type EffectiveAccess = {
 };
 
 /**
+ * BROKER-LEVEL answer (dashboard tiles, nav badge, trial emails, audiences).
  * A broker is unlocked if THEIR OWN plan is active/trialing, OR their brokerage
- * carries an active Office plan, OR a paying office admin of their brokerage
- * covers them (`officeAdminCovered`, Nov 25 2026), OR they pay for the Reel
- * Service on at least one boat (Starter-level access, `reelServiceCovered`).
+ * carries an active Office plan, OR they pay for the Reel Service on at least
+ * one boat (Starter-level access, `reelServiceCovered`), OR a paying office
+ * admin of their brokerage covers them (`officeAdminCovered` — since the slots
+ * refinement: one of their boats holds a slot or a slot is free for them).
+ * Gates on ONE listing use getListingAccess (src/lib/officeCoverSlots.ts):
+ * an office admin's plan covers boats, not brokers.
  * Use a service-role client so RLS never blocks.
  */
 export async function getEffectiveAccessStatus(
@@ -188,23 +212,33 @@ export async function getEffectiveAccessStatus(
   }
 
   const { data: prof } = await service.from("profiles").select("brokerage_id").eq("id", brokerId).single();
+  let office: { subscription_status: string | null; name?: string | null } | null = null;
   if (prof?.brokerage_id) {
-    const { data: office } = await service
+    const { data } = await service
       .from("brokerages")
       .select("subscription_status, name")
       .eq("id", prof.brokerage_id)
       .single();
-    if (officePlanActive(office ?? null)) {
+    office = (data as { subscription_status: string | null; name?: string | null } | null) ?? null;
+    if (officePlanActive(office)) {
       return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: true };
-    }
-    const cover = await officeAdminCoverFor(service, brokerId, prof.brokerage_id, (office as { name?: string | null } | null)?.name ?? null);
-    if (cover) {
-      return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false, officeAdminCovered: true, officeAdminCover: cover };
     }
   }
 
   if (await reelServiceGivesAccess(service, brokerId)) {
     return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false, reelServiceCovered: true };
+  }
+
+  // Broker level: covered when one of their boats holds a paying office
+  // admin's slot, or a slot is free for them (officeAdminCoverFor). Gates that
+  // know their listing use getListingAccess (officeCoverSlots.ts) instead.
+  // A broker still on their own running trial is on their own access (their
+  // boats need no slot), so they keep the trial status and its banner.
+  if (prof?.brokerage_id && !hasAccess(own)) {
+    const cover = await officeAdminCoverFor(service, brokerId, prof.brokerage_id, office?.name ?? null);
+    if (cover) {
+      return { status: "active", trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false, officeAdminCovered: true, officeAdminCover: cover };
+    }
   }
 
   return { status: own, trialEndsAt: ownSub?.trial_ends_at ?? null, trialDays, officeCovered: false };

@@ -81,7 +81,7 @@ export async function loadListingReelSource(supabase: SupabaseClient, id: string
   // plan-gate wording (assistantPlanCopy in src/lib/planValue.ts).
   const subscriberCheck: Promise<{ isSubscriber: boolean; assistantGate: AssistantPlanCopy | null }> = admin
     ? Promise.resolve({ isSubscriber: false, assistantGate: null })
-    : fetch(`/api/subscription/status?brokerId=${l.broker_id}`)
+    : fetch(`/api/subscription/status?brokerId=${l.broker_id}&listingId=${id}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => ({
           isSubscriber: isDepthLooksSubscriber(d?.status),

@@ -4,6 +4,7 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { trialDaysRemaining } from "@/lib/subscriptionAccess";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { canActForBroker } from "@/lib/assertListingAccess";
+import { brokerSlotCover, coverSlotsForAdmin, coverSlotsTableMissing, getListingAccess, adminSlotsSentence } from "@/lib/officeCoverSlots";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -17,7 +18,20 @@ export async function GET(req: NextRequest) {
   // (canActForBroker — the same rule as assertListingAccess). Read-only plan
   // status; nothing here manages the broker's subscription.
   const url = new URL(req.url);
-  const requestedBrokerId = url.searchParams.get("brokerId");
+  let requestedBrokerId = url.searchParams.get("brokerId");
+  // Optional listingId (Nov 25 2026, office cover slots): the answer is then
+  // for THAT boat as this viewer sees it (getListingAccess) — a company
+  // admin's plan covers boats, not brokers. The listing's owner is the broker
+  // asked about; the same people as before may ask (canActForBroker).
+  const listingId = url.searchParams.get("listingId");
+  if (listingId) {
+    if (!/^[0-9a-f-]{36}$/i.test(listingId)) return NextResponse.json({ error: "Bad listingId" }, { status: 400 });
+    const svc = createAdminClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const { data: l } = await svc.from("listings").select("broker_id").eq("id", listingId).maybeSingle();
+    if (!l) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
+    if (requestedBrokerId && requestedBrokerId !== l.broker_id) return NextResponse.json({ error: "That listing belongs to another broker." }, { status: 400 });
+    requestedBrokerId = l.broker_id as string;
+  }
 
   let brokerId = user.id;
   // Anyone viewing another broker's listing: that broker's name, so plan
@@ -53,17 +67,59 @@ export async function GET(req: NextRequest) {
   // Effective status accounts for the broker's own plan OR their office plan.
   // Also a paying office admin's own plan (officeAdminCovered, Nov 25 2026 —
   // OFFICE_ADMIN_PLAN_COVERS_OFFICE in brokerAccess.ts).
-  const { status, trialEndsAt, trialDays, officeCovered, reelServiceCovered, officeAdminCovered, officeAdminCover } = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
+  const eff = await getEffectiveAccessStatus(supabaseAdmin, brokerId);
+  const { trialEndsAt, trialDays, officeCovered, reelServiceCovered, officeAdminCovered, officeAdminCover } = eff;
+  let status = eff.status;
   const daysLeft = trialDaysRemaining(trialEndsAt);
+
+  // One boat: its own answer for this viewer. `status` is what the page
+  // gates on; `listingAccess` carries the slot state and its sentence.
+  let listingAccess: {
+    reason: string;
+    canTakeSlot: boolean;
+    notice: { tone: string; text: string; upgrade: boolean } | null;
+    adminName: string | null;
+    officeName: string | null;
+  } | null = null;
+  if (listingId) {
+    const la = await getListingAccess(supabaseAdmin, listingId, user.id);
+    status = la.status;
+    listingAccess = {
+      reason: la.reason,
+      canTakeSlot: la.canTakeSlot,
+      notice: la.notice,
+      adminName: la.cover?.adminName ?? null,
+      officeName: la.cover?.officeName ?? null,
+    };
+  }
+
+  // The signed-in broker's own Billing page (no brokerId / listingId): the
+  // slots panel for a paying company admin, and for a broker covered by one,
+  // which of their boats her plan covers.
+  let adminSlots: { text: string; limit: number | null; used: number; planName: string | null } | null = null;
+  let coveredBoats: string[] | null = null;
+  if (!listingId && brokerId === user.id) {
+    const mine = await coverSlotsForAdmin(supabaseAdmin, user.id).catch(() => null);
+    if (mine) adminSlots = { text: adminSlotsSentence(mine), limit: mine.limit, used: mine.used, planName: mine.planName };
+    if (officeAdminCovered && officeAdminCover) {
+      const { data: me } = await supabaseAdmin.from("profiles").select("brokerage_id").eq("id", user.id).maybeSingle();
+      const cover = await brokerSlotCover(supabaseAdmin, user.id, (me as { brokerage_id: string | null } | null)?.brokerage_id ?? null, officeAdminCover.officeName).catch(() => null);
+      // Table not there yet (68a46e1 fallback): null → the old sentence.
+      coveredBoats = cover && !coverSlotsTableMissing() ? cover.slotBoats : null;
+    }
+  }
 
   // trialDays: this broker's trial length (14, or 30 for accounts opened
   // before Oct 24 2026) — see trialDaysFor in subscriptionAccess.ts.
   return NextResponse.json({
     status, daysLeft, trialEndsAt, trialDays, officeCovered, reelServiceCovered: !!reelServiceCovered, brokerName,
     officeAdminCovered: !!officeAdminCovered,
-    // "Your Portal tools are covered by Kelly Sprigg's plan (SYC Yachts)."
+    // "Kelly Sprigg's plan covers these boats of yours: …"
     officeAdminName: officeAdminCover?.adminName ?? null,
     officeName: officeAdminCover?.officeName ?? null,
+    listingAccess,
+    adminSlots,
+    coveredBoats,
   });
 }
 

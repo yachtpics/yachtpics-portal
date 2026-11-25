@@ -3,7 +3,8 @@ import { PLANS, planIncludesWebsite, planPriceWithWebsite } from "@/lib/plans";
 import { brokerStripePlan, readSiteBilling } from "@/lib/websiteAddon";
 import { isMissingSchema } from "@/lib/brokerSite";
 import { getAccessStatus, type SubRow } from "@/lib/subscriptionAccess";
-import { OFFICE_ADMIN_PLAN_COVERS_OFFICE, isPayingPlan, officePlanActive } from "@/lib/brokerAccess";
+import { isPayingPlan, officeAdminRuleOn, officePlanActive } from "@/lib/brokerAccess";
+import { coverSlotsForAdmin, coverSlotsTableMissing } from "@/lib/officeCoverSlots";
 
 /**
  * Listing ranges per plan (Starter 1–5, Growth 6–10, Pro 11–20, Elite 21+;
@@ -19,12 +20,15 @@ import { OFFICE_ADMIN_PLAN_COVERS_OFFICE, isPayingPlan, officePlanActive } from 
  * and the rule can never disagree.
  *
  * Office admins (Nov 25 2026, OFFICE_ADMIN_PLAN_COVERS_OFFICE in
- * brokerAccess.ts): a paying office admin's plan also covers the brokers in
- * their office who have no plan of their own and no Office plan. For that
- * admin, the count compared with their plan's range is their own active
- * unsold boats PLUS those covered brokers' active unsold boats. Brokers with
- * their own plan (paid or comped) are not counted. If two admins in one
- * office both pay, each sees the whole office count against their own plan.
+ * brokerAccess.ts, refined to SLOTS the same day — src/lib/officeCoverSlots.ts):
+ * a paying office admin's plan covers as many office boats as its range,
+ * her own active unsold boats first. For her, the count compared with the
+ * plan's range is her own active unsold boats PLUS the slots in use — which
+ * can never go past the limit, so "over" only happens when her OWN boats are
+ * more than the range. When every slot is in use and office boats are still
+ * waiting for one, the reminder says so and names the next plan.
+ * Before migration 20261125b is applied (slots table missing) the 68a46e1
+ * count is used: own + every covered broker's active unsold boats.
  * Still a reminder only.
  */
 export const ENFORCE_LISTING_LIMITS = false;
@@ -43,10 +47,23 @@ export type ListingAllowance = {
   /** The broker's own active, unsold listings. */
   ownCount: number;
   /**
-   * Set when this broker is a paying office admin whose plan is covering
-   * brokers in their office (activeCount = ownCount + brokersCount).
+   * Set when this broker is a paying office admin whose plan covers office
+   * boats. mode "slots": activeCount = ownCount + slotsInUse (never above
+   * the limit); `waiting` = office boats with no slot yet. mode "all" (slots
+   * table missing, 68a46e1): activeCount = ownCount + brokersCount.
    */
-  office: { name: string | null; brokersCount: number; coveredBrokers: number } | null;
+  office: {
+    name: string | null;
+    mode: "slots" | "all";
+    slotsInUse: number;
+    slotBoats: string[];
+    ownBoats: string[];
+    waiting: number;
+    /** Every slot in use and boats still waiting (mode "slots"). */
+    full: boolean;
+    brokersCount: number;
+    coveredBrokers: number;
+  } | null;
   over: boolean;
   /** The cheapest plan whose range covers activeCount. */
   suggestedPlan: { id: string; name: string; price: number; priceId: string; range: string } | null;
@@ -87,7 +104,7 @@ export async function officeCoverageForAdmin(
   svc: SupabaseClient,
   adminId: string
 ): Promise<{ name: string | null; brokersCount: number; coveredBrokerIds: string[] } | null> {
-  if (!OFFICE_ADMIN_PLAN_COVERS_OFFICE) return null;
+  if (!officeAdminRuleOn()) return null;
   const { data: me } = await svc.from("profiles").select("brokerage_id, is_brokerage_admin").eq("id", adminId).maybeSingle();
   if (!me?.is_brokerage_admin || !me.brokerage_id) return null;
   const [{ data: mySub }, { data: office }, { data: members }] = await Promise.all([
@@ -111,22 +128,47 @@ export async function officeCoverageForAdmin(
 }
 
 export async function listingAllowance(svc: SupabaseClient, brokerId: string): Promise<ListingAllowance> {
-  const [stripePlan, ownCount, billing, officeCover] = await Promise.all([
+  const [stripePlan, ownCount, billing, slots] = await Promise.all([
     brokerStripePlan(svc, brokerId),
     countActive(svc, brokerId),
     readSiteBilling(svc, brokerId),
-    officeCoverageForAdmin(svc, brokerId).catch(() => null),
+    coverSlotsForAdmin(svc, brokerId).catch(() => null),
   ]);
-  const office = officeCover && officeCover.coveredBrokerIds.length > 0
-    ? { name: officeCover.name, brokersCount: officeCover.brokersCount, coveredBrokers: officeCover.coveredBrokerIds.length }
-    : null;
-  const activeCount = ownCount + (office ? office.brokersCount : 0);
-  const own = stripePlan ? PLANS.find((p) => p.priceId === stripePlan.priceId) ?? null : null;
+  let office: ListingAllowance["office"] = null;
+  if (slots) {
+    office = {
+      name: slots.officeName,
+      mode: "slots",
+      slotsInUse: slots.slots.length,
+      slotBoats: slots.slots.map((x) => x.name),
+      ownBoats: slots.ownBoats.map((x) => x.name),
+      waiting: slots.waiting,
+      full: slots.limit != null && slots.used >= slots.limit && slots.waiting > 0,
+      brokersCount: 0,
+      coveredBrokers: 0,
+    };
+  } else if (coverSlotsTableMissing()) {
+    // Migration 20261125b not applied yet: the 68a46e1 office count.
+    const legacy = await officeCoverageForAdmin(svc, brokerId).catch(() => null);
+    if (legacy && legacy.coveredBrokerIds.length > 0) {
+      office = {
+        name: legacy.name, mode: "all", slotsInUse: 0, slotBoats: [], ownBoats: [], waiting: 0, full: false,
+        brokersCount: legacy.brokersCount, coveredBrokers: legacy.coveredBrokerIds.length,
+      };
+    }
+  }
+  const activeCount = ownCount + (office ? (office.mode === "slots" ? office.slotsInUse : office.brokersCount) : 0);
+  const ownIndex = stripePlan ? PLANS.findIndex((p) => p.priceId === stripePlan.priceId) : -1;
+  const own = ownIndex >= 0 ? PLANS[ownIndex] : null;
   const hasWebsite = !!billing.row?.website_item_id && (billing.row.billing_status === "active" || billing.row.billing_status === "past_due");
   const limit = own ? own.maxListings : null;
   const over = limit != null && activeCount > limit;
 
-  const fit = PLANS.find((p) => p.maxListings == null || activeCount <= p.maxListings) ?? null;
+  // The plan that fits the count; when the slots are full with boats still
+  // waiting, the next plan up from hers.
+  const fit = office?.full && !over && own
+    ? PLANS[ownIndex + 1] ?? null
+    : PLANS.find((p) => p.maxListings == null || activeCount <= p.maxListings) ?? null;
   const suggestedPlan = fit ? { id: fit.id, name: fit.name, price: fit.price, priceId: fit.priceId, range: rangeLabel(fit) } : null;
   const suggestedTotalMonthly = fit ? (hasWebsite || planIncludesWebsite(fit.name) ? planPriceWithWebsite(fit) : fit.price) : null;
 
@@ -135,13 +177,20 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
 
 /**
  * "You have 8 active boats. Starter covers up to 5. Growth covers 6–10 boats — $99/mo."
- * A paying office admin covering their brokers:
- * "Your plan is covering 13 active boats across SYC Yachts (0 yours, 13 your brokers'). Starter covers up to 5. Pro covers 11–20 boats — $79/mo."
+ * A paying office admin whose slots are all in use with office boats waiting:
+ * "Your Starter plan covers 5 boats, and all 5 are in use. Growth covers 6–10 boats — $49/mo."
+ * (Her assistant: "Kelly's Starter plan covers …")
  */
 export function allowanceMessage(a: ListingAllowance, who?: string | null): string | null {
-  if (!a.over || !a.plan || a.limit == null || !a.suggestedPlan || a.suggestedTotalMonthly == null) return null;
-  const tail = `${a.plan} covers up to ${a.limit}. ${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
-  if (a.office) {
+  if (!a.plan || a.limit == null || !a.suggestedPlan || a.suggestedTotalMonthly == null) return null;
+  const next = `${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
+  if (!a.over && a.office?.mode === "slots" && a.office.full) {
+    const n = a.limit;
+    return `${who ? `${who}'s` : "Your"} ${a.plan} plan covers ${n} boat${n === 1 ? "" : "s"}, and ${n === 1 ? "it is" : `all ${n} are`} in use. ${next}`;
+  }
+  if (!a.over) return null;
+  const tail = `${a.plan} covers up to ${a.limit}. ${next}`;
+  if (a.office?.mode === "all") {
     const where = a.office.name ? a.office.name : who ? "their office" : "your office";
     const split = who
       ? `${a.ownCount} theirs, ${a.office.brokersCount} their brokers'`

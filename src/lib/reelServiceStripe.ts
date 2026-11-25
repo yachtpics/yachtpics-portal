@@ -581,7 +581,10 @@ export async function handleReelServiceDeleted(service: SupabaseClient, subscrip
   } else if (plan.kind === "office") {
     body = `${first} Your Portal access continues through your office plan.`;
   } else if (plan.kind === "officeAdmin") {
-    body = `${first} Your Portal access continues through ${esc(plan.adminName)}&rsquo;s plan.`;
+    // Office cover slots (Nov 25 2026): the company admin's plan covers boats,
+    // not brokers — as many as its range, the ones the admin uses tools on.
+    body = `${first} ${esc(plan.adminName)}&rsquo;s plan covers as many of your office&rsquo;s boats as that plan includes &mdash; the ones ${esc(plan.adminName.split(" ")[0] || plan.adminName)} uses the Portal&rsquo;s tools on. For the tools on every boat of yours, keep your Portal on Starter for $${REEL_SERVICE_FALLBACK_PLAN_PRICE}/mo.`;
+    button = { href: `${PORTAL}/dashboard/billing`, label: `Keep the Portal — $${REEL_SERVICE_FALLBACK_PLAN_PRICE}/mo` };
   } else if (plan.kind === "reels") {
     body = `${first} Your other Reel Service boats keep your Portal access.`;
   } else {

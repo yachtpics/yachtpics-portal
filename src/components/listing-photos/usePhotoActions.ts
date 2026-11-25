@@ -39,8 +39,14 @@ export function usePhotoActions(opts: {
    * (signed out).
    */
   ownerFolder: (userId: string | null) => string | null;
+  /**
+   * Broker page only (office cover slots, Nov 25 2026): runs before an upload
+   * or a replace — the paid photo actions. False stops the action (the page
+   * shows why). Omitted = always go ahead.
+   */
+  beforePaidAction?: () => Promise<boolean>;
 }) {
-  const { supabase, listingId, caps, state, onMessage, ownerFolder } = opts;
+  const { supabase, listingId, caps, state, onMessage, ownerFolder, beforePaidAction } = opts;
   const { photos, setPhotos, setThumbs, setOriginals, setMissingIds, refreshThumbs } = state;
   const isAdmin = caps.variant === "admin";
 
@@ -213,6 +219,7 @@ export function usePhotoActions(opts: {
     if (uploadingRef.current || fileArr.length === 0) return;
     uploadingRef.current = true; // a second click can't start a second batch
     setPendingFiles(null);
+    if (beforePaidAction && !(await beforePaidAction())) { uploadingRef.current = false; return; }
     // Stamp WHICH person uploaded these (admins too — the by-YachtPics checks
     // look the role up by id, so a stamped admin still counts as ours).
     const { data: { user } } = await supabase.auth.getUser();
@@ -534,6 +541,7 @@ export function usePhotoActions(opts: {
    * swaps to the new thumbnail (new path = no stale cached image).
    */
   async function replacePhoto(photoId: string, file: File) {
+    if (beforePaidAction && !(await beforePaidAction())) return;
     const { data: { session } } = await supabase.auth.getSession();
     const folder = ownerFolder(session?.user?.id ?? null);
     if (!folder) return;

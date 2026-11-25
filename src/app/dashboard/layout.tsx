@@ -6,7 +6,7 @@ import AdminNav from "@/app/admin/_components/AdminNav";
 import TrialBanner from "./_components/TrialBanner";
 import DemoBanner from "./_components/DemoBanner";
 import { isDemoUser, isWritableDemoUser } from "@/lib/demo";
-import { getAccessStatus, trialDaysFor } from "@/lib/subscriptionAccess";
+import { getAccessStatus, hasAccess, trialDaysFor } from "@/lib/subscriptionAccess";
 import { getCurrentUser } from "@/lib/getCurrentUser";
 import { officeAdminCoverFor, paidReelServiceBrokerIds, reelServiceGivesAccess } from "@/lib/brokerAccess";
 
@@ -103,10 +103,6 @@ export default async function DashboardLayout({ children }: { children: React.Re
       .single();
     if (office && (office.subscription_status === "active" || office.subscription_status === "trialing")) {
       accessStatus = "active";
-    } else if (await officeAdminCoverFor(svc, user.id, profile.brokerage_id)) {
-      // A paying office admin's own plan covers the office (Nov 25 2026 —
-      // OFFICE_ADMIN_PLAN_COVERS_OFFICE, same rule as getEffectiveAccessStatus).
-      accessStatus = "active";
     }
   }
 
@@ -117,6 +113,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
     if (await reelServiceGivesAccess(svc, user.id)) accessStatus = "active";
+  }
+
+  // A paying office admin's own plan (Nov 25 2026, OFFICE_ADMIN_PLAN_COVERS_OFFICE;
+  // refined to slots — src/lib/officeCoverSlots.ts): no trial badge or banner
+  // when one of this broker's boats holds a slot of her plan, or a slot is
+  // free for them. A broker on their own running trial keeps its banner.
+  // Same order and rule as getEffectiveAccessStatus.
+  if (role === "broker" && !hasAccess(accessStatus) && profile?.brokerage_id) {
+    const svc = createServiceClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    if (await officeAdminCoverFor(svc, user.id, profile.brokerage_id)) accessStatus = "active";
   }
 
   // Reel Service (Oct 4): show "Your Reels" to a broker who is enrolled or has

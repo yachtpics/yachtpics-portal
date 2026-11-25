@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { assertListingAccess } from "@/lib/assertListingAccess";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
-import { hasAccess } from "@/lib/subscriptionAccess";
+import { claimListingTool } from "@/lib/officeCoverSlots";
 import { logEmail } from "@/lib/logEmail";
 import { signVideoUrl } from "@/lib/videoUrls";
 import { demoGuard } from "@/lib/demoServer";
@@ -39,13 +38,16 @@ export async function POST(req: NextRequest) {
     const access = await assertListingAccess(supabaseAdmin, listingId, user.id, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
 
-    // Send-to-Client is a paid feature. Gate on the listing OWNER's effective
-    // access (their own plan or an office plan). Expired brokers can still
-    // download delivered photos — that's always free — but not send to clients.
-    const { status: ownerAccess } = await getEffectiveAccessStatus(supabaseAdmin, listing.broker_id);
-    if (!hasAccess(ownerAccess)) {
+    // Send-to-Client is a paid feature. Gate on THIS listing's access (the
+    // owner's own plan, an Office plan, Reel Service, or a slot of a paying
+    // company admin's plan — src/lib/officeCoverSlots.ts). On a boat that is
+    // waiting for a slot, the paying admin's (or her assistant's) send takes
+    // it here. Expired brokers can still download delivered photos — that's
+    // always free — but not send to clients.
+    const tool = await claimListingTool(supabaseAdmin, listingId, user.id);
+    if (!tool.allowed) {
       return NextResponse.json(
-        { error: "Sending listings to clients is included with every plan, from $29 a month — see Billing. Downloading delivered photos always stays free." },
+        { error: tool.error ?? "Sending listings to clients is included with every plan, from $29 a month — see Billing. Downloading delivered photos always stays free." },
         { status: 403 }
       );
     }

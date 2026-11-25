@@ -7,6 +7,8 @@ import { BILLING_PATH, PLAN_GATE_LINE, PLAN_GATE_LINK, assistantPlanCopy, type A
 import { Cormorant_Garamond } from "next/font/google";
 import { createClient } from "@/lib/supabase/client";
 import { hasAccess } from "@/lib/subscriptionAccess";
+import CoverSlotNotice from "@/components/CoverSlotNotice";
+import { useCoverSlot } from "@/lib/useCoverSlot";
 import {
   YACHTPICS_CARD, YACHTPICS_COLORS, YACHTPICS_PHONES, type YpPhone,
 } from "@/lib/yachtpicsBrand";
@@ -142,6 +144,9 @@ export default function SocialGraphicPage() {
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
+  // Office cover slots (Nov 25 2026): downloading the post is the paid
+  // action; on a boat waiting for a company admin's slot it takes one first.
+  const coverSlot = useCoverSlot(id, { onLocked: () => setLocked(true) });
   // Assistant viewer (Nov 11): the gate names the broker, no Billing link.
   const [assistantGate, setAssistantGate] = useState<AssistantPlanCopy | null>(null);
   const [rendering, setRendering] = useState(false);
@@ -184,11 +189,12 @@ export default function SocialGraphicPage() {
         setLocked(false);
       } else {
         try {
-          const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}`);
+          const subRes = await fetch(`/api/subscription/status?brokerId=${l.broker_id}&listingId=${id}`);
           // A server hiccup is not a lapsed plan. Only a real answer can lock.
           if (subRes.ok) {
             const subData = await subRes.json();
             setLocked(!hasAccess(subData?.status));
+            coverSlot.setInfo(subData?.listingAccess ?? null);
             setAssistantGate(assistant || subData?.brokerName ? assistantPlanCopy(subData?.brokerName ?? null) : null);
           }
         } catch { /* stay unlocked on a status hiccup */ }
@@ -435,10 +441,11 @@ export default function SocialGraphicPage() {
 
   useEffect(() => { render(); }, [render]);
 
-  function download() {
+  async function download() {
     if (locked) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
+    if (!(await coverSlot.ensure())) return;
     canvas.toBlob((blob) => {
       if (!blob) return;
       const a = document.createElement("a");
@@ -471,6 +478,7 @@ export default function SocialGraphicPage() {
         <p className="text-ink-500 mt-1 text-sm">Make a branded, post-ready image for Instagram, Facebook, or Stories — pick a photo, choose a tag, and grab the matching caption.</p>
       </div>
 
+      <CoverSlotNotice info={coverSlot.info} error={coverSlot.error} onDismissError={coverSlot.dismissError} />
       {locked && (
         <div className="mb-5 px-4 py-3 rounded-ctl text-sm bg-danger-50 border border-danger-200 text-danger-700">
           <span className="font-semibold">This is a preview.</span>{" "}

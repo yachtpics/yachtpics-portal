@@ -3,7 +3,7 @@ import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import ListingsBrowser from "./_components/ListingsBrowser";
-import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { getListingsAccess } from "@/lib/officeCoverSlots";
 import { hasAccess } from "@/lib/subscriptionAccess";
 import { signDerivatives } from "@/lib/photoDerivatives";
 import { getCurrentShows } from "@/lib/boatShows";
@@ -95,20 +95,21 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
   // Which of these listings is the current user a co-broker on (vs. owner)?
   const coBrokerIds = new Set((coRows ?? []).map((r) => r.listing_id as string));
 
-  // Rows whose owner's plan has lapsed get sharing/sending locked (downloads
-  // stay free). Service client so we can read other brokers' access when an
+  // Rows without access get sharing/sending locked (downloads stay free).
+  // Per BOAT, as this viewer sees it (src/lib/officeCoverSlots.ts): the
+  // owner's plan, an Office plan, Reel Service, or a slot of a paying company
+  // admin's plan — for that admin a boat her plan still has room for shows
+  // unlocked too. Service client so we can read other brokers' access when an
   // assistant/admin is viewing their listings.
   const service = createServiceClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
-  const ownerIds = Array.from(new Set(listings.map((l) => l.broker_id).filter(Boolean))) as string[];
-  const lockedOwners = new Set<string>();
+  const lockedIds = new Set<string>();
 
   // The access checks and the cover-photo lookup are unrelated, so they run
   // side by side rather than the photos waiting on the billing checks.
   const [, heroRowsRes] = await Promise.all([
-    Promise.all(ownerIds.map(async (bid) => {
-      const { status } = await getEffectiveAccessStatus(service, bid);
-      if (!hasAccess(status)) lockedOwners.add(bid);
-    })),
+    getListingsAccess(service, listings.map((l) => ({ id: l.id, broker_id: l.broker_id })), user.id).then((m) => {
+      m.forEach((a, lid) => { if (!hasAccess(a.status)) lockedIds.add(lid); });
+    }),
     listings.length > 0
       ? supabase.rpc("listing_hero_photos", { p_listing_ids: listings.map((l) => l.id) })
       : Promise.resolve({ data: [] }),
@@ -132,7 +133,7 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
     }
   }))).filter((n): n is { brokerId: string; firstName: string | null; message: string; suggestedName: string } => !!n);
 
-  const lockedListingIds = listings.filter((l) => l.broker_id && lockedOwners.has(l.broker_id)).map((l) => l.id);
+  const lockedListingIds = listings.filter((l) => l.broker_id && lockedIds.has(l.id)).map((l) => l.id);
 
   // Free reels waiting (Nov 3): two included reels per boat on active listings
   // whose owner has no plan (a plan is unlimited — nothing to count). Used
@@ -141,7 +142,7 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
   // an open house makes reels free for all.
   let freeReels: { count: number; firstListingId: string } | null = null;
   if (profile?.role !== "admin" && !reelPromoActive()) {
-    const freeActive = listings.filter((l) => l.status === "active" && l.broker_id && lockedOwners.has(l.broker_id));
+    const freeActive = listings.filter((l) => l.status === "active" && l.broker_id && lockedIds.has(l.id));
     if (freeActive.length > 0) {
       try {
         const used = await claimedCountsByListing(service, freeActive.map((l) => l.id));

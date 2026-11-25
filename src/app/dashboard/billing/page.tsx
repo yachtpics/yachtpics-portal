@@ -44,7 +44,16 @@ export default function BillingPage() {
    * paying office admin's plan, Reel Service). A covered broker isn't told
    * their trial has ended (Nov 25 2026).
    */
-  const [cover, setCover] = useState<{ status: string; officeAdminCovered?: boolean; officeAdminName?: string | null; officeName?: string | null } | null>(null);
+  const [cover, setCover] = useState<{
+    status: string;
+    officeAdminCovered?: boolean;
+    officeAdminName?: string | null;
+    officeName?: string | null;
+    /** Paying company admin: "Your plan covers 5 boats. In use (3): …" (officeCoverSlots.ts). */
+    adminSlots?: { text: string } | null;
+    /** Broker covered by a company admin's plan: which of their boats hold a slot (null = not known). */
+    coveredBoats?: string[] | null;
+  } | null>(null);
   const [websiteBusy, setWebsiteBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
@@ -273,7 +282,7 @@ export default function BillingPage() {
       )}
 
       {/* Over the plan's listing range — a calm nudge, nothing is blocked. */}
-      {allowance?.over && allowance.message && allowance.suggestedPlan && (
+      {allowance?.message && allowance.suggestedPlan && (
         <div className="mb-6 bg-white border border-accent-200 rounded-card px-5 py-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-ink-700">{allowance.message}</p>
           {(() => {
@@ -297,10 +306,22 @@ export default function BillingPage() {
         </div>
       )}
 
+      {/* A paying company admin: which boats her plan covers (office cover slots). */}
+      {cover?.adminSlots?.text && (
+        <div className="mb-6 bg-white border border-hairline rounded-card px-5 py-4">
+          <p className="text-sm text-ink-700">{cover.adminSlots.text}</p>
+          <p className="text-xs text-ink-500 mt-1">A boat in your office is counted the first time you use a paid tool on it. A slot frees up when the boat is sold or archived.</p>
+        </div>
+      )}
+
       {coveredByAdmin && (
         <div className="mb-6 bg-white border border-hairline rounded-card px-5 py-4">
           <p className="text-sm text-ink-700">
-            Your Portal tools are covered by {cover!.officeAdminName}&rsquo;s plan{cover!.officeName ? ` (${cover!.officeName})` : ""}.
+            {cover!.coveredBoats == null
+              ? <>Your Portal tools are covered by {cover!.officeAdminName}&rsquo;s plan{cover!.officeName ? ` (${cover!.officeName})` : ""}.</>
+              : cover!.coveredBoats.length > 0
+                ? <>{cover!.officeAdminName}&rsquo;s plan covers these boats of yours: {cover!.coveredBoats.join(", ")}.</>
+                : <>{cover!.officeAdminName}&rsquo;s plan{cover!.officeName ? ` at ${cover!.officeName}` : ""} can cover your boats. A boat is covered once {cover!.officeAdminName!.split(" ")[0]} uses a tool on it.</>}
           </p>
         </div>
       )}

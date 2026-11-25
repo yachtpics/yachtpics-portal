@@ -26,7 +26,7 @@ export const revalidate = 0;
 export async function generateMetadata({ params }: { params: { slug: string } }): Promise<Metadata> {
   try {
     const listing = await getPublishedSlideshow(params.slug);
-    if (!listing || !(await ownerHasAccess(listing.broker_id))) return NEUTRAL_SLIDESHOW_METADATA;
+    if (!listing || !(await ownerHasAccess(listing))) return NEUTRAL_SLIDESHOW_METADATA;
     const meta = await slideshowMetadata(listing);
     // The read-only demo's sample boat (M2): never indexed. (This page sets no
     // response headers of its own, so the meta tag is the whole of it.)
@@ -69,7 +69,7 @@ export default async function PublicSlideshowPage({
   // ?preview=1. If the owner's plan has lapsed and nobody is signed in, send
   // them to sign in and straight back (same-site path only — safeNextPath on
   // the login page). Without ?preview=1 the public sees the neutral message.
-  const ownerLive = await ownerHasAccess(listing.broker_id);
+  const ownerLive = await ownerHasAccess(listing);
   const canView = ownerLive || (await canViewSlideshow(listing));
   if (!canView && searchParams.preview === "1") {
     let signedIn = false;
