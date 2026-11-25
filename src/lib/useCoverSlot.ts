@@ -20,6 +20,8 @@ export type ListingSlotInfo = {
   notice: { tone: "subtle" | "full" | "locked" | string; text: string; upgrade: boolean } | null;
   adminName: string | null;
   officeName: string | null;
+  /** Soft mode (the default): the call only COUNTS the boat — fire and continue, never block. */
+  soft?: boolean;
 };
 
 export function useCoverSlot(listingId: string, opts: { onLocked?: () => void } = {}) {
@@ -39,6 +41,13 @@ export function useCoverSlot(listingId: string, opts: { onLocked?: () => void } 
   const ensure = useCallback(async (): Promise<boolean> => {
     const cur = infoRef.current;
     if (!cur || !cur.canTakeSlot || cur.reason !== "officeAdminAvailable") return true;
+    if (cur.soft) {
+      // Counter only: record the boat in the background; the action goes
+      // ahead at once whatever the answer (a failure is silent).
+      setInfo({ ...cur, reason: "officeAdminSlot", canTakeSlot: false });
+      void fetch(`/api/listings/${listingId}/cover-slot`, { method: "POST", cache: "no-store", keepalive: true }).catch(() => undefined);
+      return true;
+    }
     if (pending.current) return pending.current;
     pending.current = (async () => {
       try {
@@ -71,7 +80,8 @@ export function useCoverSlot(listingId: string, opts: { onLocked?: () => void } 
   }, [ensure]);
 
   /** The boat looks unlocked only because a slot is free (nothing used yet). */
-  const pendingSlot = !!info && info.canTakeSlot && info.reason === "officeAdminAvailable";
+  // (Hard cap only — in soft mode nothing ever waits on the slot.)
+  const pendingSlot = !!info && !info.soft && info.canTakeSlot && info.reason === "officeAdminAvailable";
 
   return { info, setInfo, error, dismissError: () => setError(null), ensure, withSlot, pendingSlot };
 }

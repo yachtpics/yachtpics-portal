@@ -4,7 +4,8 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { trialDaysRemaining } from "@/lib/subscriptionAccess";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
 import { canActForBroker } from "@/lib/assertListingAccess";
-import { brokerSlotCover, coverSlotsForAdmin, coverSlotsTableMissing, getListingAccess, adminSlotsSentence } from "@/lib/officeCoverSlots";
+import { brokerSlotCover, coverSlotsForAdmin, coverSlotsTableMissing, getListingAccess, adminSlotsSentence, counterLong, overMessage } from "@/lib/officeCoverSlots";
+import { officeCoverEnforceOn } from "@/lib/brokerAccess";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -80,6 +81,7 @@ export async function GET(req: NextRequest) {
     notice: { tone: string; text: string; upgrade: boolean } | null;
     adminName: string | null;
     officeName: string | null;
+    soft: boolean;
   } | null = null;
   if (listingId) {
     const la = await getListingAccess(supabaseAdmin, listingId, user.id);
@@ -90,18 +92,33 @@ export async function GET(req: NextRequest) {
       notice: la.notice,
       adminName: la.cover?.adminName ?? null,
       officeName: la.cover?.officeName ?? null,
+      soft: la.soft,
     };
   }
 
   // The signed-in broker's own Billing page (no brokerId / listingId): the
   // slots panel for a paying company admin, and for a broker covered by one,
   // which of their boats her plan covers.
-  let adminSlots: { text: string; limit: number | null; used: number; planName: string | null } | null = null;
+  // soft (counter only, the default): `text` is the counter sentence; `over`
+  // = past the plan's range (Billing then shows the over note with its
+  // Upgrade button instead, and the boats as `names`).
+  let adminSlots: { text: string; limit: number | null; used: number; planName: string | null; names: string[]; over: boolean; soft: boolean } | null = null;
   let coveredBoats: string[] | null = null;
   if (!listingId && brokerId === user.id) {
     const mine = await coverSlotsForAdmin(supabaseAdmin, user.id).catch(() => null);
-    if (mine) adminSlots = { text: adminSlotsSentence(mine), limit: mine.limit, used: mine.used, planName: mine.planName };
-    if (officeAdminCovered && officeAdminCover) {
+    if (mine) {
+      const names = mine.ownBoats.map((b) => b.name).concat(mine.slots.map((x) => x.name));
+      const soft = !officeCoverEnforceOn();
+      const p = { planName: mine.planName, limit: mine.limit, used: mine.used };
+      adminSlots = {
+        text: soft ? counterLong({ ...p, names }) : adminSlotsSentence(mine),
+        limit: mine.limit, used: mine.used, planName: mine.planName, names,
+        over: soft && !!overMessage(p),
+        soft,
+      };
+    }
+    // Soft mode: no list — "Your Portal tools are covered by Kelly Sprigg's plan (SYC Yachts)."
+    if (officeAdminCovered && officeAdminCover && officeCoverEnforceOn()) {
       const { data: me } = await supabaseAdmin.from("profiles").select("brokerage_id").eq("id", user.id).maybeSingle();
       const cover = await brokerSlotCover(supabaseAdmin, user.id, (me as { brokerage_id: string | null } | null)?.brokerage_id ?? null, officeAdminCover.officeName).catch(() => null);
       // Table not there yet (68a46e1 fallback): null → the old sentence.

@@ -9,7 +9,7 @@ import { signDerivatives } from "@/lib/photoDerivatives";
 import { getCurrentShows } from "@/lib/boatShows";
 import ShowBanner from "./_components/ShowBanner";
 import PlanNudgeBanner from "./_components/PlanNudgeBanner";
-import { allowanceMessage, listingAllowance } from "@/lib/listingAllowance";
+import { allowanceMessage, listingAllowance, officeCounterLine } from "@/lib/listingAllowance";
 import { signResizedPaths } from "@/lib/photoStore";
 import { claimedCountsByListing, remainingOf } from "@/lib/reelAllowance";
 import { reelPromoActive } from "@/lib/reelPromo";
@@ -123,9 +123,15 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
         ? (((await service.from("broker_assistants").select("broker_id, profiles:broker_id(first_name)").eq("assistant_id", user.id)).data ?? []) as unknown as { broker_id: string; profiles: { first_name: string | null } | null }[])
             .map((r) => ({ brokerId: r.broker_id, firstName: r.profiles?.first_name ?? "your broker" }))
         : [];
+  // A paying company admin within her plan's range gets the plain counter
+  // line instead ("3 of 5 boats in use on your Starter plan.") — office
+  // cover slots, soft mode. Over the range, the nudge below says so.
+  const counters: { brokerId: string; text: string }[] = [];
   const nudges = (await Promise.all(nudgeTargets.map(async (t) => {
     try {
       const a = await listingAllowance(service, t.brokerId);
+      const counter = officeCounterLine(a, t.firstName);
+      if (counter) counters.push({ brokerId: t.brokerId, text: counter });
       const message = allowanceMessage(a, t.firstName);
       return message && a.suggestedPlan ? { ...t, message, suggestedName: a.suggestedPlan.name } : null;
     } catch {
@@ -228,6 +234,10 @@ export default async function ListingsPage({ searchParams = {} }: { searchParams
           </Link>
         </p>
       )}
+
+      {counters.map((c) => (
+        <p key={`counter-${c.brokerId}`} className="mb-4 text-sm text-ink-500">{c.text}</p>
+      ))}
 
       {nudges.map((n) => (
         <PlanNudgeBanner key={n.brokerId} brokerId={n.brokerId} message={n.message} suggestedName={n.suggestedName} assistantFor={n.firstName} />

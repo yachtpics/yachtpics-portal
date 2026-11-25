@@ -768,7 +768,8 @@ export default function BrokerListingPage() {
   // Text / Email share links: on a boat waiting for a company admin's slot,
   // take it first, then open the link.
   function slotGuardedLink(e: React.MouseEvent<HTMLAnchorElement>) {
-    if (!coverSlot.pendingSlot) return;
+    // Soft mode: count the boat in the background, open the link at once.
+    if (!coverSlot.pendingSlot) { void coverSlot.ensure(); return; }
     e.preventDefault();
     const href = e.currentTarget.href;
     coverSlot.withSlot(() => { window.location.href = href; });

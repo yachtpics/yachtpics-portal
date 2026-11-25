@@ -84,8 +84,13 @@ export async function POST(req: NextRequest) {
   if (a.demo) return demoForbidden();
 
   try {
-    const { unlimited, role, slotPending } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId, listingId });
-    if (unlimited && !slotPending) return NextResponse.json({ ok: true, unlimited: true });
+    const { unlimited, role, slotPending, countPending } = await reelsUnlimited(a.svc, { userId: a.userId, brokerId: a.brokerId, listingId });
+    if (unlimited && !slotPending) {
+      // Office cover slots, soft mode: taking a reel counts the boat on the
+      // company admin's plan — recorded, never refused.
+      if (countPending) await takeCoverSlot(a.svc, listingId, a.userId).catch(() => null);
+      return NextResponse.json({ ok: true, unlimited: true });
+    }
 
     const claimed = await claimedRenders(a.svc, listingId);
     if (claimed.indexOf(renderId) !== -1) {

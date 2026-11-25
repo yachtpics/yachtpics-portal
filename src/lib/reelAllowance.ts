@@ -37,13 +37,21 @@ export type Allowance = { unlimited: true } | { unlimited: false; used: number; 
 export async function reelsUnlimited(
   service: SupabaseClient,
   opts: { userId: string; brokerId: string; listingId: string }
-): Promise<{ unlimited: boolean; role: string | null; slotPending: boolean }> {
+): Promise<{ unlimited: boolean; role: string | null; slotPending: boolean; countPending: boolean }> {
   const { data: me } = await service.from("profiles").select("role").eq("id", opts.userId).maybeSingle();
   const role: string | null = me?.role ?? null;
-  if (role === "admin") return { unlimited: true, role, slotPending: false };
-  if (reelPromoActive()) return { unlimited: true, role, slotPending: false };
+  if (role === "admin") return { unlimited: true, role, slotPending: false, countPending: false };
+  if (reelPromoActive()) return { unlimited: true, role, slotPending: false, countPending: false };
   const access = await getListingAccess(service, opts.listingId, opts.userId);
-  return { unlimited: hasAccess(access.status), role, slotPending: access.reason === "officeAdminAvailable" && access.canTakeSlot };
+  const uncounted = access.reason === "officeAdminAvailable" && access.canTakeSlot;
+  return {
+    unlimited: hasAccess(access.status),
+    role,
+    // Hard cap: the boat is waiting for a slot (taken past the free two).
+    slotPending: uncounted && !access.soft,
+    // Soft mode: unlimited; the first reel taken just counts the boat.
+    countPending: uncounted && access.soft,
+  };
 }
 
 /**

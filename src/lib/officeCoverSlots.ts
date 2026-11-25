@@ -2,8 +2,23 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { PLANS } from "@/lib/plans";
 import { getAccessStatus, hasAccess, trialDaysFor, type AccessStatus, type SubRow } from "@/lib/subscriptionAccess";
 import {
-  isPayingPlan, officeAdminRuleOn, officePlanActive, paidReelServiceBrokerIds, type OfficeAdminCover,
+  isPayingPlan, officeAdminRuleOn, officeCoverEnforceOn, officePlanActive, paidReelServiceBrokerIds, type OfficeAdminCover,
 } from "@/lib/brokerAccess";
+
+/* ------------------------------------------------------------------ *
+ * SOFT MODE (the default — OFFICE_COVER_ENFORCE_LIMIT = false in
+ * brokerAccess.ts; owner decision Nov 25 2026, 2:56 PM: "a counter … so they
+ * know where they are and when they need to upgrade"): nothing is ever
+ * locked or refused. Every active unsold boat of a broker covered by a paying
+ * office admin is unlocked for everyone who can work on it, and its buyer
+ * links work. The table below is a COUNTER: a boat is recorded the first
+ * time ANYONE who may work on it uses a paid tool on it (attributed to the
+ * paying admin with the fewest boats in use, ties by name), with no limit.
+ * The admin sees "3 of 5 boats in use on your Starter plan." and, over the
+ * range, "You're using the Portal's tools on 7 boats. Your Starter plan
+ * covers 5. Growth covers 6–10 boats." Everything below about AVAILABLE /
+ * FULL / refusals applies only with the switch set to true (the hard cap).
+ * ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ *
  * Office cover SLOTS (owner decision, Charlie Clark, Nov 25 2026 — refines
@@ -79,6 +94,8 @@ export type ListingAccess = {
   trialDays: number;
   /** Plain sentence for the slot states (null otherwise). */
   notice: CoverNotice | null;
+  /** Soft mode (counter only): taking a slot never blocks anything. */
+  soft: boolean;
 };
 
 export type CoverNotice = {
@@ -350,7 +367,8 @@ export async function adminSlotUsage(svc: SupabaseClient, admin: PayingAdmin, op
   const byId = new Map(listings.map((l) => [l.id, l] as [string, ListingLite]));
   const owners = Array.from(new Set(listings.map((l) => l.broker_id)));
   const base = owners.length > 0 ? await baseAccessMany(svc, owners) : new Map<string, BaseAccess>();
-  const room = admin.limit == null ? Number.MAX_SAFE_INTEGER : Math.max(0, admin.limit - own.length);
+  // Soft mode counts every boat (no limit); the hard cap keeps the oldest first.
+  const room = admin.limit == null || !officeCoverEnforceOn() ? Number.MAX_SAFE_INTEGER : Math.max(0, admin.limit - own.length);
   const slots: AdminSlotUsage["slots"] = [];
   const release: { id: string; reason: string }[] = [];
   rows.forEach((r) => {
@@ -389,7 +407,7 @@ function coverOf(u: AdminSlotUsage, officeName: string | null): SlotCover {
     officeName,
     planName: u.admin.planName,
     limit: u.admin.limit,
-    used: u.admin.limit == null ? u.used : Math.min(u.used, u.admin.limit),
+    used: u.admin.limit == null || !officeCoverEnforceOn() ? u.used : Math.min(u.used, u.admin.limit),
     inUse: u.ownBoats.map((b) => b.name).concat(u.slots.map((s) => s.name)),
     nextPlan: u.admin.nextPlan,
   };
@@ -410,6 +428,54 @@ function joinNames(names: string[]): string {
 
 function planWord(c: SlotCover): string {
   return c.planName ? `${c.planName} plan` : "plan";
+}
+
+/* Soft-mode counter copy (owner's wording, Nov 25 2026). */
+
+/** The plan that fits a count (for "Growth covers 6–10 boats."). */
+function planFitting(n: number): { name: string; range: string } | null {
+  const fit = PLANS.find((p) => p.maxListings == null || n <= p.maxListings) ?? null;
+  return fit ? { name: fit.name, range: rangeLabel(fit) } : null;
+}
+
+function yourPlan(planName: string | null): string {
+  return planName ? `your ${planName} plan` : "your plan";
+}
+
+/** "3 of 5 boats in use on your Starter plan." (also exactly at the limit) */
+export function counterShort(p: { planName: string | null; limit: number | null; used: number }): string {
+  if (p.limit == null) return `${p.used} ${plural(p.used, "boat", "boats")} in use on ${yourPlan(p.planName)}.`;
+  return `${p.used} of ${p.limit} boats in use on ${yourPlan(p.planName)}.`;
+}
+
+/** Over the range — the only place upgrade wording appears. */
+export function overMessage(p: { planName: string | null; limit: number | null; used: number }): string | null {
+  if (p.limit == null || p.used <= p.limit) return null;
+  const fit = planFitting(p.used);
+  const plan = p.planName ? `Your ${p.planName} plan` : "Your plan";
+  return `You're using the Portal's tools on ${p.used} boats. ${plan} covers ${p.limit}.${fit && fit.name !== p.planName ? ` ${fit.name} covers ${fit.range}.` : ""}`;
+}
+
+/**
+ * Billing panel: within → "Your Starter plan covers 5 boats. 3 are in use:
+ * Everglade, …"; exactly at → "5 of 5 boats in use on your Starter plan.";
+ * over → the over message.
+ */
+export function counterLong(p: { planName: string | null; limit: number | null; used: number; names: string[] }): string {
+  const over = overMessage(p);
+  if (over) return over;
+  if (p.limit != null && p.used === p.limit) return counterShort(p);
+  const plan = p.planName ? `Your ${p.planName} plan` : "Your plan";
+  const covers = p.limit == null ? `${plan} covers every boat in the office.` : `${plan} covers ${p.limit} ${plural(p.limit, "boat", "boats")}.`;
+  if (p.used === 0) return `${covers} None are in use yet.`;
+  return `${covers} ${p.used} ${plural(p.used, "is", "are")} in use: ${joinNames(p.names)}.`;
+}
+
+/** Listing page line for the paying admin (soft mode). */
+function counterNotice(u: AdminSlotUsage): CoverNotice {
+  const p = { planName: u.admin.planName, limit: u.admin.limit, used: u.used };
+  const over = overMessage(p);
+  return over ? { tone: "subtle", text: over, upgrade: true } : { tone: "subtle", text: counterShort(p), upgrade: false };
 }
 
 /** Admin (or her assistant: `who` = "Kelly"), boat AVAILABLE. */
@@ -474,6 +540,7 @@ function plain(listingId: string, ownerId: string | null, b: BaseAccess | null, 
     trialEndsAt: b?.trialEndsAt ?? null,
     trialDays: b?.trialDays ?? 14,
     notice: null,
+    soft: !officeCoverEnforceOn(),
     ...extra,
   };
 }
@@ -548,6 +615,26 @@ async function listingsAccessFor(svc: SupabaseClient, listings: ListingLite[], v
     }
     if (unreadable) { fallback(); continue; }
     const viewer = await resolveViewer(svc, viewerId, admins);
+    if (!officeCoverEnforceOn()) {
+      // SOFT: every live boat unlocked for everyone; the record is a counter.
+      const mine = viewer.kind === "payingAdmin" ? usages.find((u) => u.admin.id === viewer.adminId) ?? null : null;
+      for (const l of inOffice) {
+        const b = base.get(l.broker_id) ?? null;
+        const others = usages.filter((u) => u.admin.id !== l.broker_id);
+        if (others.length === 0 || !liveBoat(l)) { out.set(l.id, plain(l.id, l.broker_id, b)); continue; }
+        const holder = others.find((u) => u.slots.some((s) => s.listingId === l.id)) ?? null;
+        out.set(l.id, plain(l.id, l.broker_id, b, {
+          status: "active",
+          reason: holder ? "officeAdminSlot" : "officeAdminAvailable",
+          // Anyone signed in who can work on the boat records it on first use.
+          canTakeSlot: !holder && !!viewerId,
+          cover: coverOf(holder ?? pickSoftAdmin(others), officeName),
+          // Only the paying admin sees the counter on a boat page.
+          notice: mine && mine.admin.id !== l.broker_id ? counterNotice(mine) : null,
+        }));
+      }
+      continue;
+    }
     for (const l of inOffice) {
       const b = base.get(l.broker_id) ?? null;
       const others = usages.filter((u) => u.admin.id !== l.broker_id);
@@ -599,6 +686,11 @@ async function listingsAccessFor(svc: SupabaseClient, listings: ListingLite[], v
   return out;
 }
 
+/** Soft mode: the paying admin a new record is attributed to — fewest boats in use, ties by name. */
+function pickSoftAdmin(usages: AdminSlotUsage[]): AdminSlotUsage {
+  return usages.slice().sort((a, b) => a.used - b.used || a.admin.name.localeCompare(b.admin.name) || a.admin.id.localeCompare(b.admin.id))[0];
+}
+
 /* ── taking a slot ─────────────────────────────────────────────────── */
 
 export type TakeResult =
@@ -615,6 +707,7 @@ const NO_TOOL = "This boat isn't covered by a plan. Choose a plan on Billing to 
  * Callers must already have checked the actor may act on the listing.
  */
 export async function takeCoverSlot(svc: SupabaseClient, listingId: string, actorUserId: string): Promise<TakeResult> {
+  if (!officeCoverEnforceOn()) return recordUse(svc, listingId, actorUserId);
   const startedAt = new Date().toISOString();
   const access = await getListingAccess(svc, listingId, actorUserId);
   if (access.reason === "officeAdminSlot") return { ok: true, state: "held", access };
@@ -668,7 +761,59 @@ export async function takeCoverSlot(svc: SupabaseClient, listingId: string, acto
  * the slot when the boat is AVAILABLE for them. `allowed` false → refuse with
  * `error` (403).
  */
+/**
+ * SOFT mode take: record that a paid tool was used on this boat — by anyone
+ * who may work on it (the caller checked that) — and never refuse. Any
+ * failure is logged and answered ok, so the action always goes ahead.
+ */
+async function recordUse(svc: SupabaseClient, listingId: string, actorUserId: string): Promise<TakeResult> {
+  const startedAt = new Date().toISOString();
+  const access = await getListingAccess(svc, listingId, actorUserId);
+  if (access.reason === "officeAdminSlot") return { ok: true, state: "held", access };
+  if (access.reason !== "officeAdminAvailable") return { ok: true, state: "notNeeded", access };
+  try {
+    const brokerageId = (await baseAccessMany(svc, [access.ownerId as string])).get(access.ownerId as string)?.brokerageId;
+    const admins = (await payingAdminsWithPlans(svc, brokerageId)).filter((a) => a.id !== access.ownerId);
+    const usages: AdminSlotUsage[] = [];
+    for (const a of admins) {
+      const u = await adminSlotUsage(svc, a, { housekeep: true });
+      if (u) usages.push(u);
+    }
+    if (usages.length === 0) return { ok: true, state: "notNeeded", access };
+    const admin = pickSoftAdmin(usages).admin;
+    // A row still live for this boat isn't counting (its admin stopped paying): release it.
+    const existing = (await readSlots(svc, { listingIds: [listingId] })) ?? [];
+    for (const r of existing.filter((x) => x.taken_at < startedAt)) {
+      await svc.from(TABLE).update({ released_at: new Date().toISOString(), release_reason: "admin no longer pays" })
+        .eq("listing_id", listingId).eq("admin_id", r.admin_id).is("released_at", null);
+    }
+    const { data, error } = await svc.rpc("office_cover_slot_take", {
+      p_listing_id: listingId,
+      p_admin_id: admin.id,
+      p_brokerage_id: admin.brokerageId,
+      p_owner_id: access.ownerId,
+      p_taken_by: actorUserId,
+      p_limit: null, // never refuses: the function skips the count when the limit is null
+    });
+    if (error) {
+      if (isMissingTable(error)) noteMissing(); else console.warn("[office-cover-slots] record failed:", error.message);
+      return { ok: true, state: "notNeeded", access };
+    }
+    return { ok: true, state: data === "taken" ? "taken" : "held", access };
+  } catch (err) {
+    console.warn("[office-cover-slots] record failed:", err instanceof Error ? err.message : err);
+    return { ok: true, state: "notNeeded", access };
+  }
+}
+
 export async function claimListingTool(svc: SupabaseClient, listingId: string, userId: string): Promise<{ allowed: boolean; error: string | null; access: ListingAccess | null }> {
+  if (!officeCoverEnforceOn()) {
+    // SOFT: allowed exactly when the boat has access; record the use, never refuse.
+    const access = await getListingAccess(svc, listingId, userId);
+    if (!hasAccess(access.status)) return { allowed: false, error: null, access };
+    if (access.reason === "officeAdminAvailable") await recordUse(svc, listingId, userId).catch(() => null);
+    return { allowed: true, error: null, access };
+  }
   const access = await getListingAccess(svc, listingId, userId);
   if (!hasAccess(access.status)) return { allowed: false, error: access.notice?.text ?? null, access };
   if (access.reason !== "officeAdminAvailable") return { allowed: true, error: null, access };
@@ -706,6 +851,8 @@ export async function brokerSlotCover(
   if (!officeAdminRuleOn() || !brokerageId) return null;
   const admins = (await payingAdminsWithPlans(svc, brokerageId)).filter((a) => a.id !== brokerId);
   if (admins.length === 0) return null;
+  // SOFT: a paying admin of the office (other than themselves) simply covers them (68a46e1).
+  if (!officeCoverEnforceOn()) return { adminId: admins[0].id, adminName: admins[0].name, officeName, slotBoats: [], available: true };
   const mine = await readSlots(svc, { ownerIds: [brokerId] });
   if (mine === null) return { adminId: admins[0].id, adminName: admins[0].name, officeName, slotBoats: [], available: true };
   const usages: AdminSlotUsage[] = [];

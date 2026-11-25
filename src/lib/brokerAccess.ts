@@ -88,6 +88,27 @@ export function __setOfficeAdminRuleForTests(on: boolean | null) {
 }
 
 /**
+ * Owner decision (Charlie Clark, Nov 25 2026, 2:56 PM): counter and message
+ * only — "maybe a counter is a better idea so they know where they are and
+ * when they need to upgrade". The admin's plan never STOPS anyone: every
+ * active boat of a covered broker is unlocked, the Portal counts a boat the
+ * first time anyone uses a paid tool on it, and over the plan's range the
+ * admin sees a note suggesting the plan that fits (src/lib/officeCoverSlots.ts).
+ * Set true to restore the hard cap built in 7169d73 (first N boats only,
+ * AVAILABLE / FULL states, refusals).
+ */
+export const OFFICE_COVER_ENFORCE_LIMIT = false;
+
+let enforceOverrideForTests: boolean | null = null;
+/** The hard-cap switch as code should read it: OFFICE_COVER_ENFORCE_LIMIT. */
+export function officeCoverEnforceOn(): boolean {
+  return enforceOverrideForTests ?? OFFICE_COVER_ENFORCE_LIMIT;
+}
+export function __setOfficeCoverEnforceForTests(on: boolean | null) {
+  enforceOverrideForTests = on;
+}
+
+/**
  * "A live paid plan" for the office-admin rule: a real Stripe subscription
  * that Stripe is charging right now — status 'active' with a Stripe id (and
  * getAccessStatus agrees). NOT covered by this: a comped account (active, no

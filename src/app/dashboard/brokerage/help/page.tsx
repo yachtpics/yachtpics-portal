@@ -50,7 +50,7 @@ const sections = [
       "You can change any boat in your brokerage exactly as that broker's assistant can — open it from My Listings.",
       "Edit its details (name, year, model, price, description, status), add, replace, hide or delete photos and videos, label photos and send it to clients.",
       "The boat stays the broker's: it keeps their name, and sending uses their plan, your Office plan, or your own plan (see below).",
-      "Your own plan covers your brokers' boats: if you pay for a plan of your own, it covers as many of the office's boats as your plan's boat range — your own active boats first — for brokers here with no plan of their own. A boat is counted the first time you (or your assistant) use a paid tool on it, like sending it to a client or sharing its slideshow; the boat's page tells you how many are in use. A slot frees up when a boat is sold or archived, and moving up a plan covers more boats. Billing lists the boats your plan covers.",
+      "Your own plan covers your brokers' boats: if you pay for a plan of your own, the Portal tools are on for the boats of every broker here with no plan of their own. Your plan's boat range is how many boats it is meant for. The Portal counts a boat — your own active boats first — the first time a paid tool is used on it, by you or anyone working on it, like sending it to a client or sharing its slideshow, and shows the count on Billing, My Listings and the boat's page. Over the range you see a note suggesting the plan that fits; nothing is switched off. A boat stops counting when it is sold or archived.",
       "Their plan, billing and the Reel Service stay with the broker and their assistant.",
     ],
   },
@@ -110,7 +110,7 @@ const quickRef = [
   ["Retire an old boat", "Open the boat → Edit → Status: Sold or Archived"],
   ["Change your password", "My Profile → Change Password"],
   ["Start or manage the Office plan", "Brokerage → Billing"],
-  ["Cover your brokers' boats with your own plan", "Billing → choose a plan (it covers as many boats as its range; a boat counts the first time you use a tool on it)"],
+  ["Cover your brokers' boats with your own plan", "Billing → choose a plan (the Portal counts the boats in use; over the range is a note only)"],
 ];
 
 export default async function BrokerageHelpPage() {

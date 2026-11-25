@@ -5,6 +5,7 @@ import { isMissingSchema } from "@/lib/brokerSite";
 import { getAccessStatus, type SubRow } from "@/lib/subscriptionAccess";
 import { isPayingPlan, officeAdminRuleOn, officePlanActive } from "@/lib/brokerAccess";
 import { coverSlotsForAdmin, coverSlotsTableMissing } from "@/lib/officeCoverSlots";
+import { officeCoverEnforceOn } from "@/lib/brokerAccess";
 
 /**
  * Listing ranges per plan (Starter 1–5, Growth 6–10, Pro 11–20, Elite 21+;
@@ -59,8 +60,10 @@ export type ListingAllowance = {
     slotBoats: string[];
     ownBoats: string[];
     waiting: number;
-    /** Every slot in use and boats still waiting (mode "slots"). */
+    /** Every slot in use and boats still waiting (mode "slots", hard cap only). */
     full: boolean;
+    /** Soft mode (counter only — OFFICE_COVER_ENFORCE_LIMIT false): slotsInUse is uncapped. */
+    soft: boolean;
     brokersCount: number;
     coveredBrokers: number;
   } | null;
@@ -135,6 +138,7 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
     coverSlotsForAdmin(svc, brokerId).catch(() => null),
   ]);
   let office: ListingAllowance["office"] = null;
+  const soft = !officeCoverEnforceOn();
   if (slots) {
     office = {
       name: slots.officeName,
@@ -143,16 +147,18 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
       slotBoats: slots.slots.map((x) => x.name),
       ownBoats: slots.ownBoats.map((x) => x.name),
       waiting: slots.waiting,
-      full: slots.limit != null && slots.used >= slots.limit && slots.waiting > 0,
+      full: !soft && slots.limit != null && slots.used >= slots.limit && slots.waiting > 0,
+      soft,
       brokersCount: 0,
       coveredBrokers: 0,
     };
-  } else if (coverSlotsTableMissing()) {
+  } else if (!soft && coverSlotsTableMissing()) {
+    // (Soft mode, table missing: no counter at all — the boats are simply unlocked.)
     // Migration 20261125b not applied yet: the 68a46e1 office count.
     const legacy = await officeCoverageForAdmin(svc, brokerId).catch(() => null);
     if (legacy && legacy.coveredBrokerIds.length > 0) {
       office = {
-        name: legacy.name, mode: "all", slotsInUse: 0, slotBoats: [], ownBoats: [], waiting: 0, full: false,
+        name: legacy.name, mode: "all", slotsInUse: 0, slotBoats: [], ownBoats: [], waiting: 0, full: false, soft: false,
         brokersCount: legacy.brokersCount, coveredBrokers: legacy.coveredBrokerIds.length,
       };
     }
@@ -183,6 +189,14 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
  */
 export function allowanceMessage(a: ListingAllowance, who?: string | null): string | null {
   if (!a.plan || a.limit == null || !a.suggestedPlan || a.suggestedTotalMonthly == null) return null;
+  // Soft mode, paying office admin: the over note is the only upgrade wording.
+  if (a.office?.soft) {
+    if (!a.over) return null;
+    const fit = a.suggestedPlan.name !== a.plan ? ` ${a.suggestedPlan.name} covers ${a.suggestedPlan.range}.` : "";
+    return who
+      ? `${who}'s office is using the Portal's tools on ${a.activeCount} boats. ${who}'s ${a.plan} plan covers ${a.limit}.${fit}`
+      : `You're using the Portal's tools on ${a.activeCount} boats. Your ${a.plan} plan covers ${a.limit}.${fit}`;
+  }
   const next = `${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
   if (!a.over && a.office?.mode === "slots" && a.office.full) {
     const n = a.limit;
@@ -198,4 +212,17 @@ export function allowanceMessage(a: ListingAllowance, who?: string | null): stri
     return `${who ? `${who}'s plan is` : "Your plan is"} covering ${a.activeCount} active boat${a.activeCount === 1 ? "" : "s"} across ${where} (${split}). ${tail}`;
   }
   return `${who ? `${who} has` : "You have"} ${a.activeCount} active boats. ${tail}`;
+}
+
+/**
+ * Soft mode, paying office admin within (or exactly at) her plan's range:
+ * "3 of 5 boats in use on your Starter plan." (assistant: "… on Kelly's
+ * Starter plan."). Null otherwise — over the range allowanceMessage speaks.
+ */
+export function officeCounterLine(a: ListingAllowance, who?: string | null): string | null {
+  if (!a.office?.soft || a.over || !a.plan) return null;
+  const plan = who ? `${who}'s ${a.plan} plan` : `your ${a.plan} plan`;
+  return a.limit == null
+    ? `${a.activeCount} boat${a.activeCount === 1 ? "" : "s"} in use on ${plan}.`
+    : `${a.activeCount} of ${a.limit} boats in use on ${plan}.`;
 }

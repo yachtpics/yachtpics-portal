@@ -173,6 +173,12 @@ async function main() {
   const la = (listing: string, viewer?: string) => slots.getListingAccess(svc, listing, viewer);
   const live = () => t.office_cover_slots.filter((s) => s.released_at == null);
 
+  check("OFFICE_COVER_ENFORCE_LIMIT is off by default (soft: counter only)", access.OFFICE_COVER_ENFORCE_LIMIT === false && access.officeCoverEnforceOn() === false);
+
+  // ════════ HARD CAP (OFFICE_COVER_ENFORCE_LIMIT = true): the 7169d73 rule ════════
+  console.log("\n— hard cap (switch on) —");
+  access.__setOfficeCoverEnforceForTests(true);
+
   // ── AVAILABLE ──
   {
     const k = await la("S1", "kelly");
@@ -365,6 +371,107 @@ async function main() {
     } finally {
       access.__setOfficeAdminRuleForTests(null);
     }
+  }
+
+  access.__setOfficeCoverEnforceForTests(null);
+
+  // ════════ SOFT (default): counter and message, nothing locked ════════
+  console.log("\n— soft (default) —");
+  slots.__resetCoverSlotsMemoryForTests();
+  t = world();
+  svc = fakeClient(t);
+  {
+    const s = await la("S1", "steve");
+    check("soft: owner on an uncounted boat → unlocked, no notice", s.status === "active" && s.reason === "officeAdminAvailable" && !s.notice && s.soft, `${s.status} ${s.reason}`);
+    const sa = await la("S1", "sasst");
+    check("soft: owner's assistant → unlocked, no notice", sa.status === "active" && !sa.notice);
+    const k = await la("S1", "kelly");
+    check("soft: admin → unlocked, counter line only", k.status === "active" && k.notice?.text === "0 of 5 boats in use on your Starter plan." && !k.notice.upgrade, k.notice?.text);
+    const pub = await la("S1");
+    check("soft: public buyer link of an uncounted boat works", hasAccess(pub.status));
+    const r = await slots.takeCoverSlot(svc, "S1", "steve");
+    check("soft: first paid use by the OWNER records the boat", r.ok && r.state === "taken" && live().length === 1 && live()[0].admin_id === "kelly" && live()[0].taken_by === "steve", r.ok ? r.state : r.error);
+    const again = await slots.takeCoverSlot(svc, "S1", "kelly");
+    check("soft: second use → held, still one", again.ok && again.state === "held" && live().length === 1);
+    await slots.takeCoverSlot(svc, "S2", "sasst");
+    await slots.claimListingTool(svc, "S3", "kelly");
+    const k3 = await la("S4", "kelly");
+    check("soft: 3/5 short form", k3.notice?.text === "3 of 5 boats in use on your Starter plan.", k3.notice?.text);
+    const panel3 = await slots.coverSlotsForAdmin(svc, "kelly");
+    const long3 = panel3 && slots.counterLong({ planName: panel3.planName, limit: panel3.limit, used: panel3.used, names: panel3.ownBoats.map((b) => b.name).concat(panel3.slots.map((x) => x.name)) });
+    check("soft: 3/5 Billing sentence", long3 === "Your Starter plan covers 5 boats. 3 are in use: S1, S2, S3.", String(long3));
+    const a3 = await allowanceLib.listingAllowance(svc, "kelly");
+    check("soft: My Listings counter line 3/5, no reminder", allowanceLib.officeCounterLine(a3) === "3 of 5 boats in use on your Starter plan." && allowanceLib.allowanceMessage(a3) === null, String(allowanceLib.officeCounterLine(a3)));
+    await slots.takeCoverSlot(svc, "S4", "steve");
+    await slots.takeCoverSlot(svc, "S5", "steve");
+    const k5 = await la("S6", "kelly");
+    check("soft: exactly at 5/5 — no upgrade wording", k5.notice?.text === "5 of 5 boats in use on your Starter plan." && !k5.notice.upgrade, k5.notice?.text);
+    const panel5 = await slots.coverSlotsForAdmin(svc, "kelly");
+    check("soft: 5/5 Billing sentence", !!panel5 && slots.counterLong({ planName: panel5.planName, limit: panel5.limit, used: panel5.used, names: [] }) === "5 of 5 boats in use on your Starter plan.");
+    const a5 = await allowanceLib.listingAllowance(svc, "kelly");
+    check("soft: 5/5 no reminder, counter line", allowanceLib.allowanceMessage(a5) === null && allowanceLib.officeCounterLine(a5) === "5 of 5 boats in use on your Starter plan.");
+    const s6 = await la("S6", "steve");
+    check("soft: 6th boat still unlocked for the owner", s6.status === "active" && !s6.notice);
+    const r6 = await slots.takeCoverSlot(svc, "S6", "steve");
+    const r7 = await slots.claimListingTool(svc, "S7", "steve");
+    check("soft: 6th and 7th boats recorded, never refused", r6.ok && r6.state === "taken" && r7.allowed && live().length === 7, String(live().length));
+    const k7 = await la("S8", "kelly");
+    check("soft: over 7/5 → over note with Billing link", k7.notice?.text === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats." && k7.notice.upgrade, k7.notice?.text);
+    const a7 = await allowanceLib.listingAllowance(svc, "kelly");
+    check("soft: reminder over 7/5", a7.over && allowanceLib.allowanceMessage(a7) === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats." && allowanceLib.officeCounterLine(a7) === null, String(allowanceLib.allowanceMessage(a7)));
+    const panel7 = await slots.coverSlotsForAdmin(svc, "kelly");
+    check("soft: Billing over sentence", !!panel7 && slots.counterLong({ planName: panel7.planName, limit: panel7.limit, used: panel7.used, names: [] }) === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats.");
+    for (const id of ["S1", "S6", "S7", "S8", "S13"]) {
+      const v = await la(id, "steve");
+      check(`soft: Steve never locked or prompted on ${id}`, v.status === "active" && !v.notice);
+    }
+    const tool = await slots.claimListingTool(svc, "S9", "steve");
+    check("soft: server gate (Send to Client) allows the owner", tool.allowed && !tool.error);
+    const eff = await access.getEffectiveAccessStatus(svc, "steve");
+    check("soft: broker level covered (no trial nags)", eff.status === "active" && eff.officeAdminCovered === true && eff.officeAdminCover?.adminName === "Kelly Sprigg");
+    const tina = await access.getEffectiveAccessStatus(svc, "tina");
+    check("soft: Tina keeps her own running trial", tina.status === "trial_active" && !tina.officeAdminCovered);
+    // sold → stops counting
+    t.listings.find((l) => l.id === "S1")!.sold_at = new Date().toISOString();
+    const after = await slots.coverSlotsForAdmin(svc, "kelly");
+    check("soft: sold boat stops counting (and is released)", !!after && after.used === 7 && t.office_cover_slots.find((x) => x.listing_id === "S1")?.released_at != null, String(after?.used));
+    const sold = await la("S1", "steve");
+    check("soft: sold boat behaves as without a plan (as decided in 7169d73)", !hasAccess(sold.status));
+    // unchanged for everyone else
+    const p = await la("P1", "kelly");
+    const rr = await la("R2", "rita");
+    const c = await la("C1", "cora");
+    const o = await la("O1", "obi");
+    const tb = await la("T1", "tina");
+    check("soft: own / Reel Service / comped / Office / trial unchanged", p.reason === "own" && rr.reason === "reelService" && c.reason === "own" && o.reason === "office" && tb.reason === "own" && [p, rr, c, o, tb].every((x) => hasAccess(x.status) && !x.notice));
+    const n = await slots.takeCoverSlot(svc, "P1", "paula");
+    check("soft: no record for a boat that needs none", n.ok && n.state === "notNeeded" && !t.office_cover_slots.some((x) => x.listing_id === "P1"));
+    const ordA = await allowanceLib.listingAllowance(svc, "ord");
+    check("soft: ordinary broker's reminder unchanged", ordA.office === null && allowanceLib.allowanceMessage(ordA) === null && allowanceLib.officeCounterLine(ordA) === null);
+    // two paying admins: fewest in use, ties by name
+    await slots.takeCoverSlot(svc, "M1", "sam");
+    await slots.takeCoverSlot(svc, "M2", "sam");
+    await slots.takeCoverSlot(svc, "M3", "sam");
+    const by = ["M1", "M2", "M3"].map((id) => t.office_cover_slots.find((x) => x.listing_id === id)?.admin_id).join(",");
+    check("soft: two paying admins → fewest in use, ties by name (Ann, Bob, Ann)", by === "ann,bob,ann", by);
+    // Elite
+    const e = await la("E1", "eve");
+    check("soft: Elite counter has no limit wording", e.notice?.text === "0 boats in use on your Elite plan.", e.notice?.text);
+  }
+  // table missing → unlocked, no counter, no error
+  {
+    slots.__resetCoverSlotsMemoryForTests();
+    t = world();
+    svc = fakeClient(t, { missing: ["office_cover_slots"] });
+    const s = await slots.getListingAccess(svc, "S9", "steve");
+    const k = await slots.getListingAccess(svc, "S9", "kelly");
+    check("soft, table missing → unlocked for owner and admin, no counter", hasAccess(s.status) && hasAccess(k.status) && !s.notice && !k.notice);
+    const r = await slots.takeCoverSlot(svc, "S9", "steve");
+    check("soft, table missing → recording answers ok", r.ok);
+    const a = await allowanceLib.listingAllowance(svc, "kelly");
+    check("soft, table missing → no counter, no reminder", a.office === null && allowanceLib.officeCounterLine(a) === null && allowanceLib.allowanceMessage(a) === null);
+    check("soft, table missing → no Billing panel", (await slots.coverSlotsForAdmin(svc, "kelly")) === null);
+    slots.__resetCoverSlotsMemoryForTests();
   }
 
   console.warn = origWarn;

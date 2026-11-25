@@ -50,7 +50,7 @@ export default function BillingPage() {
     officeAdminName?: string | null;
     officeName?: string | null;
     /** Paying company admin: "Your plan covers 5 boats. In use (3): …" (officeCoverSlots.ts). */
-    adminSlots?: { text: string } | null;
+    adminSlots?: { text: string; names?: string[]; over?: boolean; soft?: boolean; limit?: number | null; used?: number } | null;
     /** Broker covered by a company admin's plan: which of their boats hold a slot (null = not known). */
     coveredBoats?: string[] | null;
   } | null>(null);
@@ -307,10 +307,20 @@ export default function BillingPage() {
       )}
 
       {/* A paying company admin: which boats her plan covers (office cover slots). */}
+      {/* A paying company admin: the counter of office boats her plan is used on
+          (office cover slots, soft mode). Over the range, the note with the
+          Upgrade button above says so; this panel then just lists the boats. */}
       {cover?.adminSlots?.text && (
         <div className="mb-6 bg-white border border-hairline rounded-card px-5 py-4">
-          <p className="text-sm text-ink-700">{cover.adminSlots.text}</p>
-          <p className="text-xs text-ink-500 mt-1">A boat in your office is counted the first time you use a paid tool on it. A slot frees up when the boat is sold or archived.</p>
+          {!(cover.adminSlots.over && allowance?.message) && <p className="text-sm text-ink-700">{cover.adminSlots.text}</p>}
+          {cover.adminSlots.soft && (cover.adminSlots.over || (cover.adminSlots.limit != null && cover.adminSlots.used === cover.adminSlots.limit)) && (cover.adminSlots.names?.length ?? 0) > 0 && (
+            <p className="text-sm text-ink-700 mt-1">In use: {cover.adminSlots.names!.join(", ")}.</p>
+          )}
+          <p className="text-xs text-ink-500 mt-1">
+            {cover.adminSlots.soft
+              ? "A boat in your office is counted the first time a paid tool is used on it. It stops counting when it is sold or archived. Nothing is ever switched off."
+              : "A boat in your office is counted the first time you use a paid tool on it. A slot frees up when the boat is sold or archived."}
+          </p>
         </div>
       )}
 

@@ -10,20 +10,24 @@ import { useRouter } from "next/navigation";
  * each with Release. Releasing locks that boat again for its owner until the
  * company admin uses a tool on it (or another boat) — no billing change.
  */
-export default function CoverSlotsPanel({ planName, limit, used, ownCount, slots, waiting }: {
+export default function CoverSlotsPanel({ planName, limit, used, ownCount, slots, waiting, soft = false }: {
   planName: string | null;
   limit: number | null;
   used: number;
   ownCount: number;
   slots: { listingId: string; name: string; ownerName: string }[];
   waiting: number;
+  /** Soft mode (counter only, the default): "Office boats in use: 7 of 5 on Starter (over by 2)". */
+  soft?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function release(listingId: string, name: string) {
-    if (!window.confirm(`Release ${name}'s slot? The boat locks for its owner until the company admin uses a tool on it again.`)) return;
+    if (!window.confirm(soft
+      ? `Stop counting ${name}? It is counted again the next time a paid tool is used on it. Nothing is switched off.`
+      : `Release ${name}'s slot? The boat locks for its owner until the company admin uses a tool on it again.`)) return;
     setBusy(listingId);
     setError(null);
     try {
@@ -44,11 +48,18 @@ export default function CoverSlotsPanel({ planName, limit, used, ownCount, slots
 
   return (
     <div className="mt-3 text-xs text-ink-600">
+      {soft ? (
+        <p className="font-medium text-ink-700">
+          Office boats in use: {used}{limit == null ? "" : ` of ${limit}`} on {planName ?? "their plan"}
+          {limit != null && used > limit ? ` (over by ${used - limit})` : ""}
+        </p>
+      ) : (
       <p className="font-medium text-ink-700">
         Office slots: {used} of {limit == null ? "unlimited" : limit} in use on {planName ?? "their plan"}
         {ownCount > 0 ? ` (${ownCount} own)` : ""}
         {waiting > 0 ? ` · ${waiting} office boat${waiting === 1 ? "" : "s"} waiting` : ""}
       </p>
+      )}
       {slots.length > 0 && (
         <ul className="mt-1.5 space-y-1">
           {slots.map((s) => (

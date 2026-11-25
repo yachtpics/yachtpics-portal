@@ -98,7 +98,7 @@ const sections = [
       "Your 14-day free trial starts the first time you sign in (accounts opened before October 24, 2026 keep their 30 days). Choose a plan any time during it and you won't be charged until the trial ends — the Billing page shows the date. In the last two days of the trial, choosing a plan starts billing straight away. Cancel anytime from the Billing page. During the trial we email you three times: a week in, with what your listings did (from their Seller Reports); two days before it ends; and once it has ended.",
       "Reels without a plan: each listing includes two reels. A reel counts once you take it off the page — download it, send it to your phone, save it to your camera roll, or add it to the listing. Making and previewing never count, and taking the same reel twice is still one. Subscribers make as many as they like.",
       "Office plan: a brokerage admin can cover the whole brokerage with one plan, under Brokerage → Billing. While it's active every broker there is covered automatically — no plan of their own needed — and their assistants are included.",
-      "Company admin's plan: if your brokerage admin pays for a plan of their own, it can also cover the Portal tools on your boats while you have no plan — for you and your assistants. It covers as many of the office's boats as that plan's boat range, the admin's own boats first. A boat is counted the first time the admin uses a paid tool on it; a slot frees up when that boat is sold or archived, and moving up a plan covers more boats. Billing shows which of your boats it covers.",
+      "Company admin's plan: if your brokerage admin pays for a plan of their own, it also covers the Portal tools on your boats while you have no plan — for you and your assistants; Billing says whose plan covers you. Nothing is switched off. The plan's boat range is how many boats it is meant for: the Portal counts a boat the first time a paid tool is used on it, shows your admin the count, and stops counting a boat when it is sold or archived.",
     ],
   },
   {
@@ -315,7 +315,7 @@ const quickRef = [
   ["Add or remove an assistant", "Sidebar → Team (or My Profile → Assistants)"],
   ["Choose a plan", "Billing → choose a plan → Choose plan"],
   ["Cover your whole brokerage with one plan", "Sidebar → Brokerage → Billing (brokerage admins)"],
-  ["See which of your boats a company admin's plan covers", "Billing"],
+  ["See whose plan covers your boats", "Billing (a company admin's own plan can cover their office)"],
   ["Change your login email", "My Profile → Change Login Email"],
   ["Manage billing & download receipts", "Billing → Manage billing & invoices"],
   ["See recently photographed boats", "Sidebar → Recently Photographed"],
