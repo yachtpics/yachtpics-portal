@@ -1,5 +1,11 @@
 # Where we are — October 6, 2026
 
+## Billing — card fee ticked by default when Pay online is on (Nov 25, 2026) — PUSHED · typecheck + lint clean · no migration · NOT BROWSER-TESTED
+
+- Editor only (`InvoiceEditor.tsx`). On an unlocked draft with "Offer Pay online" on, the card-fee line is added automatically (on open, when Pay online is switched on, when a client with online pay is picked). Unticking "Add card fee" removes it and it stays off for that editing session; switching Pay online off and on again, or Cancel, ticks it again. `linesAreEmpty` ignores the fee line so the boat's default photography line still auto-adds, and that auto-add keeps the fee last.
+- Charlie's rule: the fee is always on an invoice that offers card payment; paying by Zelle / check / Venmo waives it on payment, so nothing to remove by hand.
+- **Help**: no change — Billing is admin-only.
+
 
 
 ## Billing — boat make/model/year on invoices + "Bill for this boat" (Nov 12, 2026) — MIGRATION `20261112_billing_boat_details.sql` NOT APPLIED · NOT PUSHED · typecheck + lint clean · NOT BROWSER-TESTED · no new dependency
