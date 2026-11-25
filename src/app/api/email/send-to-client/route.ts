@@ -34,7 +34,8 @@ export async function POST(req: NextRequest) {
 
     if (!listing) return NextResponse.json({ error: "Listing not found." }, { status: 404 });
 
-    // Verify caller is the broker, a linked assistant, or a co-broker on this listing
+    // Verify caller is the broker, a linked assistant, an office admin of the
+    // broker's brokerage, an admin, or a co-broker on this listing
     const access = await assertListingAccess(supabaseAdmin, listingId, user.id, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
 

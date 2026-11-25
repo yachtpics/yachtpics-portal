@@ -5,7 +5,8 @@ import { assertListingAccess } from "@/lib/assertListingAccess";
 import { demoGuard, demoRwOwnListing, isWritableDemoUser } from "@/lib/demoServer";
 
 // PATCH /api/listings/[id] — update listing details
-// Allowed for the listing's broker OR a linked assistant
+// Allowed for the listing's broker, a linked assistant, an office admin of the
+// broker's brokerage, or an admin (assertListingAccess)
 export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }

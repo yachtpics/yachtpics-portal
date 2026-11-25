@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isOfficeAdminForBroker } from "@/lib/assertListingAccess";
 
 /**
  * Whose name goes on a listing reel (Nov 1) — SERVER ONLY (service client).
@@ -91,9 +92,8 @@ export async function resolveReelCredit(
     const { data: links } = await svc.from("broker_assistants").select("broker_id").eq("assistant_id", userId);
     const assisted = new Set((links ?? []).map((l) => l.broker_id as string));
     credit = assisted.has(ownerId) ? ownerId : coIds.find((id) => assisted.has(id)) ?? null;
-  } else if (me?.is_brokerage_admin === true && me.brokerage_id != null) {
-    const { data: owner } = await svc.from("profiles").select("brokerage_id").eq("id", ownerId).maybeSingle();
-    if (owner?.brokerage_id != null && owner.brokerage_id === me.brokerage_id) credit = ownerId;
+  } else if (await isOfficeAdminForBroker(svc, userId, ownerId, me ?? null)) {
+    credit = ownerId;
   }
   if (!credit) return null;
 

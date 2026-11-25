@@ -25,8 +25,8 @@ const MAX_IDS = 40;
  * transform links meanwhile.
  *
  * Access: signed in + the listing rule used by the sibling photo routes
- * (owner, linked assistant, co-broker, admin; brokerage admins too — this only
- * makes resized copies, nothing is removed or sent). Only photos that belong
+ * (assertListingAccess: owner, linked assistant, office admin, admin, plus
+ * co-brokers — this only makes resized copies). Only photos that belong
  * to this listing are processed. Generation uses the service-role client.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   { const demo = demoGuard(user, { allowWritableDemo: true }); if (demo) return demo; }
 
   const svc = serviceRoleClient();
-  const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
+  const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true });
   if (access instanceof NextResponse) return access;
   { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
 

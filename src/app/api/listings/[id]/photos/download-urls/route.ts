@@ -96,7 +96,6 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 
     const access = await assertListingAccess(svc, listingId, user.id, {
       includeCoBroker: true,
-      includeBrokerageAdmin: true,
     });
     if (access instanceof NextResponse) {
       if (access.status !== 403) return access;

@@ -40,11 +40,21 @@ const sections = [
       "Every boat lives under exactly one account — the broker who owns it, or your account for new inventory.",
       "You don't need to copy a boat to your account to see it — as brokerage admin you already see every broker's boats.",
       "Avoid uploading the same boat twice (once under a broker and once under your account) — it creates duplicates.",
-      "If you ever need a boat removed, open it and use Delete, which also clears its photos from storage.",
+      "To take an old boat off the active list, open it → Edit → set Status to Sold or Archived. To delete a duplicate completely, ask YachtPics.",
     ],
   },
   {
     num: "05",
+    title: "Working on a Broker's Boat",
+    steps: [
+      "You can change any boat in your brokerage exactly as that broker's assistant can — open it from My Listings.",
+      "Edit its details (name, year, model, price, description, status), add, replace, hide or delete photos and videos, label photos and send it to clients.",
+      "The boat stays the broker's: it keeps their name, and sending uses their plan (or your Office plan).",
+      "Their plan, billing and the Reel Service stay with the broker and their assistant.",
+    ],
+  },
+  {
+    num: "06",
     title: "New / House Inventory",
     steps: [
       "Boats that aren't tied to a specific broker (new builds, trade-ins, house inventory) go under your account.",
@@ -54,7 +64,7 @@ const sections = [
     ],
   },
   {
-    num: "06",
+    num: "07",
     title: "Sharing a Boat with Your Brokers",
     steps: [
       "Open any boat and use the Share with brokerage toggle near the top of the listing.",
@@ -65,7 +75,7 @@ const sections = [
     ],
   },
   {
-    num: "07",
+    num: "08",
     title: "What Your Brokers See",
     steps: [
       "Each broker sees their own boats, plus any inventory you've shared with the brokerage.",
@@ -75,7 +85,7 @@ const sections = [
     ],
   },
   {
-    num: "08",
+    num: "09",
     title: "The Office Plan",
     steps: [
       "One plan covers your whole brokerage location — your brokers and all of their assistants — instead of each broker paying for their own.",
@@ -95,7 +105,8 @@ const quickRef = [
   ["Un-share a boat", "Open the boat → turn off Share with brokerage"],
   ["See which boats are shared", "My Listings → look for the Shared badge"],
   ["See a broker's boats", "My Listings (you see every broker's boats)"],
-  ["Remove a duplicate or old boat", "Open the boat → Delete"],
+  ["Change a broker's boat (details, photos, videos)", "My Listings → open the boat → Edit, or add photos and videos on the page"],
+  ["Retire an old boat", "Open the boat → Edit → Status: Sold or Archived"],
   ["Change your password", "My Profile → Change Password"],
   ["Start or manage the Office plan", "Brokerage → Billing"],
 ];

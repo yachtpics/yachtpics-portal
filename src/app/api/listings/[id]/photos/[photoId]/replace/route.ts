@@ -21,8 +21,8 @@ const BUCKET = "listing-photos";
  * file. The row keeps its id — so display_order, category, visibility and the
  * listing's hero_photo_id (which points at the id) all survive.
  *
- * Access is the photo-delete rule (owner, linked assistant, co-broker, admin;
- * not brokerage admins): replacing removes a file, so it's a destructive action.
+ * Access is the photo-delete rule (assertListingAccess: owner, linked
+ * assistant, office admin of the owner's brokerage, admin, plus co-brokers).
  *
  * The new path is checked, not trusted: it must sit in this listing's folder
  * (`{broker or caller}/{listingId}/{file}`), exist in storage, and not already

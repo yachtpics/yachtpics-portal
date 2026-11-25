@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerClient } from "@/lib/supabase/server";
 import { createClient } from "@supabase/supabase-js";
 import { demoGuard, isWritableDemoUser } from "@/lib/demoServer";
+import { brokerActor, isOfficeAdminForBroker } from "@/lib/assertListingAccess";
 
 export async function POST(req: NextRequest) {
   try {
@@ -40,38 +41,42 @@ export async function POST(req: NextRequest) {
     let effectiveBrokerId: string;
 
     if (filming && role !== "broker") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json({ error: "You don't have access to add listings." }, { status: 403 });
     }
 
-    if (role === "broker") {
-      // Broker always creates under their own account
-      effectiveBrokerId = caller.id;
-    } else if (role === "assistant") {
-      // Assistant must supply a brokerId they are linked to
-      if (!brokerId) {
-        return NextResponse.json({ error: "brokerId is required for assistants." }, { status: 400 });
-      }
-      // Verify the link exists
-      const { data: link } = await serverSupabase
-        .from("broker_assistants")
-        .select("broker_id")
-        .eq("assistant_id", caller.id)
-        .eq("broker_id", brokerId)
-        .single();
-
-      if (!link) {
-        return NextResponse.json({ error: "You are not linked to this broker." }, { status: 403 });
-      }
-      effectiveBrokerId = brokerId;
-    } else {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // Use service role to bypass RLS for the insert
+    // Service role: the access checks and the insert (bypasses RLS).
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
+    const otherBroker = typeof brokerId === "string" && brokerId !== caller.id ? brokerId : null;
+
+    if (role === "broker") {
+      // A broker creates under their own account — unless they are the office
+      // admin of the broker they name (an office admin acts for a colleague
+      // the way that broker's assistant does). The filming account always
+      // creates its own.
+      effectiveBrokerId = caller.id;
+      if (otherBroker && !filming) {
+        if (!(await isOfficeAdminForBroker(supabase, caller.id, otherBroker))) {
+          return NextResponse.json({ error: "You can only add listings for brokers in your own office." }, { status: 403 });
+        }
+        effectiveBrokerId = otherBroker;
+      }
+    } else if (role === "assistant") {
+      // Assistant must supply a brokerId they work for (linked, or — when the
+      // assistant is also an office admin — a broker in their office).
+      if (!brokerId) {
+        return NextResponse.json({ error: "brokerId is required for assistants." }, { status: 400 });
+      }
+      const actor = await brokerActor(supabase, caller.id, brokerId);
+      if (actor !== "assistant" && actor !== "office_admin") {
+        return NextResponse.json({ error: "You are not linked to this broker." }, { status: 403 });
+      }
+      effectiveBrokerId = brokerId;
+    } else {
+      return NextResponse.json({ error: "You don't have access to add listings." }, { status: 403 });
+    }
 
     const { data: listing, error: listingError } = await supabase
       .from("listings")

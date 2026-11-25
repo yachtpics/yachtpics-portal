@@ -36,7 +36,6 @@ export async function POST(
     // caller's own session read it.
     const access = await assertListingAccess(supabase, listingId, user.id, {
       includeCoBroker: true,
-      includeBrokerageAdmin: true,
     });
     if (access instanceof NextResponse) {
       if (access.status !== 403) return access;

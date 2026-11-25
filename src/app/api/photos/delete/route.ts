@@ -23,7 +23,7 @@ import { demoGuard, demoRwOwnListing } from "@/lib/demoServer";
  *    this listing?" is a lookup, not an archaeology dig.
  *
  * Access mirrors the video delete: the listing's own rule (owner, assistants,
- * co-brokers, admin); gallery photos are admin-only.
+ * office admins, co-brokers, admin); gallery photos are admin-only.
  */
 export async function POST(req: NextRequest) {
   try {

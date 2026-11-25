@@ -19,7 +19,7 @@ export async function GET(req: Request) {
   const { data: { user } } = await (await createClient()).auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const credit = await resolveReelCredit(serviceClient(), listingId, user.id, url.searchParams.get("brokerId"));
-  if (!credit) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!credit) return NextResponse.json({ error: "You don't have access to this listing." }, { status: 403 });
   return NextResponse.json(credit, { headers: { "Cache-Control": "no-store" } });
 }
 

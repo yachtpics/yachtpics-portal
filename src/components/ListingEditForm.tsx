@@ -57,7 +57,6 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
   async function uploadDeckPlan(file: File | null) {
     if (!file) return;
     setDeckPlanBusy(true);
-    setError("");
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not signed in.");
@@ -106,8 +105,9 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // No broker_id filter — access is enforced by the PATCH API for both
-      // brokers and linked assistants. RLS allows reads by authenticated users.
+      // No broker_id filter — RLS decides what this user can read, and the
+      // PATCH API decides who may save (broker, linked assistant, office admin
+      // of the broker's brokerage, admin).
       const { data } = await supabase
         .from("listings")
         .select("vessel_name, vessel_type, year, length_ft, make, model, asking_price, location, description, status, beam_ft, draft_ft, staterooms, heads, engines, engine_hours, fuel_type, cruising_speed_kn, max_speed_kn, hull_material, tour_url, youtube_url, deck_plan_path")
@@ -156,10 +156,9 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setError("");
 
-    // Route through the API so assistants and brokers both go through the same
-    // server-side access check (uses service role, bypasses RLS restrictions).
+    // Route through the API so brokers, assistants and office admins all go
+    // through the same server-side access check (assertListingAccess).
     const res = await fetch(`/api/listings/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -192,8 +191,13 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
 
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
-      setError(body.error ?? "Failed to save changes.");
+      // The server answers a refused save with a plain sentence (e.g. "Only
+      // Steve Sprigg, their assistant or their office admin can change this
+      // listing."). Shown at the top and scrolled to — the Save button is at
+      // the bottom of a long form — and it stays until dismissed.
+      setError(typeof body?.error === "string" && body.error ? body.error : "Couldn't save your changes. Please try again.");
       setSaving(false);
+      if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
 
@@ -216,7 +220,17 @@ export default function ListingEditForm({ basePath = "/dashboard/listings" }: { 
       </div>
 
       {error && (
-        <div className="mb-6 px-4 py-3 rounded-card border text-sm bg-danger-50 border-danger-200 text-danger-600">{error}</div>
+        <div role="alert" className="mb-6 px-4 py-3 rounded-card border text-sm bg-danger-50 border-danger-200 text-danger-600 flex items-start gap-3">
+          <p className="flex-1">{error}</p>
+          <button
+            type="button"
+            onClick={() => setError("")}
+            aria-label="Dismiss"
+            className="shrink-0 -mr-1 px-1 text-danger-600 hover:text-danger-700 leading-none text-lg"
+          >
+            &times;
+          </button>
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-5">

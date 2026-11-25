@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { trialDaysRemaining } from "@/lib/subscriptionAccess";
 import { getEffectiveAccessStatus } from "@/lib/brokerAccess";
+import { canActForBroker } from "@/lib/assertListingAccess";
 
 export async function GET(req: NextRequest) {
   const supabase = await createClient();
@@ -12,8 +13,9 @@ export async function GET(req: NextRequest) {
   // Optional: caller can supply a brokerId (the listing page, when the viewer
   // isn't the listing's own broker). Allowed callers — the same people who can
   // already open that broker's listings: the broker, a linked assistant, a
-  // portal admin, or a brokerage admin of the broker's own brokerage (mirrors
-  // the brokerage clause in assertListingAccess / RLS). Read-only plan status.
+  // portal admin, or an office admin of the broker's own brokerage
+  // (canActForBroker — the same rule as assertListingAccess). Read-only plan
+  // status; nothing here manages the broker's subscription.
   const url = new URL(req.url);
   const requestedBrokerId = url.searchParams.get("brokerId");
 
@@ -29,32 +31,10 @@ export async function GET(req: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
-    const { data: link } = await supabaseAdmin
-      .from("broker_assistants")
-      .select("broker_id")
-      .eq("broker_id", requestedBrokerId)
-      .eq("assistant_id", user.id)
-      .maybeSingle();
-
-    let allowed = !!link;
-    if (!allowed) {
-      const { data: me } = await supabaseAdmin
-        .from("profiles")
-        .select("role, is_brokerage_admin, brokerage_id")
-        .eq("id", user.id)
-        .maybeSingle();
-      if (me?.role === "admin") {
-        allowed = true;
-      } else if (me?.is_brokerage_admin === true && me.brokerage_id != null) {
-        const { data: owner } = await supabaseAdmin
-          .from("profiles")
-          .select("brokerage_id")
-          .eq("id", requestedBrokerId)
-          .maybeSingle();
-        allowed = owner?.brokerage_id != null && owner.brokerage_id === me.brokerage_id;
-      }
-    }
-    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // Linked assistant, portal admin, or office admin of the broker's
+    // brokerage — the shared rule in src/lib/assertListingAccess.ts.
+    const allowed = await canActForBroker(supabaseAdmin, user.id, requestedBrokerId);
+    if (!allowed) return NextResponse.json({ error: "You don't have access to this broker's plan." }, { status: 403 });
     brokerId = requestedBrokerId;
     const { data: bp } = await supabaseAdmin
       .from("profiles")

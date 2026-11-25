@@ -7,6 +7,7 @@ import { orderPhotos } from "@/lib/photoOrder";
 import { websiteEntitlement } from "@/lib/websiteAddon";
 import { signDerivatives } from "@/lib/photoDerivatives";
 import { OG_TRANSFORM, FULL_TRANSFORM, signOneTransformed, signPhotosAtSize } from "@/lib/publicPhotoUrls";
+import { isOfficeAdminForBroker } from "@/lib/assertListingAccess";
 import {
   SITE_COLUMNS,
   SITE_STYLE_COLUMNS,
@@ -102,13 +103,10 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
     if (!requested || requested === user.id) {
       return { ok: true, userId: user.id, role: "broker", brokerId: user.id, brokers: [], demo };
     }
-    // A brokerage admin may act for a broker in their own brokerage (same
-    // rule as assistant_has_access in RLS).
-    if (me?.is_brokerage_admin === true && me.brokerage_id) {
-      const { data: other } = await svc.from("profiles").select("brokerage_id").eq("id", requested).maybeSingle();
-      if (other?.brokerage_id && other.brokerage_id === me.brokerage_id) {
-        return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [], demo };
-      }
+    // An office admin may act for a broker in their own brokerage (the shared
+    // rule — src/lib/assertListingAccess.ts, same as RLS).
+    if (await isOfficeAdminForBroker(svc, user.id, requested, me ?? null)) {
+      return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [], demo };
     }
     // Also allow when the broker has linked this broker as an assistant.
     const { data: link } = await svc
@@ -118,10 +116,10 @@ export async function resolveActingBroker(requestedBrokerId: string | null | und
       .eq("assistant_id", user.id)
       .maybeSingle();
     if (link) return { ok: true, userId: user.id, role: "broker", brokerId: requested, brokers: [], demo };
-    return { ok: false, status: 403, error: "Forbidden" };
+    return { ok: false, status: 403, error: "You can only work on the website of a broker in your own office." };
   }
 
-  return { ok: false, status: 403, error: "Forbidden" };
+  return { ok: false, status: 403, error: "You don't have access to this website." };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

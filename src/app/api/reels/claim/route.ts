@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
  *
  * Access is the same set of people who can use the Reel page's take-actions:
  * the broker, a linked assistant, an admin, a co-broker (Send to my phone
- * already allows them) and a brokerage admin (RLS lets them open the page).
+ * already allows them) and an office admin of the owner's brokerage.
  */
 
 const RENDER_ID_RE = /^[A-Za-z0-9-]{8,64}$/;
@@ -41,7 +41,7 @@ async function authorise(listingId: string) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   const svc = service();
-  const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
+  const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true });
   if (access instanceof NextResponse) return access;
   // The filming account (writable demo) may claim on its OWN listings only.
   const demoRw = isWritableDemoUser(user);

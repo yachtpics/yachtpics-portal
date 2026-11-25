@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
 
   const svc = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
   if (listingId) {
-    const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true, includeBrokerageAdmin: true });
+    const access = await assertListingAccess(svc, listingId, user.id, { includeCoBroker: true });
     if (access instanceof NextResponse) return access;
     { const own = demoRwOwnListing(user, access.brokerId); if (own) return own; }
   } else {

@@ -20,8 +20,8 @@ export const dynamic = "force-dynamic";
  *   DELETE ?show=<key> → remove it.
  *
  * Writes: listing editors — the owner, their assistants, a brokerage admin of
- * the owner's brokerage, and portal admins (assertListingAccess with
- * includeBrokerageAdmin). The show must exist, be active and not be over.
+ * the owner's brokerage, and portal admins (assertListingAccess). The show
+ * must exist, be active and not be over.
  */
 
 function service(): SupabaseClient {
@@ -42,7 +42,7 @@ async function signedInUser() {
 }
 
 async function editorCheck(svc: SupabaseClient, listingId: string, userId: string): Promise<NextResponse | null> {
-  const access = await assertListingAccess(svc, listingId, userId, { includeBrokerageAdmin: true });
+  const access = await assertListingAccess(svc, listingId, userId);
   return access instanceof NextResponse ? access : null;
 }
 

@@ -118,6 +118,7 @@ const sections = [
     title: "Sharing Within Your Brokerage",
     steps: [
       "If you're a brokerage admin, every listing has a 'Share with brokerage' button near the top.",
+      "Your brokerage admin can change your listings the same way your assistant can: edit the details, add or remove photos and videos, and send them to clients. Your plan, billing and the Reel Service stay with you and your assistant.",
       "Turn it on and that boat becomes visible to every broker in your brokerage — handy for co-brokering, or covering while someone's out.",
       "Once shared the button reads 'Shared with brokerage'. Click it again to stop sharing.",
       "Sharing changes nothing else: your client slideshow, sending, and downloads all work exactly the same.",
@@ -306,6 +307,7 @@ const quickRef = [
   ["See buyer inquiries", "My Listings → listing → Inquiries section"],
   ["Share a boat with your whole brokerage", "My Listings → listing → Share with brokerage"],
   ["See everyone on your brokerage account", "Sidebar → Brokerage"],
+  ["Who can change your listings", "You, your assistants and your brokerage admin"],
   ["Assistants: see all your brokers", "Sidebar → My Brokers"],
   ["Browse tips & tricks", "Sidebar → Tips"],
   ["Upload your logo", "My Profile → Company Logo"],

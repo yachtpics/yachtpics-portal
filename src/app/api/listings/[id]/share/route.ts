@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
 import { demoGuard } from "@/lib/demoServer";
+import { isOfficeAdminOf } from "@/lib/assertListingAccess";
 
 export const runtime = "nodejs";
 
@@ -53,11 +54,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     .single();
 
   const isYachtPicsAdmin = me.role === "admin";
-  const isBrokerageAdminForThisBoat =
-    me.is_brokerage_admin === true &&
-    me.brokerage_id != null &&
-    owner?.brokerage_id != null &&
-    owner.brokerage_id === me.brokerage_id;
+  const isBrokerageAdminForThisBoat = isOfficeAdminOf(me, owner?.brokerage_id ?? null);
 
   if (!isYachtPicsAdmin && !isBrokerageAdminForThisBoat) {
     return NextResponse.json({ error: "Not authorized to share this listing" }, { status: 403 });
