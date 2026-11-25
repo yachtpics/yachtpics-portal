@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
     if (!["active", "trialing", "past_due"].includes(sub.status)) {
       return NextResponse.json({ error: "Your plan isn't active — choose one to subscribe.", needsCheckout: true }, { status: 409 });
     }
-    if (sub.metadata?.brokerage_id) return NextResponse.json({ error: "Office plans are changed from the Brokerage page." }, { status: 400 });
+    if (sub.metadata?.brokerage_id) return NextResponse.json({ error: "Team and Office plans are changed from Brokerage → Billing." }, { status: 400 });
     const planItem = planItemOf(sub);
     if (!planItem) return NextResponse.json({ error: "We couldn't find your plan on the subscription." }, { status: 500 });
     const websiteItem = websiteItemOf(sub);

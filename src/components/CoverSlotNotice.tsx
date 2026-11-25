@@ -8,10 +8,11 @@ import type { ListingSlotInfo } from "@/lib/useCoverSlot";
  * The office cover slots line on a listing (src/lib/officeCoverSlots.ts).
  * Soft mode (default): only the paying admin gets a line — "3 of 5 boats in
  * use on your Starter plan." or, over the range, "You're using the Portal's
- * tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats."
+ * tools on 7 boats. Your Starter plan covers 5. Team covers every boat for up
+ * to 4 brokers." (Office for 5+ brokers; Nov 25 2026)
  * with a Billing link. Nobody else sees anything. Hard cap only:
  *   subtle — company admin, boat AVAILABLE: "Your Starter plan covers 5 boats. 3 are in use. Using a tool on this boat will use one."
- *   full   — company admin, FULL: "…and all 5 are in use: …. Growth covers 6–10 boats." + Billing link
+ *   full   — company admin, FULL: "…and all 5 are in use: …. Team covers every boat for up to 4 brokers." + Billing link
  *   locked — anyone else on a boat without a slot: "Kelly Sprigg's plan covers 5 boats at SYC Yachts and this isn't one of them yet. …"
  * Plus any refusal from the cover-slot route, which stays until × (owner's rule).
  */

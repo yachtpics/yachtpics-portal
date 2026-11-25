@@ -579,7 +579,7 @@ export async function handleReelServiceDeleted(service: SupabaseClient, subscrip
   if (plan.kind === "own") {
     body = `${first} Your Portal plan continues at $${plan.price}/mo.`;
   } else if (plan.kind === "office") {
-    body = `${first} Your Portal access continues through your office plan.`;
+    body = `${first} Your Portal access continues through your brokerage&rsquo;s plan.`;
   } else if (plan.kind === "officeAdmin" && !officeCoverEnforceOn()) {
     // Office cover slots, soft mode (default): the admin's plan simply covers them.
     body = `${first} Your Portal access continues through ${esc(plan.adminName)}&rsquo;s plan.`;

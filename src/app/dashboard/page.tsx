@@ -377,7 +377,7 @@ export default async function DashboardPage() {
           </div>
           <p className="text-3xl font-light text-ink-900 capitalize">
             {effectiveAccess.officeCovered
-              ? "Office plan"
+              ? "Your brokerage’s plan"
               : effectiveAccess.officeAdminCover
                 ? `${effectiveAccess.officeAdminCover.adminName}’s plan`
                 : planLabel(subscription ?? null)}

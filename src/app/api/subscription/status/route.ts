@@ -102,19 +102,22 @@ export async function GET(req: NextRequest) {
   // soft (counter only, the default): `text` is the counter sentence; `over`
   // = past the plan's range (Billing then shows the over note with its
   // Upgrade button instead, and the boats as `names`).
-  let adminSlots: { text: string; limit: number | null; used: number; planName: string | null; names: string[]; over: boolean; soft: boolean } | null = null;
+  let adminSlots: { text: string; limit: number | null; used: number; planName: string | null; names: string[]; over: boolean; soft: boolean; officeNote: boolean } | null = null;
   let coveredBoats: string[] | null = null;
   if (!listingId && brokerId === user.id) {
     const mine = await coverSlotsForAdmin(supabaseAdmin, user.id).catch(() => null);
     if (mine) {
       const names = mine.ownBoats.map((b) => b.name).concat(mine.slots.map((x) => x.name));
       const soft = !officeCoverEnforceOn();
-      const p = { planName: mine.planName, limit: mine.limit, used: mine.used };
+      // Covering other brokers' boats → the over note names Team / Office.
+      const p = { planName: mine.planName, limit: mine.limit, used: mine.used, officeBrokers: mine.slots.length > 0 ? mine.officeBrokers : null };
       adminSlots = {
         text: soft ? counterLong({ ...p, names }) : adminSlotsSentence(mine),
         limit: mine.limit, used: mine.used, planName: mine.planName, names,
         over: soft && !!overMessage(p),
         soft,
+        // The over note names Team / Office (Billing links to Brokerage → Billing).
+        officeNote: soft && !!overMessage(p) && p.officeBrokers != null,
       };
     }
     // Soft mode: no list — "Your Portal tools are covered by Kelly Sprigg's plan (SYC Yachts)."

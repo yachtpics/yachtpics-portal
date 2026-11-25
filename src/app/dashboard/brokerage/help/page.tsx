@@ -49,8 +49,8 @@ const sections = [
     steps: [
       "You can change any boat in your brokerage exactly as that broker's assistant can — open it from My Listings.",
       "Edit its details (name, year, model, price, description, status), add, replace, hide or delete photos and videos, label photos and send it to clients.",
-      "The boat stays the broker's: it keeps their name, and sending uses their plan, your Office plan, or your own plan (see below).",
-      "Your own plan covers your brokers' boats: if you pay for a plan of your own, the Portal tools are on for the boats of every broker here with no plan of their own. Your plan's boat range is how many boats it is meant for. The Portal counts a boat — your own active boats first — the first time a paid tool is used on it, by you or anyone working on it, like sending it to a client or sharing its slideshow, and shows the count on Billing, My Listings and the boat's page. Over the range you see a note suggesting the plan that fits; nothing is switched off. A boat stops counting when it is sold or archived.",
+      "The boat stays the broker's: it keeps their name, and sending uses their plan, your Team or Office plan, or your own plan (see below).",
+      "Your own plan covers your brokers' boats: if you pay for a plan of your own, the Portal tools are on for the boats of every broker here with no plan of their own. Your plan's boat range is how many boats it is meant for. The Portal counts a boat — your own active boats first — the first time a paid tool is used on it, by you or anyone working on it, like sending it to a client or sharing its slideshow, and shows the count on Billing, My Listings and the boat's page. Over the range you see a note pointing to Team or Office, which cover every boat in the office; nothing is switched off. A boat stops counting when it is sold or archived.",
       "Their plan, billing and the Reel Service stay with the broker and their assistant.",
     ],
   },
@@ -87,12 +87,14 @@ const sections = [
   },
   {
     num: "09",
-    title: "The Office Plan",
+    title: "Team and Office Plans",
     steps: [
-      "One plan covers your whole brokerage location — your brokers and all of their assistants — instead of each broker paying for their own.",
-      "Billing lives under Brokerage → Billing. Start the Office plan there; the same page shows its status, the renewal date, and how many brokers it covers.",
+      "One plan covers your whole brokerage location — your brokers, all of their assistants and every boat — instead of each broker paying for their own.",
+      "Two sizes, both per location: Team is $129 a month for up to 4 brokers; Office is $249 a month for up to 8.",
+      "Billing lives under Brokerage → Billing. Both plans are shown there, with the one that fits your office marked; start it from its button. The same page then shows the plan's status, the renewal date, and how many brokers you have against the plan.",
       "While it's active every broker in your brokerage is covered automatically — no plan of their own needed — and your shared inventory is included.",
-      "The plan covers a set number of brokers per location. If you go over, the page says so — reach out to YachtPics to add seats.",
+      "Growing past 4 brokers on Team: the page says so and offers Move to Office. If your office fits Team again, you can switch back to Team from the same page.",
+      "Office covers up to 8 brokers per location. If you go over, the page says so — reach out to YachtPics to add seats.",
     ],
   },
 ];
@@ -109,8 +111,8 @@ const quickRef = [
   ["Change a broker's boat (details, photos, videos)", "My Listings → open the boat → Edit, or add photos and videos on the page"],
   ["Retire an old boat", "Open the boat → Edit → Status: Sold or Archived"],
   ["Change your password", "My Profile → Change Password"],
-  ["Start or manage the Office plan", "Brokerage → Billing"],
-  ["Cover your brokers' boats with your own plan", "Billing → choose a plan (the Portal counts the boats in use; over the range is a note only)"],
+  ["Start or manage the Team or Office plan", "Brokerage → Billing"],
+  ["Cover your brokers' boats with your own plan", "Billing → choose a plan (the Portal counts the boats in use; over the range is a note only). For the whole office, Team or Office under Brokerage → Billing"],
 ];
 
 export default async function BrokerageHelpPage() {

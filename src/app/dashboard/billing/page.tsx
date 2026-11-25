@@ -38,7 +38,7 @@ export default function BillingPage() {
   const [sub, setSub] = useState<Subscription | null>(null);
   const [website, setWebsite] = useState<WebsiteState>(null);
   /** Listing-range nudge (src/lib/listingAllowance.ts) — never blocks anything. */
-  const [allowance, setAllowance] = useState<{ over: boolean; message: string | null; suggestedPlan: { id: string; name: string; price: number; priceId: string } | null } | null>(null);
+  const [allowance, setAllowance] = useState<{ over: boolean; message: string | null; suggestedPlan: { id: string; name: string; price: number; priceId: string } | null; officeNote?: boolean } | null>(null);
   /**
    * Effective access from /api/subscription/status (own plan, Office plan, a
    * paying office admin's plan, Reel Service). A covered broker isn't told
@@ -50,7 +50,7 @@ export default function BillingPage() {
     officeAdminName?: string | null;
     officeName?: string | null;
     /** Paying company admin: "Your plan covers 5 boats. In use (3): …" (officeCoverSlots.ts). */
-    adminSlots?: { text: string; names?: string[]; over?: boolean; soft?: boolean; limit?: number | null; used?: number } | null;
+    adminSlots?: { text: string; names?: string[]; over?: boolean; soft?: boolean; limit?: number | null; used?: number; officeNote?: boolean } | null;
     /** Broker covered by a company admin's plan: which of their boats hold a slot (null = not known). */
     coveredBoats?: string[] | null;
   } | null>(null);
@@ -284,7 +284,15 @@ export default function BillingPage() {
       {/* Over the plan's listing range — a calm nudge, nothing is blocked. */}
       {allowance?.message && allowance.suggestedPlan && (
         <div className="mb-6 bg-white border border-accent-200 rounded-card px-5 py-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-sm text-ink-700">{allowance.message}</p>
+          <p className="text-sm text-ink-700">
+            {allowance.message}
+            {allowance.officeNote && (
+              <>
+                {" "}
+                <Link href="/dashboard/brokerage/billing" className="font-medium underline underline-offset-2 hover:text-ink-900">See Team and Office plans</Link>
+              </>
+            )}
+          </p>
           {(() => {
             const target = PLANS.find((p) => p.priceId === allowance.suggestedPlan!.priceId);
             if (!target) return null;
@@ -312,7 +320,17 @@ export default function BillingPage() {
           Upgrade button above says so; this panel then just lists the boats. */}
       {cover?.adminSlots?.text && (
         <div className="mb-6 bg-white border border-hairline rounded-card px-5 py-4">
-          {!(cover.adminSlots.over && allowance?.message) && <p className="text-sm text-ink-700">{cover.adminSlots.text}</p>}
+          {!(cover.adminSlots.over && allowance?.message) && (
+            <p className="text-sm text-ink-700">
+              {cover.adminSlots.text}
+              {cover.adminSlots.officeNote && (
+                <>
+                  {" "}
+                  <Link href="/dashboard/brokerage/billing" className="font-medium underline underline-offset-2 hover:text-ink-900">See Team and Office plans</Link>
+                </>
+              )}
+            </p>
+          )}
           {cover.adminSlots.soft && (cover.adminSlots.over || (cover.adminSlots.limit != null && cover.adminSlots.used === cover.adminSlots.limit)) && (cover.adminSlots.names?.length ?? 0) > 0 && (
             <p className="text-sm text-ink-700 mt-1">In use: {cover.adminSlots.names!.join(", ")}.</p>
           )}

@@ -4,11 +4,11 @@ import { brokerStripePlan, readSiteBilling } from "@/lib/websiteAddon";
 import { isMissingSchema } from "@/lib/brokerSite";
 import { getAccessStatus, type SubRow } from "@/lib/subscriptionAccess";
 import { isPayingPlan, officeAdminRuleOn, officePlanActive } from "@/lib/brokerAccess";
-import { coverSlotsForAdmin, coverSlotsTableMissing } from "@/lib/officeCoverSlots";
+import { coverSlotsForAdmin, coverSlotsTableMissing, officePlanSentence } from "@/lib/officeCoverSlots";
 import { officeCoverEnforceOn } from "@/lib/brokerAccess";
 
 /**
- * Listing ranges per plan (Starter 1–5, Growth 6–10, Pro 11–20, Elite 21+;
+ * Listing ranges per plan (Starter 1–5, Growth 6–10, Pro 11–20, Elite unlimited;
  * PLANS[].minListings / maxListings in src/lib/plans.ts).
  *
  * Today this is a NUDGE only (Oct 26): the Billing page, My Listings and the
@@ -66,6 +66,8 @@ export type ListingAllowance = {
     soft: boolean;
     brokersCount: number;
     coveredBrokers: number;
+    /** Brokers (role broker) in the office — picks Team or Office for the note (Nov 25 2026). */
+    officeBrokers: number;
   } | null;
   over: boolean;
   /** The cheapest plan whose range covers activeCount. */
@@ -74,10 +76,22 @@ export type ListingAllowance = {
   suggestedTotalMonthly: number | null;
   /** The broker has the $50 website line on their plan (kept when upgrading). */
   hasWebsite: boolean;
+  /**
+   * The note points at Team / Office (the plan is covering other brokers'
+   * boats) — the Billing page then links to Brokerage → Billing.
+   */
+  officeNote: boolean;
 };
 
-function rangeLabel(p: { minListings: number; maxListings: number | null }): string {
-  return p.maxListings == null ? `${p.minListings}+ boats` : `${p.minListings}–${p.maxListings} boats`;
+function rangeLabel(p: { name: string; minListings: number; maxListings: number | null }): string {
+  if (p.maxListings == null) return planIncludesWebsite(p.name) ? "unlimited listings, with your website included" : "unlimited listings";
+  return `${p.minListings}–${p.maxListings} boats`;
+}
+
+/** The plan is covering boats of OTHER brokers in the office (the office-cover case). */
+function coversOthers(a: ListingAllowance): boolean {
+  if (!a.office) return false;
+  return a.office.mode === "slots" ? a.office.slotsInUse > 0 || a.office.full : a.office.coveredBrokers > 0;
 }
 
 /** Active, unsold listings of a broker (works before listings.sold_at exists). */
@@ -106,7 +120,7 @@ async function countActiveMany(svc: SupabaseClient, brokerIds: string[]): Promis
 export async function officeCoverageForAdmin(
   svc: SupabaseClient,
   adminId: string
-): Promise<{ name: string | null; brokersCount: number; coveredBrokerIds: string[] } | null> {
+): Promise<{ name: string | null; brokersCount: number; coveredBrokerIds: string[]; officeBrokers: number } | null> {
   if (!officeAdminRuleOn()) return null;
   const { data: me } = await svc.from("profiles").select("brokerage_id, is_brokerage_admin").eq("id", adminId).maybeSingle();
   if (!me?.is_brokerage_admin || !me.brokerage_id) return null;
@@ -127,7 +141,7 @@ export async function officeCoverageForAdmin(
     coveredBrokerIds = otherIds.filter((id) => !ownPlan.has(id));
   }
   const brokersCount = await countActiveMany(svc, coveredBrokerIds);
-  return { name: (office as { name?: string | null } | null)?.name ?? null, brokersCount, coveredBrokerIds };
+  return { name: (office as { name?: string | null } | null)?.name ?? null, brokersCount, coveredBrokerIds, officeBrokers: ((members ?? []) as unknown[]).length };
 }
 
 export async function listingAllowance(svc: SupabaseClient, brokerId: string): Promise<ListingAllowance> {
@@ -151,6 +165,7 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
       soft,
       brokersCount: 0,
       coveredBrokers: 0,
+      officeBrokers: slots.officeBrokers,
     };
   } else if (!soft && coverSlotsTableMissing()) {
     // (Soft mode, table missing: no counter at all — the boats are simply unlocked.)
@@ -159,7 +174,7 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
     if (legacy && legacy.coveredBrokerIds.length > 0) {
       office = {
         name: legacy.name, mode: "all", slotsInUse: 0, slotBoats: [], ownBoats: [], waiting: 0, full: false, soft: false,
-        brokersCount: legacy.brokersCount, coveredBrokers: legacy.coveredBrokerIds.length,
+        brokersCount: legacy.brokersCount, coveredBrokers: legacy.coveredBrokerIds.length, officeBrokers: legacy.officeBrokers,
       };
     }
   }
@@ -178,7 +193,9 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
   const suggestedPlan = fit ? { id: fit.id, name: fit.name, price: fit.price, priceId: fit.priceId, range: rangeLabel(fit) } : null;
   const suggestedTotalMonthly = fit ? (hasWebsite || planIncludesWebsite(fit.name) ? planPriceWithWebsite(fit) : fit.price) : null;
 
-  return { plan: own?.name ?? null, limit, activeCount, ownCount, office, over, suggestedPlan, suggestedTotalMonthly, hasWebsite };
+  const result: ListingAllowance = { plan: own?.name ?? null, limit, activeCount, ownCount, office, over, suggestedPlan, suggestedTotalMonthly, hasWebsite, officeNote: false };
+  result.officeNote = !!allowanceMessage(result) && coversOthers(result);
+  return result;
 }
 
 /**
@@ -190,14 +207,16 @@ export async function listingAllowance(svc: SupabaseClient, brokerId: string): P
 export function allowanceMessage(a: ListingAllowance, who?: string | null): string | null {
   if (!a.plan || a.limit == null || !a.suggestedPlan || a.suggestedTotalMonthly == null) return null;
   // Soft mode, paying office admin: the over note is the only upgrade wording.
+  // Covering other brokers' boats → name Team / Office (no price), both modes.
+  const office = coversOthers(a) && a.office ? officePlanSentence(a.office.officeBrokers) : null;
   if (a.office?.soft) {
     if (!a.over) return null;
-    const fit = a.suggestedPlan.name !== a.plan ? ` ${a.suggestedPlan.name} covers ${a.suggestedPlan.range}.` : "";
+    const fit = office ? ` ${office}` : a.suggestedPlan.name !== a.plan ? ` ${a.suggestedPlan.name} covers ${a.suggestedPlan.range}.` : "";
     return who
       ? `${who}'s office is using the Portal's tools on ${a.activeCount} boats. ${who}'s ${a.plan} plan covers ${a.limit}.${fit}`
       : `You're using the Portal's tools on ${a.activeCount} boats. Your ${a.plan} plan covers ${a.limit}.${fit}`;
   }
-  const next = `${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
+  const next = office ?? `${a.suggestedPlan.name} covers ${a.suggestedPlan.range} — $${a.suggestedTotalMonthly}/mo.`;
   if (!a.over && a.office?.mode === "slots" && a.office.full) {
     const n = a.limit;
     return `${who ? `${who}'s` : "Your"} ${a.plan} plan covers ${n} boat${n === 1 ? "" : "s"}, and ${n === 1 ? "it is" : `all ${n} are`} in use. ${next}`;

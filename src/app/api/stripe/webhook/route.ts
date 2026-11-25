@@ -12,6 +12,7 @@ import {
 } from "@/lib/reelServiceStripe";
 import { planItemOf, syncWebsiteFromPlanSubscription } from "@/lib/websiteAddon";
 import { BILLING_INVOICE_KIND, handleBillingCheckoutEvent } from "@/lib/books/onlinePayments";
+import { brokeragePlanForPriceId } from "@/lib/plans";
 
 export const runtime = "nodejs";
 // A paid Reel Service checkout plans the boat's month right here.
@@ -116,7 +117,14 @@ export async function POST(req: NextRequest) {
       const brokerageId = subscription.metadata?.brokerage_id;
       if (brokerageId) {
         const { data: b } = await supabase.from("brokerages").select("name").eq("id", brokerageId).maybeSingle();
-        who = b?.name ? `${b.name} (office plan)` : "A brokerage (office plan)";
+        // Name the plan (Team / Office) from the items already in hand — no extra Stripe call.
+        const items = subscription.items?.data ?? [];
+        let planLabel = "office plan";
+        for (let i = 0; i < items.length; i++) {
+          const bp = brokeragePlanForPriceId(items[i].price?.id);
+          if (bp) { planLabel = `${bp.name} plan`; break; }
+        }
+        who = b?.name ? `${b.name} (${planLabel})` : `A brokerage (${planLabel})`;
       } else {
         let userId = subscription.metadata?.supabase_user_id;
         if (!userId && subscription.customer) {
@@ -164,6 +172,7 @@ export async function POST(req: NextRequest) {
 
       await fetch("https://api.resend.com/emails", {
         method: "POST",
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
           "Content-Type": "application/json",

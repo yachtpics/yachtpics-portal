@@ -223,7 +223,7 @@ async function main() {
     t.listings.push({ id: "K2", broker_id: "kelly", status: "active", sold_at: null, vessel_name: "Kestrel" });
     const k = await la("S4", "kelly");
     check("own boats count first: 2 own + 3 slots = 5 → FULL for Kelly", k.reason === "officeAdminFull" && !hasAccess(k.status) && !k.canTakeSlot, k.reason);
-    check("  FULL copy", k.notice?.tone === "full" && k.notice.upgrade && k.notice.text === "Your Starter plan covers 5 boats, and all 5 are in use: Everglade, Kestrel, S1, S2, S3. Growth covers 6–10 boats.", k.notice?.text);
+    check("  FULL copy", k.notice?.tone === "full" && k.notice.upgrade && k.notice.text === "Your Starter plan covers 5 boats, and all 5 are in use: Everglade, Kestrel, S1, S2, S3. Office covers every boat for up to 8 brokers.", k.notice?.text);
     const r = await slots.takeCoverSlot(svc, "S4", "kelly");
     check("6th boat refused on Starter with the FULL sentence", !r.ok && r.status === 403 && /all 5 are in use/.test(r.error) && live().length === 3, r.ok ? "" : r.error);
     const s = await la("S4", "steve");
@@ -232,8 +232,8 @@ async function main() {
     check("Kelly's own boat → own plan (no slot needed)", kOwn.reason === "own" && hasAccess(kOwn.status));
     const a = await allowanceLib.listingAllowance(svc, "kelly");
     check("allowance: own 2 + slots 3 = 5, not over, full with boats waiting", a.activeCount === 5 && !a.over && a.office?.mode === "slots" && a.office.full && a.office.waiting === 10, JSON.stringify({ c: a.activeCount, o: a.office }));
-    check("  reminder text", allowanceLib.allowanceMessage(a) === "Your Starter plan covers 5 boats, and all 5 are in use. Growth covers 6–10 boats — $49/mo.", String(allowanceLib.allowanceMessage(a)));
-    check("  assistant wording", allowanceLib.allowanceMessage(a, "Kelly") === "Kelly's Starter plan covers 5 boats, and all 5 are in use. Growth covers 6–10 boats — $49/mo.");
+    check("  reminder text", allowanceLib.allowanceMessage(a) === "Your Starter plan covers 5 boats, and all 5 are in use. Office covers every boat for up to 8 brokers.", String(allowanceLib.allowanceMessage(a)));
+    check("  assistant wording", allowanceLib.allowanceMessage(a, "Kelly") === "Kelly's Starter plan covers 5 boats, and all 5 are in use. Office covers every boat for up to 8 brokers.");
     const panel = await slots.coverSlotsForAdmin(svc, "kelly");
     check("Billing panel sentence", !!panel && slots.adminSlotsSentence(panel) === "Your plan covers 5 boats. In use (5): Everglade, Kestrel, S1, S2, S3.", panel ? slots.adminSlotsSentence(panel) : "null");
   }
@@ -416,11 +416,12 @@ async function main() {
     const r7 = await slots.claimListingTool(svc, "S7", "steve");
     check("soft: 6th and 7th boats recorded, never refused", r6.ok && r6.state === "taken" && r7.allowed && live().length === 7, String(live().length));
     const k7 = await la("S8", "kelly");
-    check("soft: over 7/5 → over note with Billing link", k7.notice?.text === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats." && k7.notice.upgrade, k7.notice?.text);
+    check("soft: over 7/5 → over note with Billing link", k7.notice?.text === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Office covers every boat for up to 8 brokers." && k7.notice.upgrade, k7.notice?.text);
     const a7 = await allowanceLib.listingAllowance(svc, "kelly");
-    check("soft: reminder over 7/5", a7.over && allowanceLib.allowanceMessage(a7) === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats." && allowanceLib.officeCounterLine(a7) === null, String(allowanceLib.allowanceMessage(a7)));
+    check("soft: reminder over 7/5", a7.over && allowanceLib.allowanceMessage(a7) === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Office covers every boat for up to 8 brokers." && allowanceLib.officeCounterLine(a7) === null, String(allowanceLib.allowanceMessage(a7)));
     const panel7 = await slots.coverSlotsForAdmin(svc, "kelly");
     check("soft: Billing over sentence", !!panel7 && slots.counterLong({ planName: panel7.planName, limit: panel7.limit, used: panel7.used, names: [] }) === "You're using the Portal's tools on 7 boats. Your Starter plan covers 5. Growth covers 6–10 boats.");
+    check("over note names Team (≤4 brokers) / Office (5+)", slots.officePlanSentence(4) === "Team covers every boat for up to 4 brokers." && slots.officePlanSentence(5) === "Office covers every boat for up to 8 brokers.");
     for (const id of ["S1", "S6", "S7", "S8", "S13"]) {
       const v = await la(id, "steve");
       check(`soft: Steve never locked or prompted on ${id}`, v.status === "active" && !v.notice);

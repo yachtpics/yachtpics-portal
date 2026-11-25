@@ -1,15 +1,36 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireBrokerageAdmin } from "@/lib/requireBrokerageAdmin";
 import { stripe } from "@/lib/stripe";
-import { OFFICE_PLAN } from "@/lib/plans";
+import { OFFICE_PLAN, TEAM_PLAN, brokeragePlanById } from "@/lib/plans";
 
 export const runtime = "nodejs";
 
-// Start (or resume) the Office plan subscription for the caller's brokerage.
+// Start (or resume) the Team or Office plan subscription for the caller's
+// brokerage. Body { plan?: "team" | "office" }; Office when absent or
+// unreadable, so an older open page keeps working.
 export async function POST(req: NextRequest) {
   const auth = await requireBrokerageAdmin();
   if (auth.error) return auth.error;
   const { admin, userId, brokerageId } = auth;
+
+  const body = (await req.json().catch(() => ({}))) as { plan?: unknown };
+  const plan = brokeragePlanById(typeof body?.plan === "string" ? body.plan : null) ?? OFFICE_PLAN;
+
+  // Same count as the Billing page: brokers (not assistants) in this brokerage.
+  if (plan.id === TEAM_PLAN.id) {
+    const { count } = await admin
+      .from("profiles")
+      .select("*", { count: "exact", head: true })
+      .eq("brokerage_id", brokerageId)
+      .eq("role", "broker");
+    const brokers = count ?? 0;
+    if (brokers > TEAM_PLAN.brokerCap) {
+      return NextResponse.json(
+        { error: `Team covers up to ${TEAM_PLAN.brokerCap} brokers. Your office has ${brokers}, so the Office plan is the one that fits.` },
+        { status: 400 }
+      );
+    }
+  }
 
   const { data: brokerage } = await admin
     .from("brokerages")
@@ -38,12 +59,12 @@ export async function POST(req: NextRequest) {
     customer: customerId,
     mode: "subscription",
     payment_method_types: ["card"],
-    line_items: [{ price: OFFICE_PLAN.priceId, quantity: 1 }],
+    line_items: [{ price: plan.priceId, quantity: 1 }],
     success_url: `${origin}/dashboard/brokerage/billing?success=1`,
     cancel_url: `${origin}/dashboard/brokerage/billing?cancelled=1`,
     subscription_data: {
       trial_period_days: trialDays,
-      metadata: { brokerage_id: brokerageId },
+      metadata: { brokerage_id: brokerageId, plan: plan.id },
     },
     metadata: { brokerage_id: brokerageId },
   });

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { PLANS } from "@/lib/plans";
+import { PLANS, brokeragePlanFitting, planIncludesWebsite } from "@/lib/plans";
 import { getAccessStatus, hasAccess, trialDaysFor, type AccessStatus, type SubRow } from "@/lib/subscriptionAccess";
 import {
   isPayingPlan, officeAdminRuleOn, officeCoverEnforceOn, officePlanActive, paidReelServiceBrokerIds, type OfficeAdminCover,
@@ -79,6 +79,8 @@ export type SlotCover = {
   inUse: string[];
   /** The next plan up, for "Growth covers 6–10 boats." */
   nextPlan: { name: string; range: string } | null;
+  /** Brokers (role broker) in the office — picks Team or Office for the full note (Nov 25 2026). */
+  officeBrokers: number;
 };
 
 export type ListingAccess = {
@@ -263,14 +265,27 @@ export type PayingAdmin = {
   planName: string | null;
   limit: number | null;
   nextPlan: { name: string; range: string } | null;
+  /** Brokers (role broker) in the admin's office, for the Team / Office note. */
+  officeBrokers: number;
 };
 
 function displayName(p: { first_name?: string | null; last_name?: string | null }): string {
   return `${p.first_name ?? ""} ${p.last_name ?? ""}`.trim() || "Your office admin";
 }
 
-function rangeLabel(p: { minListings: number; maxListings: number | null }): string {
-  return p.maxListings == null ? `${p.minListings} or more boats` : `${p.minListings}–${p.maxListings} boats`;
+function rangeLabel(p: { name: string; minListings: number; maxListings: number | null }): string {
+  if (p.maxListings == null) return planIncludesWebsite(p.name) ? "unlimited listings, with your website included" : "unlimited listings";
+  return `${p.minListings}–${p.maxListings} boats`;
+}
+
+/**
+ * Nov 25 2026: when a paying admin's plan is covering OTHER brokers' boats,
+ * the over / full note points at the brokerage plan that fits the office's
+ * broker count instead of the next broker tier. No price here.
+ */
+export function officePlanSentence(officeBrokers: number): string {
+  const p = brokeragePlanFitting(officeBrokers);
+  return `${p.name} covers every boat for up to ${p.brokerCap} brokers.`;
 }
 
 /** The plan's slot count. An unknown price (not in PLANS) gets the smallest range, never unlimited. */
@@ -294,6 +309,12 @@ export async function payingAdminsWithPlans(svc: SupabaseClient, brokerageId: st
     .eq("brokerage_id", brokerageId)
     .eq("is_brokerage_admin", true);
   if (error || !admins || admins.length === 0) return [];
+  const { count: brokerCount } = await svc
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("brokerage_id", brokerageId)
+    .eq("role", "broker");
+  const officeBrokers = brokerCount ?? 0;
   const rows = admins as { id: string; first_name: string | null; last_name: string | null }[];
   const { data: subs, error: subErr } = await svc
     .from("subscriptions")
@@ -307,7 +328,7 @@ export async function payingAdminsWithPlans(svc: SupabaseClient, brokerageId: st
   return rows
     .filter((a) => paying.has(a.id))
     .sort((a, b) => displayName(a).localeCompare(displayName(b)) || a.id.localeCompare(b.id))
-    .map((a) => ({ id: a.id, name: displayName(a), brokerageId, ...planSlots(paying.get(a.id)) }));
+    .map((a) => ({ id: a.id, name: displayName(a), brokerageId, officeBrokers, ...planSlots(paying.get(a.id)) }));
 }
 
 /* ── one admin's slots in use ──────────────────────────────────────── */
@@ -410,6 +431,7 @@ function coverOf(u: AdminSlotUsage, officeName: string | null): SlotCover {
     used: u.admin.limit == null || !officeCoverEnforceOn() ? u.used : Math.min(u.used, u.admin.limit),
     inUse: u.ownBoats.map((b) => b.name).concat(u.slots.map((s) => s.name)),
     nextPlan: u.admin.nextPlan,
+    officeBrokers: u.admin.officeBrokers,
   };
 }
 
@@ -448,12 +470,23 @@ export function counterShort(p: { planName: string | null; limit: number | null;
   return `${p.used} of ${p.limit} boats in use on ${yourPlan(p.planName)}.`;
 }
 
-/** Over the range — the only place upgrade wording appears. */
-export function overMessage(p: { planName: string | null; limit: number | null; used: number }): string | null {
+/**
+ * Over the range — the only place upgrade wording appears. `officeBrokers`
+ * is passed only when the plan is covering OTHER brokers' boats: the last
+ * sentence then names Team or Office ("Team covers every boat for up to 4
+ * brokers.") instead of the next broker tier.
+ */
+export function overMessage(p: { planName: string | null; limit: number | null; used: number; officeBrokers?: number | null }): string | null {
   if (p.limit == null || p.used <= p.limit) return null;
-  const fit = planFitting(p.used);
   const plan = p.planName ? `Your ${p.planName} plan` : "Your plan";
-  return `You're using the Portal's tools on ${p.used} boats. ${plan} covers ${p.limit}.${fit && fit.name !== p.planName ? ` ${fit.name} covers ${fit.range}.` : ""}`;
+  let next = "";
+  if (p.officeBrokers != null) {
+    next = ` ${officePlanSentence(p.officeBrokers)}`;
+  } else {
+    const fit = planFitting(p.used);
+    if (fit && fit.name !== p.planName) next = ` ${fit.name} covers ${fit.range}.`;
+  }
+  return `You're using the Portal's tools on ${p.used} boats. ${plan} covers ${p.limit}.${next}`;
 }
 
 /**
@@ -461,7 +494,7 @@ export function overMessage(p: { planName: string | null; limit: number | null; 
  * Everglade, …"; exactly at → "5 of 5 boats in use on your Starter plan.";
  * over → the over message.
  */
-export function counterLong(p: { planName: string | null; limit: number | null; used: number; names: string[] }): string {
+export function counterLong(p: { planName: string | null; limit: number | null; used: number; names: string[]; officeBrokers?: number | null }): string {
   const over = overMessage(p);
   if (over) return over;
   if (p.limit != null && p.used === p.limit) return counterShort(p);
@@ -473,7 +506,7 @@ export function counterLong(p: { planName: string | null; limit: number | null; 
 
 /** Listing page line for the paying admin (soft mode). */
 function counterNotice(u: AdminSlotUsage): CoverNotice {
-  const p = { planName: u.admin.planName, limit: u.admin.limit, used: u.used };
+  const p = { planName: u.admin.planName, limit: u.admin.limit, used: u.used, officeBrokers: u.slots.length > 0 ? u.admin.officeBrokers : null };
   const over = overMessage(p);
   return over ? { tone: "subtle", text: over, upgrade: true } : { tone: "subtle", text: counterShort(p), upgrade: false };
 }
@@ -492,7 +525,8 @@ export function fullNotice(c: SlotCover, who: string | null = null): string {
   const n = c.limit ?? c.used;
   const all = n === 1 ? "and it is in use" : `and all ${n} are in use`;
   const names = c.inUse.length > 0 ? `: ${joinNames(c.inUse)}` : "";
-  const next = c.nextPlan ? ` ${c.nextPlan.name} covers ${c.nextPlan.range}.` : "";
+  // FULL only happens with office boats waiting: point at Team / Office.
+  const next = ` ${officePlanSentence(c.officeBrokers)}`;
   return `${lead} covers ${n} ${plural(n, "boat", "boats")}, ${all}${names}.${next}`;
 }
 
@@ -603,7 +637,7 @@ async function listingsAccessFor(svc: SupabaseClient, listings: ListingLite[], v
       out.set(l.id, plain(l.id, l.broker_id, b, {
         status: "active",
         reason: "officeAdminAll",
-        cover: { adminId: a.id, adminName: a.name, officeName, planName: a.planName, limit: null, used: 0, inUse: [], nextPlan: a.nextPlan },
+        cover: { adminId: a.id, adminName: a.name, officeName, planName: a.planName, limit: null, used: 0, inUse: [], nextPlan: a.nextPlan, officeBrokers: a.officeBrokers },
       }));
     });
     if (slotRows === null) { fallback(); continue; }
@@ -889,6 +923,8 @@ export async function coverSlotsForAdmin(svc: SupabaseClient, adminId: string): 
   ownBoats: { id: string; name: string }[];
   slots: { listingId: string; name: string; ownerName: string }[];
   waiting: number;
+  /** Brokers (role broker) in the office, for the Team / Office note. */
+  officeBrokers: number;
 } | null> {
   if (!officeAdminRuleOn()) return null;
   const { data: me } = await svc.from("profiles").select("brokerage_id, is_brokerage_admin").eq("id", adminId).maybeSingle();
@@ -931,6 +967,7 @@ export async function coverSlotsForAdmin(svc: SupabaseClient, adminId: string): 
     ownBoats: u.ownBoats,
     slots: u.slots.map((s) => ({ listingId: s.listingId, name: s.name, ownerName: names.get(s.ownerId) ?? "" })),
     waiting,
+    officeBrokers: admin.officeBrokers,
   };
 }
 

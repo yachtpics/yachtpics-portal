@@ -36,22 +36,55 @@ export const PLANS = [
     minListings: 21,
     maxListings: null as number | null,
     name: "Elite",
-    description: "21 or more boats, with your own website included.",
+    description: "Unlimited listings, with your own website included.",
     price: 149,
     priceId: "price_1Te6f1K5G1w3hzIsGm6Wnola",
   },
 ];
 
-// Per-location plan for a whole brokerage office. Billed to the brokerage
-// (not an individual broker) and unlocks every broker at that location.
+// Per-location plans for a whole brokerage office. Billed to the brokerage
+// (not an individual broker) and unlock every broker at that location. The
+// broker count is the only cap: neither plan has a listing limit.
+// Team added Nov 25 2026 (Stripe product prod_VhBkmDb4TjTJSi).
+export const TEAM_PLAN = {
+  id: "team",
+  name: "Team",
+  description: "Per location — up to 4 brokers + their assistants. Every boat covered.",
+  price: 129,
+  brokerCap: 4,
+  priceId: "price_1UfnMfK5G1w3hzIs9Ga7o1dV",
+};
+
 export const OFFICE_PLAN = {
   id: "office",
   name: "Office",
-  description: "Per location — up to 8 brokers + their assistants",
+  description: "Per location — up to 8 brokers + their assistants. Every boat covered.",
   price: 249,
   brokerCap: 8,
   priceId: "price_1TkUDuK5G1w3hzIsSBIAigXP",
 };
+
+export type BrokeragePlan = typeof OFFICE_PLAN;
+export type BrokeragePlanId = "team" | "office";
+
+/** The brokerage-level plans, smallest first. */
+export const BROKERAGE_PLANS: BrokeragePlan[] = [TEAM_PLAN, OFFICE_PLAN];
+
+/** A brokerage plan by id ("team" | "office"), else null. */
+export function brokeragePlanById(id: string | null | undefined): BrokeragePlan | null {
+  return BROKERAGE_PLANS.find((p) => p.id === id) ?? null;
+}
+
+/** The brokerage plan a Stripe price id belongs to, else null. */
+export function brokeragePlanForPriceId(priceId: string | null | undefined): BrokeragePlan | null {
+  if (!priceId) return null;
+  return BROKERAGE_PLANS.find((p) => p.priceId === priceId) ?? null;
+}
+
+/** The smallest brokerage plan that covers this many brokers (Office when none does). */
+export function brokeragePlanFitting(brokerCount: number): BrokeragePlan {
+  return BROKERAGE_PLANS.find((p) => p.brokerCap >= brokerCount) ?? OFFICE_PLAN;
+}
 
 // Reel Service (Oct 23, 2026 evening): $179 per listing per month, up to 4
 // reels, paid by card in the Portal at the moment of ordering (Stripe
@@ -90,13 +123,13 @@ export function planPriceWithWebsite(plan: { name: string; price: number }): num
   return planIncludesWebsite(plan.name) ? plan.price : plan.price + WEBSITE_PRICE;
 }
 
-/** True when this Stripe price id is one of the PLANS or the Office plan. */
+/** True when this Stripe price id is one of the PLANS or a brokerage plan (Team / Office). */
 export function isPlanPriceId(priceId: string | null | undefined): boolean {
-  return !!priceId && (PLANS.some((p) => p.priceId === priceId) || OFFICE_PLAN.priceId === priceId);
+  return !!priceId && (PLANS.some((p) => p.priceId === priceId) || !!brokeragePlanForPriceId(priceId));
 }
 
 /**
- * Look up the plan a Stripe price ID belongs to, including the Office plan.
+ * Look up the plan a Stripe price ID belongs to, including Team and Office.
  * Returns null for an unknown or missing price — e.g. a comped account, or
  * a price created in Stripe that hasn't been added here yet.
  */
@@ -106,8 +139,7 @@ export function planForPriceId(
   if (!priceId) return null;
   const plan = PLANS.find((p) => p.priceId === priceId);
   if (plan) return { name: plan.name, price: plan.price };
-  if (OFFICE_PLAN.priceId === priceId) {
-    return { name: OFFICE_PLAN.name, price: OFFICE_PLAN.price };
-  }
+  const brokeragePlan = brokeragePlanForPriceId(priceId);
+  if (brokeragePlan) return { name: brokeragePlan.name, price: brokeragePlan.price };
   return null;
 }
