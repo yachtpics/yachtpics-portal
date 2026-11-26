@@ -1,5 +1,13 @@
 # Where we are — October 6, 2026
 
+## Thanksgiving email ready in Admin → Announce (Nov 25, 2026, 11 PM) — PUSHED · no migration · NOTHING SENT
+
+- Charlie asked for a one-page "Happy Thanksgiving from YachtPics and YachtPics Portal, Charlie & Samantha" to every broker and assistant. Built as an announcement campaign: `THANKSGIVING_ANNOUNCEMENT_CAMPAIGN` in `src/lib/announcementEmail.ts` (type `announcement_thanksgiving_2026`, audience "all", no button). All copy is in `announcementThanksgivingHtml`.
+- `announcementShell` gained an optional `signature` (default unchanged: Charlie alone); this one signs "Charlie & Samantha / YachtPics · YachtPics Portal".
+- Window: opens Nov 26 00:00 UTC (7 PM ET Wed), **closes Nov 27 05:00 UTC (midnight ET Thanksgiving night)** so it can never go out late. Approve = goes at the 8 AM ET daily run on Thanksgiving; "Send now" = immediately. Test send first.
+- Also Nov 25: the empty duplicate brokerage "SYC Yachts" (`6e66f4dc…`) was deleted (Charlie's go-ahead; nothing referenced it).
+- Help: no change (admin-only).
+
 ## "Open and close with our logo" — logo bookends for reels and slideshows (Nov 25, 2026, evening) — PUSHED Nov 25 (7222b12) · MIGRATION `20261125c_logo_bookends.sql` APPLIED Nov 25 6:52 PM (8 columns, 2 triggers, demo gaps 0; nobody switched on yet — SYC logos still to upload on Admin → Brokerages → SYC Yachts, colour #040847) · typecheck clean · `next build` passes · `npx tsx scripts/logo_bookends_check.ts` passes (143 checks, pure pieces only; no live DB, no browser render)
 - **LIVE for SYC Yachts (Nov 25, 7:20 PM)**: Charlie uploaded both logos from his phone (Admin → Brokerages → SYC Yachts, the one with 4 brokers); colour `#040847` and the switch were set by SQL because the colour box hadn't saved on mobile (fixed in 64d9116: the colour saves as soon as a full hex is typed). **Charlie checked a reel and a slideshow (/s/dj1rpden): both good.** Still open: delete the empty duplicate brokerage "SYC Yachts" `6e66f4dc-d9e2-4c44-aa54-698a0f359b50` (0 people, nothing references it; the delete prompt timed out on his phone, needs him at his computer); Help PDF rebuild; client galleries (/g) not done.
 - **Sizing threshold (set by Fable on review)**: `BOOKEND_WIDE_ASPECT = 2.5` in `src/lib/logoBookends.ts`. SYC's stacked mark is 992×537 (1.85:1) and must size as STACKED (58% of the short edge), as in the mock-ups Charlie approved; their wide mark is 7.47:1. PUSHED Nov 25 with the migration still NOT APPLIED (feature off until it is).

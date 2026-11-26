@@ -56,8 +56,10 @@ export const ANNOUNCEMENT_EARLY_SEND_BEFORE = DEPTH_LOOKS_OPEN_AT;
 
 /** Shared shell for every announcement: dark header, gold eyebrow, h1, the
  * campaign's body, signature, footer, unsubscribe footer. */
-function announcementShell(opts: { eyebrow: string; headline: string; body: string; unsubToken?: string }): string {
+function announcementShell(opts: { eyebrow: string; headline: string; body: string; unsubToken?: string; signature?: string }): string {
   const { eyebrow, headline, body, unsubToken } = opts;
+  // The sign-off under the body. Default: Charlie alone (every product note).
+  const signature = opts.signature ?? `Charlie Clark<br><span style="color:#9ca3af;">YachtPics</span>`;
   const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
   return `<!DOCTYPE html>
 <html>
@@ -73,7 +75,7 @@ function announcementShell(opts: { eyebrow: string; headline: string; body: stri
 
       ${body}
 
-      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">Charlie Clark<br><span style="color:#9ca3af;">YachtPics</span></p>
+      <p style="margin:0;font-size:14px;color:#374151;line-height:1.6;">${signature}</p>
     </div>
     <div style="padding:20px 40px;border-top:1px solid #f3f4f6;">
       <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Questions? Just reply to this email.</p>
@@ -270,9 +272,50 @@ export const DOCK_CARD_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
   html: announcementDockCardHtml,
 };
 
+/* ------------------------------------------------------------------ *
+ * Thanksgiving 2026 — ALL ITS COPY IS HERE. Edit freely.
+ * A thank-you from Charlie & Samantha to every broker and assistant. No
+ * button and nothing to sell. The window closes at the end of Thanksgiving
+ * Day (Eastern), so it can never go out late: approve it and it sends at the
+ * next daily run (8am ET Thu Nov 26), or use "Send now".
+ * ------------------------------------------------------------------ */
+export const ANNOUNCEMENT_THANKSGIVING_TYPE = "announcement_thanksgiving_2026";
+export const ANNOUNCEMENT_THANKSGIVING_SUBJECT = "Happy Thanksgiving from YachtPics";
+export const ANNOUNCEMENT_THANKSGIVING_SEND_AFTER = "2026-11-26T00:00:00Z";
+export const ANNOUNCEMENT_THANKSGIVING_SEND_BEFORE = "2026-11-27T05:00:00Z";
+
+export function announcementThanksgivingHtml(opts: { firstName: string; unsubToken?: string }): string {
+  const { firstName, unsubToken } = opts;
+  return announcementShell({
+    eyebrow: "Happy Thanksgiving",
+    headline: "Thank you, from both of us.",
+    unsubToken,
+    signature: `Happy Thanksgiving,<br><strong style="color:#111827;">Charlie &amp; Samantha</strong><br><span style="color:#9ca3af;">YachtPics &middot; YachtPics Portal</span>`,
+    body: [
+      p(`Hi ${firstName},`),
+      p(`A short note before the holiday gets busy.`),
+      p(`You trust us with your listings, and we don\u2019t take that lightly. Every boat we stepped aboard this year, and every one you shared through the Portal, is the reason we get to do this work.`),
+      p(`Thank you for the early mornings at the dock, the calls, and the ideas that keep making the Portal better.`),
+      p(`We hope your Thanksgiving brings good company, a full table, and maybe a little time on the water.`),
+    ].join("\n\n      "),
+  });
+}
+
+export const THANKSGIVING_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
+  type: ANNOUNCEMENT_THANKSGIVING_TYPE,
+  subject: ANNOUNCEMENT_THANKSGIVING_SUBJECT,
+  sendAfter: ANNOUNCEMENT_THANKSGIVING_SEND_AFTER,
+  sendBefore: ANNOUNCEMENT_THANKSGIVING_SEND_BEFORE,
+  audience: "all",
+  excludeSentTypes: [],
+  label: "Happy Thanksgiving 2026",
+  description: "A thank-you from Charlie & Samantha to every broker and assistant. No button, nothing to sell. Closes at the end of Thanksgiving Day.",
+  html: announcementThanksgivingHtml,
+};
+
 /** In send order. The dock-card note is the newest; FLIBS closed Oct 27 and
  * the two Walkthrough campaigns Oct 16 — they stay listed for their counts. */
-export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [DOCK_CARD_ANNOUNCEMENT_CAMPAIGN, FLIBS26_ANNOUNCEMENT_CAMPAIGN, EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
+export const ANNOUNCEMENT_CAMPAIGNS: AnnouncementCampaign[] = [THANKSGIVING_ANNOUNCEMENT_CAMPAIGN, DOCK_CARD_ANNOUNCEMENT_CAMPAIGN, FLIBS26_ANNOUNCEMENT_CAMPAIGN, EARLY_ANNOUNCEMENT_CAMPAIGN, GENERAL_ANNOUNCEMENT_CAMPAIGN];
 
 export function getAnnouncementCampaign(type: string | null | undefined): AnnouncementCampaign | null {
   if (!type) return null;
