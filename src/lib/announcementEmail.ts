@@ -284,21 +284,53 @@ export const ANNOUNCEMENT_THANKSGIVING_SUBJECT = "Happy Thanksgiving from YachtP
 export const ANNOUNCEMENT_THANKSGIVING_SEND_AFTER = "2026-11-26T00:00:00Z";
 export const ANNOUNCEMENT_THANKSGIVING_SEND_BEFORE = "2026-11-27T05:00:00Z";
 
+const TG_IMG = "https://portal.yachtpics.com/email";
+/** One paragraph in the Thanksgiving note (warmer ink than the product notes). */
+const tgP = (html: string) =>
+  `<p style="margin:0 0 20px;font-size:16px;color:#4a3a2a;line-height:1.65;">${html}</p>`;
+
+/**
+ * Its own layout, not announcementShell: a fall-leaf banner (navy ground, the
+ * greeting set in it), a cream card inside an amber border, a leaf divider
+ * and a warm footer. The two images are original drawings in public/email/.
+ * With images blocked it still reads: the banner cell is navy with the
+ * greeting as its alt text.
+ */
 export function announcementThanksgivingHtml(opts: { firstName: string; unsubToken?: string }): string {
   const { firstName, unsubToken } = opts;
-  return announcementShell({
-    eyebrow: "Happy Thanksgiving",
-    headline: "Thank you, from both of us.",
-    unsubToken,
-    signature: `Happy Thanksgiving,<br><strong style="color:#111827;">Charlie &amp; Samantha</strong><br><span style="color:#9ca3af;">YachtPics &middot; YachtPics Portal</span>`,
-    body: [
-      p(`Hi ${firstName},`),
-      p(`A short note before the holiday gets busy.`),
-      p(`You trust us with your listings, and we don\u2019t take that lightly. Every boat we stepped aboard this year, and every one you shared through the Portal, is the reason we get to do this work.`),
-      p(`Thank you for the early mornings at the dock, the calls, and the ideas that keep making the Portal better.`),
-      p(`We hope your Thanksgiving brings good company, a full table, and maybe a little time on the water.`),
-    ].join("\n\n      "),
-  });
+  const unsubFooter = unsubToken ? unsubscribeFooterHtml(unsubToken) : "";
+  return `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f3e7d3;margin:0;padding:36px 16px;">
+  <div style="max-width:560px;margin:0 auto;background:#fdf8ef;border:3px solid #c98a2b;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(90,42,16,0.18);">
+    <div style="background:#050b14;text-align:center;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:30px;line-height:1.3;color:#fbf1dc;">
+      <img src="${TG_IMG}/thanksgiving-2026-banner.png" width="560" alt="Happy Thanksgiving from YachtPics and YachtPics Portal" style="display:block;width:100%;max-width:560px;height:auto;border:0;">
+    </div>
+    <div style="height:6px;background:#b5541c;font-size:0;line-height:0;">&nbsp;</div>
+    <div style="padding:36px 40px 30px;">
+      <h1 style="margin:0 0 18px;font-family:Georgia,'Times New Roman',serif;font-size:25px;font-weight:700;color:#8c2f1b;line-height:1.3;">Thank you, from both of us.</h1>
+
+      ${[
+        tgP(`Hi ${firstName},`),
+        tgP(`A short note before the holiday gets busy.`),
+        tgP(`You trust us with your listings, and we don\u2019t take that lightly. Every boat we stepped aboard this year, and every one you shared through the Portal, is the reason we get to do this work.`),
+        tgP(`Thank you for the early mornings at the dock, the calls, and the ideas that keep making the Portal better.`),
+        tgP(`We hope your Thanksgiving brings good company, a full table, and maybe a little time on the water.`),
+      ].join("\n\n      ")}
+
+      <div style="margin:6px 0 22px;text-align:center;">
+        <img src="${TG_IMG}/thanksgiving-2026-sprig.png" width="180" height="32" alt="" style="display:inline-block;width:180px;height:32px;border:0;">
+      </div>
+
+      <p style="margin:0;font-size:16px;color:#4a3a2a;line-height:1.65;text-align:center;">Happy Thanksgiving,<br><strong style="font-family:Georgia,'Times New Roman',serif;font-size:19px;color:#8c2f1b;">Charlie &amp; Samantha</strong><br><span style="font-size:13px;color:#a07a45;letter-spacing:0.5px;">YachtPics &middot; YachtPics Portal</span></p>
+    </div>
+    <div style="padding:16px 40px;background:#f6ead6;border-top:1px solid #ead7b4;">
+      <p style="margin:0;font-size:12px;color:#a07a45;line-height:1.5;text-align:center;">YachtPics &middot; Professional yacht photography &amp; delivery<br>Want to say hello? Just reply to this email.</p>
+    </div>${unsubFooter}
+  </div>
+</body>
+</html>`;
 }
 
 export const THANKSGIVING_ANNOUNCEMENT_CAMPAIGN: AnnouncementCampaign = {
