@@ -165,6 +165,19 @@ export default function LogoBookendsCard({
   const openHard = useHardToSee(own?.openUrl ?? null, own?.ground ?? null);
   const closeHard = useHardToSee(own?.closeUrl ?? null, own?.ground ?? null);
 
+  // Save the colour as soon as a full hex is in the box (Nov 25): on a phone
+  // the box is often never blurred, so the colour looked set (the previews
+  // use it) while nothing was saved and the switch stayed greyed out.
+  const typedHex = hexOrNull(hexText);
+  const savedGround = own?.ground ?? null;
+  const triedHexRef = useRef<string | null>(null); // one attempt per value: a refused save must not retry forever
+  useEffect(() => {
+    if (!typedHex || typedHex === savedGround || busy || triedHexRef.current === typedHex) return;
+    const t = setTimeout(() => { triedHexRef.current = typedHex; void patch({ ground: typedHex }); }, 600);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typedHex, savedGround, busy]);
+
   if (!data || !data.available || !own) return null;
 
   const word = ours ? "our" : "my";
@@ -348,7 +361,7 @@ export default function LogoBookendsCard({
         <p className="text-xs text-warn-700 mb-2">The logo may be hard to see on this colour.</p>
       )}
       {!own.on && !canTurnOn && (
-        <p className="text-xs text-ink-400 mb-2">Upload a logo and pick a colour to turn this on.</p>
+        <p className="text-xs text-ink-400 mb-2">{hasImage ? "Type the background colour as a hex code, like #040847, to turn this on." : "Upload a logo and pick a colour to turn this on."}</p>
       )}
 
       {hasImage && (
