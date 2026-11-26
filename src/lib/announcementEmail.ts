@@ -290,10 +290,10 @@ const tgP = (html: string) =>
   `<p style="margin:0 0 20px;font-size:16px;color:#4a3a2a;line-height:1.65;">${html}</p>`;
 
 /**
- * Its own layout, not announcementShell: a fall-leaf banner (navy ground, the
- * greeting set in it), a cream card inside an amber border, a leaf divider
+ * Its own layout, not announcementShell: a fall-leaf banner (cream ground,
+ * maple, oak and beech leaves in the corners, the greeting set in it), a cream card inside an amber border, a leaf divider
  * and a warm footer. The two images are original drawings in public/email/.
- * With images blocked it still reads: the banner cell is navy with the
+ * With images blocked it still reads: the banner cell is cream with the
  * greeting as its alt text.
  */
 export function announcementThanksgivingHtml(opts: { firstName: string; unsubToken?: string }): string {
@@ -304,8 +304,8 @@ export function announcementThanksgivingHtml(opts: { firstName: string; unsubTok
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;background:#f3e7d3;margin:0;padding:36px 16px;">
   <div style="max-width:560px;margin:0 auto;background:#fdf8ef;border:3px solid #c98a2b;border-radius:14px;overflow:hidden;box-shadow:0 2px 10px rgba(90,42,16,0.18);">
-    <div style="background:#050b14;text-align:center;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:30px;line-height:1.3;color:#fbf1dc;">
-      <img src="${TG_IMG}/thanksgiving-2026-banner.png" width="560" alt="Happy Thanksgiving from YachtPics and YachtPics Portal" style="display:block;width:100%;max-width:560px;height:auto;border:0;">
+    <div style="background:#f9eed9;text-align:center;font-family:Georgia,'Times New Roman',serif;font-style:italic;font-size:30px;line-height:1.3;color:#8c2f1b;">
+      <img src="${TG_IMG}/thanksgiving-2026-leaves.png" width="560" alt="Happy Thanksgiving from YachtPics and YachtPics Portal" style="display:block;width:100%;max-width:560px;height:auto;border:0;">
     </div>
     <div style="height:6px;background:#b5541c;font-size:0;line-height:0;">&nbsp;</div>
     <div style="padding:36px 40px 30px;">
