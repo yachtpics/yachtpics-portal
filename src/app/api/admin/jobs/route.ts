@@ -127,6 +127,9 @@ async function normaliseParams(
     }
     return { params: out };
   }
+  // YouTube uploads carry an upload row made by /api/admin/youtube/uploads;
+  // they can't be started from here.
+  if (kind === "youtube_upload") return { error: "Start a YouTube upload from the listing's page (Upload to YouTube)." };
   // Deleting files: only with the typed confirmation from /admin/storage.
   if (kind === "photo_originals_cleanup" || kind === "site_photos_cleanup") {
     if (p.confirm !== CLEANUP_CONFIRM_PHRASE) return { error: `Type "${CLEANUP_CONFIRM_PHRASE}" to confirm.` };

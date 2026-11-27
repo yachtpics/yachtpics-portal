@@ -31,6 +31,7 @@ import {
   HardDrive,
   CalendarRange,
   Film,
+  Youtube,
   type LucideIcon,
 } from "lucide-react";
 
@@ -72,6 +73,7 @@ const navItems: NavItem[] = [
   { label: "Showroom Loop", href: "/admin/showroom", icon: MonitorPlay, short: "Showroom" },
   { label: "Reel Service", href: "/admin/reel-service", icon: Repeat, short: "Service" },
   { label: "Social Accounts", href: "/dashboard/profile#social-accounts", icon: Share2, short: "Social" },
+  { label: "YouTube", href: "/admin/youtube", icon: Youtube },
   { label: "Email Log", href: "/admin/emails", icon: Mail },
   { label: "Deletion Log", href: "/admin/deletions", icon: Trash2 },
   { label: "Announce", href: "/admin/announce", icon: Megaphone },

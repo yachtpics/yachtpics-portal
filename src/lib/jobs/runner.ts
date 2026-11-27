@@ -27,6 +27,7 @@ import { demoReset, demoSeed } from "./demoSeed";
 import { demoRwReset, demoRwSeed } from "./demoRwSeed";
 import { siteTextDrafts } from "./siteTextDrafts";
 import { videoCodecScan } from "./videoCodecScan";
+import { youtubeUpload } from "./youtubeUpload";
 import {
   JobFatalError,
   isJobFatal,
@@ -259,6 +260,7 @@ export const HANDLERS: Record<JobKind, JobHandler> = {
   demo_rw_reset: demoRwReset,
   site_text_drafts: siteTextDrafts,
   video_codec_scan: videoCodecScan,
+  youtube_upload: youtubeUpload,
 };
 
 // ─── the worker step ────────────────────────────────────────────────────────

@@ -21,6 +21,7 @@ import DownloadLinkManager from "./DownloadLinkManager";
 import BillForBoatButton from "./BillForBoatButton";
 import ListingEngagement from "@/components/ListingEngagement";
 import SortableVideoList from "@/components/SortableVideoList";
+import { YouTubeVideoControl, useYouTubeListing } from "@/components/admin/YouTubeUpload";
 import { arrayMove } from "@dnd-kit/sortable";
 // Photo management (grid, upload, replace, delete, order, categories, cover,
 // lightbox, saving originals) is shared with the broker listing page.
@@ -244,6 +245,8 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
   // H.265 / ProRes uploads: a notice per file, kept until dismissed.
   const [videoCodecNotices, setVideoCodecNotices] = useState<VideoCodecNoticeItem[]>([]);
   const videoInputRef = useRef<HTMLInputElement>(null);
+  // "Upload to YouTube" per video (admin only): one shared read for the listing.
+  const youtube = useYouTubeListing(listing.id);
 
   // Slideshow toggle and reorder go through /api/admin/videos/[id] (service
   // role): the repo's videos RLS has no admin update policy, and an update RLS
@@ -1436,6 +1439,7 @@ export default function AdminListingDetail({ listing, photos: initialPhotos, vid
                         }
                       />
                     </div>
+                    <YouTubeVideoControl yt={youtube} videoId={video.id} />
                   </div>
                   <button
                     onClick={() => toggleVideoSlideshow(video.id, video.in_slideshow !== false)}

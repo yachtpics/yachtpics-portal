@@ -21,6 +21,7 @@ export const JOB_KINDS = [
   "demo_rw_reset",
   "site_text_drafts",
   "video_codec_scan",
+  "youtube_upload",
 ] as const;
 export type JobKind = (typeof JOB_KINDS)[number];
 
@@ -45,6 +46,7 @@ export const JOB_LABELS: Record<JobKind, string> = {
   demo_rw_reset: "Filming account — remove its listings and files",
   site_text_drafts: "Draft website text for live boats (AI, for review)",
   video_codec_scan: "Check stored videos for H.265",
+  youtube_upload: "Upload a listing video to YouTube",
 };
 
 export type JobStatus = "queued" | "running" | "done" | "failed" | "cancelled";
