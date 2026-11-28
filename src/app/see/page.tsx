@@ -240,10 +240,10 @@ export default async function SeePage() {
 
           <Block
             index="04"
-            title="Posted."
+            title="Ready to post."
             lines={[
               "Reels leave the Portal ready for Facebook and Instagram.",
-              "Send one to your phone and it is posted in a minute.",
+              "Send one to your phone and it is ready to post in a minute.",
             ]}
           >
             <ol className="flex flex-wrap items-center gap-x-3 gap-y-3" aria-label="Reel, caption, live">
