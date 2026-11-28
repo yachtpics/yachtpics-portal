@@ -1,5 +1,18 @@
 # Where we are — October 6, 2026
 
+## /see marketing videos: three captions corrected; voice-over planned (Nov 28, 2026) — PUSHED · no migration · typecheck clean
+
+- **Why**: Charlie is adding a voice track to the Portal marketing videos and wants voice, captions and the Portal itself to match.
+- **Captions changed (burned in, re-rendered scene by scene; lengths, audio and every other frame identical)**:
+  - Overview scene 2 (Delivery): "Social, Web & MLS, or full resolution. / In one click." (was "Web, MLS and full resolution / in one click."). The Portal has THREE download sizes: Social 1080, Web & MLS 2048 (one size), Full resolution.
+  - Overview scene 5 (Reel): "Choose a look, add music, pick your photos." (was "Pick the photos, add music, press play."); this one sub-line is 52 px instead of 56 px to fit. Real reel-maker order: Look → Length → Music → photos → AI headline and caption → make the reel.
+  - Overview scene 8 and the own-photos walk-through hook: "Upload them." (was "Bring them.").
+- **Files**: `public/see/videos/overview.mp4`, `own-walk.mp4` (same names); `src/app/see/_components/seeVideos.ts` (own line); `src/content/whatsNew.ts` (sizes wording). Render scripts: `/home/claude/portal-video/scripts/clip_overview_v4.py`, `clip_own_walk_v5.py` (cloud session only). Published files = masters through `/home/claude/portal-video/tmp/web/encode.sh`.
+- **KNOWN MISMATCH, not fixed yet (needs a re-cut, Charlie to decide)**: the FOOTAGE in the overview's reel section shows photo taps (44.2–46.4 s) then the music pick (46.4–49.4 s) and never a look being chosen; the reel walk-through's captions run "Pick a look." 8.1 s → "Choose your photos." 15.1 s → "Add music." 30.3 s with footage in that order.
+- **Flagged, not changed**: "Just listed. Posted in a minute." (overview 67.1 s, social teaser 0.2 s, social walk-through 0.2 s) can read as the Portal posting for the broker; delivery teaser "MLS, social, print." and delivery walk-through "Web & MLS, Social, or the full original." use other size wording.
+- **Caption inventory with timings for all 15 videos**: `/home/claude/out/recaption/captions.md` (cloud session). Voice-over: overview script agreed in chat ("we", not "I"); Charlie to record on his phone or clone his own voice (ElevenLabs); teasers stay music + captions.
+- Help: no change (marketing page only).
+
 ## Upload a listing video to YouTube from the Portal — admin only (Nov 27, 2026) — PUSHED Nov 27 · MIGRATION `20261127_youtube_upload.sql` NOT APPLIED · Google env vars NOT SET · OFF until both · typecheck clean · `next build` passes · `npx tsx scripts/youtube_upload_check.ts` passes (87 checks, pure pieces only) · **nothing has talked to Google yet**
 
 - **What it is**: Admin → **YouTube** (new nav item) connects YouTube channels with Google sign-in (one sign-in = one channel; Brand Accounts are picked on Google's screen). On an admin listing page each video gets **Upload to YouTube**: channel picker (last used remembered), Title + Description prefilled, Visibility (Public default / Unlisted / Private), "Put the YouTube link on this listing" (on when the listing has no link; when it has one the box reads "Replace the listing's YouTube link" and is off). The upload runs on the server through the jobs system, so it carries on with the browser closed or from a phone. Progress line under the video: "Uploading to YouTube: 42%" → "YouTube is processing it" → "On YouTube" + Open / Copy link. Polls every 4 s only while something is in flight.

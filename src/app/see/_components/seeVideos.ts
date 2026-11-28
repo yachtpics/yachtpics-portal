@@ -54,7 +54,7 @@ export const SEE_TOOLS: SeeTool[] = [
   { key: "reel", name: "Listing reel", line: "A reel in about a minute.", teaseFile: "reel-tease.mp4", walkFile: "reel-walk.mp4", walkDuration: "1:22" },
   { key: "social", name: "Social post", line: "Just listed. Posted in a minute.", teaseFile: "social-tease.mp4", walkFile: "social-walk.mp4", walkDuration: "0:53" },
   { key: "report", name: "Seller Report", line: "Show your seller the work.", teaseFile: "report-tease.mp4", walkFile: "report-walk.mp4", walkDuration: "0:52" },
-  { key: "own", name: "Your own photos", line: "Already have photos? Bring them.", teaseFile: "own-tease.mp4", walkFile: "own-walk.mp4", walkDuration: "1:06" },
+  { key: "own", name: "Your own photos", line: "Already have photos? Upload them.", teaseFile: "own-tease.mp4", walkFile: "own-walk.mp4", walkDuration: "1:06" },
 ];
 
 /**

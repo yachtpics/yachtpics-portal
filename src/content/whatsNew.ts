@@ -5,5 +5,5 @@
 export type WhatsNewItem = { label: string; text: string; href?: string };
 
 export const WHATS_NEW: WhatsNewItem[] = [
-  { label: "New", text: "Download sizes for web, MLS and social, and a one-click photo replace." },
+  { label: "New", text: "Download sizes for Social, Web & MLS, or full resolution, and a one-click photo replace." },
 ];
